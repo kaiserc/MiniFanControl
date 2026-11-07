@@ -1,0 +1,6 @@
+*.old.exe
+minifancontrol.cfg
+k12-settings.cfg
+ec-probe-report.txt
+.vs/
+.vscode/
