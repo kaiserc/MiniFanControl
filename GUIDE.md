@@ -318,6 +318,9 @@ Control your thermal environment without leaving full-screen games:
 
 ## 6. Multi-Tool Coexistence & `Global\Access_EC` Mutex
 
+### Storage & PCIe Bus Safety (Safe AMD Driver Telemetry)
+MiniFanControl v2.6.0 uses AMD's official driver interface (`atiadlxx.dll` / `amdfendrm.sys`) for APU telemetry and CPU/iGPU temperatures. Unlike naive utilities that constantly pound raw hardware PCI configuration ports (`0xCF8/0xCFC`), MiniFanControl avoids uncoordinated port I/O during active polling. This completely eliminates race conditions with the Windows NVMe storage driver (`stornvme.sys`), protecting high-speed PCIe SSDs from transaction timeouts or in-page errors.
+
 Mini PCs have a single Embedded Controller communicating over shared hardware registers. If two monitoring tools (for example, MiniFanControl and HWiNFO64 or CapFrameX) read or write the EC at the exact same microsecond, register values can become corrupt.
 
 MiniFanControl eliminates this issue by implementing the industry-standard **`Global\Access_EC` Windows Mutex**:
@@ -363,16 +366,37 @@ For power users, scripting, task schedulers, and headless servers, `minifan-help
 
 ## 8. Supporting New Ryzen Mini PCs & Hardware Probing
 
-While MiniFanControl was built and calibrated on the **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, its architecture supports any Mini PC utilizing the **ITE IT5570E** Embedded Controller mapped at `0xFE0B0400` (including **GMKtec K8 Plus**, **K11**, **EVO-X1**, and **Ryzen AI 9 HX 370** systems).
+MiniFanControl features built-in multi-architecture hardware detection across several AMD Ryzen Mini PC generations:
 
-### Exporting an EC Probe Report
-If you are testing a new or unlisted Mini PC model:
-1. Open the **Tools & Drivers ▾** menu and click **`Export Hardware & EC Probe Report...`** (or execute `minifan-helper.exe dump > report.txt`).
-2. The report outputs:
-   - System DMI product name, motherboard model, and BIOS revision.
-   - Processor name, core count, and AMD ADL2 GPU sensor availability.
-   - Complete 16×16 hexadecimal matrix of all 256 EC registers.
-3. Submit this report on the project GitHub repository to have your hardware profile mapped and verified!
+### Pre-Configured Hardware Profiles
+1. **Ryzen AI 9 HX 370 Mini PCs (KTHIN PRO / EVO-X1 / TOPC TS-12C)**:
+   - Architecture: AMD Zen 5 (12 cores / 24 threads) + RDNA 3.5 Radeon 890M.
+   - Controller: ITE IT8613E LPC Super I/O at Port `0x2E` / base `0x0A30` + EC registers.
+   - Dual Fans: Fan 3 mapped to primary APU blower; Fan 2 mapped to Sys / DDR5 RAM blower.
+   - Telemetry: AMD SMN `0x00059800` (Zen 5 Tctl silicon register) + AMD ADL2 / PMLOG.
+
+2. **ADREAMER AriesBox 10 / PB07 (Ryzen 7 7840HS)**:
+   - Architecture: AMD Zen 4 (8 cores / 16 threads) + RDNA 3 Radeon 780M.
+   - Controller: Dual-mode auto-detect (ITE IT8613E / IT87xx Super I/O or ITE IT5570E EC at port `0x62`/`0x66` or MMIO `0xFE0B0400`).
+   - Dual Fans: APU top blower + system / NVMe bottom blower.
+   - Telemetry: AMD SMN `0x00059800` (Zen 4 Tctl) + AMD ADL2 Radeon 780M telemetry.
+
+3. **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS / Radeon 780M)**:
+   - Architecture: AMD Zen 4 Hawk Point + ITE IT5570E EC at `0xFE0B0400` / ACPI Port `0x62`/`0x66`.
+
+4. **GMKtec NucBox K8 Plus / K11 (Ryzen 8845HS / 8945HS)**:
+   - Architecture: AMD Zen 4 Hawk Point + ITE IT5570E EC.
+
+5. **Generic AMD Ryzen Mini PC (ITE IT5570E / AMI Aptio V)**:
+   - Fallback target for any AMI Aptio V based Ryzen Mini PC.
+
+### Testing on a New Mini PC
+To run MiniFanControl on a new machine:
+1. Copy **`MiniFanControl.exe`** and **`inpoutx64.dll`** to a folder on the new PC.
+2. Launch `MiniFanControl.exe` as Administrator.
+3. MiniFanControl will automatically detect the APU, DMI strings, and probe low-level LPC / Super I/O / EC registers.
+4. **Tools & Drivers ▾ ▸ Hardware Profile & EC Target**: You can verify or manually switch the active profile with one click.
+5. **Tools & Drivers ▾ ▸ Export Hardware & EC Probe Report...**: Generates `ec-probe-report.txt` and `sio-diag.txt` with full register dumps for verification.
 
 ---
 

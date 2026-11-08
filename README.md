@@ -10,7 +10,7 @@
 [![Mutex: Global\Access_EC](https://img.shields.io/badge/EC%20Mutex-Global%5CAccess__EC%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 
-**MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—starting with the **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS / Radeon 780M)** and expanding to other systems using the **ITE IT5570E** EC (`0xFE0B0400`) such as the **GMKtec K8 Plus / K11 / EVO-X1** and **Ryzen AI 9 HX 370 / 890M** platforms.
+**MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **KTHIN Ryzen AI 9 HX 370 PRO**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
 
 > 📖 **Need a complete step-by-step walkthrough or slide deck?**  
 > - [**Complete User & Hardware Tuning Guide (GUIDE.md)**](GUIDE.md): In-depth instructions for fan calibration, motor stall prevention, OSD Studio customization, multi-monitor gaming, and EC register probing.  
@@ -31,7 +31,8 @@ Because desktop utilities cannot detect this controller, Mini PC users were hist
 ### 🖥️ Redesigned Modern Interface (680×860)
 - **Dedicated Hardware Badge Header**: Displays detected product model and APU (e.g., `NucBox K12 • Ryzen 7 8845HS`), active EC profile map, system mutex state, animated glowing fan activity badge, quick **Tools & Drivers ▾** menu, and theme switcher.
 - **5 Wide Telemetry Boxes with Real-Time Sparklines**:
-  - **CPU Temp**: Reads core temperature directly from EC `0x70` with session peak tracking.
+  - **CPU Temp**: Reads direct silicon core temperature (Tctl) via official AMD PMLOG (`atiadlxx.dll`) and EC/Super I/O with session peak tracking and zero raw PCI bus collisions.
+  - **PCIe & NVMe Bus Safety**: Uses thread-safe AMD kernel driver APIs (`atiadlxx.dll`) for telemetry rather than uncoordinated raw `0xCF8/0xCFC` I/O ports, guaranteeing your NVMe SSD storage controller remains uninterrupted.
   - **iGPU Temp**: Reads integrated Radeon graphics telemetry via AMD Display Library (`atiadlxx.dll`).
   - **APU Power (W)**: Total package power (PPT) with detailed core, GFX, and SoC power breakdown.
   - **APU Fan RPM**: Live tachometer speed of the primary APU cooler.

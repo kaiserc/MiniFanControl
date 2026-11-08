@@ -372,40 +372,76 @@ namespace MiniFanControl
     public static class EcBusMutex
     {
         private static Mutex _ecMutex;
+        private static Mutex _isaBusMutex;
+        private static Mutex _pciBusMutex;
         private static bool _initDone;
 
         public static void EnsureCreated()
         {
             if (_initDone) return;
             _initDone = true;
+            _ecMutex = CreateMutex(@"Global\Access_EC");
+            _isaBusMutex = CreateMutex(@"Global\Access_ISABUS.HTP.Method");
+            _pciBusMutex = CreateMutex(@"Global\Access_PCI");
+        }
+
+        private static Mutex CreateMutex(string name)
+        {
             try
             {
                 MutexSecurity sec = new MutexSecurity();
                 SecurityIdentifier everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
                 sec.AddAccessRule(new MutexAccessRule(everyone, MutexRights.FullControl, AccessControlType.Allow));
                 bool createdNew;
-                _ecMutex = new Mutex(false, @"Global\Access_EC", out createdNew, sec);
+                return new Mutex(false, name, out createdNew, sec);
             }
             catch
             {
-                try
-                {
-                    _ecMutex = new Mutex(false, @"Global\Access_EC");
-                }
-                catch
-                {
-                    _ecMutex = null;
-                }
+                try { return Mutex.OpenExisting(name); }
+                catch { return null; }
             }
         }
 
         public static bool WaitEc(int timeoutMs = 25)
         {
             EnsureCreated();
-            if (_ecMutex == null) return false;
+            bool gotEc = true;
+            if (_ecMutex != null)
+            {
+                try { gotEc = _ecMutex.WaitOne(timeoutMs, false); }
+                catch (AbandonedMutexException) { gotEc = true; }
+                catch { gotEc = false; }
+            }
+            if (_isaBusMutex != null)
+            {
+                try { _isaBusMutex.WaitOne(timeoutMs, false); }
+                catch (AbandonedMutexException) { }
+                catch { }
+            }
+            return gotEc;
+        }
+
+        public static void ReleaseEc()
+        {
+            if (_isaBusMutex != null)
+            {
+                try { _isaBusMutex.ReleaseMutex(); }
+                catch { }
+            }
+            if (_ecMutex != null)
+            {
+                try { _ecMutex.ReleaseMutex(); }
+                catch { }
+            }
+        }
+
+        public static bool WaitPci(int timeoutMs = 25)
+        {
+            EnsureCreated();
+            if (_pciBusMutex == null) return false;
             try
             {
-                return _ecMutex.WaitOne(timeoutMs, false);
+                return _pciBusMutex.WaitOne(timeoutMs, false);
             }
             catch (AbandonedMutexException)
             {
@@ -417,16 +453,14 @@ namespace MiniFanControl
             }
         }
 
-        public static void ReleaseEc()
+        public static void ReleasePci()
         {
-            if (_ecMutex == null) return;
+            if (_pciBusMutex == null) return;
             try
             {
-                _ecMutex.ReleaseMutex();
+                _pciBusMutex.ReleaseMutex();
             }
-            catch
-            {
-            }
+            catch { }
         }
     }
 
@@ -466,8 +500,14 @@ namespace MiniFanControl
             new DeviceProfile
             {
                 Id = "ryzen-hx370-ec",
-                DisplayName = "Ryzen AI 9 HX 370 Mini PC (EVO-X1 / Kthin / Strix Point ODM)",
-                ChipsetNotes = "ITE EC @ 0xFE0B0400 • Radeon 890M via AMD ADL2 • Use EC Probe to verify offsets"
+                DisplayName = "Ryzen AI 9 HX 370 Mini PC (KTHIN PRO / EVO-X1 / TOPC TS-12C)",
+                ChipsetNotes = "ITE IT8613E Super I/O @ 0x2E/0x0A30 + EC • Dual Fans • Radeon 890M via ADL2 / PMLOG"
+            },
+            new DeviceProfile
+            {
+                Id = "adreamer-ariesbox10",
+                DisplayName = "ADREAMER AriesBox 10 / PB07 (Ryzen 7 7840HS / Radeon 780M)",
+                ChipsetNotes = "Dual Fans (APU + RAM/System) • Radeon 780M via ADL2 • AMD Zen 4 Phoenix"
             },
             new DeviceProfile
             {
@@ -476,6 +516,19 @@ namespace MiniFanControl
                 ChipsetNotes = "Standard AMD LPC/eSPI EC window @ 0xFE0B0400"
             }
         };
+
+        public static DeviceProfile FindProfile(string id)
+        {
+            if (!string.IsNullOrEmpty(id))
+            {
+                foreach (DeviceProfile p in KnownProfiles)
+                {
+                    if (p.Id.Equals(id, StringComparison.OrdinalIgnoreCase))
+                        return p;
+                }
+            }
+            return KnownProfiles[0];
+        }
     }
 
     public class SystemHardwareInfo
@@ -526,12 +579,14 @@ namespace MiniFanControl
         public static DeviceProfile MatchProfile(string productName, string baseBoard, string cpuName)
         {
             string combined = ((productName ?? "") + " " + (baseBoard ?? "") + " " + (cpuName ?? "")).ToUpperInvariant();
-            if (combined.Contains("K12") || combined.Contains("H 255") || combined.Contains("H255"))
-                return DeviceProfile.KnownProfiles[0];
+            if (combined.Contains("HX 370") || combined.Contains("HX370") || combined.Contains("EVO-X1") || combined.Contains("KTHIN") || combined.Contains("TS-12C") || combined.Contains("STRIX"))
+                return DeviceProfile.FindProfile("ryzen-hx370-ec");
+            if (combined.Contains("ADREAMER") || combined.Contains("ARIESBOX") || combined.Contains("PB07") || combined.Contains("7840") || combined.Contains("7940"))
+                return DeviceProfile.FindProfile("adreamer-ariesbox10");
             if (combined.Contains("K8") || combined.Contains("K11") || combined.Contains("8845") || combined.Contains("8945"))
-                return DeviceProfile.KnownProfiles[1];
-            if (combined.Contains("HX 370") || combined.Contains("HX370") || combined.Contains("EVO-X1") || combined.Contains("KTHIN"))
-                return DeviceProfile.KnownProfiles[2];
+                return DeviceProfile.FindProfile("gmktec-k8-k11");
+            if (combined.Contains("K12") || combined.Contains("H 255") || combined.Contains("H255"))
+                return DeviceProfile.FindProfile("gmktec-k12");
             return DeviceProfile.KnownProfiles[0];
         }
 
@@ -586,7 +641,34 @@ namespace MiniFanControl
             sb.AppendLine("BIOS Version     : " + BiosVersion);
             sb.AppendLine("CPU / APU        : " + CpuName);
             sb.AppendLine("Active Profile   : " + MatchedProfile.DisplayName);
+            sb.AppendLine("EC Communication : " + (hw != null ? hw.AccessMethodName : (demoMode ? "Simulation/Demo" : "ACPI EC Port I/O (0x62/0x66)")));
             sb.AppendLine("EC Physical Base : 0x" + MatchedProfile.EcBaseAddress.ToString("X8") + " (Size: 0x" + MatchedProfile.EcSize.ToString("X2") + ")");
+            if (!demoMode)
+            {
+                sb.AppendLine("----------------------------------------------------------------------");
+                sb.AppendLine("LOW-LEVEL LPC & ACPI PORT I/O DIAGNOSTICS:");
+                try
+                {
+                    byte sc66 = HardwareBackend.ReadPortByte(0x66);
+                    byte dt62 = HardwareBackend.ReadPortByte(0x62);
+                    byte sc6E = HardwareBackend.ReadPortByte(0x6E);
+                    byte dt6C = HardwareBackend.ReadPortByte(0x6C);
+                    sb.AppendFormat("  ACPI EC Primary   (0x62/0x66) : Status=0x{0:X2}, Data=0x{1:X2}\r\n", sc66, dt62);
+                    sb.AppendFormat("  ACPI EC Secondary (0x6C/0x6E) : Status=0x{0:X2}, Data=0x{1:X2}\r\n", sc6E, dt6C);
+
+                    ushort s2eChip, s2eBase;
+                    bool s2eOk = HardwareBackend.ProbeSuperIo(0x2E, out s2eChip, out s2eBase);
+                    sb.AppendFormat("  Super I/O Port 0x2E Probe     : {0} (Chip ID: 0x{1:X4}, Base: 0x{2:X4})\r\n", s2eOk ? "FOUND" : "Not Detected", s2eChip, s2eBase);
+
+                    ushort s4eChip, s4eBase;
+                    bool s4eOk = HardwareBackend.ProbeSuperIo(0x4E, out s4eChip, out s4eBase);
+                    sb.AppendFormat("  Super I/O Port 0x4E Probe     : {0} (Chip ID: 0x{1:X4}, Base: 0x{2:X4})\r\n", s4eOk ? "FOUND" : "Not Detected", s4eChip, s4eBase);
+                }
+                catch (Exception pEx)
+                {
+                    sb.AppendLine("  Port Probe Exception: " + pEx.Message);
+                }
+            }
             sb.AppendLine("----------------------------------------------------------------------");
 
             try
@@ -606,7 +688,7 @@ namespace MiniFanControl
                 if (!demoMode)
                 {
                     byte[] regs = hw.ReadAllRegisters();
-                    sb.AppendLine("EC REGISTER HEX DUMP (0x00 - 0xFE @ 0xFE0B0400):");
+                    sb.AppendLine(string.Format("EC REGISTER HEX DUMP (0x00 - 0xFE via {0}):", hw != null ? hw.AccessMethodName : "EC"));
                     sb.AppendLine("      00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F");
                     sb.AppendLine("      -----------------------------------------------");
                     for (int row = 0; row < 16; row++)
@@ -1156,6 +1238,24 @@ namespace MiniFanControl
 
         [DllImport("inpoutx64.dll", EntryPoint = "UnmapPhysicalMemory")]
         public static extern int UnmapPhysicalMemory(IntPtr PhysicalMemoryHandle, IntPtr pbLinAddr);
+
+        [DllImport("inpoutx64.dll", EntryPoint = "DlPortReadPortUchar")]
+        public static extern byte DlPortReadPortUchar(ushort port);
+
+        [DllImport("inpoutx64.dll", EntryPoint = "DlPortWritePortUchar")]
+        public static extern void DlPortWritePortUchar(ushort port, byte value);
+
+        [DllImport("inpoutx64.dll", EntryPoint = "DlPortReadPortUlong")]
+        public static extern uint DlPortReadPortUlong(ushort port);
+
+        [DllImport("inpoutx64.dll", EntryPoint = "DlPortWritePortUlong")]
+        public static extern void DlPortWritePortUlong(ushort port, uint value);
+
+        [DllImport("inpoutx64.dll", EntryPoint = "Inp32")]
+        public static extern int Inp32(ushort port);
+
+        [DllImport("inpoutx64.dll", EntryPoint = "Out32")]
+        public static extern void Out32(ushort port, short value);
     }
 
     /// <summary>
@@ -1334,14 +1434,15 @@ namespace MiniFanControl
 
         public void ReadTelemetry(out int igpuTemp, out int apuPowerWatts)
         {
-            int cpuP, gfxP, socP, pwrLim, cpuClk, gfxClk, gfxAct, gfxVolt;
+            int cpuT, cpuP, gfxP, socP, pwrLim, cpuClk, gfxClk, gfxAct, gfxVolt;
             string src;
-            ReadTelemetryDetailed(out igpuTemp, out apuPowerWatts, out cpuP, out gfxP, out socP,
+            ReadTelemetryDetailed(out igpuTemp, out cpuT, out apuPowerWatts, out cpuP, out gfxP, out socP,
                 out pwrLim, out cpuClk, out gfxClk, out gfxAct, out gfxVolt, out src);
         }
 
         public void ReadTelemetryDetailed(
             out int igpuTemp,
+            out int adlCpuTemp,
             out int apuPowerWatts,
             out int cpuPowerWatts,
             out int gfxPowerWatts,
@@ -1354,6 +1455,7 @@ namespace MiniFanControl
             out string powerSource)
         {
             igpuTemp = 0;
+            adlCpuTemp = 0;
             apuPowerWatts = 0;
             cpuPowerWatts = 0;
             gfxPowerWatts = 0;
@@ -1388,6 +1490,7 @@ namespace MiniFanControl
                             }
                         }
 
+                        adlCpuTemp = ReadSensorVal(pm.sensors, ADL_PMLOG_TEMPERATURE_CPU, 1, 140);
                         cpuPowerWatts = ReadSensorVal(pm.sensors, ADL_PMLOG_CPU_POWER, 1, 140);
                         gfxPowerWatts = ReadSensorVal(pm.sensors, ADL_PMLOG_GFX_POWER, 1, 140);
                         socPowerWatts = ReadSensorVal(pm.sensors, ADL_PMLOG_SOC_POWER, 1, 80);
@@ -1470,10 +1573,45 @@ namespace MiniFanControl
         public const byte REG_CPU_TEMP    = 0x70;
         public const byte REG_GPU_TEMP    = 0x71;
 
+        public enum EcAccessMethod
+        {
+            PortIo62,  // Standard ACPI EC ports 0x62 (Data) / 0x66 (Command/Status)
+            PortIo6C,  // Secondary ACPI EC ports 0x6C (Data) / 0x6E (Command/Status)
+            SuperIo2E, // Super I/O (IT87xx / IT86xx) via LPC Port 0x2E
+            SuperIo4E, // Super I/O (IT87xx / IT86xx) via LPC Port 0x4E
+            Mmio       // Memory-Mapped I/O (e.g. 0xFE0B0400)
+        }
+
         public DeviceProfile Profile = DeviceProfile.KnownProfiles[0];
+        public EcAccessMethod AccessMethod = EcAccessMethod.PortIo62;
+        public ushort SuperIoChipId = 0;
+        public ushort SuperIoBaseAddr = 0;
+        private static bool _superIoFan3Present = false;
+
+        public string AccessMethodName
+        {
+            get
+            {
+                switch (AccessMethod)
+                {
+                    case EcAccessMethod.PortIo62: return "ACPI EC Port I/O (0x62 / 0x66)";
+                    case EcAccessMethod.PortIo6C: return "ACPI EC Port I/O (0x6C / 0x6E)";
+                    case EcAccessMethod.SuperIo2E: return string.Format("Super I/O IT{0:X4} @ LPC 0x2E (HW Monitor Base: 0x{1:X4})", SuperIoChipId, SuperIoBaseAddr);
+                    case EcAccessMethod.SuperIo4E: return string.Format("Super I/O IT{0:X4} @ LPC 0x4E (HW Monitor Base: 0x{1:X4})", SuperIoChipId, SuperIoBaseAddr);
+                    case EcAccessMethod.Mmio: return string.Format("Physical MMIO (0x{0:X8})", Profile != null ? Profile.EcBaseAddress : EC_BASE);
+                    default: return "Unknown";
+                }
+            }
+        }
+
+        private const byte EC_CMD_READ  = 0x80;
+        private const byte EC_CMD_WRITE = 0x81;
+        private const byte EC_FLAG_OBF  = 0x01;
+        private const byte EC_FLAG_IBF  = 0x02;
 
         private IntPtr _linAddr = IntPtr.Zero;
         private IntPtr _physHandle = IntPtr.Zero;
+        private bool _isInitialized = false;
         private readonly AmdAdlGpuSensor _adlSensor = new AmdAdlGpuSensor();
 
         public HardwareBackend()
@@ -1485,9 +1623,339 @@ namespace MiniFanControl
             if (profile != null) Profile = profile;
         }
 
+        public static byte ReadPortByte(ushort port)
+        {
+            try
+            {
+                byte v = NativeInpOut.DlPortReadPortUchar(port);
+                if (v != 0xFF) return v;
+                int alt = NativeInpOut.Inp32(port);
+                return (byte)(alt & 0xFF);
+            }
+            catch
+            {
+                return 0xFF;
+            }
+        }
+
+        public static void WritePortByte(ushort port, byte val)
+        {
+            try
+            {
+                NativeInpOut.DlPortWritePortUchar(port, val);
+            }
+            catch
+            {
+                try { NativeInpOut.Out32(port, (short)val); } catch { }
+            }
+        }
+
+        private static bool EcWaitIbfClear(ushort cmdPort, int timeoutMs = 30)
+        {
+            byte status = ReadPortByte(cmdPort);
+            if (status == 0xFF) return false;
+            if ((status & EC_FLAG_IBF) == 0) return true;
+
+            Stopwatch sw = Stopwatch.StartNew();
+            while ((status = ReadPortByte(cmdPort)) != 0xFF && (status & EC_FLAG_IBF) != 0)
+            {
+                if (sw.ElapsedMilliseconds > timeoutMs) return false;
+                Thread.SpinWait(40);
+            }
+            return status != 0xFF && (status & EC_FLAG_IBF) == 0;
+        }
+
+        private static bool EcWaitObfSet(ushort cmdPort, int timeoutMs = 30)
+        {
+            byte status = ReadPortByte(cmdPort);
+            if (status == 0xFF) return false;
+            if ((status & EC_FLAG_OBF) != 0) return true;
+
+            Stopwatch sw = Stopwatch.StartNew();
+            while ((status = ReadPortByte(cmdPort)) != 0xFF && (status & EC_FLAG_OBF) == 0)
+            {
+                if (sw.ElapsedMilliseconds > timeoutMs) return false;
+                Thread.SpinWait(40);
+            }
+            return status != 0xFF && (status & EC_FLAG_OBF) != 0;
+        }
+
+        private static void EcDrainObf(ushort dataPort, ushort cmdPort)
+        {
+            try
+            {
+                byte status = ReadPortByte(cmdPort);
+                if (status != 0xFF && (status & EC_FLAG_OBF) != 0)
+                {
+                    ReadPortByte(dataPort);
+                }
+            }
+            catch { }
+        }
+
+        public static bool TryPortIoRead(ushort dataPort, ushort cmdPort, byte reg, out byte val)
+        {
+            val = 0xFF;
+            EcDrainObf(dataPort, cmdPort);
+
+            if (!EcWaitIbfClear(cmdPort)) return false;
+            WritePortByte(cmdPort, EC_CMD_READ);
+
+            if (!EcWaitIbfClear(cmdPort)) return false;
+            WritePortByte(dataPort, reg);
+
+            if (!EcWaitIbfClear(cmdPort) || !EcWaitObfSet(cmdPort)) return false;
+            val = ReadPortByte(dataPort);
+            return true;
+        }
+
+        public static bool TryPortIoWrite(ushort dataPort, ushort cmdPort, byte reg, byte val)
+        {
+            EcDrainObf(dataPort, cmdPort);
+
+            if (!EcWaitIbfClear(cmdPort)) return false;
+            WritePortByte(cmdPort, EC_CMD_WRITE);
+
+            if (!EcWaitIbfClear(cmdPort)) return false;
+            WritePortByte(dataPort, reg);
+
+            if (!EcWaitIbfClear(cmdPort)) return false;
+            WritePortByte(dataPort, val);
+
+            return EcWaitIbfClear(cmdPort);
+        }
+
+        public static bool ProbeSuperIo(ushort cfgPort, out ushort chipId, out ushort hwBase)
+        {
+            chipId = 0;
+            hwBase = 0;
+            ushort valPort = (ushort)(cfgPort + 1);
+            try
+            {
+                // IT87 enter sequence: 0x87, 0x01, 0x55, (0xAA on 0x4E, 0x55 on 0x2E)
+                WritePortByte(cfgPort, 0x87);
+                WritePortByte(cfgPort, 0x01);
+                WritePortByte(cfgPort, 0x55);
+                WritePortByte(cfgPort, (byte)(cfgPort == 0x4E ? 0xAA : 0x55));
+
+                // Read Chip ID (Register 0x20, 0x21)
+                WritePortByte(cfgPort, 0x20);
+                byte idHi = ReadPortByte(valPort);
+                WritePortByte(cfgPort, 0x21);
+                byte idLo = ReadPortByte(valPort);
+
+                ushort id = (ushort)((idHi << 8) | idLo);
+                if (id != 0 && id != 0xFFFF && (idHi == 0x86 || idHi == 0x87 || idHi == 0x55 || id == 0x8733))
+                {
+                    chipId = id;
+                    // Select Logical Device 4 (Hardware Monitor)
+                    WritePortByte(cfgPort, 0x07);
+                    WritePortByte(valPort, 0x04);
+
+                    // Read Base Address (Register 0x60, 0x61)
+                    WritePortByte(cfgPort, 0x60);
+                    byte baseHi = ReadPortByte(valPort);
+                    WritePortByte(cfgPort, 0x61);
+                    byte baseLo = ReadPortByte(valPort);
+
+                    hwBase = (ushort)((baseHi << 8) | baseLo);
+
+                    // Exit config mode
+                    WritePortByte(cfgPort, 0x02);
+                    WritePortByte(valPort, 0x02);
+                    return hwBase != 0 && hwBase != 0xFFFF;
+                }
+
+                // Try Nuvoton enter sequence: 0x87, 0x87
+                WritePortByte(cfgPort, 0x87);
+                WritePortByte(cfgPort, 0x87);
+                WritePortByte(cfgPort, 0x20);
+                idHi = ReadPortByte(valPort);
+                WritePortByte(cfgPort, 0x21);
+                idLo = ReadPortByte(valPort);
+                id = (ushort)((idHi << 8) | idLo);
+                if (idHi != 0 && idHi != 0xFF && (idHi >= 0xB0 && idHi <= 0xDF))
+                {
+                    chipId = id;
+                    // Select LDN 8 or 11 (Hardware Monitor)
+                    WritePortByte(cfgPort, 0x07);
+                    WritePortByte(valPort, 0x08);
+                    WritePortByte(cfgPort, 0x60);
+                    byte nBaseHi = ReadPortByte(valPort);
+                    WritePortByte(cfgPort, 0x61);
+                    byte nBaseLo = ReadPortByte(valPort);
+                    hwBase = (ushort)((nBaseHi << 8) | nBaseLo);
+                    WritePortByte(cfgPort, 0xAA); // exit
+                    return hwBase != 0 && hwBase != 0xFFFF;
+                }
+                WritePortByte(cfgPort, 0xAA);
+            }
+            catch { }
+            return false;
+        }
+
+        public static bool VerifyIt87HwBase(ushort baseAddr)
+        {
+            try
+            {
+                ushort addrPort = (ushort)(baseAddr + 5);
+                ushort dataPort = (ushort)(baseAddr + 6);
+                WritePortByte(addrPort, 0x58); // VENDOR_ID_REGISTER
+                byte vendorId = ReadPortByte(dataPort);
+                if (vendorId == 0x90 || vendorId == 0x7F)
+                {
+                    WritePortByte(addrPort, 0x00); // CONFIGURATION_REGISTER
+                    byte cfg = ReadPortByte(dataPort);
+                    return (cfg & 0x10) != 0 || cfg != 0xFF;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        public void DumpSuperIoDiagnostic(string logFile)
+        {
+            try
+            {
+                StringBuilder sb = new StringBuilder();
+                sb.AppendLine("=== SUPER I/O & FAN CONTROL DIAGNOSTIC ===");
+                sb.AppendLine("Timestamp: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                sb.AppendLine("AccessMethod: " + AccessMethodName);
+                sb.AppendLine(string.Format("SuperIoChipId: 0x{0:X4}, SuperIoBaseAddr: 0x{1:X4}", SuperIoChipId, SuperIoBaseAddr));
+                
+                ushort[] cands = new ushort[] { 0x0A00, 0x0290, 0x0A10, 0x0A20, 0x0A30, 0x02A0 };
+                foreach (ushort c in cands)
+                {
+                    ushort ap = (ushort)(c + 5);
+                    ushort dp = (ushort)(c + 6);
+                    WritePortByte(ap, 0x58);
+                    byte v58 = ReadPortByte(dp);
+                    WritePortByte(ap, 0x00);
+                    byte v00 = ReadPortByte(dp);
+                    sb.AppendFormat("Candidate Base 0x{0:X4}: Reg 0x58=0x{1:X2}, Reg 0x00=0x{2:X2} (Verified: {3})\r\n", c, v58, v00, (v58 == 0x90 || v58 == 0x7F));
+                }
+
+                if (SuperIoBaseAddr != 0)
+                {
+                    sb.AppendLine("--- Active HW Monitor Registers ---");
+                    byte reg0C = ReadSuperIoHwReg(0x0C);
+                    byte reg0B = ReadSuperIoHwReg(0x0B);
+                    byte reg13 = ReadSuperIoHwReg(0x13);
+                    byte reg15 = ReadSuperIoHwReg(0x15);
+                    byte reg16 = ReadSuperIoHwReg(0x16);
+                    byte reg17 = ReadSuperIoHwReg(0x17);
+                    byte reg63 = ReadSuperIoHwReg(0x63);
+                    byte reg6B = ReadSuperIoHwReg(0x6B);
+                    byte reg73 = ReadSuperIoHwReg(0x73);
+                    byte t29 = ReadSuperIoHwReg(0x29);
+                    byte t2A = ReadSuperIoHwReg(0x2A);
+                    sb.AppendFormat("Reg 0x0C (TachMode)=0x{0:X2}, 0x0B (Divisor)=0x{1:X2}, 0x13 (MainCtrl)=0x{2:X2}\r\n", reg0C, reg0B, reg13);
+                    sb.AppendFormat("Fan 1: PWM=0x{0:X2}, ExtPWM=0x{1:X2}, Tach 0x0D=0x{2:X2}, 0x18=0x{3:X2} -> RPM={4}\r\n", reg15, reg63, ReadSuperIoHwReg(0x0D), ReadSuperIoHwReg(0x18), ReadSuperIoFanRpm(1));
+                    sb.AppendFormat("Fan 2: PWM=0x{0:X2}, ExtPWM=0x{1:X2}, Tach 0x0E=0x{2:X2}, 0x19=0x{3:X2} -> RPM={4}\r\n", reg16, reg6B, ReadSuperIoHwReg(0x0E), ReadSuperIoHwReg(0x19), ReadSuperIoFanRpm(2));
+                    sb.AppendFormat("Fan 3: PWM=0x{0:X2}, ExtPWM=0x{1:X2}, Tach 0x0F=0x{2:X2}, 0x1A=0x{3:X2} -> RPM={4}\r\n", reg17, reg73, ReadSuperIoHwReg(0x0F), ReadSuperIoHwReg(0x1A), ReadSuperIoFanRpm(3));
+                    sb.AppendFormat("Fan 4: Tach 0x80=0x{0:X2}, 0x81=0x{1:X2} -> RPM={2}\r\n", ReadSuperIoHwReg(0x80), ReadSuperIoHwReg(0x81), ReadSuperIoFanRpm(4));
+                    sb.AppendFormat("Fan 5: Tach 0x82=0x{0:X2}, 0x83=0x{1:X2} -> RPM={2}\r\n", ReadSuperIoHwReg(0x82), ReadSuperIoHwReg(0x83), ReadSuperIoFanRpm(5));
+                    sb.AppendFormat("Temps: 0x29={0}C, 0x2A={1}C\r\n", t29, t2A);
+                }
+                File.WriteAllText(logFile, sb.ToString());
+            }
+            catch { }
+        }
+
+        public byte ReadSuperIoHwReg(byte reg)
+        {
+            if (SuperIoBaseAddr == 0) return 0xFF;
+            try
+            {
+                ushort addrPort = (ushort)(SuperIoBaseAddr + 5);
+                ushort dataPort = (ushort)(SuperIoBaseAddr + 6);
+                WritePortByte(addrPort, reg);
+                return ReadPortByte(dataPort);
+            }
+            catch
+            {
+                return 0xFF;
+            }
+        }
+
+        public void WriteSuperIoHwReg(byte reg, byte val)
+        {
+            if (SuperIoBaseAddr == 0) return;
+            try
+            {
+                ushort addrPort = (ushort)(SuperIoBaseAddr + 5);
+                ushort dataPort = (ushort)(SuperIoBaseAddr + 6);
+                WritePortByte(addrPort, reg);
+                WritePortByte(dataPort, val);
+            }
+            catch { }
+        }
+
+        public int ReadSuperIoFanRpm(int fanIndex)
+        {
+            if (SuperIoBaseAddr == 0 || fanIndex < 1 || fanIndex > 5) return 0;
+            try
+            {
+                // Ensure 16-bit tachometer mode is active in register 0x0C:
+                byte modeReg = ReadSuperIoHwReg(0x0C);
+                if ((modeReg & 0x07) != 0x07)
+                {
+                    WriteSuperIoHwReg(0x0C, (byte)(modeReg | 0x07));
+                }
+
+                // Standard IT87 / IT86 tachometer registers:
+                // Fan 1: 0x0D (LSB), 0x18 (MSB)
+                // Fan 2: 0x0E (LSB), 0x19 (MSB)
+                // Fan 3: 0x0F (LSB), 0x1A (MSB)
+                // Fan 4: 0x80 (LSB), 0x81 (MSB)
+                // Fan 5: 0x82 (LSB), 0x83 (MSB)
+                byte lsbReg, msbReg;
+                switch (fanIndex)
+                {
+                    case 1: lsbReg = 0x0D; msbReg = 0x18; break;
+                    case 2: lsbReg = 0x0E; msbReg = 0x19; break;
+                    case 3: lsbReg = 0x0F; msbReg = 0x1A; break;
+                    case 4: lsbReg = 0x80; msbReg = 0x81; break;
+                    case 5: lsbReg = 0x82; msbReg = 0x83; break;
+                    default: return 0;
+                }
+
+                byte lo = ReadSuperIoHwReg(lsbReg);
+                byte hi = ReadSuperIoHwReg(msbReg);
+
+                // 1. Try 16-bit evaluation:
+                if (hi != 0xFF)
+                {
+                    int raw16 = (hi << 8) | lo;
+                    if (raw16 > 0x3F && raw16 < 0xFFFF)
+                    {
+                        int rpm16 = (int)(1.35e6f / (raw16 * 2));
+                        if (rpm16 > 0 && rpm16 <= 9000) return rpm16;
+                    }
+                }
+
+                // 2. Try 8-bit fallback if hi counter is unprogrammed/saturated:
+                if (lo > 0 && lo < 0xFF)
+                {
+                    byte divReg = ReadSuperIoHwReg(0x0B);
+                    int shift = (fanIndex == 1) ? (divReg & 0x07) : ((divReg >> 3) & 0x07);
+                    int divisor = 1 << shift;
+                    if (divisor <= 0) divisor = 2;
+                    int rpm8 = (int)(1.35e6f / (lo * divisor));
+                    if (rpm8 > 0 && rpm8 <= 9000) return rpm8;
+                }
+
+                return 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
         private void EnsureOpen()
         {
-            if (_linAddr != IntPtr.Zero)
+            if (_isInitialized)
                 return;
 
             string dllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "inpoutx64.dll");
@@ -1507,17 +1975,122 @@ namespace MiniFanControl
                         "(and check Windows Vulnerable Driver Blocklist in Core Isolation if blocked).");
                 }
 
+                // 0. Test candidate IT87 Hardware Monitor base addresses directly (0x58=0x90):
+                ushort[] candidateBases = new ushort[] { 0x0A00, 0x0290, 0x0A10, 0x0A20, 0x0A30, 0x02A0 };
+                foreach (ushort cand in candidateBases)
+                {
+                    if (VerifyIt87HwBase(cand))
+                    {
+                        SuperIoChipId = 0x8613;
+                        SuperIoBaseAddr = cand;
+                        AccessMethod = EcAccessMethod.SuperIo2E;
+                        _isInitialized = true;
+                        DumpSuperIoDiagnostic(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sio-diag.txt"));
+                        return;
+                    }
+                }
+
+                // 1. Probe LPC Super I/O on Port 0x2E
+                ushort cId, hBase;
+                if (ProbeSuperIo(0x2E, out cId, out hBase))
+                {
+                    if (hBase == 0)
+                    {
+                        foreach (ushort cand in candidateBases)
+                        {
+                            if (VerifyIt87HwBase(cand)) { hBase = cand; break; }
+                        }
+                    }
+                    SuperIoChipId = cId;
+                    SuperIoBaseAddr = hBase;
+                    AccessMethod = EcAccessMethod.SuperIo2E;
+                    _isInitialized = true;
+                    DumpSuperIoDiagnostic(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sio-diag.txt"));
+                    return;
+                }
+
+                // 2. Probe LPC Super I/O on Port 0x4E
+                if (ProbeSuperIo(0x4E, out cId, out hBase))
+                {
+                    if (hBase == 0)
+                    {
+                        foreach (ushort cand in candidateBases)
+                        {
+                            if (VerifyIt87HwBase(cand)) { hBase = cand; break; }
+                        }
+                    }
+                    SuperIoChipId = cId;
+                    SuperIoBaseAddr = hBase;
+                    AccessMethod = EcAccessMethod.SuperIo4E;
+                    _isInitialized = true;
+                    DumpSuperIoDiagnostic(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sio-diag.txt"));
+                    return;
+                }
+
+                // 3. Probe standard ACPI EC Port I/O (0x62 / 0x66)
+                byte sc66 = ReadPortByte(0x66);
+                if (sc66 != 0xFF)
+                {
+                    byte probeVal;
+                    byte probeReg = Profile != null ? Profile.RegCpuTemp : REG_CPU_TEMP;
+                    if (TryPortIoRead(0x62, 0x66, probeReg, out probeVal) && probeVal > 0 && probeVal < 115)
+                    {
+                        AccessMethod = EcAccessMethod.PortIo62;
+                        _isInitialized = true;
+                        return;
+                    }
+                    byte probeMode = Profile != null ? Profile.RegModeStatus : REG_MODE_STATUS;
+                    if (TryPortIoRead(0x62, 0x66, probeMode, out probeVal) && probeVal <= 2)
+                    {
+                        AccessMethod = EcAccessMethod.PortIo62;
+                        _isInitialized = true;
+                        return;
+                    }
+                }
+
+                // 4. Probe secondary ACPI EC Port I/O (0x6C / 0x6E)
+                byte sc6E = ReadPortByte(0x6E);
+                if (sc6E != 0xFF)
+                {
+                    byte probeVal;
+                    byte probeReg = Profile != null ? Profile.RegCpuTemp : REG_CPU_TEMP;
+                    if (TryPortIoRead(0x6C, 0x6E, probeReg, out probeVal) && probeVal > 0 && probeVal < 115)
+                    {
+                        AccessMethod = EcAccessMethod.PortIo6C;
+                        _isInitialized = true;
+                        return;
+                    }
+                }
+
+                // 5. Try MMIO mapping (e.g. 0xFE0B0400)
                 ulong baseAddr = Profile != null ? Profile.EcBaseAddress : EC_BASE;
                 IntPtr handle;
                 IntPtr mapped = NativeInpOut.MapPhysToLin(new IntPtr(unchecked((long)baseAddr)), EC_SIZE, out handle);
-                if (mapped == IntPtr.Zero)
+                if (mapped != IntPtr.Zero)
                 {
-                    throw new InvalidOperationException(
-                        string.Format("MapPhysToLin for EC address 0x{0:X8} failed (Administrator privileges required).", baseAddr));
+                    byte m0 = Marshal.ReadByte(mapped, 0);
+                    byte m1 = Marshal.ReadByte(mapped, 1);
+                    byte mCpu = Marshal.ReadByte(mapped, Profile != null ? Profile.RegCpuTemp : REG_CPU_TEMP);
+                    if (!(m0 == 0xFF && m1 == 0xFF && mCpu == 0xFF))
+                    {
+                        _physHandle = handle;
+                        _linAddr = mapped;
+                        AccessMethod = EcAccessMethod.Mmio;
+                        _isInitialized = true;
+                        return;
+                    }
+                    NativeInpOut.UnmapPhysicalMemory(handle, mapped);
                 }
 
-                _physHandle = handle;
-                _linAddr = mapped;
+                if (sc66 != 0xFF)
+                {
+                    AccessMethod = EcAccessMethod.PortIo62;
+                    _isInitialized = true;
+                    return;
+                }
+
+                AccessMethod = EcAccessMethod.PortIo62;
+                _isInitialized = true;
             }
             catch (DllNotFoundException)
             {
@@ -1531,13 +2104,58 @@ namespace MiniFanControl
             }
         }
 
-        private byte ReadReg(byte reg)
+        private byte ReadRegInternal(byte reg)
         {
-            EnsureOpen();
-            bool locked = EcBusMutex.WaitEc(20);
-            try
+            if (AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
+            {
+                return ReadSuperIoHwReg(reg);
+            }
+            if (AccessMethod == EcAccessMethod.PortIo62)
+            {
+                byte val;
+                if (TryPortIoRead(0x62, 0x66, reg, out val)) return val;
+                return 0xFF;
+            }
+            if (AccessMethod == EcAccessMethod.PortIo6C)
+            {
+                byte val;
+                if (TryPortIoRead(0x6C, 0x6E, reg, out val)) return val;
+                return 0xFF;
+            }
+            if (_linAddr != IntPtr.Zero)
             {
                 return Marshal.ReadByte(_linAddr, reg);
+            }
+            return 0xFF;
+        }
+
+        private void WriteRegInternal(byte reg, byte val)
+        {
+            if (AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
+            {
+                WriteSuperIoHwReg(reg, val);
+            }
+            else if (AccessMethod == EcAccessMethod.PortIo62)
+            {
+                TryPortIoWrite(0x62, 0x66, reg, val);
+            }
+            else if (AccessMethod == EcAccessMethod.PortIo6C)
+            {
+                TryPortIoWrite(0x6C, 0x6E, reg, val);
+            }
+            else if (_linAddr != IntPtr.Zero)
+            {
+                Marshal.WriteByte(_linAddr, reg, val);
+            }
+        }
+
+        public byte ReadReg(byte reg)
+        {
+            EnsureOpen();
+            bool locked = EcBusMutex.WaitEc(25);
+            try
+            {
+                return ReadRegInternal(reg);
             }
             finally
             {
@@ -1545,18 +2163,66 @@ namespace MiniFanControl
             }
         }
 
-        private void WriteReg(byte reg, byte val)
+        public void WriteReg(byte reg, byte val)
         {
             EnsureOpen();
             bool locked = EcBusMutex.WaitEc(25);
             try
             {
-                Marshal.WriteByte(_linAddr, reg, val);
+                WriteRegInternal(reg, val);
             }
             finally
             {
                 if (locked) EcBusMutex.ReleaseEc();
             }
+        }
+
+        public static uint ReadAmdSmn(uint smnAddress)
+        {
+            bool locked = EcBusMutex.WaitPci(25);
+            uint origCf8 = 0;
+            try
+            {
+                // Save original PCI config address to prevent collision with Windows kernel storage drivers
+                try { origCf8 = NativeInpOut.DlPortReadPortUlong(0xCF8); } catch { }
+
+                NativeInpOut.DlPortWritePortUlong(0xCF8, 0x80000060);
+                NativeInpOut.DlPortWritePortUlong(0xCFC, smnAddress);
+                NativeInpOut.DlPortWritePortUlong(0xCF8, 0x80000064);
+                return NativeInpOut.DlPortReadPortUlong(0xCFC);
+            }
+            catch
+            {
+                return 0;
+            }
+            finally
+            {
+                // Always restore original PCI config address so stornvme.sys / pci.sys are uninterrupted
+                try
+                {
+                    NativeInpOut.DlPortWritePortUlong(0xCF8, origCf8);
+                }
+                catch { }
+                if (locked) EcBusMutex.ReleasePci();
+            }
+        }
+
+        public static int ReadAmdCpuTempTctl()
+        {
+            try
+            {
+                uint raw = ReadAmdSmn(0x00059800); // AMD Zen / Strix Point THM_TCON_CUR_TMP
+                if (raw == 0 || raw == 0xFFFFFFFF) return 0;
+                uint tRaw = (raw >> 21) & 0x7FF;
+                double t = tRaw * 0.125;
+                if ((raw & 0x00080000) != 0) // AMD temperature offset flag (-49 C)
+                    t -= 49.0;
+                int val = (int)Math.Round(t);
+                if (val >= 15 && val <= 115)
+                    return val;
+            }
+            catch { }
+            return 0;
         }
 
         public static int EstimateApuPowerWatts(int cpuTemp, int gpuTemp, int modeCode)
@@ -1575,34 +2241,81 @@ namespace MiniFanControl
             EnsureOpen();
 
             byte f1h, f1l, f2h, f2l, modeVal, f1Ctrl, f2Ctrl;
-            int cpuTemp, ecGpuTemp;
+            int ecCpuTemp, ecGpuTemp;
+            int sioFan1 = 0, sioFan2 = 0;
 
-            bool locked = EcBusMutex.WaitEc(25);
+            bool locked = EcBusMutex.WaitEc(30);
             try
             {
-                f1h = Marshal.ReadByte(_linAddr, p.RegFan1Hi);
-                f1l = Marshal.ReadByte(_linAddr, p.RegFan1Lo);
-                f2h = Marshal.ReadByte(_linAddr, p.RegFan2Hi);
-                f2l = Marshal.ReadByte(_linAddr, p.RegFan2Lo);
-                cpuTemp = Marshal.ReadByte(_linAddr, p.RegCpuTemp);
-                ecGpuTemp = Marshal.ReadByte(_linAddr, p.RegGpuTemp);
-                modeVal = Marshal.ReadByte(_linAddr, p.RegModeStatus);
-                f1Ctrl  = Marshal.ReadByte(_linAddr, p.RegFan1Ctrl);
-                f2Ctrl  = Marshal.ReadByte(_linAddr, p.RegFan2Ctrl);
+                if (AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
+                {
+                    sioFan1 = ReadSuperIoFanRpm(1);
+                    sioFan2 = ReadSuperIoFanRpm(2);
+                    ecCpuTemp = ReadSuperIoHwReg(0x29); // IT87 Temp 1
+                    ecGpuTemp = ReadSuperIoHwReg(0x2A); // IT87 Temp 2
+                    f1h = 0; f1l = 0; f2h = 0; f2l = 0;
+                    modeVal = 0;
+
+                    byte p1Reg = _superIoFan3Present ? ReadSuperIoHwReg(0x17) : ReadSuperIoHwReg(0x15);
+                    byte p2Reg = ReadSuperIoHwReg(0x16);
+                    byte ext1 = _superIoFan3Present ? ReadSuperIoHwReg(0x73) : ReadSuperIoHwReg(0x63);
+                    byte ext2 = ReadSuperIoHwReg(0x6B);
+
+                    bool f1Auto = (p1Reg & 0x80) != 0;
+                    bool f2Auto = (p2Reg & 0x80) != 0;
+
+                    int f1Duty = f1Auto ? 0 : (ext1 > 0 ? (int)Math.Round(ext1 * 100.0 / 255.0) : (int)Math.Round((p1Reg & 0x7F) * 100.0 / 127.0));
+                    int f2Duty = f2Auto ? 0 : (ext2 > 0 ? (int)Math.Round(ext2 * 100.0 / 255.0) : (int)Math.Round((p2Reg & 0x7F) * 100.0 / 127.0));
+
+                    f1Ctrl = (byte)(f1Auto ? 0x00 : (0x80 | (f1Duty & 0x7F)));
+                    f2Ctrl = (byte)(f2Auto ? 0x00 : (0x80 | (f2Duty & 0x7F)));
+                }
+                else
+                {
+                    f1h = ReadRegInternal(p.RegFan1Hi);
+                    f1l = ReadRegInternal(p.RegFan1Lo);
+                    f2h = ReadRegInternal(p.RegFan2Hi);
+                    f2l = ReadRegInternal(p.RegFan2Lo);
+                    ecCpuTemp = ReadRegInternal(p.RegCpuTemp);
+                    ecGpuTemp = ReadRegInternal(p.RegGpuTemp);
+                    modeVal = ReadRegInternal(p.RegModeStatus);
+                    f1Ctrl  = ReadRegInternal(p.RegFan1Ctrl);
+                    f2Ctrl  = ReadRegInternal(p.RegFan2Ctrl);
+                }
             }
             finally
             {
                 if (locked) EcBusMutex.ReleaseEc();
             }
 
-            int adlTemp, adlPowerWatts, cpuPwr, gfxPwr, socPwr, pwrLim, cpuClk, gfxClk, gfxAct, gfxVolt;
+            int adlTemp, adlCpuTemp, adlPowerWatts, cpuPwr, gfxPwr, socPwr, pwrLim, cpuClk, gfxClk, gfxAct, gfxVolt;
             string pwrSrc;
-            _adlSensor.ReadTelemetryDetailed(out adlTemp, out adlPowerWatts, out cpuPwr, out gfxPwr, out socPwr,
+            _adlSensor.ReadTelemetryDetailed(out adlTemp, out adlCpuTemp, out adlPowerWatts, out cpuPwr, out gfxPwr, out socPwr,
                 out pwrLim, out cpuClk, out gfxClk, out gfxAct, out gfxVolt, out pwrSrc);
-            int gpuTemp = ecGpuTemp != 0 ? ecGpuTemp : adlTemp;
+
+            // Safe multi-tier temperature resolution:
+            // Tier 1: AMD ADL2 PMLOG (via atiadlxx.dll / amdfendrm.sys) - official AMD kernel driver, ZERO raw port I/O
+            // Tier 2: EC / Super I/O thermistor register
+            // Tier 3: Last-resort fallback to AMD SMN silicon register (restores 0xCF8)
+            int cpuTemp = 0;
+            if (adlCpuTemp > 0 && adlCpuTemp <= 115)
+            {
+                cpuTemp = adlCpuTemp;
+            }
+            else if (ecCpuTemp > 0 && ecCpuTemp < 255)
+            {
+                cpuTemp = ecCpuTemp;
+            }
+            else
+            {
+                cpuTemp = ReadAmdCpuTempTctl();
+            }
+            int gpuTemp = (adlTemp > 0)
+                ? adlTemp
+                : ((ecGpuTemp > 0 && ecGpuTemp < 255) ? ecGpuTemp : 0);
 
             string modeStr = "Unknown";
-            int modeCode = modeVal;
+            int modeCode = (modeVal <= 2) ? (int)modeVal : -1;
             switch (modeVal)
             {
                 case 0: modeStr = "Balanced"; break;
@@ -1611,8 +2324,32 @@ namespace MiniFanControl
                 default: modeCode = -1; break;
             }
 
-            int fan1Rpm = DecodeTachometerRpm(f1h, f1l);
-            int fan2Rpm = DecodeTachometerRpm(f2h, f2l);
+            int sioFan3 = ReadSuperIoFanRpm(3);
+            int sioFan4 = ReadSuperIoFanRpm(4);
+            int sioFan5 = ReadSuperIoFanRpm(5);
+            int f1Ec = DecodeTachometerRpm(f1h, f1l);
+            int f2Ec = DecodeTachometerRpm(f2h, f2l);
+
+            int resolvedSio1 = 0;
+            int resolvedSio2 = 0;
+
+            if (SuperIoBaseAddr != 0)
+            {
+                if (sioFan1 == 0 && (sioFan3 > 0 || _superIoFan3Present))
+                {
+                    _superIoFan3Present = true;
+                    resolvedSio1 = sioFan3;
+                    resolvedSio2 = sioFan2;
+                }
+                else
+                {
+                    resolvedSio1 = sioFan1 > 0 ? sioFan1 : sioFan3;
+                    resolvedSio2 = sioFan2;
+                }
+            }
+
+            int fan1Rpm = (resolvedSio1 > 0) ? resolvedSio1 : f1Ec;
+            int fan2Rpm = (resolvedSio2 > 0) ? resolvedSio2 : f2Ec;
             int apuPower = adlPowerWatts > 0
                 ? adlPowerWatts
                 : EstimateApuPowerWatts(cpuTemp, gpuTemp, modeCode);
@@ -1640,17 +2377,18 @@ namespace MiniFanControl
                 Fan2Rpm = fan2Rpm,
                 Mode = modeStr,
                 ModeCode = modeCode,
-                Fan1Pct = f1Ctrl & 0x7F,
-                Fan2Pct = f2Ctrl & 0x7F,
-                Fan1Manual = (f1Ctrl & 0x80) != 0 ? 1 : 0,
-                Fan2Manual = (f2Ctrl & 0x80) != 0 ? 1 : 0
+                Fan1Pct = (f1Ctrl != 0xFF) ? (f1Ctrl & 0x7F) : 0,
+                Fan2Pct = (f2Ctrl != 0xFF) ? (f2Ctrl & 0x7F) : 0,
+                Fan1Manual = (f1Ctrl != 0xFF && (f1Ctrl & 0x80) != 0) ? 1 : 0,
+                Fan2Manual = (f2Ctrl != 0xFF && (f2Ctrl & 0x80) != 0) ? 1 : 0
             };
         }
 
         public static int DecodeTachometerRpm(byte hi, byte lo)
         {
+            if (hi == 0xFF && lo == 0xFF) return 0;
             int rpm = (hi << 8) | lo;
-            if (rpm < 0 || rpm >= 6000) return 0;
+            if (rpm == 8000 || rpm == 65535 || rpm < 0) return 0;
             return rpm;
         }
 
@@ -1685,15 +2423,88 @@ namespace MiniFanControl
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
             byte val = EncodeFanCommand(pct);
             byte reg = (fanId == 1) ? p.RegFan1Ctrl : p.RegFan2Ctrl;
-            WriteReg(reg, val);
+
+            bool locked = EcBusMutex.WaitEc(30);
+            try
+            {
+                WriteRegInternal(reg, val);
+
+                if (SuperIoBaseAddr != 0)
+                {
+                    // Ensure FAN_MAIN_CTRL_REG (0x13) enables PWM output for this fan
+                    byte mainCtrl = ReadSuperIoHwReg(0x13);
+                    int bitMask = (1 << (fanId - 1));
+                    if ((mainCtrl & bitMask) == 0)
+                    {
+                        WriteSuperIoHwReg(0x13, (byte)(mainCtrl | bitMask));
+                    }
+
+                    byte sioPwmReg = (fanId == 1) ? (byte)0x15 : (byte)0x16;
+                    byte extPwmReg = (fanId == 1) ? (byte)0x63 : (byte)0x6B;
+
+                    if (pct <= 0)
+                    {
+                        // Software mode 0% (stopped)
+                        if (fanId == 1)
+                        {
+                            WriteSuperIoHwReg(0x15, 0x00);
+                            WriteSuperIoHwReg(0x63, 0x00);
+                            WriteSuperIoHwReg(0x17, 0x00);
+                            WriteSuperIoHwReg(0x73, 0x00);
+                        }
+                        else
+                        {
+                            WriteSuperIoHwReg(0x16, 0x00);
+                            WriteSuperIoHwReg(0x6B, 0x00);
+                        }
+                    }
+                    else
+                    {
+                        // Software mode with target duty cycle:
+                        // In IT87/IT86: bit 7 = 0 means software PWM control
+                        byte duty8 = (byte)Math.Max(1, Math.Min(255, (pct * 255) / 100));
+                        byte duty7 = (byte)Math.Max(1, Math.Min(127, (pct * 127) / 100));
+
+                        WriteSuperIoHwReg(sioPwmReg, duty7);
+                        WriteSuperIoHwReg(extPwmReg, duty8);
+
+                        if (fanId == 1)
+                        {
+                            // Also sync Fan 3 in case CPU fan header is routed to Fan 3
+                            WriteSuperIoHwReg(0x17, duty7);
+                            WriteSuperIoHwReg(0x73, duty8);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                if (locked) EcBusMutex.ReleaseEc();
+            }
         }
 
         public void SetAuto()
         {
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
-            WriteReg(p.RegModeCmd, 0x80);
-            WriteReg(p.RegFan1Ctrl, 0x00);
-            WriteReg(p.RegFan2Ctrl, 0x00);
+            bool locked = EcBusMutex.WaitEc(30);
+            try
+            {
+                WriteRegInternal(p.RegModeCmd, 0x80);
+                WriteRegInternal(p.RegFan1Ctrl, 0x00);
+                WriteRegInternal(p.RegFan2Ctrl, 0x00);
+
+                if (SuperIoBaseAddr != 0)
+                {
+                    // In IT87/IT86 series, setting bit 7 (0x80) on 0x15, 0x16, 0x17 restores hardware Automatic (SmartGuardian) mode
+                    WriteSuperIoHwReg(0x15, 0x80);
+                    WriteSuperIoHwReg(0x16, 0x80);
+                    WriteSuperIoHwReg(0x17, 0x80);
+                }
+            }
+            finally
+            {
+                if (locked) EcBusMutex.ReleaseEc();
+            }
         }
 
         public byte[] ReadAllRegisters()
@@ -1705,7 +2516,7 @@ namespace MiniFanControl
             {
                 for (int i = 0; i < EC_SIZE; i++)
                 {
-                    buf[i] = Marshal.ReadByte(_linAddr, i);
+                    buf[i] = ReadRegInternal((byte)i);
                 }
             }
             finally
@@ -1821,6 +2632,19 @@ namespace MiniFanControl
         Dark = 1,
         Light = 2,
         Radeon = 3
+    }
+
+    public class DoubleBufferedPanel : Panel
+    {
+        public DoubleBufferedPanel()
+        {
+            DoubleBuffered = true;
+            SetStyle(ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.UserPaint |
+                     ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.ResizeRedraw, true);
+            UpdateStyles();
+        }
     }
 
     public class FanCurveCanvas : Control
@@ -4382,13 +5206,13 @@ namespace MiniFanControl
         private const int HOTKEY_LOCK_OSD   = 9003;
         private const int HOTKEY_RESET_AUTO = 9004;
 
-        public const string APP_VERSION         = "2.5.0";
+        public const string APP_VERSION         = "2.6.0";
         public const string SCHTASK_NAME        = "MiniFanControl_Autostart";
         public const string URL_GMKTEC_DRIVERS  = "https://www.gmktec.com/pages/drivers-and-software";
         public const string URL_GMKTEC_FIRMWARE = "https://www.gmktec.com/pages/firmware-update";
         public const string URL_AMD_DRIVERS     = "https://www.amd.com/en/support/download/drivers.html";
 
-        private const int NORMAL_REFRESH_MS = 1500;
+        private const int DEFAULT_REFRESH_MS = 1000;
         private const int FAST_REFRESH_MS   = 400;
 
         // Dark Palette
@@ -4513,11 +5337,16 @@ namespace MiniFanControl
         private ContextMenu _driversMenu;
         private Button _themeToggleBtn;
         private Label _errorBanner;
-        private Panel _cpuTempBox;
-        private Panel _gpuTempBox;
-        private Panel _pwrBox;
-        private Panel _fan1Box;
-        private Panel _fan2Box;
+        private DoubleBufferedPanel _cpuTempBox;
+        private DoubleBufferedPanel _gpuTempBox;
+        private DoubleBufferedPanel _pwrBox;
+        private DoubleBufferedPanel _fan1Box;
+        private DoubleBufferedPanel _fan2Box;
+        private Label _samplingLabel;
+        private ComboBox _samplingCombo;
+        private FanStatus _lastStatus;
+        private int _refreshIntervalMs = 1000;
+        private string _profileOverrideId = "auto";
         private Label _cpuBoxTitle;
         private Label _gpuBoxTitle;
         private Label _pwrBoxTitle;
@@ -4596,6 +5425,8 @@ namespace MiniFanControl
         private Label _fan2SliderPct;
         private bool _dragging1;
         private bool _dragging2;
+        private int _apuManualPct = 0;
+        private int _sysManualPct = 0;
         private bool _suppressComboEvent;
 
         private CheckBox _showCpuTrayCb;
@@ -4675,7 +5506,7 @@ namespace MiniFanControl
             AppDomain.CurrentDomain.ProcessExit += OnProcessOrCrashExit;
             AppDomain.CurrentDomain.UnhandledException += OnProcessOrCrashExit;
 
-            _refreshTimer = new System.Windows.Forms.Timer { Interval = NORMAL_REFRESH_MS };
+            _refreshTimer = new System.Windows.Forms.Timer { Interval = _refreshIntervalMs };
             _refreshTimer.Tick += (s, e) => RefreshStatus();
             _refreshTimer.Start();
 
@@ -4714,6 +5545,7 @@ namespace MiniFanControl
                     _hw.SetFan(1, 0);
                 if (_hasDualFans && sysWasSoftwareOrManual)
                     _hw.SetFan(2, 0);
+                _hw.SetAuto();
             }
             catch { }
         }
@@ -5419,6 +6251,22 @@ namespace MiniFanControl
                 RefreshStatus();
             });
             menu.MenuItems.Add("-");
+            MenuItem profileSubMenu = new MenuItem("Hardware Profile & EC Target");
+            bool isAuto = string.IsNullOrEmpty(_profileOverrideId) || _profileOverrideId.Equals("auto", StringComparison.OrdinalIgnoreCase);
+            string autoTitle = string.Format("Auto-Detect: {0} (Active)", _sysInfo.MatchedProfile.DisplayName);
+            MenuItem autoItem = new MenuItem(autoTitle, (s, e) => SetHardwareProfile("auto"));
+            if (isAuto) autoItem.Checked = true;
+            profileSubMenu.MenuItems.Add(autoItem);
+            profileSubMenu.MenuItems.Add("-");
+            foreach (DeviceProfile dp in DeviceProfile.KnownProfiles)
+            {
+                string pid = dp.Id;
+                MenuItem dpItem = new MenuItem(dp.DisplayName, (s, e) => SetHardwareProfile(pid));
+                if (!isAuto && _sysInfo.MatchedProfile.Id == pid) dpItem.Checked = true;
+                profileSubMenu.MenuItems.Add(dpItem);
+            }
+            menu.MenuItems.Add(profileSubMenu);
+            menu.MenuItems.Add("-");
             menu.MenuItems.Add("Export Hardware & EC Probe Report (for HX 370 / New PCs)...", (s, e) => ExportHardwareProbeReport());
             menu.MenuItems.Add("Detected Hardware & Multi-Model Info...", (s, e) => ShowHardwareCompatibilityDialog());
             menu.MenuItems.Add("-");
@@ -5428,6 +6276,74 @@ namespace MiniFanControl
             menu.MenuItems.Add("-");
             menu.MenuItems.Add("About MiniFanControl v" + APP_VERSION + "...", (s, e) => ShowAboutDialog());
             return menu;
+        }
+
+        private static bool IsMouseOverControl(Control c)
+        {
+            if (c == null || !c.IsHandleCreated || !c.Visible) return false;
+            Point pt = c.PointToClient(Cursor.Position);
+            return c.ClientRectangle.Contains(pt);
+        }
+
+        private static bool IsBoxHovered(Control box, Control title, Control label)
+        {
+            return IsMouseOverControl(box) || IsMouseOverControl(title) || IsMouseOverControl(label);
+        }
+
+        private void SetHardwareProfile(string profileId)
+        {
+            _profileOverrideId = string.IsNullOrEmpty(profileId) ? "auto" : profileId;
+            if (_profileOverrideId.Equals("auto", StringComparison.OrdinalIgnoreCase))
+            {
+                _sysInfo.MatchedProfile = SystemHardwareInfo.MatchProfile(_sysInfo.ProductName, _sysInfo.BaseBoard, _sysInfo.CpuName);
+            }
+            else
+            {
+                DeviceProfile explicitProf = DeviceProfile.FindProfile(_profileOverrideId);
+                if (explicitProf != null)
+                {
+                    _sysInfo.MatchedProfile = explicitProf;
+                }
+            }
+            if (_hw != null) _hw.Profile = _sysInfo.MatchedProfile;
+            if (_hwSubLabel != null)
+            {
+                _hwSubLabel.Text = string.Format("EC Map: {0} • Global\\Access_EC Mutex • 64-bit", _sysInfo.MatchedProfile.DisplayName);
+            }
+            SaveSettings();
+            _driversMenu = CreateDriversAndToolsMenu();
+            _statusBarLabel.Text = string.Format("✓ Profile: {0}", _sysInfo.MatchedProfile.DisplayName);
+            RefreshStatus();
+        }
+
+        private void SetRefreshInterval(int ms)
+        {
+            if (ms < 250) ms = 250;
+            if (ms > 10000) ms = 10000;
+            _refreshIntervalMs = ms;
+            if (_refreshTimer != null)
+            {
+                _refreshTimer.Interval = _refreshIntervalMs;
+            }
+            if (_samplingCombo != null)
+            {
+                int[] intervals = new int[] { 500, 1000, 1500, 2000, 3000 };
+                for (int i = 0; i < intervals.Length; i++)
+                {
+                    if (intervals[i] == _refreshIntervalMs)
+                    {
+                        if (_samplingCombo.SelectedIndex != i) _samplingCombo.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            _driversMenu = CreateDriversAndToolsMenu();
+            SaveSettings();
+            if (_statusBarLabel != null)
+            {
+                double hz = 1000.0 / ms;
+                _statusBarLabel.Text = string.Format("? Data sampling rate set to {0} ms ({1:0.0} Hz / {2:0.0}s)", ms, hz, ms / 1000.0);
+            }
         }
 
         private string GetSettingsPath()
@@ -5562,6 +6478,21 @@ namespace MiniFanControl
                     else if (k == "RestoreAutoOnExit") _restoreAutoOnExit = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "EnableHotkeys") _enableGlobalHotkeys = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "HasDualFans") _hasDualFans = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "HardwareProfile" || k == "ProfileId")
+                    {
+                        _profileOverrideId = v;
+                        if (!v.Equals("auto", StringComparison.OrdinalIgnoreCase))
+                        {
+                            DeviceProfile explicitProf = DeviceProfile.FindProfile(v);
+                            if (explicitProf != null)
+                            {
+                                prof = explicitProf;
+                                if (_sysInfo != null) _sysInfo.MatchedProfile = explicitProf;
+                                if (_hw != null) _hw.Profile = explicitProf;
+                            }
+                        }
+                    }
+                    else if (k == "RefreshIntervalMs" && int.TryParse(v, out intVal)) _refreshIntervalMs = Math.Max(250, Math.Min(10000, intVal));
                     else if (k == "ApuMinSpinPct" && int.TryParse(v, out intVal)) FanCurveProfile.ApuMinSpinPct = Math.Max(18, Math.Min(45, intVal));
                     else if (k == "SysMinSpinPct" && int.TryParse(v, out intVal)) FanCurveProfile.SysMinSpinPct = Math.Max(18, Math.Min(45, intVal));
                     else if (k == "ApuMaxRpm" && int.TryParse(v, out intVal)) FanCurveProfile.ApuMaxRpm = Math.Max(500, Math.Min(6000, intVal));
@@ -5586,6 +6517,15 @@ namespace MiniFanControl
                     else if (k == "RegFan2Lo" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan2Lo = regByte;
                     else if (k == "RegCpuTemp" && TryParseHexOrDecByte(v, out regByte)) prof.RegCpuTemp = regByte;
                     else if (k == "RegGpuTemp" && TryParseHexOrDecByte(v, out regByte)) prof.RegGpuTemp = regByte;
+                    else if (k == "EcAccess" || k == "AccessMethod")
+                    {
+                        if (v.Equals("PortIo", StringComparison.OrdinalIgnoreCase) || v.Equals("Port", StringComparison.OrdinalIgnoreCase) || v.Equals("0x62", StringComparison.OrdinalIgnoreCase))
+                            _hw.AccessMethod = HardwareBackend.EcAccessMethod.PortIo62;
+                        else if (v.Equals("PortIo6C", StringComparison.OrdinalIgnoreCase) || v.Equals("0x6C", StringComparison.OrdinalIgnoreCase))
+                            _hw.AccessMethod = HardwareBackend.EcAccessMethod.PortIo6C;
+                        else if (v.Equals("Mmio", StringComparison.OrdinalIgnoreCase))
+                            _hw.AccessMethod = HardwareBackend.EcAccessMethod.Mmio;
+                    }
                 }
 
                 FanCurveProfile apuProf = FindProfileByName(apuModeName) ?? FindProfileByName(legacyCustomName);
@@ -5624,6 +6564,8 @@ namespace MiniFanControl
                 lines.Add("RestoreAutoOnExit=" + (_restoreAutoOnExit ? "1" : "0"));
                 lines.Add("EnableHotkeys=" + (_enableGlobalHotkeys ? "1" : "0"));
                 lines.Add("HasDualFans=" + (_hasDualFans ? "1" : "0"));
+                lines.Add("HardwareProfile=" + (_profileOverrideId ?? "auto"));
+                lines.Add("RefreshIntervalMs=" + _refreshIntervalMs);
                 lines.Add("ApuMinSpinPct=" + FanCurveProfile.ApuMinSpinPct);
                 lines.Add("SysMinSpinPct=" + FanCurveProfile.SysMinSpinPct);
                 lines.Add("ApuMaxRpm=" + FanCurveProfile.ApuMaxRpm);
@@ -6308,7 +7250,7 @@ namespace MiniFanControl
             // 1. Hardware & Live Telemetry Section (top = 62, card = 82..192, height = 110)
             Panel statusCard = CreateSectionCard("System Telemetry & Live Hardware Sensors", 62, 110);
 
-            _cpuTempBox = new Panel
+            _cpuTempBox = new DoubleBufferedPanel
             {
                 Location = new Point(8, 8),
                 Size = new Size(120, 70),
@@ -6346,7 +7288,7 @@ namespace MiniFanControl
             _uiToolTip.SetToolTip(_cpuBoxTitle, cpuTip);
             _uiToolTip.SetToolTip(_cpuTempLabel, cpuTip);
 
-            _gpuTempBox = new Panel
+            _gpuTempBox = new DoubleBufferedPanel
             {
                 Location = new Point(137, 8),
                 Size = new Size(120, 70),
@@ -6384,7 +7326,7 @@ namespace MiniFanControl
             _uiToolTip.SetToolTip(_gpuBoxTitle, gpuTip);
             _uiToolTip.SetToolTip(_gpuTempLabel, gpuTip);
 
-            _pwrBox = new Panel
+            _pwrBox = new DoubleBufferedPanel
             {
                 Location = new Point(266, 8),
                 Size = new Size(120, 70),
@@ -6417,7 +7359,7 @@ namespace MiniFanControl
             _pwrBox.Controls.Add(_pwrLabel);
             statusCard.Controls.Add(_pwrBox);
 
-            _fan1Box = new Panel
+            _fan1Box = new DoubleBufferedPanel
             {
                 Location = new Point(395, 8),
                 Size = new Size(120, 70),
@@ -6455,7 +7397,7 @@ namespace MiniFanControl
             _uiToolTip.SetToolTip(_fan1BoxTitle, fan1Tip);
             _uiToolTip.SetToolTip(_fan1RpmLabel, fan1Tip);
 
-            _fan2Box = new Panel
+            _fan2Box = new DoubleBufferedPanel
             {
                 Location = new Point(524, 8),
                 Size = new Size(120, 70),
@@ -6492,6 +7434,81 @@ namespace MiniFanControl
             _uiToolTip.SetToolTip(_fan2Box, fan2Tip);
             _uiToolTip.SetToolTip(_fan2BoxTitle, fan2Tip);
             _uiToolTip.SetToolTip(_fan2RpmLabel, fan2Tip);
+
+            Action updateCpuTip = () =>
+            {
+                if (_lastStatus.CpuTemp > 0 && _uiToolTip != null)
+                {
+                    string tip = _lastStatus.FormatCpuTooltip(_sessionStats);
+                    _lastCpuTooltipText = tip;
+                    _uiToolTip.SetToolTip(_cpuTempBox, tip);
+                    _uiToolTip.SetToolTip(_cpuBoxTitle, tip);
+                    _uiToolTip.SetToolTip(_cpuTempLabel, tip);
+                }
+            };
+            _cpuTempBox.MouseEnter += (s, e) => updateCpuTip();
+            _cpuBoxTitle.MouseEnter += (s, e) => updateCpuTip();
+            _cpuTempLabel.MouseEnter += (s, e) => updateCpuTip();
+
+            Action updateGpuTip = () =>
+            {
+                if (_lastStatus.CpuTemp > 0 && _uiToolTip != null)
+                {
+                    string tip = _lastStatus.FormatIgpuTooltip(_sessionStats);
+                    _lastIgpuTooltipText = tip;
+                    _uiToolTip.SetToolTip(_gpuTempBox, tip);
+                    _uiToolTip.SetToolTip(_gpuBoxTitle, tip);
+                    _uiToolTip.SetToolTip(_gpuTempLabel, tip);
+                }
+            };
+            _gpuTempBox.MouseEnter += (s, e) => updateGpuTip();
+            _gpuBoxTitle.MouseEnter += (s, e) => updateGpuTip();
+            _gpuTempLabel.MouseEnter += (s, e) => updateGpuTip();
+
+            Action updatePwrTip = () =>
+            {
+                if (_lastStatus.CpuTemp > 0 && _uiToolTip != null)
+                {
+                    string tip = _lastStatus.FormatPowerTooltip(_sessionStats);
+                    _lastPowerTooltipText = tip;
+                    _uiToolTip.SetToolTip(_pwrBox, tip);
+                    _uiToolTip.SetToolTip(_pwrBoxTitle, tip);
+                    _uiToolTip.SetToolTip(_pwrLabel, tip);
+                }
+            };
+            _pwrBox.MouseEnter += (s, e) => updatePwrTip();
+            _pwrBoxTitle.MouseEnter += (s, e) => updatePwrTip();
+            _pwrLabel.MouseEnter += (s, e) => updatePwrTip();
+
+            Action updateFan1Tip = () =>
+            {
+                if (_lastStatus.CpuTemp > 0 && _uiToolTip != null)
+                {
+                    string tip = _lastStatus.FormatApuFanTooltip(_sessionStats, FanCurveProfile.ApuMaxRpm);
+                    _lastApuFanTooltipText = tip;
+                    _uiToolTip.SetToolTip(_fan1Box, tip);
+                    _uiToolTip.SetToolTip(_fan1BoxTitle, tip);
+                    _uiToolTip.SetToolTip(_fan1RpmLabel, tip);
+                }
+            };
+            _fan1Box.MouseEnter += (s, e) => updateFan1Tip();
+            _fan1BoxTitle.MouseEnter += (s, e) => updateFan1Tip();
+            _fan1RpmLabel.MouseEnter += (s, e) => updateFan1Tip();
+
+            Action updateFan2Tip = () =>
+            {
+                if (_lastStatus.CpuTemp > 0 && _uiToolTip != null)
+                {
+                    string tip = _lastStatus.FormatSysFanTooltip(_sessionStats, FanCurveProfile.SysMaxRpm, _hasDualFans);
+                    _lastSysFanTooltipText = tip;
+                    _uiToolTip.SetToolTip(_fan2Box, tip);
+                    _uiToolTip.SetToolTip(_fan2BoxTitle, tip);
+                    _uiToolTip.SetToolTip(_fan2RpmLabel, tip);
+                }
+            };
+            _fan2Box.MouseEnter += (s, e) => updateFan2Tip();
+            _fan2BoxTitle.MouseEnter += (s, e) => updateFan2Tip();
+            _fan2RpmLabel.MouseEnter += (s, e) => updateFan2Tip();
 
             AddStaticLabel(statusCard, "Mode:", 10, 84, 44, 20);
             _modeLabel = new Label
@@ -6815,6 +7832,14 @@ namespace MiniFanControl
                 int v = _fan1Slider.Value;
                 _fan1SliderPct.Text = v == 0 ? "Auto" : string.Format("{0}%", v);
             };
+            _fan1Slider.MouseCaptureChanged += (s, e) =>
+            {
+                if (_dragging1)
+                {
+                    _dragging1 = false;
+                    ApplyFan(1, _fan1Slider.Value);
+                }
+            };
             _fan1Slider.MouseUp += (s, e) =>
             {
                 if (_dragging1)
@@ -6822,6 +7847,10 @@ namespace MiniFanControl
                     _dragging1 = false;
                     ApplyFan(1, _fan1Slider.Value);
                 }
+            };
+            _fan1Slider.KeyUp += (s, e) =>
+            {
+                ApplyFan(1, _fan1Slider.Value);
             };
             fanCard.Controls.Add(_fan1Slider);
 
@@ -6862,6 +7891,14 @@ namespace MiniFanControl
                 int v = _fan2Slider.Value;
                 _fan2SliderPct.Text = v == 0 ? "Auto" : string.Format("{0}%", v);
             };
+            _fan2Slider.MouseCaptureChanged += (s, e) =>
+            {
+                if (_dragging2)
+                {
+                    _dragging2 = false;
+                    ApplyFan(2, _fan2Slider.Value);
+                }
+            };
             _fan2Slider.MouseUp += (s, e) =>
             {
                 if (_dragging2)
@@ -6869,6 +7906,10 @@ namespace MiniFanControl
                     _dragging2 = false;
                     ApplyFan(2, _fan2Slider.Value);
                 }
+            };
+            _fan2Slider.KeyUp += (s, e) =>
+            {
+                ApplyFan(2, _fan2Slider.Value);
             };
             fanCard.Controls.Add(_fan2Slider);
 
@@ -6896,6 +7937,49 @@ namespace MiniFanControl
 
             // 4. Options Section (top = 718, card = 738..820, height = 82)
             Panel optCard = CreateSectionCard("Options", 718, 82);
+
+            _samplingLabel = new Label
+            {
+                Text = "Sampling:",
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(410, 719),
+                AutoSize = true,
+                Cursor = Cursors.Default
+            };
+            Controls.Add(_samplingLabel);
+            _samplingLabel.BringToFront();
+
+            _samplingCombo = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
+                Location = new Point(480, 715),
+                Size = new Size(185, 22),
+                Cursor = Cursors.Hand
+            };
+            int[] sampleIntervals = new int[] { 500, 1000, 1500, 2000, 3000 };
+            _samplingCombo.Items.Add("500 ms (Fast • 2 Hz)");
+            _samplingCombo.Items.Add("1000 ms (Standard • 1.0s)");
+            _samplingCombo.Items.Add("1500 ms (Balanced • 1.5s)");
+            _samplingCombo.Items.Add("2000 ms (Relaxed • 2.0s)");
+            _samplingCombo.Items.Add("3000 ms (Low CPU • 3.0s)");
+            int initialSel = 1;
+            for (int i = 0; i < sampleIntervals.Length; i++)
+            {
+                if (sampleIntervals[i] == _refreshIntervalMs) { initialSel = i; break; }
+            }
+            _samplingCombo.SelectedIndex = initialSel;
+            _samplingCombo.SelectedIndexChanged += (s, e) =>
+            {
+                if (_samplingCombo.SelectedIndex >= 0 && _samplingCombo.SelectedIndex < sampleIntervals.Length)
+                {
+                    SetRefreshInterval(sampleIntervals[_samplingCombo.SelectedIndex]);
+                }
+            };
+            Controls.Add(_samplingCombo);
+            _samplingCombo.BringToFront();
+            _uiToolTip.SetToolTip(_samplingCombo, "Frequency at which MiniFanControl samples EC hardware registers, AMD GPU telemetry, and evaluates fan curves.");
+            _uiToolTip.SetToolTip(_samplingLabel, "Frequency at which MiniFanControl samples EC hardware registers, AMD GPU telemetry, and evaluates fan curves.");
 
             _showCpuTrayCb = new CheckBox
             {
@@ -8017,6 +9101,16 @@ namespace MiniFanControl
                 _customModeCombo.ForeColor = text;
             }
 
+            if (_samplingCombo != null)
+            {
+                _samplingCombo.BackColor = surface2;
+                _samplingCombo.ForeColor = text;
+            }
+            if (_samplingLabel != null)
+            {
+                _samplingLabel.ForeColor = textDim;
+            }
+
             if (_curveCanvas != null)
             {
                 _curveCanvas.IsDarkMode = _isDarkMode;
@@ -8164,22 +9258,26 @@ namespace MiniFanControl
             // Prefer APU Fan's built-in mode so APU Fan can run on native EC Auto (0x00),
             // or if APU Fan is custom/manual, use Sys Fan's built-in mode so Sys Fan can run on native EC Auto!
             int desiredEcMode = -1;
+            bool isSuperIo = (_hw != null && _hw.SuperIoBaseAddr != 0);
             bool apuUsesNativeEcAuto = false;
             bool sysUsesNativeEcAuto = false;
 
-            if (!_apuManualOverride && _apuProfile.IsBuiltIn)
+            if (!isSuperIo)
             {
-                desiredEcMode = _apuProfile.BuiltInCode;
-                apuUsesNativeEcAuto = true;
-                if (_hasDualFans && !_sysManualOverride && _sysProfile.IsBuiltIn && _sysProfile.BuiltInCode == desiredEcMode)
+                if (!_apuManualOverride && _apuProfile.IsBuiltIn)
                 {
+                    desiredEcMode = _apuProfile.BuiltInCode;
+                    apuUsesNativeEcAuto = true;
+                    if (_hasDualFans && !_sysManualOverride && _sysProfile.IsBuiltIn && _sysProfile.BuiltInCode == desiredEcMode)
+                    {
+                        sysUsesNativeEcAuto = true;
+                    }
+                }
+                else if (_hasDualFans && !_sysManualOverride && _sysProfile.IsBuiltIn)
+                {
+                    desiredEcMode = _sysProfile.BuiltInCode;
                     sysUsesNativeEcAuto = true;
                 }
-            }
-            else if (_hasDualFans && !_sysManualOverride && _sysProfile.IsBuiltIn)
-            {
-                desiredEcMode = _sysProfile.BuiltInCode;
-                sysUsesNativeEcAuto = true;
             }
 
             // 2°C cooldown hysteresis for software curve updates
@@ -8211,8 +9309,7 @@ namespace MiniFanControl
                     else
                     {
                         int targetApu = _apuProfile.EvaluateApu(apuTemp);
-                        // Use 1% when curve evaluates to 0% so register stays in Manual (0x81) with motor stopped (0 RPM) instead of reverting to EC Auto (0x00)
-                        int regPct = targetApu <= 0 ? 1 : targetApu;
+                        int regPct = targetApu <= 0 ? (isSuperIo ? 0 : 1) : targetApu;
                         if (_lastAppliedApuPct < 0 || (!withinCooldownHysteresis && Math.Abs(regPct - _lastAppliedApuPct) >= 2) || regPct == 1 || regPct == 100)
                         {
                             if (_demoMode) _demo.SetFan(1, regPct);
@@ -8240,7 +9337,7 @@ namespace MiniFanControl
                     else
                     {
                         int targetSys = _sysProfile.EvaluateSys(apuTemp);
-                        int regPct = targetSys <= 0 ? 1 : targetSys;
+                        int regPct = targetSys <= 0 ? (isSuperIo ? 0 : 1) : targetSys;
                         if (_lastAppliedSysPct < 0 || (!withinCooldownHysteresis && Math.Abs(regPct - _lastAppliedSysPct) >= 2) || regPct == 1 || regPct == 100)
                         {
                             if (_demoMode) _demo.SetFan(2, regPct);
@@ -8266,6 +9363,7 @@ namespace MiniFanControl
                 }
 
                 FanStatus st = _demoMode ? _demo.GetStatus() : _hw.GetStatus();
+                _lastStatus = st;
                 _errorBanner.Visible = false;
 
                 int apuTemp = Math.Max(st.CpuTemp, st.GpuTemp);
@@ -8276,11 +9374,15 @@ namespace MiniFanControl
                 }
 
                 _sessionStats.Record(st);
+                if (DateTime.UtcNow.Second % 5 == 0)
+                {
+                    _hw.DumpSuperIoDiagnostic(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sio-diag.txt"));
+                }
 
                 bool isRamping = DateTime.UtcNow < _rampUntil;
-                if (!isRamping && _refreshTimer != null && _refreshTimer.Interval != NORMAL_REFRESH_MS)
+                if (!isRamping && _refreshTimer != null && _refreshTimer.Interval != _refreshIntervalMs)
                 {
-                    _refreshTimer.Interval = NORMAL_REFRESH_MS;
+                    _refreshTimer.Interval = _refreshIntervalMs;
                 }
 
                 UpdateTrayIcons(st.CpuTemp, st.GpuTemp);
@@ -8345,13 +9447,16 @@ namespace MiniFanControl
                 }
                 if (_uiToolTip != null && _cpuTempBox != null)
                 {
-                    string cpuTip = st.FormatCpuTooltip(_sessionStats);
-                    if (cpuTip != _lastCpuTooltipText)
+                    if (!IsBoxHovered(_cpuTempBox, _cpuBoxTitle, _cpuTempLabel))
                     {
-                        _lastCpuTooltipText = cpuTip;
-                        _uiToolTip.SetToolTip(_cpuTempBox, cpuTip);
-                        _uiToolTip.SetToolTip(_cpuBoxTitle, cpuTip);
-                        _uiToolTip.SetToolTip(_cpuTempLabel, cpuTip);
+                        string cpuTip = st.FormatCpuTooltip(_sessionStats);
+                        if (cpuTip != _lastCpuTooltipText)
+                        {
+                            _lastCpuTooltipText = cpuTip;
+                            _uiToolTip.SetToolTip(_cpuTempBox, cpuTip);
+                            _uiToolTip.SetToolTip(_cpuBoxTitle, cpuTip);
+                            _uiToolTip.SetToolTip(_cpuTempLabel, cpuTip);
+                        }
                     }
                     _cpuTempBox.Invalidate();
                 }
@@ -8367,13 +9472,16 @@ namespace MiniFanControl
                 }
                 if (_uiToolTip != null && _gpuTempBox != null)
                 {
-                    string igpuTip = st.FormatIgpuTooltip(_sessionStats);
-                    if (igpuTip != _lastIgpuTooltipText)
+                    if (!IsBoxHovered(_gpuTempBox, _gpuBoxTitle, _gpuTempLabel))
                     {
-                        _lastIgpuTooltipText = igpuTip;
-                        _uiToolTip.SetToolTip(_gpuTempBox, igpuTip);
-                        _uiToolTip.SetToolTip(_gpuBoxTitle, igpuTip);
-                        _uiToolTip.SetToolTip(_gpuTempLabel, igpuTip);
+                        string igpuTip = st.FormatIgpuTooltip(_sessionStats);
+                        if (igpuTip != _lastIgpuTooltipText)
+                        {
+                            _lastIgpuTooltipText = igpuTip;
+                            _uiToolTip.SetToolTip(_gpuTempBox, igpuTip);
+                            _uiToolTip.SetToolTip(_gpuBoxTitle, igpuTip);
+                            _uiToolTip.SetToolTip(_gpuTempLabel, igpuTip);
+                        }
                     }
                     _gpuTempBox.Invalidate();
                 }
@@ -8389,7 +9497,7 @@ namespace MiniFanControl
                             : "POWER ⓘ";
                         if (_pwrBoxTitle.Text != pwrHeader) _pwrBoxTitle.Text = pwrHeader;
                     }
-                    if (_uiToolTip != null)
+                    if (_uiToolTip != null && !IsBoxHovered(_pwrBox, _pwrBoxTitle, _pwrLabel))
                     {
                         string pwrTip = st.FormatPowerTooltip(_sessionStats);
                         if (pwrTip != _lastPowerTooltipText)
@@ -8410,6 +9518,11 @@ namespace MiniFanControl
                 Color normalText = isRadeon ? RadeonText : (_isDarkMode ? DarkText : LightText);
                 Color dimText = isRadeon ? RadeonTextDim : (_isDarkMode ? DarkTextDim : LightTextDim);
                 Color rampColor = _isDarkMode ? Color.FromArgb(0xF9, 0xE2, 0xAF) : Color.FromArgb(0xB4, 0x53, 0x09);
+
+                if (!_hasDualFans && st.Fan1Rpm > 100 && st.Fan2Rpm > 100)
+                {
+                    _hasDualFans = true;
+                }
 
                 _fan1RpmLabel.Text = FormatRpmText(st.Fan1Rpm, _apuManualOverride, st.Fan1Pct, f1Ramping);
                 _fan1RpmLabel.ForeColor = f1Ramping ? rampColor : normalText;
@@ -8434,7 +9547,7 @@ namespace MiniFanControl
                             : "APU FAN";
                         if (_fan1BoxTitle.Text != fan1Header) _fan1BoxTitle.Text = fan1Header;
                     }
-                    if (_uiToolTip != null)
+                    if (_uiToolTip != null && !IsBoxHovered(_fan1Box, _fan1BoxTitle, _fan1RpmLabel))
                     {
                         string f1Tip = st.FormatApuFanTooltip(_sessionStats, FanCurveProfile.ApuMaxRpm);
                         if (f1Tip != _lastApuFanTooltipText)
@@ -8459,7 +9572,7 @@ namespace MiniFanControl
                                 : "SYS FAN");
                         if (_fan2BoxTitle.Text != fan2Header) _fan2BoxTitle.Text = fan2Header;
                     }
-                    if (_uiToolTip != null)
+                    if (_uiToolTip != null && !IsBoxHovered(_fan2Box, _fan2BoxTitle, _fan2RpmLabel))
                     {
                         string f2Tip = st.FormatSysFanTooltip(_sessionStats, FanCurveProfile.SysMaxRpm, _hasDualFans);
                         if (f2Tip != _lastSysFanTooltipText)
@@ -8515,13 +9628,13 @@ namespace MiniFanControl
 
                 if (!_dragging1)
                 {
-                    _fan1Slider.Value = _apuManualOverride ? Math.Max(0, Math.Min(100, st.Fan1Pct)) : 0;
-                    _fan1SliderPct.Text = _apuManualOverride ? string.Format("{0}%", st.Fan1Pct) : "Auto";
+                    _fan1Slider.Value = _apuManualOverride ? _apuManualPct : 0;
+                    _fan1SliderPct.Text = _apuManualOverride ? string.Format("{0}%", _apuManualPct) : "Auto";
                 }
                 if (!_dragging2)
                 {
-                    _fan2Slider.Value = (_hasDualFans && _sysManualOverride) ? Math.Max(0, Math.Min(100, st.Fan2Pct)) : 0;
-                    _fan2SliderPct.Text = !_hasDualFans ? "N/A" : (_sysManualOverride ? string.Format("{0}%", st.Fan2Pct) : "Auto");
+                    _fan2Slider.Value = (_hasDualFans && _sysManualOverride) ? _sysManualPct : 0;
+                    _fan2SliderPct.Text = !_hasDualFans ? "N/A" : (_sysManualOverride ? string.Format("{0}%", _sysManualPct) : "Auto");
                 }
 
                 if (isRamping)
@@ -8604,12 +9717,14 @@ namespace MiniFanControl
             {
                 if (fanId == 1)
                 {
-                    _apuManualOverride = (pct > 0);
+                    _apuManualPct = Math.Max(0, Math.Min(100, pct));
+                    _apuManualOverride = (_apuManualPct > 0);
                     _lastAppliedApuPct = -1;
                 }
                 else
                 {
-                    _sysManualOverride = (pct > 0);
+                    _sysManualPct = Math.Max(0, Math.Min(100, pct));
+                    _sysManualOverride = (_sysManualPct > 0);
                     _lastAppliedSysPct = -1;
                 }
                 _lastAppliedEcMode = -1;
@@ -8636,6 +9751,8 @@ namespace MiniFanControl
         {
             try
             {
+                _apuManualPct = 0;
+                _sysManualPct = 0;
                 _apuManualOverride = false;
                 _sysManualOverride = false;
                 _lastAppliedApuPct = -1;
@@ -8937,9 +10054,10 @@ namespace MiniFanControl
             DeviceProfile pK12 = SystemHardwareInfo.MatchProfile("NucBox K12", "GMKtec", "AMD Ryzen 7 H 255");
             DeviceProfile pK8 = SystemHardwareInfo.MatchProfile("NucBox K8 Plus", "GMKtec", "AMD Ryzen 7 8845HS");
             DeviceProfile pHx370 = SystemHardwareInfo.MatchProfile("EVO-X1", "Kthin", "AMD Ryzen AI 9 HX 370");
-            Check(pK12.Id == "gmktec-k12" && pK8.Id == "gmktec-k8-k11" && pHx370.Id == "ryzen-hx370-ec",
-                "Multi-Model Ryzen Mini-PC Profile Matching (K12 / K8 Plus / HX 370)",
-                string.Format("K12={0}, K8={1}, HX370={2}", pK12.Id, pK8.Id, pHx370.Id));
+            DeviceProfile pAdreamer = SystemHardwareInfo.MatchProfile("AriesBox 10", "ADREAMER", "AMD Ryzen 7 7840HS");
+            Check(pK12.Id == "gmktec-k12" && pK8.Id == "gmktec-k8-k11" && pHx370.Id == "ryzen-hx370-ec" && pAdreamer.Id == "adreamer-ariesbox10",
+                "Multi-Model Ryzen Mini-PC Profile Matching (K12 / K8 Plus / HX 370 / AriesBox 10)",
+                string.Format("K12={0}, K8={1}, HX370={2}, AriesBox={3}", pK12.Id, pK8.Id, pHx370.Id, pAdreamer.Id));
 
             // 9. Demo/Simulation Backend State Transitions
             DemoBackend demo = new DemoBackend();
