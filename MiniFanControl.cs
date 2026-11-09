@@ -366,6 +366,30 @@ namespace MiniFanControl
     }
 
     /// <summary>
+    /// Disposable guard providing fail-closed mutual exclusion for Embedded Controller bus access.
+    /// Automatically releases acquired mutexes upon disposal.
+    /// </summary>
+    public struct EcLockScope : IDisposable
+    {
+        public readonly bool Acquired;
+        private readonly bool _holdsEc;
+        private readonly bool _holdsIsa;
+
+        internal EcLockScope(bool holdsEc, bool holdsIsa)
+        {
+            _holdsEc = holdsEc;
+            _holdsIsa = holdsIsa;
+            Acquired = holdsEc && holdsIsa;
+        }
+
+        public void Dispose()
+        {
+            if (_holdsIsa) EcBusMutex.ReleaseIsaInternal();
+            if (_holdsEc) EcBusMutex.ReleaseEcInternal();
+        }
+    }
+
+    /// <summary>
     /// Synchronizes Embedded Controller (EC) access with CapFrameX, LibreHardwareMonitor, and HWiNFO
     /// using the standard system-wide named mutex "Global\Access_EC".
     /// </summary>
@@ -375,6 +399,19 @@ namespace MiniFanControl
         private static Mutex _isaBusMutex;
         private static Mutex _pciBusMutex;
         private static bool _initDone;
+        private static int _contentionCount;
+
+        [ThreadStatic]
+        private static bool _threadHoldsEc;
+        [ThreadStatic]
+        private static bool _threadHoldsIsa;
+        [ThreadStatic]
+        private static bool _threadHoldsPci;
+
+        public static int ContentionCount
+        {
+            get { return _contentionCount; }
+        }
 
         public static void EnsureCreated()
         {
@@ -402,36 +439,97 @@ namespace MiniFanControl
             }
         }
 
-        public static bool WaitEc(int timeoutMs = 25)
+        /// <summary>
+        /// Acquires exclusive EC bus access using a fail-closed pattern.
+        /// Both Global\Access_EC and Global\Access_ISABUS.HTP.Method must be acquired.
+        /// If either fails, any partial lock is immediately released.
+        /// </summary>
+        public static EcLockScope AcquireEc(int timeoutMs = 35)
         {
             EnsureCreated();
-            bool gotEc = true;
+            bool gotEc = false;
+            bool gotIsa = false;
+
             if (_ecMutex != null)
             {
                 try { gotEc = _ecMutex.WaitOne(timeoutMs, false); }
                 catch (AbandonedMutexException) { gotEc = true; }
                 catch { gotEc = false; }
             }
+            else
+            {
+                gotEc = true;
+            }
+
+            if (!gotEc)
+            {
+                Interlocked.Increment(ref _contentionCount);
+                return new EcLockScope(false, false);
+            }
+
             if (_isaBusMutex != null)
             {
-                try { _isaBusMutex.WaitOne(timeoutMs, false); }
-                catch (AbandonedMutexException) { }
-                catch { }
+                try { gotIsa = _isaBusMutex.WaitOne(timeoutMs, false); }
+                catch (AbandonedMutexException) { gotIsa = true; }
+                catch { gotIsa = false; }
             }
-            return gotEc;
+            else
+            {
+                gotIsa = true;
+            }
+
+            if (!gotIsa)
+            {
+                if (gotEc && _ecMutex != null)
+                {
+                    try { _ecMutex.ReleaseMutex(); } catch { }
+                }
+                Interlocked.Increment(ref _contentionCount);
+                return new EcLockScope(false, false);
+            }
+
+            return new EcLockScope(gotEc, gotIsa);
+        }
+
+        internal static void ReleaseEcInternal()
+        {
+            if (_ecMutex != null)
+            {
+                try { _ecMutex.ReleaseMutex(); } catch { }
+            }
+        }
+
+        internal static void ReleaseIsaInternal()
+        {
+            if (_isaBusMutex != null)
+            {
+                try { _isaBusMutex.ReleaseMutex(); } catch { }
+            }
+        }
+
+        public static bool WaitEc(int timeoutMs = 25)
+        {
+            var scope = AcquireEc(timeoutMs);
+            if (scope.Acquired)
+            {
+                _threadHoldsEc = true;
+                _threadHoldsIsa = true;
+                return true;
+            }
+            return false;
         }
 
         public static void ReleaseEc()
         {
-            if (_isaBusMutex != null)
+            if (_threadHoldsIsa)
             {
-                try { _isaBusMutex.ReleaseMutex(); }
-                catch { }
+                _threadHoldsIsa = false;
+                ReleaseIsaInternal();
             }
-            if (_ecMutex != null)
+            if (_threadHoldsEc)
             {
-                try { _ecMutex.ReleaseMutex(); }
-                catch { }
+                _threadHoldsEc = false;
+                ReleaseEcInternal();
             }
         }
 
@@ -441,23 +539,28 @@ namespace MiniFanControl
             if (_pciBusMutex == null) return false;
             try
             {
-                return _pciBusMutex.WaitOne(timeoutMs, false);
+                bool got = _pciBusMutex.WaitOne(timeoutMs, false);
+                _threadHoldsPci = got;
+                return got;
             }
             catch (AbandonedMutexException)
             {
+                _threadHoldsPci = true;
                 return true;
             }
             catch
             {
+                _threadHoldsPci = false;
                 return false;
             }
         }
 
         public static void ReleasePci()
         {
-            if (_pciBusMutex == null) return;
+            if (_pciBusMutex == null || !_threadHoldsPci) return;
             try
             {
+                _threadHoldsPci = false;
                 _pciBusMutex.ReleaseMutex();
             }
             catch { }
@@ -1575,18 +1678,35 @@ namespace MiniFanControl
 
         public enum EcAccessMethod
         {
-            PortIo62,  // Standard ACPI EC ports 0x62 (Data) / 0x66 (Command/Status)
-            PortIo6C,  // Secondary ACPI EC ports 0x6C (Data) / 0x6E (Command/Status)
-            SuperIo2E, // Super I/O (IT87xx / IT86xx) via LPC Port 0x2E
-            SuperIo4E, // Super I/O (IT87xx / IT86xx) via LPC Port 0x4E
-            Mmio       // Memory-Mapped I/O (e.g. 0xFE0B0400)
+            Unknown = 0, // Hardware not detected or unverified
+            PortIo62,    // Standard ACPI EC ports 0x62 (Data) / 0x66 (Command/Status)
+            PortIo6C,    // Secondary ACPI EC ports 0x6C (Data) / 0x6E (Command/Status)
+            SuperIo2E,   // Super I/O (IT87xx / IT86xx) via LPC Port 0x2E
+            SuperIo4E,   // Super I/O (IT87xx / IT86xx) via LPC Port 0x4E
+            Mmio         // Memory-Mapped I/O (e.g. 0xFE0B0400)
         }
 
         public DeviceProfile Profile = DeviceProfile.KnownProfiles[0];
-        public EcAccessMethod AccessMethod = EcAccessMethod.PortIo62;
+        public EcAccessMethod AccessMethod = EcAccessMethod.Unknown;
         public ushort SuperIoChipId = 0;
         public ushort SuperIoBaseAddr = 0;
         private static bool _superIoFan3Present = false;
+
+        public const int EMERGENCY_TEMP_TRIP_C = 90;
+        public const int EMERGENCY_TEMP_RECOVER_C = 75;
+
+        public static bool CheckEmergencyThermalTripwire(int temp, ref bool activeState)
+        {
+            if (temp >= EMERGENCY_TEMP_TRIP_C)
+            {
+                activeState = true;
+            }
+            else if (activeState && temp <= EMERGENCY_TEMP_RECOVER_C)
+            {
+                activeState = false;
+            }
+            return activeState;
+        }
 
         public string AccessMethodName
         {
@@ -1599,7 +1719,7 @@ namespace MiniFanControl
                     case EcAccessMethod.SuperIo2E: return string.Format("Super I/O IT{0:X4} @ LPC 0x2E (HW Monitor Base: 0x{1:X4})", SuperIoChipId, SuperIoBaseAddr);
                     case EcAccessMethod.SuperIo4E: return string.Format("Super I/O IT{0:X4} @ LPC 0x4E (HW Monitor Base: 0x{1:X4})", SuperIoChipId, SuperIoBaseAddr);
                     case EcAccessMethod.Mmio: return string.Format("Physical MMIO (0x{0:X8})", Profile != null ? Profile.EcBaseAddress : EC_BASE);
-                    default: return "Unknown";
+                    default: return "Unverified Hardware / Safe Read-Only";
                 }
             }
         }
@@ -2082,15 +2202,15 @@ namespace MiniFanControl
                     NativeInpOut.UnmapPhysicalMemory(handle, mapped);
                 }
 
-                if (sc66 != 0xFF)
-                {
-                    AccessMethod = EcAccessMethod.PortIo62;
-                    _isInitialized = true;
-                    return;
-                }
-
-                AccessMethod = EcAccessMethod.PortIo62;
-                _isInitialized = true;
+                // Fail-Closed Safety Check:
+                // If probing methods 0..5 all failed to verify known EC/Super I/O signatures,
+                // do NOT perform active port writes. Flag unverified to protect user hardware.
+                AccessMethod = EcAccessMethod.Unknown;
+                _isInitialized = false;
+                throw new NotSupportedException(
+                    "No verified Embedded Controller or Super I/O was detected on this PC.\n" +
+                    "Active fan writes are disabled to protect hardware.\n" +
+                    "Probes on IT87 Super I/O (0x2E/0x4E), ACPI EC (0x62/0x66 & 0x6C/0x6E), and MMIO all failed or returned 0xFF.");
             }
             catch (DllNotFoundException)
             {
@@ -2152,34 +2272,33 @@ namespace MiniFanControl
         public byte ReadReg(byte reg)
         {
             EnsureOpen();
-            bool locked = EcBusMutex.WaitEc(25);
-            try
+            using (var lockScope = EcBusMutex.AcquireEc(30))
             {
+                if (!lockScope.Acquired)
+                {
+                    return 0xFF; // Fail-closed: do not perform unsynchronized read
+                }
                 return ReadRegInternal(reg);
-            }
-            finally
-            {
-                if (locked) EcBusMutex.ReleaseEc();
             }
         }
 
         public void WriteReg(byte reg, byte val)
         {
             EnsureOpen();
-            bool locked = EcBusMutex.WaitEc(25);
-            try
+            using (var lockScope = EcBusMutex.AcquireEc(30))
             {
+                if (!lockScope.Acquired)
+                {
+                    return; // Fail-closed: do not write without lock
+                }
                 WriteRegInternal(reg, val);
-            }
-            finally
-            {
-                if (locked) EcBusMutex.ReleaseEc();
             }
         }
 
         public static uint ReadAmdSmn(uint smnAddress)
         {
             bool locked = EcBusMutex.WaitPci(25);
+            if (!locked) return 0; // Fail-closed: abort PCI read if mutex timed out
             uint origCf8 = 0;
             try
             {
@@ -2203,7 +2322,7 @@ namespace MiniFanControl
                     NativeInpOut.DlPortWritePortUlong(0xCF8, origCf8);
                 }
                 catch { }
-                if (locked) EcBusMutex.ReleasePci();
+                EcBusMutex.ReleasePci();
             }
         }
 
@@ -2235,57 +2354,65 @@ namespace MiniFanControl
             return Math.Max(6, Math.Min(maxTdp, est));
         }
 
+        private FanStatus _lastStatusCache;
+
         public FanStatus GetStatus()
         {
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
             EnsureOpen();
 
-            byte f1h, f1l, f2h, f2l, modeVal, f1Ctrl, f2Ctrl;
-            int ecCpuTemp, ecGpuTemp;
+            byte f1h = 0, f1l = 0, f2h = 0, f2l = 0, modeVal = 0, f1Ctrl = 0, f2Ctrl = 0;
+            int ecCpuTemp = 0, ecGpuTemp = 0;
             int sioFan1 = 0, sioFan2 = 0;
 
-            bool locked = EcBusMutex.WaitEc(30);
-            try
+            using (var lockScope = EcBusMutex.AcquireEc(35))
             {
-                if (AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
+                if (!lockScope.Acquired)
                 {
-                    sioFan1 = ReadSuperIoFanRpm(1);
-                    sioFan2 = ReadSuperIoFanRpm(2);
-                    ecCpuTemp = ReadSuperIoHwReg(0x29); // IT87 Temp 1
-                    ecGpuTemp = ReadSuperIoHwReg(0x2A); // IT87 Temp 2
-                    f1h = 0; f1l = 0; f2h = 0; f2l = 0;
-                    modeVal = 0;
-
-                    byte p1Reg = _superIoFan3Present ? ReadSuperIoHwReg(0x17) : ReadSuperIoHwReg(0x15);
-                    byte p2Reg = ReadSuperIoHwReg(0x16);
-                    byte ext1 = _superIoFan3Present ? ReadSuperIoHwReg(0x73) : ReadSuperIoHwReg(0x63);
-                    byte ext2 = ReadSuperIoHwReg(0x6B);
-
-                    bool f1Auto = (p1Reg & 0x80) != 0;
-                    bool f2Auto = (p2Reg & 0x80) != 0;
-
-                    int f1Duty = f1Auto ? 0 : (ext1 > 0 ? (int)Math.Round(ext1 * 100.0 / 255.0) : (int)Math.Round((p1Reg & 0x7F) * 100.0 / 127.0));
-                    int f2Duty = f2Auto ? 0 : (ext2 > 0 ? (int)Math.Round(ext2 * 100.0 / 255.0) : (int)Math.Round((p2Reg & 0x7F) * 100.0 / 127.0));
-
-                    f1Ctrl = (byte)(f1Auto ? 0x00 : (0x80 | (f1Duty & 0x7F)));
-                    f2Ctrl = (byte)(f2Auto ? 0x00 : (0x80 | (f2Duty & 0x7F)));
+                    // Fail-closed on mutex contention: return last cached status rather than corrupting readings
+                    if (_lastStatusCache.CpuTemp > 0)
+                    {
+                        return _lastStatusCache;
+                    }
                 }
                 else
                 {
-                    f1h = ReadRegInternal(p.RegFan1Hi);
-                    f1l = ReadRegInternal(p.RegFan1Lo);
-                    f2h = ReadRegInternal(p.RegFan2Hi);
-                    f2l = ReadRegInternal(p.RegFan2Lo);
-                    ecCpuTemp = ReadRegInternal(p.RegCpuTemp);
-                    ecGpuTemp = ReadRegInternal(p.RegGpuTemp);
-                    modeVal = ReadRegInternal(p.RegModeStatus);
-                    f1Ctrl  = ReadRegInternal(p.RegFan1Ctrl);
-                    f2Ctrl  = ReadRegInternal(p.RegFan2Ctrl);
+                    if (AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
+                    {
+                        sioFan1 = ReadSuperIoFanRpm(1);
+                        sioFan2 = ReadSuperIoFanRpm(2);
+                        ecCpuTemp = ReadSuperIoHwReg(0x29); // IT87 Temp 1
+                        ecGpuTemp = ReadSuperIoHwReg(0x2A); // IT87 Temp 2
+                        f1h = 0; f1l = 0; f2h = 0; f2l = 0;
+                        modeVal = 0;
+
+                        byte p1Reg = _superIoFan3Present ? ReadSuperIoHwReg(0x17) : ReadSuperIoHwReg(0x15);
+                        byte p2Reg = ReadSuperIoHwReg(0x16);
+                        byte ext1 = _superIoFan3Present ? ReadSuperIoHwReg(0x73) : ReadSuperIoHwReg(0x63);
+                        byte ext2 = ReadSuperIoHwReg(0x6B);
+
+                        bool f1Auto = (p1Reg & 0x80) != 0;
+                        bool f2Auto = (p2Reg & 0x80) != 0;
+
+                        int f1Duty = f1Auto ? 0 : (ext1 > 0 ? (int)Math.Round(ext1 * 100.0 / 255.0) : (int)Math.Round((p1Reg & 0x7F) * 100.0 / 127.0));
+                        int f2Duty = f2Auto ? 0 : (ext2 > 0 ? (int)Math.Round(ext2 * 100.0 / 255.0) : (int)Math.Round((p2Reg & 0x7F) * 100.0 / 127.0));
+
+                        f1Ctrl = (byte)(f1Auto ? 0x00 : (0x80 | (f1Duty & 0x7F)));
+                        f2Ctrl = (byte)(f2Auto ? 0x00 : (0x80 | (f2Duty & 0x7F)));
+                    }
+                    else
+                    {
+                        f1h = ReadRegInternal(p.RegFan1Hi);
+                        f1l = ReadRegInternal(p.RegFan1Lo);
+                        f2h = ReadRegInternal(p.RegFan2Hi);
+                        f2l = ReadRegInternal(p.RegFan2Lo);
+                        ecCpuTemp = ReadRegInternal(p.RegCpuTemp);
+                        ecGpuTemp = ReadRegInternal(p.RegGpuTemp);
+                        modeVal = ReadRegInternal(p.RegModeStatus);
+                        f1Ctrl  = ReadRegInternal(p.RegFan1Ctrl);
+                        f2Ctrl  = ReadRegInternal(p.RegFan2Ctrl);
+                    }
                 }
-            }
-            finally
-            {
-                if (locked) EcBusMutex.ReleaseEc();
             }
 
             int adlTemp, adlCpuTemp, adlPowerWatts, cpuPwr, gfxPwr, socPwr, pwrLim, cpuClk, gfxClk, gfxAct, gfxVolt;
@@ -2358,7 +2485,7 @@ namespace MiniFanControl
                 pwrSrc = "EC Thermal-TDP Model (CPU/iGPU Temp + Active BIOS Mode)";
             }
 
-            return new FanStatus
+            FanStatus st = new FanStatus
             {
                 CpuTemp = cpuTemp,
                 GpuTemp = gpuTemp,
@@ -2382,6 +2509,8 @@ namespace MiniFanControl
                 Fan1Manual = (f1Ctrl != 0xFF && (f1Ctrl & 0x80) != 0) ? 1 : 0,
                 Fan2Manual = (f2Ctrl != 0xFF && (f2Ctrl & 0x80) != 0) ? 1 : 0
             };
+            _lastStatusCache = st;
+            return st;
         }
 
         public static int DecodeTachometerRpm(byte hi, byte lo)
@@ -2424,9 +2553,13 @@ namespace MiniFanControl
             byte val = EncodeFanCommand(pct);
             byte reg = (fanId == 1) ? p.RegFan1Ctrl : p.RegFan2Ctrl;
 
-            bool locked = EcBusMutex.WaitEc(30);
-            try
+            using (var lockScope = EcBusMutex.AcquireEc(35))
             {
+                if (!lockScope.Acquired)
+                {
+                    return; // Fail-closed: do not write to fan control registers on contention
+                }
+
                 WriteRegInternal(reg, val);
 
                 if (SuperIoBaseAddr != 0)
@@ -2477,33 +2610,34 @@ namespace MiniFanControl
                     }
                 }
             }
-            finally
-            {
-                if (locked) EcBusMutex.ReleaseEc();
-            }
         }
 
         public void SetAuto()
         {
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
-            bool locked = EcBusMutex.WaitEc(30);
-            try
+            for (int attempt = 0; attempt < 3; attempt++)
             {
-                WriteRegInternal(p.RegModeCmd, 0x80);
-                WriteRegInternal(p.RegFan1Ctrl, 0x00);
-                WriteRegInternal(p.RegFan2Ctrl, 0x00);
-
-                if (SuperIoBaseAddr != 0)
+                using (var lockScope = EcBusMutex.AcquireEc(40))
                 {
-                    // In IT87/IT86 series, setting bit 7 (0x80) on 0x15, 0x16, 0x17 restores hardware Automatic (SmartGuardian) mode
-                    WriteSuperIoHwReg(0x15, 0x80);
-                    WriteSuperIoHwReg(0x16, 0x80);
-                    WriteSuperIoHwReg(0x17, 0x80);
+                    if (!lockScope.Acquired)
+                    {
+                        Thread.Sleep(10);
+                        continue;
+                    }
+
+                    WriteRegInternal(p.RegModeCmd, 0x80);
+                    WriteRegInternal(p.RegFan1Ctrl, 0x00);
+                    WriteRegInternal(p.RegFan2Ctrl, 0x00);
+
+                    if (SuperIoBaseAddr != 0)
+                    {
+                        // In IT87/IT86 series, setting bit 7 (0x80) on 0x15, 0x16, 0x17 restores hardware Automatic (SmartGuardian) mode
+                        WriteSuperIoHwReg(0x15, 0x80);
+                        WriteSuperIoHwReg(0x16, 0x80);
+                        WriteSuperIoHwReg(0x17, 0x80);
+                    }
+                    return;
                 }
-            }
-            finally
-            {
-                if (locked) EcBusMutex.ReleaseEc();
             }
         }
 
@@ -2511,19 +2645,19 @@ namespace MiniFanControl
         {
             EnsureOpen();
             byte[] buf = new byte[EC_SIZE];
-            bool locked = EcBusMutex.WaitEc(50);
-            try
+            using (var lockScope = EcBusMutex.AcquireEc(60))
             {
+                if (!lockScope.Acquired)
+                {
+                    for (int i = 0; i < EC_SIZE; i++) buf[i] = 0xFF;
+                    return buf;
+                }
                 for (int i = 0; i < EC_SIZE; i++)
                 {
                     buf[i] = ReadRegInternal((byte)i);
                 }
+                return buf;
             }
-            finally
-            {
-                if (locked) EcBusMutex.ReleaseEc();
-            }
-            return buf;
         }
 
         public void Dispose()
@@ -5326,6 +5460,12 @@ namespace MiniFanControl
         private int _lastAppliedSysPct = -1;
         private int _lastAppliedEcMode = -1;
         private int _lastCustomEvalTemp = -100;
+        private bool _emergencyThermalActive = false;
+
+        private Thread _hwThread;
+        private volatile bool _hwThreadRunning;
+        private volatile bool _hwWorkerPaused;
+        private readonly AutoResetEvent _hwWakeEvent = new AutoResetEvent(false);
 
         private readonly List<Label> _sectionHeaders = new List<Label>();
         private readonly List<Panel> _sectionCards = new List<Panel>();
@@ -5507,8 +5647,30 @@ namespace MiniFanControl
             AppDomain.CurrentDomain.UnhandledException += OnProcessOrCrashExit;
 
             _refreshTimer = new System.Windows.Forms.Timer { Interval = _refreshIntervalMs };
-            _refreshTimer.Tick += (s, e) => RefreshStatus();
+            _refreshTimer.Tick += (s, e) =>
+            {
+                // UI-only periodic refresh (theme sync and status bar timer)
+                if (_themePref == ThemePreference.System)
+                {
+                    CheckAndApplyThemeChanges();
+                }
+                if (_emergencyThermalActive)
+                {
+                    _statusBarLabel.ForeColor = Color.FromArgb(0xFB, 0x71, 0x85);
+                    _statusBarLabel.Text = string.Format("🔥 EMERGENCY THERMAL OVERRIDE (CPU {0}°C) — Fans forced to 100%", _lastStatus.CpuTemp);
+                }
+            };
             _refreshTimer.Start();
+
+            // Decouple hardware polling and fan curve regulation to a dedicated background worker
+            _hwThreadRunning = true;
+            _hwThread = new Thread(HardwareWorkerLoop)
+            {
+                IsBackground = true,
+                Name = "MiniFanControl.HardwareWorker",
+                Priority = ThreadPriority.AboveNormal
+            };
+            _hwThread.Start();
 
             Shown += (s, e) =>
             {
@@ -5519,7 +5681,7 @@ namespace MiniFanControl
                 }
             };
             FormClosing += OnFormClosing;
-            RefreshStatus();
+            _hwWakeEvent.Set();
         }
 
         private void OnProcessOrCrashExit(object sender, EventArgs e)
@@ -6022,6 +6184,7 @@ namespace MiniFanControl
 
         private void RunGuiFanCalibration()
         {
+            _hwWorkerPaused = true;
             bool timerWasEnabled = _refreshTimer != null && _refreshTimer.Enabled;
             if (_refreshTimer != null) _refreshTimer.Stop();
 
@@ -6079,9 +6242,10 @@ namespace MiniFanControl
             }
             finally
             {
+                _hwWorkerPaused = false;
                 if (_refreshTimer != null && timerWasEnabled)
                     _refreshTimer.Start();
-                RefreshStatus();
+                _hwWakeEvent.Set();
             }
         }
 
@@ -9254,6 +9418,28 @@ namespace MiniFanControl
 
             bool wroteHardware = false;
 
+            // Emergency Thermal Safety Guard (TJMax Tripwire):
+            // If APU temperature hits >= 90°C, bypass manual overrides and curves, forcing 100% PWM.
+            // Hysteresis holds until temperature recovers below 75°C.
+            if (HardwareBackend.CheckEmergencyThermalTripwire(apuTemp, ref _emergencyThermalActive))
+            {
+                if (_lastAppliedApuPct != 100)
+                {
+                    if (_demoMode) _demo.SetFan(1, 100);
+                    else _hw.SetFan(1, 100);
+                    _lastAppliedApuPct = 100;
+                    wroteHardware = true;
+                }
+                if (_hasDualFans && _lastAppliedSysPct != 100)
+                {
+                    if (_demoMode) _demo.SetFan(2, 100);
+                    else _hw.SetFan(2, 100);
+                    _lastAppliedSysPct = 100;
+                    wroteHardware = true;
+                }
+                return wroteHardware;
+            }
+
             // Determine which built-in EC mode register (0x32) to use:
             // Prefer APU Fan's built-in mode so APU Fan can run on native EC Auto (0x00),
             // or if APU Fan is custom/manual, use Sys Fan's built-in mode so Sys Fan can run on native EC Auto!
@@ -9353,310 +9539,319 @@ namespace MiniFanControl
             return wroteHardware;
         }
 
-        private void RefreshStatus()
+        private void HardwareWorkerLoop()
+        {
+            while (_hwThreadRunning)
+            {
+                if (!_hwWorkerPaused)
+                {
+                    try
+                    {
+                        FanStatus st = _demoMode ? _demo.GetStatus() : _hw.GetStatus();
+                        int apuTemp = Math.Max(st.CpuTemp, st.GpuTemp);
+
+                        bool hwChanged = EvaluateAndApplyFanProfiles(apuTemp);
+                        if (hwChanged)
+                        {
+                            st = _demoMode ? _demo.GetStatus() : _hw.GetStatus();
+                        }
+
+                        _lastStatus = st;
+
+                        if (IsHandleCreated && !IsDisposed)
+                        {
+                            try
+                            {
+                                BeginInvoke((Action)(() => OnHardwareWorkerSample(st)));
+                            }
+                            catch { }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (IsHandleCreated && !IsDisposed)
+                        {
+                            try
+                            {
+                                BeginInvoke((Action)(() => OnHardwareWorkerError(ex)));
+                            }
+                            catch { }
+                        }
+                    }
+                }
+
+                int waitMs = _refreshIntervalMs;
+                if (DateTime.UtcNow < _rampUntil) waitMs = Math.Min(waitMs, 250);
+                _hwWakeEvent.WaitOne(waitMs);
+            }
+        }
+
+        private void OnHardwareWorkerSample(FanStatus st)
         {
             try
             {
-                if (_themePref == ThemePreference.System)
-                {
-                    CheckAndApplyThemeChanges();
-                }
-
-                FanStatus st = _demoMode ? _demo.GetStatus() : _hw.GetStatus();
-                _lastStatus = st;
-                _errorBanner.Visible = false;
-
-                int apuTemp = Math.Max(st.CpuTemp, st.GpuTemp);
-
-                if (EvaluateAndApplyFanProfiles(apuTemp))
-                {
-                    st = _demoMode ? _demo.GetStatus() : _hw.GetStatus();
-                }
-
-                _sessionStats.Record(st);
-                if (DateTime.UtcNow.Second % 5 == 0)
-                {
-                    _hw.DumpSuperIoDiagnostic(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sio-diag.txt"));
-                }
-
-                bool isRamping = DateTime.UtcNow < _rampUntil;
-                if (!isRamping && _refreshTimer != null && _refreshTimer.Interval != _refreshIntervalMs)
-                {
-                    _refreshTimer.Interval = _refreshIntervalMs;
-                }
-
-                UpdateTrayIcons(st.CpuTemp, st.GpuTemp);
-
-                if (_cpuTrayIcon != null)
-                {
-                    string tip = string.Format("CPU: {0}°C (iGPU: {1}°C)\nAPU: {2} RPM | Sys: {3} RPM",
-                        st.CpuTemp, st.GpuTemp, st.Fan1Rpm, st.Fan2Rpm);
-                    if (tip.Length > 63) tip = tip.Substring(0, 63);
-                    if (_cpuTrayIcon.Text != tip) _cpuTrayIcon.Text = tip;
-                }
-
-                if (_gpuTrayIcon != null)
-                {
-                    string tip = string.Format("iGPU: {0}°C (CPU: {1}°C)\nAPU: {2} RPM | Sys: {3} RPM",
-                        st.GpuTemp, st.CpuTemp, st.Fan1Rpm, st.Fan2Rpm);
-                    if (tip.Length > 63) tip = tip.Substring(0, 63);
-                    if (_gpuTrayIcon.Text != tip) _gpuTrayIcon.Text = tip;
-                }
-
-                string apuModeName = _apuManualOverride ? "Man" : (_apuProfile != null ? _apuProfile.Name : st.Mode);
-                string sysModeName = _sysManualOverride ? "Man" : (_sysProfile != null ? _sysProfile.Name : st.Mode);
-
-                if (_overlayForm != null && _showOverlay)
-                {
-                    string osdMode = (!_hasDualFans || apuModeName == sysModeName)
-                        ? ShortModeTag(apuModeName)
-                        : string.Format("{0}/{1}", ShortModeTag(apuModeName), ShortModeTag(sysModeName));
-                    _overlayForm.UpdateMetrics(st, osdMode, _hasDualFans);
-                }
-
-                // Skip heavy UI repaints when hidden in system tray or minimized (RadeonTuner pattern)
-                if (!Visible || WindowState == FormWindowState.Minimized)
-                {
-                    return;
-                }
-
-                Text = string.Format("CPU {0}°C | iGPU {1}°C - MiniFanControl", st.CpuTemp, st.GpuTemp);
-
-                if (_curveCanvas != null)
-                {
-                    _curveCanvas.ApuProfile = _apuProfile;
-                    _curveCanvas.SysProfile = _sysProfile;
-                    _curveCanvas.CurrentApuTemp = apuTemp;
-                    if (!_showingLiveTelemetry)
-                        _curveCanvas.Invalidate();
-                }
-                if (_liveCanvas != null && _showingLiveTelemetry)
-                {
-                    _liveCanvas.Invalidate();
-                }
-
-                Color tempFg = _isDarkMode ? Color.White : Color.Black;
-                _cpuTempLabel.Text = string.Format("{0}°C", st.CpuTemp);
-                _cpuTempLabel.ForeColor = tempFg;
-                if (_cpuBoxTitle != null)
-                {
-                    string cpuHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxCpuTemp > 0)
-                        ? string.Format("CPU • MAX {0}°", _sessionStats.MaxCpuTemp)
-                        : "CPU TEMP";
-                    if (_cpuBoxTitle.Text != cpuHeader) _cpuBoxTitle.Text = cpuHeader;
-                }
-                if (_uiToolTip != null && _cpuTempBox != null)
-                {
-                    if (!IsBoxHovered(_cpuTempBox, _cpuBoxTitle, _cpuTempLabel))
-                    {
-                        string cpuTip = st.FormatCpuTooltip(_sessionStats);
-                        if (cpuTip != _lastCpuTooltipText)
-                        {
-                            _lastCpuTooltipText = cpuTip;
-                            _uiToolTip.SetToolTip(_cpuTempBox, cpuTip);
-                            _uiToolTip.SetToolTip(_cpuBoxTitle, cpuTip);
-                            _uiToolTip.SetToolTip(_cpuTempLabel, cpuTip);
-                        }
-                    }
-                    _cpuTempBox.Invalidate();
-                }
-
-                _gpuTempLabel.Text = st.GpuTemp > 0 ? string.Format("{0}°C", st.GpuTemp) : "N/A";
-                _gpuTempLabel.ForeColor = tempFg;
-                if (_gpuBoxTitle != null)
-                {
-                    string gpuHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxGpuTemp > 0)
-                        ? string.Format("iGPU • MAX {0}°", _sessionStats.MaxGpuTemp)
-                        : "iGPU TEMP";
-                    if (_gpuBoxTitle.Text != gpuHeader) _gpuBoxTitle.Text = gpuHeader;
-                }
-                if (_uiToolTip != null && _gpuTempBox != null)
-                {
-                    if (!IsBoxHovered(_gpuTempBox, _gpuBoxTitle, _gpuTempLabel))
-                    {
-                        string igpuTip = st.FormatIgpuTooltip(_sessionStats);
-                        if (igpuTip != _lastIgpuTooltipText)
-                        {
-                            _lastIgpuTooltipText = igpuTip;
-                            _uiToolTip.SetToolTip(_gpuTempBox, igpuTip);
-                            _uiToolTip.SetToolTip(_gpuBoxTitle, igpuTip);
-                            _uiToolTip.SetToolTip(_gpuTempLabel, igpuTip);
-                        }
-                    }
-                    _gpuTempBox.Invalidate();
-                }
-
-                if (_pwrLabel != null)
-                {
-                    _pwrLabel.Text = st.ApuPowerWatts > 0 ? string.Format("{0}W", st.ApuPowerWatts) : "--W";
-                    _pwrLabel.ForeColor = tempFg;
-                    if (_pwrBoxTitle != null)
-                    {
-                        string pwrHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxPowerWatts > 0)
-                            ? string.Format("PWR • MAX {0}W ⓘ", _sessionStats.MaxPowerWatts)
-                            : "POWER ⓘ";
-                        if (_pwrBoxTitle.Text != pwrHeader) _pwrBoxTitle.Text = pwrHeader;
-                    }
-                    if (_uiToolTip != null && !IsBoxHovered(_pwrBox, _pwrBoxTitle, _pwrLabel))
-                    {
-                        string pwrTip = st.FormatPowerTooltip(_sessionStats);
-                        if (pwrTip != _lastPowerTooltipText)
-                        {
-                            _lastPowerTooltipText = pwrTip;
-                            _uiToolTip.SetToolTip(_pwrBox, pwrTip);
-                            _uiToolTip.SetToolTip(_pwrBoxTitle, pwrTip);
-                            _uiToolTip.SetToolTip(_pwrLabel, pwrTip);
-                        }
-                    }
-                    if (_pwrBox != null) _pwrBox.Invalidate();
-                }
-
-                bool f1Ramping = isRamping && (_rampTargetFan == 0 || _rampTargetFan == 1);
-                bool f2Ramping = isRamping && (_rampTargetFan == 0 || _rampTargetFan == 2);
-
-                bool isRadeon = (_themePref == ThemePreference.Radeon);
-                Color normalText = isRadeon ? RadeonText : (_isDarkMode ? DarkText : LightText);
-                Color dimText = isRadeon ? RadeonTextDim : (_isDarkMode ? DarkTextDim : LightTextDim);
-                Color rampColor = _isDarkMode ? Color.FromArgb(0xF9, 0xE2, 0xAF) : Color.FromArgb(0xB4, 0x53, 0x09);
-
-                if (!_hasDualFans && st.Fan1Rpm > 100 && st.Fan2Rpm > 100)
-                {
-                    _hasDualFans = true;
-                }
-
-                _fan1RpmLabel.Text = FormatRpmText(st.Fan1Rpm, _apuManualOverride, st.Fan1Pct, f1Ramping);
-                _fan1RpmLabel.ForeColor = f1Ramping ? rampColor : normalText;
-
-                if (_hasDualFans)
-                {
-                    _fan2RpmLabel.Text = FormatRpmText(st.Fan2Rpm, _sysManualOverride, st.Fan2Pct, f2Ramping);
-                    _fan2RpmLabel.ForeColor = f2Ramping ? rampColor : normalText;
-                }
-                else
-                {
-                    _fan2RpmLabel.Text = "N/A (1-Fan Mode)";
-                    _fan2RpmLabel.ForeColor = dimText;
-                }
-
-                if (_fan1Box != null)
-                {
-                    if (_fan1BoxTitle != null)
-                    {
-                        string fan1Header = (_sessionStats.SampleCount > 0 && _sessionStats.MaxFan1Rpm > 0)
-                            ? string.Format("APU • MAX {0}", _sessionStats.MaxFan1Rpm)
-                            : "APU FAN";
-                        if (_fan1BoxTitle.Text != fan1Header) _fan1BoxTitle.Text = fan1Header;
-                    }
-                    if (_uiToolTip != null && !IsBoxHovered(_fan1Box, _fan1BoxTitle, _fan1RpmLabel))
-                    {
-                        string f1Tip = st.FormatApuFanTooltip(_sessionStats, FanCurveProfile.ApuMaxRpm);
-                        if (f1Tip != _lastApuFanTooltipText)
-                        {
-                            _lastApuFanTooltipText = f1Tip;
-                            _uiToolTip.SetToolTip(_fan1Box, f1Tip);
-                            _uiToolTip.SetToolTip(_fan1BoxTitle, f1Tip);
-                            _uiToolTip.SetToolTip(_fan1RpmLabel, f1Tip);
-                        }
-                    }
-                    _fan1Box.Invalidate();
-                }
-
-                if (_fan2Box != null)
-                {
-                    if (_fan2BoxTitle != null)
-                    {
-                        string fan2Header = !_hasDualFans
-                            ? "SYS FAN"
-                            : ((_sessionStats.SampleCount > 0 && _sessionStats.MaxFan2Rpm > 0)
-                                ? string.Format("SYS • MAX {0}", _sessionStats.MaxFan2Rpm)
-                                : "SYS FAN");
-                        if (_fan2BoxTitle.Text != fan2Header) _fan2BoxTitle.Text = fan2Header;
-                    }
-                    if (_uiToolTip != null && !IsBoxHovered(_fan2Box, _fan2BoxTitle, _fan2RpmLabel))
-                    {
-                        string f2Tip = st.FormatSysFanTooltip(_sessionStats, FanCurveProfile.SysMaxRpm, _hasDualFans);
-                        if (f2Tip != _lastSysFanTooltipText)
-                        {
-                            _lastSysFanTooltipText = f2Tip;
-                            _uiToolTip.SetToolTip(_fan2Box, f2Tip);
-                            _uiToolTip.SetToolTip(_fan2BoxTitle, f2Tip);
-                            _uiToolTip.SetToolTip(_fan2RpmLabel, f2Tip);
-                        }
-                    }
-                    _fan2Box.Invalidate();
-                }
-
-                if (!_hasDualFans || apuModeName == sysModeName)
-                    _modeLabel.Text = apuModeName;
-                else
-                    _modeLabel.Text = string.Format("{0} / {1}", apuModeName, sysModeName);
-
-                UpdateCurveTabStyles();
-                UpdateModeButtonStyles(st.ModeCode);
-
-                Color autoColor = _isDarkMode ? Color.FromArgb(0xA6, 0xE3, 0xA1) : Color.FromArgb(0x15, 0x80, 0x3D);
-                Color manColor = isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (_isDarkMode ? DarkAccent : LightAccent);
-
-                if (_apuManualOverride)
-                {
-                    _pct1Label.Text = string.Format("{0}% (Man)", st.Fan1Pct);
-                    _pct1Label.ForeColor = manColor;
-                }
-                else
-                {
-                    int apuEval = _apuProfile != null ? _apuProfile.EvaluateApu(apuTemp) : st.Fan1Pct;
-                    _pct1Label.Text = (st.Fan1Manual == 0) ? string.Format("Auto ({0})", ShortModeTag(apuModeName)) : string.Format("{0}% ({1})", apuEval, ShortModeTag(apuModeName));
-                    _pct1Label.ForeColor = autoColor;
-                }
-
-                if (!_hasDualFans)
-                {
-                    _pct2Label.Text = "Disabled";
-                    _pct2Label.ForeColor = dimText;
-                }
-                else if (_sysManualOverride)
-                {
-                    _pct2Label.Text = string.Format("{0}% (Man)", st.Fan2Pct);
-                    _pct2Label.ForeColor = manColor;
-                }
-                else
-                {
-                    int sysEval = _sysProfile != null ? _sysProfile.EvaluateSys(apuTemp) : st.Fan2Pct;
-                    _pct2Label.Text = (st.Fan2Manual == 0) ? string.Format("Auto ({0})", ShortModeTag(sysModeName)) : string.Format("{0}% ({1})", sysEval, ShortModeTag(sysModeName));
-                    _pct2Label.ForeColor = autoColor;
-                }
-
-                if (!_dragging1)
-                {
-                    _fan1Slider.Value = _apuManualOverride ? _apuManualPct : 0;
-                    _fan1SliderPct.Text = _apuManualOverride ? string.Format("{0}%", _apuManualPct) : "Auto";
-                }
-                if (!_dragging2)
-                {
-                    _fan2Slider.Value = (_hasDualFans && _sysManualOverride) ? _sysManualPct : 0;
-                    _fan2SliderPct.Text = !_hasDualFans ? "N/A" : (_sysManualOverride ? string.Format("{0}%", _sysManualPct) : "Auto");
-                }
-
-                if (isRamping)
-                {
-                    double rem = Math.Max(0.1, (_rampUntil - DateTime.UtcNow).TotalSeconds);
-                    _statusBarLabel.ForeColor = rampColor;
-                    _statusBarLabel.Text = string.Format("↻ {0} (ramping {1:0}s…)", _pendingActionText ?? "Adjusting", Math.Ceiling(rem));
-                }
-                else
-                {
-                    string prefix = _demoMode ? "✓ DEMO MODE" : "✓ HARDWARE OK";
-                    _statusBarLabel.ForeColor = dimText;
-                    _statusBarLabel.Text = string.Format("{0}  |  {1:HH:mm:ss}", prefix, DateTime.Now);
-                }
+                ApplyStatusToUi(st);
             }
-            catch (Exception ex)
+            catch { }
+        }
+
+        private void OnHardwareWorkerError(Exception ex)
+        {
+            _errorBanner.Text = "⚠️ " + ex.Message;
+            _errorBanner.Visible = true;
+            _statusBarLabel.ForeColor = _isDarkMode ? ErrorFgDark : ErrorFgLight;
+            _statusBarLabel.Text = "⚠️ Driver/Hardware probe notice (see banner)";
+        }
+
+        private void ApplyStatusToUi(FanStatus st)
+        {
+            _errorBanner.Visible = false;
+            _sessionStats.Record(st);
+
+            bool isRamping = DateTime.UtcNow < _rampUntil;
+
+            UpdateTrayIcons(st.CpuTemp, st.GpuTemp);
+
+            if (_cpuTrayIcon != null)
             {
-                _errorBanner.Text = "⚠ " + ex.Message;
-                _errorBanner.Visible = true;
-                _statusBarLabel.ForeColor = _isDarkMode ? ErrorFgDark : ErrorFgLight;
-                _statusBarLabel.Text = "⚠ Driver not ready (see message)";
+                string tip = string.Format("CPU: {0}°C (iGPU: {1}°C)\nAPU: {2} RPM | Sys: {3} RPM",
+                    st.CpuTemp, st.GpuTemp, st.Fan1Rpm, st.Fan2Rpm);
+                if (tip.Length > 63) tip = tip.Substring(0, 63);
+                if (_cpuTrayIcon.Text != tip) _cpuTrayIcon.Text = tip;
             }
+
+            if (_gpuTrayIcon != null)
+            {
+                string tip = string.Format("iGPU: {0}°C (CPU: {1}°C)\nAPU: {2} RPM | Sys: {3} RPM",
+                    st.GpuTemp, st.CpuTemp, st.Fan1Rpm, st.Fan2Rpm);
+                if (tip.Length > 63) tip = tip.Substring(0, 63);
+                if (_gpuTrayIcon.Text != tip) _gpuTrayIcon.Text = tip;
+            }
+
+            string apuModeName = _apuManualOverride ? "Man" : (_apuProfile != null ? _apuProfile.Name : st.Mode);
+            string sysModeName = _sysManualOverride ? "Man" : (_sysProfile != null ? _sysProfile.Name : st.Mode);
+
+            if (_overlayForm != null && _showOverlay)
+            {
+                string osdMode = (!_hasDualFans || apuModeName == sysModeName)
+                    ? ShortModeTag(apuModeName)
+                    : string.Format("{0}/{1}", ShortModeTag(apuModeName), ShortModeTag(sysModeName));
+                _overlayForm.UpdateMetrics(st, osdMode, _hasDualFans);
+            }
+
+            if (!Visible || WindowState == FormWindowState.Minimized)
+            {
+                return;
+            }
+
+            Text = string.Format("CPU {0}°C | iGPU {1}°C - MiniFanControl", st.CpuTemp, st.GpuTemp);
+
+            int apuTemp = Math.Max(st.CpuTemp, st.GpuTemp);
+            if (_curveCanvas != null)
+            {
+                _curveCanvas.ApuProfile = _apuProfile;
+                _curveCanvas.SysProfile = _sysProfile;
+                _curveCanvas.CurrentApuTemp = apuTemp;
+                if (!_showingLiveTelemetry)
+                    _curveCanvas.Invalidate();
+            }
+            if (_liveCanvas != null && _showingLiveTelemetry)
+            {
+                _liveCanvas.Invalidate();
+            }
+
+            Color tempFg = _isDarkMode ? DarkText : LightText;
+            Color dimText = _isDarkMode ? Color.FromArgb(0x93, 0x99, 0xB2) : Color.FromArgb(0x6C, 0x70, 0x86);
+            Color rampColor = _isDarkMode ? Color.FromArgb(0xFA, 0xB3, 0x87) : Color.FromArgb(0xEA, 0x58, 0x0C);
+            bool isRadeon = (_themePref == ThemePreference.Radeon);
+
+            _cpuTempLabel.Text = st.CpuTemp > 0 ? string.Format("{0}°C", st.CpuTemp) : "N/A";
+            _cpuTempLabel.ForeColor = tempFg;
+            if (_cpuBoxTitle != null)
+            {
+                string cpuHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxCpuTemp > 0)
+                    ? string.Format("CPU • MAX {0}°", _sessionStats.MaxCpuTemp)
+                    : "CPU TEMP";
+                if (_cpuBoxTitle.Text != cpuHeader) _cpuBoxTitle.Text = cpuHeader;
+            }
+            if (_uiToolTip != null && _cpuTempBox != null)
+            {
+                if (!IsBoxHovered(_cpuTempBox, _cpuBoxTitle, _cpuTempLabel))
+                {
+                    string cpuTip = st.FormatCpuTooltip(_sessionStats);
+                    if (cpuTip != _lastCpuTooltipText)
+                    {
+                        _lastCpuTooltipText = cpuTip;
+                        _uiToolTip.SetToolTip(_cpuTempBox, cpuTip);
+                        _uiToolTip.SetToolTip(_cpuBoxTitle, cpuTip);
+                        _uiToolTip.SetToolTip(_cpuTempLabel, cpuTip);
+                    }
+                }
+                _cpuTempBox.Invalidate();
+            }
+
+            _gpuTempLabel.Text = st.GpuTemp > 0 ? string.Format("{0}°C", st.GpuTemp) : "N/A";
+            _gpuTempLabel.ForeColor = tempFg;
+            if (_gpuBoxTitle != null)
+            {
+                string gpuHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxGpuTemp > 0)
+                    ? string.Format("iGPU • MAX {0}°", _sessionStats.MaxGpuTemp)
+                    : "iGPU TEMP";
+                if (_gpuBoxTitle.Text != gpuHeader) _gpuBoxTitle.Text = gpuHeader;
+            }
+            if (_uiToolTip != null && _gpuTempBox != null)
+            {
+                if (!IsBoxHovered(_gpuTempBox, _gpuBoxTitle, _gpuTempLabel))
+                {
+                    string igpuTip = st.FormatIgpuTooltip(_sessionStats);
+                    if (igpuTip != _lastIgpuTooltipText)
+                    {
+                        _lastIgpuTooltipText = igpuTip;
+                        _uiToolTip.SetToolTip(_gpuTempBox, igpuTip);
+                        _uiToolTip.SetToolTip(_gpuBoxTitle, igpuTip);
+                        _uiToolTip.SetToolTip(_gpuTempLabel, igpuTip);
+                    }
+                }
+                _gpuTempBox.Invalidate();
+            }
+
+            if (_pwrLabel != null)
+            {
+                _pwrLabel.Text = st.ApuPowerWatts > 0 ? string.Format("{0}W", st.ApuPowerWatts) : "--W";
+                _pwrLabel.ForeColor = tempFg;
+                if (_pwrBoxTitle != null)
+                {
+                    string pwrHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxPowerWatts > 0)
+                        ? string.Format("PWR • MAX {0}W •", _sessionStats.MaxPowerWatts)
+                        : "POWER •";
+                    if (_pwrBoxTitle.Text != pwrHeader) _pwrBoxTitle.Text = pwrHeader;
+                }
+                if (_uiToolTip != null && !IsBoxHovered(_pwrBox, _pwrBoxTitle, _pwrLabel))
+                {
+                    string pwrTip = st.FormatPowerTooltip(_sessionStats);
+                    if (pwrTip != _lastPowerTooltipText)
+                    {
+                        _lastPowerTooltipText = pwrTip;
+                        _uiToolTip.SetToolTip(_pwrBox, pwrTip);
+                        _uiToolTip.SetToolTip(_pwrBoxTitle, pwrTip);
+                        _uiToolTip.SetToolTip(_pwrLabel, pwrTip);
+                    }
+                }
+                _pwrBox.Invalidate();
+            }
+
+            _fan1RpmLabel.Text = string.Format("{0} RPM •", st.Fan1Rpm);
+            _fan1RpmLabel.ForeColor = tempFg;
+            if (_fan1Box != null)
+            {
+                if (_fan1BoxTitle != null)
+                {
+                    string fan1Header = (_sessionStats.SampleCount > 0 && _sessionStats.MaxFan1Rpm > 0)
+                        ? string.Format("APU • MAX {0}", _sessionStats.MaxFan1Rpm)
+                        : "APU FAN";
+                    if (_fan1BoxTitle.Text != fan1Header) _fan1BoxTitle.Text = fan1Header;
+                }
+                if (_uiToolTip != null && !IsBoxHovered(_fan1Box, _fan1BoxTitle, _fan1RpmLabel))
+                {
+                    string f1Tip = st.FormatApuFanTooltip(_sessionStats, FanCurveProfile.ApuMaxRpm);
+                    if (f1Tip != _lastApuFanTooltipText)
+                    {
+                        _lastApuFanTooltipText = f1Tip;
+                        _uiToolTip.SetToolTip(_fan1Box, f1Tip);
+                        _uiToolTip.SetToolTip(_fan1BoxTitle, f1Tip);
+                        _uiToolTip.SetToolTip(_fan1RpmLabel, f1Tip);
+                    }
+                }
+                _fan1Box.Invalidate();
+            }
+
+            if (_fan2Box != null)
+            {
+                if (_fan2BoxTitle != null)
+                {
+                    string fan2Header = !_hasDualFans
+                        ? "SYS FAN"
+                        : ((_sessionStats.SampleCount > 0 && _sessionStats.MaxFan2Rpm > 0)
+                            ? string.Format("SYS • MAX {0}", _sessionStats.MaxFan2Rpm)
+                            : "SYS FAN");
+                    if (_fan2BoxTitle.Text != fan2Header) _fan2BoxTitle.Text = fan2Header;
+                }
+                if (_uiToolTip != null && !IsBoxHovered(_fan2Box, _fan2BoxTitle, _fan2RpmLabel))
+                {
+                    string f2Tip = st.FormatSysFanTooltip(_sessionStats, FanCurveProfile.SysMaxRpm, _hasDualFans);
+                    if (f2Tip != _lastSysFanTooltipText)
+                    {
+                        _lastSysFanTooltipText = f2Tip;
+                        _uiToolTip.SetToolTip(_fan2Box, f2Tip);
+                        _uiToolTip.SetToolTip(_fan2BoxTitle, f2Tip);
+                        _uiToolTip.SetToolTip(_fan2RpmLabel, f2Tip);
+                    }
+                }
+                _fan2Box.Invalidate();
+            }
+
+            if (!_hasDualFans || apuModeName == sysModeName)
+                _modeLabel.Text = apuModeName;
+            else
+                _modeLabel.Text = string.Format("{0} / {1}", apuModeName, sysModeName);
+
+            UpdateCurveTabStyles();
+            UpdateModeButtonStyles(st.ModeCode);
+
+            Color autoColor = _isDarkMode ? Color.FromArgb(0xA6, 0xE3, 0xA1) : Color.FromArgb(0x15, 0x80, 0x3D);
+            Color manColor = isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (_isDarkMode ? DarkAccent : LightAccent);
+
+            if (_apuManualOverride)
+            {
+                _pct1Label.Text = string.Format("{0}% (Man)", st.Fan1Pct);
+                _pct1Label.ForeColor = manColor;
+            }
+            else
+            {
+                int apuEval = _apuProfile != null ? _apuProfile.EvaluateApu(apuTemp) : st.Fan1Pct;
+                _pct1Label.Text = (st.Fan1Manual == 0) ? string.Format("Auto ({0})", ShortModeTag(apuModeName)) : string.Format("{0}% ({1})", apuEval, ShortModeTag(apuModeName));
+                _pct1Label.ForeColor = autoColor;
+            }
+
+            if (!_hasDualFans)
+            {
+                _pct2Label.Text = "Disabled";
+                _pct2Label.ForeColor = dimText;
+            }
+            else if (_sysManualOverride)
+            {
+                _pct2Label.Text = string.Format("{0}% (Man)", st.Fan2Pct);
+                _pct2Label.ForeColor = manColor;
+            }
+            else
+            {
+                int sysEval = _sysProfile != null ? _sysProfile.EvaluateSys(apuTemp) : st.Fan2Pct;
+                _pct2Label.Text = (st.Fan2Manual == 0) ? string.Format("Auto ({0})", ShortModeTag(sysModeName)) : string.Format("{0}% ({1})", sysEval, ShortModeTag(sysModeName));
+                _pct2Label.ForeColor = autoColor;
+            }
+
+            if (_emergencyThermalActive)
+            {
+                _statusBarLabel.ForeColor = Color.FromArgb(0xFB, 0x71, 0x85);
+                _statusBarLabel.Text = string.Format("🔥 EMERGENCY THERMAL OVERRIDE (CPU {0}°C) — Fans at 100%", apuTemp);
+            }
+            else if (DateTime.UtcNow < _rampUntil)
+            {
+                double rem = Math.Max(0.1, (_rampUntil - DateTime.UtcNow).TotalSeconds);
+                _statusBarLabel.ForeColor = rampColor;
+                _statusBarLabel.Text = string.Format("⏳ {0} (ramping {1:0}s…)", _pendingActionText ?? "Adjusting", Math.Ceiling(rem));
+            }
+            else
+            {
+                string prefix = _demoMode ? "⚡ DEMO MODE" : "✓ HARDWARE OK";
+                _statusBarLabel.ForeColor = dimText;
+                _statusBarLabel.Text = string.Format("{0}  |  {1:HH:mm:ss}", prefix, DateTime.Now);
+            }
+        }
+
+        private void RefreshStatus()
+        {
+            _hwWakeEvent.Set();
         }
 
         private static string ShortModeTag(string modeName)
@@ -9893,6 +10088,12 @@ namespace MiniFanControl
         private void OnFormClosing(object sender, FormClosingEventArgs e)
         {
             SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+            _hwThreadRunning = false;
+            _hwWakeEvent.Set();
+            if (_hwThread != null && _hwThread.IsAlive)
+            {
+                _hwThread.Join(500);
+            }
             AppDomain.CurrentDomain.ProcessExit -= OnProcessOrCrashExit;
             AppDomain.CurrentDomain.UnhandledException -= OnProcessOrCrashExit;
             UnregisterGlobalHotkeys();
@@ -10200,6 +10401,47 @@ namespace MiniFanControl
                     "CapFrameX OSD Multi-Tier Sizing (100%-185%), Live Graphs & Layout Modes",
                     string.Format("w100={0}, w125={1}, w150={2}, w185={3}, h45={4}, h130={5}", wTier0, wTier1, wTier2, wTier3, hComb45, hComb130));
             }
+
+            // 15. Fail-Closed EcBusMutex Contention & Multi-Mutex Lock Scope
+            bool contentionDetected = false;
+            int initialContention = EcBusMutex.ContentionCount;
+            Thread holderThread = new Thread(() =>
+            {
+                using (var holder = EcBusMutex.AcquireEc(500))
+                {
+                    Thread.Sleep(150);
+                }
+            });
+            holderThread.IsBackground = true;
+            holderThread.Start();
+            Thread.Sleep(30);
+
+            using (var contested = EcBusMutex.AcquireEc(15))
+            {
+                contentionDetected = !contested.Acquired && (EcBusMutex.ContentionCount > initialContention);
+            }
+            holderThread.Join(500);
+            Check(contentionDetected,
+                "Fail-Closed EcBusMutex Contention & Safe Mutex Isolation",
+                "Contention was not flagged or unacquired lock returned true");
+
+            // 16. Emergency Thermal Safety Tripwire & Cooldown Hysteresis
+            bool emergencyState = false;
+            bool tripBelow = HardwareBackend.CheckEmergencyThermalTripwire(84, ref emergencyState);
+            bool tripAtTrip = HardwareBackend.CheckEmergencyThermalTripwire(90, ref emergencyState);
+            bool tripInHysteresis = HardwareBackend.CheckEmergencyThermalTripwire(82, ref emergencyState);
+            bool tripRecovered = HardwareBackend.CheckEmergencyThermalTripwire(74, ref emergencyState);
+            Check(!tripBelow && tripAtTrip && tripInHysteresis && !tripRecovered,
+                "Emergency Thermal Safety Tripwire & Cooldown Hysteresis (90C Trip / 75C Recover)",
+                string.Format("84C={0}, 90C={1}, 82C={2}, 74C={3}", tripBelow, tripAtTrip, tripInHysteresis, tripRecovered));
+
+            // 17. Safe Fail-Closed Hardware Probe Validation
+            bool invalidBaseVerify = HardwareBackend.VerifyIt87HwBase(0x0100);
+            HardwareBackend unverifiedHw = new HardwareBackend();
+            Check(!invalidBaseVerify && unverifiedHw.AccessMethod == HardwareBackend.EcAccessMethod.Unknown &&
+                  unverifiedHw.AccessMethodName.Contains("Safe Read-Only"),
+                "Safe Fail-Closed Hardware Probe Validation (No Blind PortIO Fallback)",
+                "Unverified backend did not report Unknown / Safe Read-Only");
 
             Console.WriteLine("----------------------------------------------------------------------");
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));
