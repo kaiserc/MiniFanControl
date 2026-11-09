@@ -1333,11 +1333,78 @@ namespace MiniFanControl
 
     public static class NativeInpOut
     {
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern bool SetDefaultDllDirectories(uint directoryFlags);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr LoadLibraryEx(string lpLibFileName, IntPtr hFile, uint dwFlags);
+
+        private const uint LOAD_LIBRARY_SEARCH_APPLICATION_DIR = 0x00000200;
+        private const uint LOAD_LIBRARY_SEARCH_SYSTEM32        = 0x00000800;
+        private const uint LOAD_WITH_ALTERED_SEARCH_PATH       = 0x00000008;
+
+        public const ulong MIN_SAFE_PHYSICAL_ADDR = 0x000E0000;
+        public const uint MAX_SAFE_MAP_SIZE = 16 * 1024 * 1024;
+
+        private static bool _dllSearchHardened = false;
+        private static IntPtr _hDriverDll = IntPtr.Zero;
+
+        public static void HardenDllSearchPath()
+        {
+            if (_dllSearchHardened) return;
+            try
+            {
+                SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
+                _dllSearchHardened = true;
+            }
+            catch { }
+        }
+
+        public static bool PreloadDriverDll()
+        {
+            HardenDllSearchPath();
+            if (_hDriverDll != IntPtr.Zero) return true;
+
+            string appDir = AppDomain.CurrentDomain.BaseDirectory;
+            string dllPath = Path.Combine(appDir, "inpoutx64.dll");
+
+            if (!File.Exists(dllPath))
+            {
+                string sys32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
+                dllPath = Path.Combine(sys32, "inpoutx64.dll");
+                if (!File.Exists(dllPath)) return false;
+            }
+
+            try
+            {
+                FileInfo fi = new FileInfo(dllPath);
+                if (fi.Length < 1024) return false;
+
+                _hDriverDll = LoadLibraryEx(dllPath, IntPtr.Zero, LOAD_WITH_ALTERED_SEARCH_PATH);
+                return _hDriverDll != IntPtr.Zero;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         [DllImport("inpoutx64.dll", EntryPoint = "IsInpOutDriverOpen")]
         public static extern int IsInpOutDriverOpen();
 
         [DllImport("inpoutx64.dll", EntryPoint = "MapPhysToLin")]
         public static extern IntPtr MapPhysToLin(IntPtr pbPhysAddr, uint dwPhysSize, out IntPtr pPhysicalMemoryHandle);
+
+        public static IntPtr MapPhysToLinSafe(IntPtr pbPhysAddr, uint dwPhysSize, out IntPtr pPhysicalMemoryHandle)
+        {
+            pPhysicalMemoryHandle = IntPtr.Zero;
+            ulong addr = unchecked((ulong)pbPhysAddr.ToInt64());
+            if (addr < MIN_SAFE_PHYSICAL_ADDR || dwPhysSize == 0 || dwPhysSize > MAX_SAFE_MAP_SIZE)
+            {
+                return IntPtr.Zero;
+            }
+            return MapPhysToLin(pbPhysAddr, dwPhysSize, out pPhysicalMemoryHandle);
+        }
 
         [DllImport("inpoutx64.dll", EntryPoint = "UnmapPhysicalMemory")]
         public static extern int UnmapPhysicalMemory(IntPtr PhysicalMemoryHandle, IntPtr pbLinAddr);
@@ -1359,6 +1426,97 @@ namespace MiniFanControl
 
         [DllImport("inpoutx64.dll", EntryPoint = "Out32")]
         public static extern void Out32(ushort port, short value);
+    }
+
+    public static class DriverServiceManager
+    {
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern IntPtr OpenSCManager(string lpMachineName, string lpDatabaseName, uint dwDesiredAccess);
+
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern IntPtr OpenService(IntPtr hSCManager, string lpServiceName, uint dwDesiredAccess);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool CloseServiceHandle(IntPtr hSCObject);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool QueryServiceStatus(IntPtr hService, out SERVICE_STATUS lpServiceStatus);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool ControlService(IntPtr hService, uint dwControl, out SERVICE_STATUS lpServiceStatus);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct SERVICE_STATUS
+        {
+            public int dwServiceType;
+            public int dwCurrentState;
+            public int dwControlsAccepted;
+            public int dwWin32ExitCode;
+            public int dwServiceSpecificExitCode;
+            public int dwCheckPoint;
+            public int dwWaitHint;
+        }
+
+        private const uint SC_MANAGER_CONNECT = 0x0001;
+        private const uint SC_MANAGER_ALL_ACCESS = 0xF003F;
+        private const uint SERVICE_QUERY_STATUS = 0x0004;
+        private const uint SERVICE_STOP = 0x0020;
+        private const uint SERVICE_CONTROL_STOP = 0x00000001;
+
+        public const int SERVICE_STOPPED = 1;
+        public const int SERVICE_RUNNING = 4;
+
+        public static bool IsDriverServiceRunning(string serviceName = "inpoutx64")
+        {
+            IntPtr scm = OpenSCManager(null, null, SC_MANAGER_CONNECT);
+            if (scm == IntPtr.Zero) return false;
+            try
+            {
+                IntPtr svc = OpenService(scm, serviceName, SERVICE_QUERY_STATUS);
+                if (svc == IntPtr.Zero) return false;
+                try
+                {
+                    SERVICE_STATUS status;
+                    if (QueryServiceStatus(svc, out status))
+                    {
+                        return status.dwCurrentState == SERVICE_RUNNING;
+                    }
+                    return false;
+                }
+                finally
+                {
+                    CloseServiceHandle(svc);
+                }
+            }
+            finally
+            {
+                CloseServiceHandle(scm);
+            }
+        }
+
+        public static bool StopDriverService(string serviceName = "inpoutx64")
+        {
+            IntPtr scm = OpenSCManager(null, null, SC_MANAGER_ALL_ACCESS);
+            if (scm == IntPtr.Zero) return false;
+            try
+            {
+                IntPtr svc = OpenService(scm, serviceName, SERVICE_STOP | SERVICE_QUERY_STATUS);
+                if (svc == IntPtr.Zero) return false;
+                try
+                {
+                    SERVICE_STATUS status;
+                    return ControlService(svc, SERVICE_CONTROL_STOP, out status);
+                }
+                finally
+                {
+                    CloseServiceHandle(svc);
+                }
+            }
+            finally
+            {
+                CloseServiceHandle(scm);
+            }
+        }
     }
 
     /// <summary>
@@ -1743,8 +1901,42 @@ namespace MiniFanControl
             if (profile != null) Profile = profile;
         }
 
+        public static bool IsPortWhitelisted(ushort port, bool isWrite)
+        {
+            if (isWrite)
+            {
+                if (port == 0x70 || port == 0x71 || port == 0x92 || port == 0xCF9 ||
+                    port == 0x20 || port == 0x21 || port == 0xA0 || port == 0xA1 ||
+                    port == 0x40 || port == 0x41 || port == 0x42 || port == 0x43 ||
+                    port == 0x61)
+                {
+                    return false;
+                }
+            }
+
+            if (port == 0x62 || port == 0x66 || port == 0x68 || port == 0x6C || port == 0x6A || port == 0x6E)
+                return true;
+
+            if (port == 0x2E || port == 0x2F || port == 0x4E || port == 0x4F)
+                return true;
+
+            if (port == 0xCF8 || port == 0xCFC)
+                return true;
+
+            if ((port >= 0x0290 && port <= 0x0297) ||
+                (port >= 0x02A0 && port <= 0x02A7) ||
+                (port >= 0x0A00 && port <= 0x0A3F) ||
+                (port >= 0x0E00 && port <= 0x0E3F))
+            {
+                return true;
+            }
+
+            return !isWrite;
+        }
+
         public static byte ReadPortByte(ushort port)
         {
+            if (!IsPortWhitelisted(port, false)) return 0xFF;
             try
             {
                 byte v = NativeInpOut.DlPortReadPortUchar(port);
@@ -1760,6 +1952,7 @@ namespace MiniFanControl
 
         public static void WritePortByte(ushort port, byte val)
         {
+            if (!IsPortWhitelisted(port, true)) return;
             try
             {
                 NativeInpOut.DlPortWritePortUchar(port, val);
@@ -2259,7 +2452,7 @@ namespace MiniFanControl
                 // 5. Try MMIO mapping (e.g. 0xFE0B0400)
                 ulong baseAddr = Profile != null ? Profile.EcBaseAddress : EC_BASE;
                 IntPtr handle;
-                IntPtr mapped = NativeInpOut.MapPhysToLin(new IntPtr(unchecked((long)baseAddr)), EC_SIZE, out handle);
+                IntPtr mapped = NativeInpOut.MapPhysToLinSafe(new IntPtr(unchecked((long)baseAddr)), EC_SIZE, out handle);
                 if (mapped != IntPtr.Zero)
                 {
                     byte m0 = Marshal.ReadByte(mapped, 0);
@@ -10850,6 +11043,30 @@ namespace MiniFanControl
                     string.Format("Clean={0}, Timeout={1}, Sustained={2}, Crash={3}", resClean, resTimeout, resSustained, resCrash));
             }
 
+            // 19. Driver Security Port Whitelist, DLL Search Order & Memory Map Safety Bounds
+            bool port62Allow = HardwareBackend.IsPortWhitelisted(0x62, true);
+            bool port66Allow = HardwareBackend.IsPortWhitelisted(0x66, true);
+            bool port2EAllow = HardwareBackend.IsPortWhitelisted(0x2E, true);
+            bool port0A35Allow = HardwareBackend.IsPortWhitelisted(0x0A35, true);
+
+            bool port70Blocked = !HardwareBackend.IsPortWhitelisted(0x70, true);
+            bool portCF9Blocked = !HardwareBackend.IsPortWhitelisted(0xCF9, true);
+            bool port20Blocked = !HardwareBackend.IsPortWhitelisted(0x20, true);
+            bool port40Blocked = !HardwareBackend.IsPortWhitelisted(0x40, true);
+            bool port61Blocked = !HardwareBackend.IsPortWhitelisted(0x61, true);
+
+            IntPtr dummyH;
+            IntPtr lowMemMap = NativeInpOut.MapPhysToLinSafe(new IntPtr(0x1000), 4096, out dummyH);
+            IntPtr hugeMemMap = NativeInpOut.MapPhysToLinSafe(new IntPtr(0xFED00000), 32 * 1024 * 1024, out dummyH);
+            bool dllPreloadOk = NativeInpOut.PreloadDriverDll();
+
+            Check(port62Allow && port66Allow && port2EAllow && port0A35Allow &&
+                  port70Blocked && portCF9Blocked && port20Blocked && port40Blocked && port61Blocked &&
+                  lowMemMap == IntPtr.Zero && hugeMemMap == IntPtr.Zero,
+                "Driver Security Port Whitelist & Memory Map Safety Bounds",
+                string.Format("Allow=[62:{0},2E:{1},A35:{2}], Block=[70:{3},CF9:{4},20:{5}], SafeMap=[Low:{6},Huge:{7}]",
+                    port62Allow, port2EAllow, port0A35Allow, port70Blocked, portCF9Blocked, port20Blocked, lowMemMap == IntPtr.Zero, hugeMemMap == IntPtr.Zero));
+
             Console.WriteLine("----------------------------------------------------------------------");
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));
             Console.WriteLine("======================================================================");
@@ -10866,6 +11083,7 @@ namespace MiniFanControl
         [STAThread]
         public static int Main(string[] args)
         {
+            NativeInpOut.PreloadDriverDll();
             bool demoMode = false;
             bool startMinimized = false;
             string cmd = null;
@@ -10920,6 +11138,18 @@ namespace MiniFanControl
                         return 1;
                     }
                     return WatchdogSupervisor.Run(pid, timeoutMs, demoMode);
+                }
+                if (cmd == "driver-status")
+                {
+                    bool isRunning = DriverServiceManager.IsDriverServiceRunning("inpoutx64");
+                    Console.WriteLine("{{\"service\":\"inpoutx64\",\"running\":{0}}}", isRunning ? "true" : "false");
+                    return 0;
+                }
+                else if (cmd == "driver-stop")
+                {
+                    bool stopped = DriverServiceManager.StopDriverService("inpoutx64");
+                    Console.WriteLine("{{\"service\":\"inpoutx64\",\"action\":\"stop\",\"success\":{0}}}", stopped ? "true" : "false");
+                    return 0;
                 }
                 if (cmd == "gen-icon" || cmd == "--gen-icon")
                 {
