@@ -6,3 +6,5 @@ ec-probe-report.txt
 .vscode/
 
 sio-diag.txt
+watchdog.log
+*.log

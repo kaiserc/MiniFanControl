@@ -5381,6 +5381,207 @@ namespace MiniFanControl
         }
     }
 
+    public static class WatchdogSupervisor
+    {
+        public const string HEARTBEAT_EVENT_PREFIX = "Global\\MiniFanControl_Heartbeat_";
+        public const string SHUTDOWN_EVENT_PREFIX = "Global\\MiniFanControl_Shutdown_";
+        public const int DEFAULT_TIMEOUT_MS = 3500;
+        public const int DEFAULT_POLL_INTERVAL_MS = 250;
+
+        public static string GetHeartbeatEventName(int pid)
+        {
+            return "MiniFanControl_Heartbeat_" + pid;
+        }
+
+        public static string GetShutdownEventName(int pid)
+        {
+            return "MiniFanControl_Shutdown_" + pid;
+        }
+
+        public static EventWaitHandle CreateOrOpenEvent(string baseName, EventResetMode mode, out bool createdNew)
+        {
+            createdNew = false;
+            try
+            {
+                return new EventWaitHandle(false, mode, "Global\\" + baseName, out createdNew);
+            }
+            catch
+            {
+                try
+                {
+                    return new EventWaitHandle(false, mode, "Local\\" + baseName, out createdNew);
+                }
+                catch
+                {
+                    return new EventWaitHandle(false, mode);
+                }
+            }
+        }
+
+        public static void LogWatchdogEvent(string message)
+        {
+            try
+            {
+                string logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "watchdog.log");
+                string line = string.Format("{0:yyyy-MM-dd HH:mm:ss.fff} [PID {1}] {2}{3}",
+                    DateTime.Now, Process.GetCurrentProcess().Id, message, Environment.NewLine);
+                File.AppendAllText(logPath, line);
+            }
+            catch { }
+        }
+
+        public static void RestoreAutoFailsafe(bool demoMode)
+        {
+            try
+            {
+                LogWatchdogEvent("Triggering emergency hardware failsafe -> restoring BIOS Auto fan control.");
+                if (demoMode)
+                {
+                    Console.WriteLine("[WATCHDOG] Demo mode: Auto failsafe engaged.");
+                    return;
+                }
+
+                using (HardwareBackend hw = new HardwareBackend())
+                {
+                    hw.SetAuto();
+                    Console.WriteLine("[WATCHDOG] Hardware fan control restored to BIOS Auto successfully.");
+                }
+            }
+            catch (Exception ex)
+            {
+                string err = "[WATCHDOG ERROR] Failed to restore BIOS Auto: " + ex.Message;
+                Console.Error.WriteLine(err);
+                LogWatchdogEvent(err);
+            }
+        }
+
+        public static int Run(int parentPid, int timeoutMs = DEFAULT_TIMEOUT_MS, bool demoMode = false)
+        {
+            LogWatchdogEvent(string.Format("Supervisor started for parent PID {0} with timeout {1}ms", parentPid, timeoutMs));
+            Console.WriteLine(string.Format("[WATCHDOG] Initializing supervisor for PID {0} (Timeout: {1}ms)...", parentPid, timeoutMs));
+
+            Process parentProcess = null;
+            try
+            {
+                parentProcess = Process.GetProcessById(parentPid);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(string.Format("[WATCHDOG] Warning: Parent PID {0} not found or exited: {1}", parentPid, ex.Message));
+                if (!demoMode)
+                {
+                    RestoreAutoFailsafe(demoMode);
+                }
+                return 1;
+            }
+
+            EventWaitHandle heartbeatEvent = null;
+            EventWaitHandle shutdownEvent = null;
+
+            try
+            {
+                bool createdHb, createdSd;
+                heartbeatEvent = CreateOrOpenEvent(GetHeartbeatEventName(parentPid), EventResetMode.AutoReset, out createdHb);
+                shutdownEvent = CreateOrOpenEvent(GetShutdownEventName(parentPid), EventResetMode.ManualReset, out createdSd);
+
+                return ExecuteLoop(parentProcess, parentPid, timeoutMs, heartbeatEvent, shutdownEvent, demoMode, false);
+            }
+            finally
+            {
+                if (heartbeatEvent != null) { try { heartbeatEvent.Close(); } catch { } }
+                if (shutdownEvent != null) { try { shutdownEvent.Close(); } catch { } }
+                if (parentProcess != null) { try { parentProcess.Dispose(); } catch { } }
+            }
+        }
+
+        public static int RunSimulated(int parentPid, int timeoutMs, EventWaitHandle heartbeatEvent, EventWaitHandle shutdownEvent, bool initialShutdownSet)
+        {
+            Process currentProc = Process.GetCurrentProcess();
+            if (initialShutdownSet)
+            {
+                shutdownEvent.Set();
+            }
+            return ExecuteLoop(currentProc, parentPid, timeoutMs, heartbeatEvent, shutdownEvent, true, true);
+        }
+
+        public static int ExecuteLoop(
+            Process parentProcess,
+            int parentPid,
+            int timeoutMs,
+            EventWaitHandle heartbeatEvent,
+            EventWaitHandle shutdownEvent,
+            bool demoMode,
+            bool testMode)
+        {
+            DateTime lastHeartbeatUtc = DateTime.UtcNow;
+            bool triggeredFailsafe = false;
+
+            while (true)
+            {
+                // 1. Check if parent process exited
+                bool parentExited = false;
+                try
+                {
+                    parentExited = parentProcess.HasExited;
+                }
+                catch
+                {
+                    parentExited = true;
+                }
+
+                if (parentExited)
+                {
+                    bool cleanShutdown = shutdownEvent.WaitOne(50);
+                    if (cleanShutdown)
+                    {
+                        Console.WriteLine(string.Format("[WATCHDOG] Parent PID {0} exited gracefully. Terminating watchdog.", parentPid));
+                        LogWatchdogEvent(string.Format("Parent PID {0} exited gracefully. Terminating watchdog.", parentPid));
+                        return 0;
+                    }
+                    else
+                    {
+                        Console.WriteLine(string.Format("[WATCHDOG TRIGGER] Parent PID {0} terminated unexpectedly! Restoring BIOS fan control...", parentPid));
+                        LogWatchdogEvent(string.Format("Parent PID {0} terminated unexpectedly (crash/killed)! Restoring BIOS fan control...", parentPid));
+                        RestoreAutoFailsafe(demoMode);
+                        return 2;
+                    }
+                }
+
+                // 2. Check for clean shutdown signal while process is still alive
+                if (shutdownEvent.WaitOne(0))
+                {
+                    Console.WriteLine(string.Format("[WATCHDOG] Clean shutdown signaled by PID {0}. Terminating watchdog.", parentPid));
+                    LogWatchdogEvent(string.Format("Clean shutdown signaled by PID {0}. Terminating watchdog.", parentPid));
+                    return 0;
+                }
+
+                // 3. Wait on heartbeat with poll interval
+                int pollWait = Math.Min(DEFAULT_POLL_INTERVAL_MS, Math.Max(20, timeoutMs / 3));
+                if (heartbeatEvent.WaitOne(pollWait))
+                {
+                    lastHeartbeatUtc = DateTime.UtcNow;
+                }
+                else
+                {
+                    double elapsedMs = (DateTime.UtcNow - lastHeartbeatUtc).TotalMilliseconds;
+                    if (elapsedMs >= timeoutMs && !triggeredFailsafe)
+                    {
+                        Console.WriteLine(string.Format("[WATCHDOG TRIGGER] Parent PID {0} heartbeat missed for {1:0}ms (Timeout: {2}ms)! Main thread hung. Restoring BIOS fan control...", parentPid, elapsedMs, timeoutMs));
+                        LogWatchdogEvent(string.Format("Parent PID {0} heartbeat missed for {1:0}ms! Restoring BIOS fan control...", parentPid, elapsedMs));
+                        RestoreAutoFailsafe(demoMode);
+                        triggeredFailsafe = true;
+                        if (testMode) return 3;
+                    }
+                }
+
+                if (testMode && triggeredFailsafe)
+                {
+                    return 3;
+                }
+            }
+        }
+    }
+
     public class MainForm : Form
     {
         [DllImport("user32.dll", SetLastError = true)]
@@ -5498,6 +5699,13 @@ namespace MiniFanControl
         private int _lastGpuIconKey = int.MinValue;
 
         private DateTime _rampUntil = DateTime.MinValue;
+
+        private Process _watchdogProcess;
+        private EventWaitHandle _watchdogHeartbeatEvent;
+        private EventWaitHandle _watchdogShutdownEvent;
+        private bool _watchdogStarted = false;
+        private SessionEndingEventHandler _sessionEndingHandler;
+        private PowerModeChangedEventHandler _powerModeChangedHandler;
         private string _pendingActionText = null;
         private int _rampTargetFan = 0;
 
@@ -5709,6 +5917,16 @@ namespace MiniFanControl
             UpdateTrayIcons(0, 0);
 
             SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+            _sessionEndingHandler = (s, e) => RestoreHardwareSafeAutoIfNeeded();
+            _powerModeChangedHandler = (s, e) =>
+            {
+                if (e.Mode == PowerModes.Suspend)
+                {
+                    RestoreHardwareSafeAutoIfNeeded();
+                }
+            };
+            SystemEvents.SessionEnding += _sessionEndingHandler;
+            SystemEvents.PowerModeChanged += _powerModeChangedHandler;
             AppDomain.CurrentDomain.ProcessExit += OnProcessOrCrashExit;
             AppDomain.CurrentDomain.UnhandledException += OnProcessOrCrashExit;
 
@@ -5737,6 +5955,7 @@ namespace MiniFanControl
                 Priority = ThreadPriority.AboveNormal
             };
             _hwThread.Start();
+            StartWatchdogSupervisor();
 
             Shown += (s, e) =>
             {
@@ -5759,6 +5978,7 @@ namespace MiniFanControl
         {
             if (_safeExitRestored) return;
             _safeExitRestored = true;
+            StopWatchdogSupervisorGracefully();
             if (!_restoreAutoOnExit || _demoMode) return;
 
             try
@@ -5776,6 +5996,72 @@ namespace MiniFanControl
                 _hw.SetAuto();
             }
             catch { }
+        }
+
+        private void StartWatchdogSupervisor()
+        {
+            if (_watchdogStarted) return;
+            _watchdogStarted = true;
+
+            try
+            {
+                int myPid = Process.GetCurrentProcess().Id;
+                bool createdHb, createdSd;
+                _watchdogHeartbeatEvent = WatchdogSupervisor.CreateOrOpenEvent(WatchdogSupervisor.GetHeartbeatEventName(myPid), EventResetMode.AutoReset, out createdHb);
+                _watchdogShutdownEvent = WatchdogSupervisor.CreateOrOpenEvent(WatchdogSupervisor.GetShutdownEventName(myPid), EventResetMode.ManualReset, out createdSd);
+
+                string exeDir = AppDomain.CurrentDomain.BaseDirectory;
+                string helperPath = Path.Combine(exeDir, "minifan-helper.exe");
+                if (!File.Exists(helperPath))
+                {
+                    helperPath = Path.Combine(exeDir, "MiniFanControl.exe");
+                }
+
+                if (File.Exists(helperPath))
+                {
+                    string args = string.Format("watchdog --pid {0} --timeout 3500{1}", myPid, _demoMode ? " --demo" : "");
+                    ProcessStartInfo psi = new ProcessStartInfo
+                    {
+                        FileName = helperPath,
+                        Arguments = args,
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        WindowStyle = ProcessWindowStyle.Hidden
+                    };
+                    _watchdogProcess = Process.Start(psi);
+                }
+            }
+            catch { }
+        }
+
+        private void PulseWatchdogHeartbeat()
+        {
+            if (_watchdogHeartbeatEvent != null)
+            {
+                try { _watchdogHeartbeatEvent.Set(); } catch { }
+            }
+        }
+
+        private void StopWatchdogSupervisorGracefully()
+        {
+            try
+            {
+                if (_watchdogShutdownEvent != null)
+                {
+                    _watchdogShutdownEvent.Set();
+                }
+                if (_watchdogProcess != null && !_watchdogProcess.HasExited)
+                {
+                    _watchdogProcess.WaitForExit(1000);
+                }
+            }
+            catch { }
+            finally
+            {
+                if (_watchdogHeartbeatEvent != null) { try { _watchdogHeartbeatEvent.Close(); } catch { } _watchdogHeartbeatEvent = null; }
+                if (_watchdogShutdownEvent != null) { try { _watchdogShutdownEvent.Close(); } catch { } _watchdogShutdownEvent = null; }
+                if (_watchdogProcess != null) { try { _watchdogProcess.Dispose(); } catch { } _watchdogProcess = null; }
+            }
         }
 
         private void UpdateGlobalHotkeysRegistration()
@@ -9646,6 +9932,8 @@ namespace MiniFanControl
                     }
                 }
 
+                PulseWatchdogHeartbeat();
+
                 int waitMs = _refreshIntervalMs;
                 if (DateTime.UtcNow < _rampUntil) waitMs = Math.Min(waitMs, 250);
                 _hwWakeEvent.WaitOne(waitMs);
@@ -10161,6 +10449,9 @@ namespace MiniFanControl
         private void OnFormClosing(object sender, FormClosingEventArgs e)
         {
             SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+            if (_sessionEndingHandler != null) { SystemEvents.SessionEnding -= _sessionEndingHandler; _sessionEndingHandler = null; }
+            if (_powerModeChangedHandler != null) { SystemEvents.PowerModeChanged -= _powerModeChangedHandler; _powerModeChangedHandler = null; }
+            StopWatchdogSupervisorGracefully();
             _hwThreadRunning = false;
             _hwWakeEvent.Set();
             if (_hwThread != null && _hwThread.IsAlive)
@@ -10516,6 +10807,49 @@ namespace MiniFanControl
                 "Safe Fail-Closed Hardware Probe Validation (No Blind PortIO Fallback)",
                 "Unverified backend did not report Unknown / Safe Read-Only");
 
+            // 18. Hardware Watchdog Supervisor Lifecycle (Clean Exit, Heartbeat Hang & Crash Failsafe)
+            bool testHbCreated, testSdCreated;
+            int currentPid = Process.GetCurrentProcess().Id;
+            string hbName = "MiniFanControl_TestHb_" + currentPid;
+            string sdName = "MiniFanControl_TestSd_" + currentPid;
+            using (EventWaitHandle hb = WatchdogSupervisor.CreateOrOpenEvent(hbName, EventResetMode.AutoReset, out testHbCreated))
+            using (EventWaitHandle sd = WatchdogSupervisor.CreateOrOpenEvent(sdName, EventResetMode.ManualReset, out testSdCreated))
+            {
+                // A: Test Clean Shutdown signal detection
+                sd.Set();
+                int resClean = WatchdogSupervisor.RunSimulated(currentPid, 300, hb, sd, true);
+                sd.Reset();
+
+                // B: Test Heartbeat Timeout detection (no heartbeat sent -> timeout triggers failsafe)
+                int resTimeout = WatchdogSupervisor.RunSimulated(currentPid, 120, hb, sd, false);
+
+                // C: Test Heartbeat Sustained (simulate 2 pulses then clean shutdown)
+                Thread pulseThread = new Thread(() =>
+                {
+                    Thread.Sleep(30);
+                    hb.Set();
+                    Thread.Sleep(30);
+                    hb.Set();
+                    Thread.Sleep(30);
+                    sd.Set();
+                });
+                pulseThread.IsBackground = true;
+                pulseThread.Start();
+                int resSustained = WatchdogSupervisor.RunSimulated(currentPid, 200, hb, sd, false);
+                pulseThread.Join(500);
+
+                // D: Test Unexpected Exit detection (simulated crash / kill)
+                Process dummy = Process.Start(new ProcessStartInfo("cmd.exe", "/c exit 0") { CreateNoWindow = true, UseShellExecute = false });
+                dummy.WaitForExit(1000);
+                sd.Reset();
+                int resCrash = WatchdogSupervisor.ExecuteLoop(dummy, dummy.Id, 500, hb, sd, true, true);
+                dummy.Dispose();
+
+                Check(testHbCreated && testSdCreated && resClean == 0 && resTimeout == 3 && resSustained == 0 && resCrash == 2,
+                    "Hardware Watchdog Supervisor Lifecycle (Clean Exit, Heartbeat Hang & Crash Failsafe)",
+                    string.Format("Clean={0}, Timeout={1}, Sustained={2}, Crash={3}", resClean, resTimeout, resSustained, resCrash));
+            }
+
             Console.WriteLine("----------------------------------------------------------------------");
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));
             Console.WriteLine("======================================================================");
@@ -10564,6 +10898,28 @@ namespace MiniFanControl
                 if (cmd == "test" || cmd == "--test")
                 {
                     return SelfTestSuite.RunAll();
+                }
+                if (cmd == "watchdog")
+                {
+                    int pid = 0;
+                    int timeoutMs = WatchdogSupervisor.DEFAULT_TIMEOUT_MS;
+                    for (int i = 0; i < args.Length; i++)
+                    {
+                        if (args[i] == "--pid" && i + 1 < args.Length)
+                        {
+                            int.TryParse(args[i + 1], out pid);
+                        }
+                        else if (args[i] == "--timeout" && i + 1 < args.Length)
+                        {
+                            int.TryParse(args[i + 1], out timeoutMs);
+                        }
+                    }
+                    if (pid <= 0)
+                    {
+                        Console.Error.WriteLine("Error: --pid <parentPid> is required for watchdog mode.");
+                        return 1;
+                    }
+                    return WatchdogSupervisor.Run(pid, timeoutMs, demoMode);
                 }
                 if (cmd == "gen-icon" || cmd == "--gen-icon")
                 {
@@ -10706,6 +11062,32 @@ namespace MiniFanControl
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (s, e) =>
+            {
+                try
+                {
+                    using (HardwareBackend hw = new HardwareBackend())
+                    {
+                        hw.SetAuto();
+                    }
+                }
+                catch { }
+                MessageBox.Show(
+                    "An unexpected error occurred in MiniFanControl. Fans have been restored to BIOS Auto for hardware safety.\n\n" + e.Exception.Message,
+                    "MiniFanControl - Safety Alert", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            };
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                try
+                {
+                    using (HardwareBackend hw = new HardwareBackend())
+                    {
+                        hw.SetAuto();
+                    }
+                }
+                catch { }
+            };
             Application.Run(new MainForm(demoMode, startMinimized));
             return 0;
         }
