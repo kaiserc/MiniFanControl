@@ -6,6 +6,7 @@ set "CSC=%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if not exist "%CSC%" (
     echo [ERROR] Built-in .NET C# compiler not found at:
     echo         %CSC%
+    if defined GITHUB_STEP_SUMMARY echo [ERROR] Built-in .NET C# compiler not found at: %CSC% >> "%GITHUB_STEP_SUMMARY%"
     if "%CI%"=="" pause
     exit /b 1
 )
@@ -25,9 +26,17 @@ if exist minifan-helper.exe (
     ren minifan-helper.exe "minifan-helper.%RANDOM%%RANDOM%.old.exe" >nul 2>&1
 )
 
-"%CSC%" /nologo /platform:x64 /target:exe /out:minifan-helper.exe /recurse:*.cs
-if errorlevel 1 (
+"%CSC%" /nologo /platform:x64 /target:exe /out:minifan-helper.exe /recurse:*.cs > "%TEMP%\csc_helper.log" 2>&1
+set CSC_ERR=%ERRORLEVEL%
+type "%TEMP%\csc_helper.log"
+if %CSC_ERR% neq 0 (
     echo [ERROR] Failed to compile minifan-helper.exe
+    if defined GITHUB_STEP_SUMMARY (
+        echo ### [ERROR] Failed to compile minifan-helper.exe >> "%GITHUB_STEP_SUMMARY%"
+        echo ``` >> "%GITHUB_STEP_SUMMARY%"
+        type "%TEMP%\csc_helper.log" >> "%GITHUB_STEP_SUMMARY%"
+        echo ``` >> "%GITHUB_STEP_SUMMARY%"
+    )
     if "%CI%"=="" pause
     exit /b 1
 )
@@ -38,12 +47,20 @@ if errorlevel 1 (
 )
 
 if exist app.ico (
-    "%CSC%" /nologo /platform:x64 /target:winexe /win32icon:app.ico /out:MiniFanControl.exe /recurse:*.cs
+    "%CSC%" /nologo /platform:x64 /target:winexe /win32icon:app.ico /out:MiniFanControl.exe /recurse:*.cs > "%TEMP%\csc_gui.log" 2>&1
 ) else (
-    "%CSC%" /nologo /platform:x64 /target:winexe /out:MiniFanControl.exe /recurse:*.cs
+    "%CSC%" /nologo /platform:x64 /target:winexe /out:MiniFanControl.exe /recurse:*.cs > "%TEMP%\csc_gui.log" 2>&1
 )
-if errorlevel 1 (
+set CSC_GUI_ERR=%ERRORLEVEL%
+type "%TEMP%\csc_gui.log"
+if %CSC_GUI_ERR% neq 0 (
     echo [ERROR] Failed to compile MiniFanControl.exe
+    if defined GITHUB_STEP_SUMMARY (
+        echo ### [ERROR] Failed to compile MiniFanControl.exe >> "%GITHUB_STEP_SUMMARY%"
+        echo ``` >> "%GITHUB_STEP_SUMMARY%"
+        type "%TEMP%\csc_gui.log" >> "%GITHUB_STEP_SUMMARY%"
+        echo ``` >> "%GITHUB_STEP_SUMMARY%"
+    )
     if "%CI%"=="" pause
     exit /b 1
 )
@@ -55,9 +72,17 @@ for %%f in (*.old.exe) do (
 
 echo [OK] Build succeeded: MiniFanControl.exe and minifan-helper.exe
 echo.
-"%~dp0minifan-helper.exe" test
-if errorlevel 1 (
+"%~dp0minifan-helper.exe" test > "%TEMP%\tests.log" 2>&1
+set TEST_ERR=%ERRORLEVEL%
+type "%TEMP%\tests.log"
+if %TEST_ERR% neq 0 (
     echo [ERROR] Automated self-tests failed!
+    if defined GITHUB_STEP_SUMMARY (
+        echo ### [ERROR] Automated self-tests failed! >> "%GITHUB_STEP_SUMMARY%"
+        echo ``` >> "%GITHUB_STEP_SUMMARY%"
+        type "%TEMP%\tests.log" >> "%GITHUB_STEP_SUMMARY%"
+        echo ``` >> "%GITHUB_STEP_SUMMARY%"
+    )
     if "%CI%"=="" pause
     exit /b 1
 )
