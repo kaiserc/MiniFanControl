@@ -64,13 +64,21 @@ namespace MiniFanControl
             {
                 try
                 {
+#if NET8_0_OR_GREATER
+                    return EventWaitHandleAcl.OpenExisting(@"Global\" + baseName, rights);
+#else
                     return EventWaitHandle.OpenExisting(@"Global\" + baseName, rights);
+#endif
                 }
                 catch
                 {
                     try
                     {
+#if NET8_0_OR_GREATER
+                        return EventWaitHandleAcl.OpenExisting(@"Local\" + baseName, rights);
+#else
                         return EventWaitHandle.OpenExisting(@"Local\" + baseName, rights);
+#endif
                     }
                     catch { }
                 }
