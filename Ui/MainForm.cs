@@ -1686,52 +1686,54 @@ namespace MiniFanControl
             RefreshStatus();
         }
 
-        private ContextMenu CreateTrayContextMenu()
+        private ContextMenuStrip CreateTrayContextMenu()
         {
-            ContextMenu menu = new ContextMenu();
-            menu.MenuItems.Add("Show Window", (s, e) => RestoreFromTray());
-            menu.MenuItems.Add(
+            ContextMenuStrip menu = new ContextMenuStrip();
+            menu.Items.Add("Show Window", null, (s, e) => RestoreFromTray());
+            menu.Items.Add(
                 _showOverlay ? "Hide CapFrameX OSD Overlay" : "Show CapFrameX OSD Overlay",
+                null,
                 (s, e) =>
                 {
                     if (_showOverlayCb != null) _showOverlayCb.Checked = !_showOverlayCb.Checked;
                     else SetOverlayVisible(!_showOverlay);
                 });
-            menu.MenuItems.Add(
+            menu.Items.Add(
                 _lockOverlay ? "Unlock OSD Overlay (Allow Drag)" : "Lock OSD Overlay (Click-Through)",
+                null,
                 (s, e) =>
                 {
                     if (_lockOverlayCb != null) _lockOverlayCb.Checked = !_lockOverlayCb.Checked;
                     else SetOverlayLocked(!_lockOverlay);
                 });
-            menu.MenuItems.Add("-");
-            menu.MenuItems.Add("Mode: Balanced", (s, e) => ApplyMode(0));
-            menu.MenuItems.Add("Mode: Performance", (s, e) => ApplyMode(1));
-            menu.MenuItems.Add("Mode: Silent", (s, e) => ApplyMode(2));
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("Mode: Balanced", null, (s, e) => ApplyMode(0));
+            menu.Items.Add("Mode: Performance", null, (s, e) => ApplyMode(1));
+            menu.Items.Add("Mode: Silent", null, (s, e) => ApplyMode(2));
             if (_customProfiles.Count > 0)
             {
-                menu.MenuItems.Add("-");
+                menu.Items.Add(new ToolStripSeparator());
                 foreach (FanCurveProfile cp in _customProfiles)
                 {
                     FanCurveProfile captured = cp;
-                    menu.MenuItems.Add("Custom: " + captured.Name, (s, e) => ActivateCustomProfile(captured));
+                    menu.Items.Add("Custom: " + captured.Name, null, (s, e) => ActivateCustomProfile(captured));
                 }
             }
-            menu.MenuItems.Add("-");
-            MenuItem linksItem = new MenuItem("Tools && Drivers");
-            linksItem.MenuItems.Add("Calibrate Fans...", (s, e) => RunGuiFanCalibration());
-            linksItem.MenuItems.Add("Export Hardware && EC Probe Report...", (s, e) => ExportHardwareProbeReport());
-            linksItem.MenuItems.Add("Detected Hardware && Multi-Model Info...", (s, e) => ShowHardwareCompatibilityDialog());
-            linksItem.MenuItems.Add("-");
-            linksItem.MenuItems.Add("GMKtec Official Drivers && Manuals...", (s, e) => OpenUrlSafe(URL_GMKTEC_DRIVERS));
-            linksItem.MenuItems.Add("GMKtec BIOS && Firmware Updates...", (s, e) => OpenUrlSafe(URL_GMKTEC_FIRMWARE));
-            linksItem.MenuItems.Add("AMD Software: Adrenalin && Chipset Drivers...", (s, e) => OpenUrlSafe(URL_AMD_DRIVERS));
-            linksItem.MenuItems.Add("-");
-            linksItem.MenuItems.Add("About MiniFanControl v" + APP_VERSION + "...", (s, e) => ShowAboutDialog());
-            menu.MenuItems.Add(linksItem);
-            menu.MenuItems.Add("-");
-            menu.MenuItems.Add("Reset to Auto", (s, e) => ApplyAutoAll());
-            menu.MenuItems.Add("Exit", (s, e) =>
+            menu.Items.Add(new ToolStripSeparator());
+            ToolStripMenuItem linksItem = new ToolStripMenuItem("Tools && Drivers");
+            linksItem.DropDownItems.Add("Calibrate Fans...", null, (s, e) => RunGuiFanCalibration());
+            linksItem.DropDownItems.Add("Export Hardware && EC Probe Report...", null, (s, e) => ExportHardwareProbeReport());
+            linksItem.DropDownItems.Add("Detected Hardware && Multi-Model Info...", null, (s, e) => ShowHardwareCompatibilityDialog());
+            linksItem.DropDownItems.Add(new ToolStripSeparator());
+            linksItem.DropDownItems.Add("GMKtec Official Drivers && Manuals...", null, (s, e) => OpenUrlSafe(URL_GMKTEC_DRIVERS));
+            linksItem.DropDownItems.Add("GMKtec BIOS && Firmware Updates...", null, (s, e) => OpenUrlSafe(URL_GMKTEC_FIRMWARE));
+            linksItem.DropDownItems.Add("AMD Software: Adrenalin && Chipset Drivers...", null, (s, e) => OpenUrlSafe(URL_AMD_DRIVERS));
+            linksItem.DropDownItems.Add(new ToolStripSeparator());
+            linksItem.DropDownItems.Add("About MiniFanControl v" + APP_VERSION + "...", null, (s, e) => ShowAboutDialog());
+            menu.Items.Add(linksItem);
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("Reset to Auto", null, (s, e) => ApplyAutoAll());
+            menu.Items.Add("Exit", null, (s, e) =>
             {
                 if (_cpuTrayIcon != null) _cpuTrayIcon.Visible = false;
                 if (_gpuTrayIcon != null) _gpuTrayIcon.Visible = false;
@@ -1742,8 +1744,8 @@ namespace MiniFanControl
 
         private void RebuildTrayContextMenus()
         {
-            if (_cpuTrayIcon != null) _cpuTrayIcon.ContextMenu = CreateTrayContextMenu();
-            if (_gpuTrayIcon != null) _gpuTrayIcon.ContextMenu = CreateTrayContextMenu();
+            if (_cpuTrayIcon != null) _cpuTrayIcon.ContextMenuStrip = CreateTrayContextMenu();
+            if (_gpuTrayIcon != null) _gpuTrayIcon.ContextMenuStrip = CreateTrayContextMenu();
         }
 
         private void InitTrayIcons()
@@ -1751,7 +1753,7 @@ namespace MiniFanControl
             _cpuTrayIcon = new NotifyIcon
             {
                 Text = "CPU Temperature - MiniFanControl",
-                ContextMenu = CreateTrayContextMenu(),
+                ContextMenuStrip = CreateTrayContextMenu(),
                 Visible = _showCpuTray
             };
             _cpuTrayIcon.DoubleClick += (s, e) => RestoreFromTray();
@@ -1759,7 +1761,7 @@ namespace MiniFanControl
             _gpuTrayIcon = new NotifyIcon
             {
                 Text = "iGPU Temperature - MiniFanControl",
-                ContextMenu = CreateTrayContextMenu(),
+                ContextMenuStrip = CreateTrayContextMenu(),
                 Visible = _showGpuTray
             };
             _gpuTrayIcon.DoubleClick += (s, e) => RestoreFromTray();

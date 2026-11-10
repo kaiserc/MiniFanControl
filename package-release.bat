@@ -16,7 +16,7 @@ echo [1/5] Building binaries and running automated self-tests...
 call "%~dp0build-windows.bat"
 if errorlevel 1 (
     echo [ERROR] Build or test verification failed. Aborting release package.
-    pause
+    if "%CI%"=="" pause
     exit /b 1
 )
 
@@ -46,7 +46,7 @@ echo [3/5] Generating portable release archive .zip...
 powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; Compress-Archive -Path '%STAGE_DIR%\*' -DestinationPath '%ZIP_PATH%' -Force"
 if errorlevel 1 (
     echo [ERROR] Failed to create release zip archive.
-    pause
+    if "%CI%"=="" pause
     exit /b 1
 )
 echo [OK] Created: %ZIP_PATH%

@@ -88,12 +88,31 @@ namespace MiniFanControl
                 SecurityIdentifier everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
                 sec.AddAccessRule(new MutexAccessRule(everyone, MutexRights.Synchronize | MutexRights.Modify, AccessControlType.Allow));
                 bool createdNew;
+#if NET8_0_OR_GREATER
+                return MutexAcl.Create(false, name, out createdNew, sec);
+#else
                 return new Mutex(false, name, out createdNew, sec);
+#endif
             }
             catch
             {
                 try { return Mutex.OpenExisting(name); }
-                catch { return null; }
+                catch
+                {
+                    try
+                    {
+                        // Fallback to Local\ namespace if Global\ creation is denied (e.g. non-elevated CI runner)
+                        string localName = name.StartsWith(@"Global\", StringComparison.OrdinalIgnoreCase)
+                            ? @"Local\" + name.Substring(7)
+                            : name;
+                        bool createdNew;
+                        return new Mutex(false, localName, out createdNew);
+                    }
+                    catch
+                    {
+                        return null;
+                    }
+                }
             }
         }
 

@@ -17,6 +17,7 @@
     <FileVersion>2.7.0.0</FileVersion>
     <Authors>Christian Kaiser</Authors>
     <Description>MiniFanControl - Hardware and EC Fan Control Utility for AMD Ryzen Mini PCs</Description>
+    <NoWarn>$(NoWarn);WFDEV006;CS0618</NoWarn>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">

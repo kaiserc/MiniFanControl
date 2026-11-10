@@ -54,7 +54,11 @@ namespace MiniFanControl
 
                 SecurityIdentifier systemSid = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
                 sec.AddAccessRule(new EventWaitHandleAccessRule(systemSid, EventWaitHandleRights.FullControl, AccessControlType.Allow));
+                #if NET8_0_OR_GREATER
+                return EventWaitHandleAcl.Create(false, mode, @"Global\" + baseName, out createdNew, sec);
+#else
                 return new EventWaitHandle(false, mode, @"Global\" + baseName, out createdNew, sec);
+#endif
             }
             catch
             {
@@ -69,12 +73,23 @@ namespace MiniFanControl
                     }
                     SecurityIdentifier adminSid = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
                     secLocal.AddAccessRule(new EventWaitHandleAccessRule(adminSid, EventWaitHandleRights.FullControl, AccessControlType.Allow));
+                    #if NET8_0_OR_GREATER
+                    return EventWaitHandleAcl.Create(false, mode, @"Local\" + baseName, out createdNew, secLocal);
+#else
                     return new EventWaitHandle(false, mode, @"Local\" + baseName, out createdNew, secLocal);
+#endif
                 }
                 catch
                 {
-                    // Fail-closed: do NOT return an unnamed event that cannot be signaled across processes
-                    return null;
+                    try
+                    {
+                        return new EventWaitHandle(false, mode, @"Local\" + baseName, out createdNew);
+                    }
+                    catch
+                    {
+                        // Fail-closed: do NOT return an unnamed event that cannot be signaled across processes
+                        return null;
+                    }
                 }
             }
         }

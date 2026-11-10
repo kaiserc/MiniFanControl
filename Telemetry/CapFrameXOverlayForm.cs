@@ -141,7 +141,7 @@ namespace MiniFanControl
 
             UpdateFontsForScale();
             UpdateDimensions();
-            ContextMenu = BuildOverlayMenu();
+            ContextMenuStrip = BuildOverlayMenu();
         }
 
         protected override CreateParams CreateParams
@@ -171,49 +171,49 @@ namespace MiniFanControl
             catch { }
         }
 
-        private ContextMenu BuildOverlayMenu()
+        private ContextMenuStrip BuildOverlayMenu()
         {
-            ContextMenu menu = new ContextMenu();
-            menu.MenuItems.Add("Configure OSD Overlay Studio...", (s, e) =>
+            ContextMenuStrip menu = new ContextMenuStrip();
+            menu.Items.Add("Configure OSD Overlay Studio...", null, (s, e) =>
             {
                 if (RequestOpenOsdConfig != null) RequestOpenOsdConfig(this, EventArgs.Empty);
             });
-            menu.MenuItems.Add("-");
+            menu.Items.Add(new ToolStripSeparator());
 
-            MenuItem scaleMenu = new MenuItem("OSD Scale & Size");
-            scaleMenu.MenuItems.Add("100% Standard", (s, e) => SetScaleTierFromMenu(0));
-            scaleMenu.MenuItems.Add("125% Large", (s, e) => SetScaleTierFromMenu(1));
-            scaleMenu.MenuItems.Add("150% Extra Large", (s, e) => SetScaleTierFromMenu(2));
-            scaleMenu.MenuItems.Add("185% Jumbo (4K / TV)", (s, e) => SetScaleTierFromMenu(3));
-            menu.MenuItems.Add(scaleMenu);
+            ToolStripMenuItem scaleMenu = new ToolStripMenuItem("OSD Scale & Size");
+            scaleMenu.DropDownItems.Add("100% Standard", null, (s, e) => SetScaleTierFromMenu(0));
+            scaleMenu.DropDownItems.Add("125% Large", null, (s, e) => SetScaleTierFromMenu(1));
+            scaleMenu.DropDownItems.Add("150% Extra Large", null, (s, e) => SetScaleTierFromMenu(2));
+            scaleMenu.DropDownItems.Add("185% Jumbo (4K / TV)", null, (s, e) => SetScaleTierFromMenu(3));
+            menu.Items.Add(scaleMenu);
 
-            MenuItem graphMenu = new MenuItem("OSD Live Graphs");
-            graphMenu.MenuItems.Add("Both (Mini Sparklines + Combined Graph)", (s, e) => SetGraphModeFromMenu(3));
-            graphMenu.MenuItems.Add("Combined Live Graph Only", (s, e) => SetGraphModeFromMenu(2));
-            graphMenu.MenuItems.Add("Mini Sparklines per Metric Only", (s, e) => SetGraphModeFromMenu(1));
-            graphMenu.MenuItems.Add("Text Only (No Graphs)", (s, e) => SetGraphModeFromMenu(0));
-            graphMenu.MenuItems.Add("-");
-            MenuItem heightMenu = new MenuItem("Graph Height");
-            heightMenu.MenuItems.Add("45px Compact", (s, e) => SetGraphHeightFromMenu(45));
-            heightMenu.MenuItems.Add("65px Medium", (s, e) => SetGraphHeightFromMenu(65));
-            heightMenu.MenuItems.Add("95px Large", (s, e) => SetGraphHeightFromMenu(95));
-            heightMenu.MenuItems.Add("130px Extra Large", (s, e) => SetGraphHeightFromMenu(130));
-            graphMenu.MenuItems.Add(heightMenu);
-            menu.MenuItems.Add(graphMenu);
+            ToolStripMenuItem graphMenu = new ToolStripMenuItem("OSD Live Graphs");
+            graphMenu.DropDownItems.Add("Both (Mini Sparklines + Combined Graph)", null, (s, e) => SetGraphModeFromMenu(3));
+            graphMenu.DropDownItems.Add("Combined Live Graph Only", null, (s, e) => SetGraphModeFromMenu(2));
+            graphMenu.DropDownItems.Add("Mini Sparklines per Metric Only", null, (s, e) => SetGraphModeFromMenu(1));
+            graphMenu.DropDownItems.Add("Text Only (No Graphs)", null, (s, e) => SetGraphModeFromMenu(0));
+            graphMenu.DropDownItems.Add(new ToolStripSeparator());
+            ToolStripMenuItem heightMenu = new ToolStripMenuItem("Graph Height");
+            heightMenu.DropDownItems.Add("45px Compact", null, (s, e) => SetGraphHeightFromMenu(45));
+            heightMenu.DropDownItems.Add("65px Medium", null, (s, e) => SetGraphHeightFromMenu(65));
+            heightMenu.DropDownItems.Add("95px Large", null, (s, e) => SetGraphHeightFromMenu(95));
+            heightMenu.DropDownItems.Add("130px Extra Large", null, (s, e) => SetGraphHeightFromMenu(130));
+            graphMenu.DropDownItems.Add(heightMenu);
+            menu.Items.Add(graphMenu);
 
-            menu.MenuItems.Add("Switch Layout (Horizontal Bar / Vertical Stack)", (s, e) =>
+            menu.Items.Add("Switch Layout (Horizontal Bar / Vertical Stack)", null, (s, e) =>
             {
                 VerticalLayout = !VerticalLayout;
                 UpdateDimensions();
                 Invalidate();
                 if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
             });
-            menu.MenuItems.Add("Lock OSD (Click-Through Mode)", (s, e) =>
+            menu.Items.Add("Lock OSD (Click-Through Mode)", null, (s, e) =>
             {
                 if (RequestToggleLock != null) RequestToggleLock(this, EventArgs.Empty);
             });
-            menu.MenuItems.Add("-");
-            menu.MenuItems.Add("Hide OSD Overlay", (s, e) =>
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("Hide OSD Overlay", null, (s, e) =>
             {
                 if (RequestHideOverlay != null) RequestHideOverlay(this, EventArgs.Empty);
             });

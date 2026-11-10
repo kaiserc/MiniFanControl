@@ -6,7 +6,7 @@ set "CSC=%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if not exist "%CSC%" (
     echo [ERROR] Built-in .NET C# compiler not found at:
     echo         %CSC%
-    pause
+    if "%CI%"=="" pause
     exit /b 1
 )
 
@@ -28,7 +28,7 @@ if exist minifan-helper.exe (
 "%CSC%" /nologo /platform:x64 /target:exe /out:minifan-helper.exe /recurse:*.cs
 if errorlevel 1 (
     echo [ERROR] Failed to compile minifan-helper.exe
-    pause
+    if "%CI%"=="" pause
     exit /b 1
 )
 
@@ -44,7 +44,7 @@ if exist app.ico (
 )
 if errorlevel 1 (
     echo [ERROR] Failed to compile MiniFanControl.exe
-    pause
+    if "%CI%"=="" pause
     exit /b 1
 )
 
@@ -58,6 +58,6 @@ echo.
 "%~dp0minifan-helper.exe" test
 if errorlevel 1 (
     echo [ERROR] Automated self-tests failed!
-    pause
+    if "%CI%"=="" pause
     exit /b 1
 )
