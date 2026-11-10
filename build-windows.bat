@@ -30,9 +30,8 @@ set CSC_ERR=%ERRORLEVEL%
 type "%TEMP%\csc_helper.log"
 if %CSC_ERR% neq 0 (
     echo [ERROR] Failed to compile minifan-helper.exe
-    echo ::error title=CSC Helper Error::minifan-helper.exe compilation failed
-    for /f "delims=" %%L in ('type "%TEMP%\csc_helper.log"') do (
-        echo ::error file=minifan-helper.exe::%%L
+    for /f "delims=" %%L in ('type "%TEMP%\csc_helper.log" ^| findstr /C:"error CS"') do (
+        echo ::error file=minifan-helper.cs::%%L
     )
     if "%CI%"=="" pause
     exit /b 1
@@ -52,9 +51,8 @@ set CSC_GUI_ERR=%ERRORLEVEL%
 type "%TEMP%\csc_gui.log"
 if %CSC_GUI_ERR% neq 0 (
     echo [ERROR] Failed to compile MiniFanControl.exe
-    echo ::error title=CSC GUI Error::MiniFanControl.exe compilation failed
-    for /f "delims=" %%L in ('type "%TEMP%\csc_gui.log"') do (
-        echo ::error file=MiniFanControl.exe::%%L
+    for /f "delims=" %%L in ('type "%TEMP%\csc_gui.log" ^| findstr /C:"error CS"') do (
+        echo ::error file=MiniFanControl.cs::%%L
     )
     if "%CI%"=="" pause
     exit /b 1
@@ -72,8 +70,7 @@ set TEST_ERR=%ERRORLEVEL%
 type "%TEMP%\tests.log"
 if %TEST_ERR% neq 0 (
     echo [ERROR] Automated self-tests failed!
-    echo ::error title=SelfTest Failure::Automated test suite exited with error code %TEST_ERR%
-    for /f "delims=" %%L in ('type "%TEMP%\tests.log"') do (
+    for /f "delims=" %%L in ('type "%TEMP%\tests.log" ^| findstr /C:"[FAIL]" /C:"failed" /C:"Result:" /C:"Exception" /C:"Error"') do (
         echo ::error file=Tests/SelfTestSuite.cs::%%L
     )
     if "%CI%"=="" pause
