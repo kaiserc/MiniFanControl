@@ -534,3 +534,24 @@ yzen-hx370-ec, dreamer-ariesbox10, generic-it5570e, and unknown-safe), testing 
 - **RAM Power Telemetry Analysis & JEDEC Power Modeling**:
   - In consumer Mini PCs and laptops, DDR5 SO-DIMM power is supplied via motherboard 5V rails to on-DIMM PMICs without public Win32 shunt sensors, and AMD client APUs do not expose a raw DRAM RAPL domain.
   - Integrated JEDEC DDR5 dynamic load modeling (~1.3W idle per module, ~3.5W–5.0W active) alongside live AMD ADL2 `PMLOG_SOC_POWER` memory controller & Infinity Fabric power tracking in the RAM tooltip.
+
+---
+
+### ⚡ Phase 12.2: 7-Metric Dashboard Grid, Dedicated RAM Power Box, Symmetrical Wide UI & Realigned OSD
+
+- **7-Metric Symmetrical Dashboard Grid**:
+  - Re-laid out top dashboard with 7 distinct 110px metric boxes: `CPU` -> `iGPU` -> `NVMe` -> `PWR` (APU) -> `RAM` (RAM Power) -> `APU FAN` -> `SYS FAN`.
+  - Widened the application window (`ClientSize.Width = 870px`) providing generous breathing room for long RPM and status text strings (e.g. `2518 RPM •` and `APU • MAX 2626`), eliminating text truncation/clipping.
+  - Dedicated **RAM Power Metric Box** (`_ramPowerBox`):
+    - Real-time estimated DDR5/LPDDR5 memory wattage readout (`~{power}W`, e.g. `~3.8W`).
+    - Peak session tracking (`RAM • MAX {peak}W`).
+    - Dedicated 120-sample rolling sparkline history rendered in periwinkle indigo (`#818CF8`).
+    - Interactive graph spotlighting (Metric 7), highlighting RAM Power on the large Combined Live Telemetry Graph with dedicated auto-scaling.
+    - Right-click resets session peaks across all 7 telemetry metrics.
+    - Rich hover tooltip with live Min/Avg/Peak session tracking, 90-second trend sparkline, SO-DIMM count, and AMD VDD_SOC memory controller fabric power.
+- **CapFrameX OSD Reordering**:
+  - Re-aligned OSD metric order to follow the new dashboard layout: `CPU` -> `iGPU` -> `NVMe` -> `Power` -> `RAM` -> `GPU Load` -> `APU Fan` -> `Sys Fan` -> `Mode`.
+  - Added live RAM estimated wattage readout (`~{power}W`), peak tracking (`▲{peak}W`), and dedicated sparkline directly in both Horizontal and Vertical OSD layouts.
+- **Telemetry & CSV Logging**:
+  - Expanded `Core/TelemetrySessionStats.cs` CSV export schema to include `RAM_Power_W` at the end while preserving full backward compatibility with existing parsers.
+  - Test 38 updated to verify both NVMe and RAM power tracking, session min/max/avg statistics, and sparkline generation.

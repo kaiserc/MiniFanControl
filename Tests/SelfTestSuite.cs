@@ -840,7 +840,7 @@ namespace MiniFanControl
             {
                 string[] csvLines = File.ReadAllLines(tempCsvPath);
                 csvValid = csvLines.Length == 3 &&
-                           csvLines[0].Trim() == "Timestamp,CPU_Temp_C,iGPU_Temp_C,APU_Power_W,Fan1_RPM,Fan2_RPM,Fan1_PWM_Pct,Fan2_PWM_Pct,Mode,iGPU_Load_Pct,FPS,NVMe_Temp_C,RAM_Used_GB,RAM_Load_Pct" &&
+                           csvLines[0].Trim() == "Timestamp,CPU_Temp_C,iGPU_Temp_C,APU_Power_W,Fan1_RPM,Fan2_RPM,Fan1_PWM_Pct,Fan2_PWM_Pct,Mode,iGPU_Load_Pct,FPS,NVMe_Temp_C,RAM_Used_GB,RAM_Load_Pct,RAM_Power_W" &&
                            csvLines[1].Contains("42,38,18,1450,1100,35,30,\"Balanced\",12,60,35,16.5,52") &&
                            csvLines[2].Contains("55,45,28,2100,1400,50,40,\"Performance\",85,120,41,18.2,57");
                 try { File.Delete(tempCsvPath); } catch { }
@@ -1419,15 +1419,25 @@ namespace MiniFanControl
             string nvmeSpark = testStatsNvme.GetNvmeSparkline();
             bool nvmeSparkValid = !string.IsNullOrEmpty(nvmeSpark) && nvmeSpark.Length == 3;
 
+            bool ramStatsValid = testStatsNvme.MaxRamPowerWatts > 0 &&
+                                 testStatsNvme.MinRamPowerWatts <= testStatsNvme.MaxRamPowerWatts &&
+                                 testStatsNvme.AvgRamPowerWatts > 0 &&
+                                 testStatsNvme.RamPowerHistory != null &&
+                                 testStatsNvme.RamPowerHistory.Count == 3;
+            string ramSpark = testStatsNvme.GetRamPowerSparkline();
+            bool ramSparkValid = !string.IsNullOrEmpty(ramSpark) && ramSpark.Length == 3;
+
             testStatsNvme.Reset();
             bool nvmeResetValid = testStatsNvme.MinNvmeTemp == int.MaxValue &&
                                   testStatsNvme.MaxNvmeTemp == 0 &&
-                                  testStatsNvme.NvmeHistory.Count == 0;
+                                  testStatsNvme.NvmeHistory.Count == 0 &&
+                                  testStatsNvme.MaxRamPowerWatts == 0.0 &&
+                                  testStatsNvme.RamPowerHistory.Count == 0;
 
-            Check(nvmeStatsValid && nvmeSparkValid && nvmeResetValid,
-                "Session Telemetry NVMe Tracking & Sparkline Generation",
-                string.Format("StatsOk={0} (Min={1}, Max={2}, Avg={3:F1}), SparkOk={4} ('{5}'), ResetOk={6}",
-                    nvmeStatsValid, 36, 42, 39.0, nvmeSparkValid, nvmeSpark, nvmeResetValid));
+            Check(nvmeStatsValid && nvmeSparkValid && ramStatsValid && ramSparkValid && nvmeResetValid,
+                "Session Telemetry NVMe & RAM Power Tracking & Sparklines",
+                string.Format("NvmeOk={0}, RamOk={1} (Max={2:F1}W, Avg={3:F1}W), SparksOk=({4},{5}), ResetOk={6}",
+                    nvmeStatsValid, ramStatsValid, testStatsNvme.MaxRamPowerWatts, testStatsNvme.AvgRamPowerWatts, nvmeSparkValid, ramSparkValid, nvmeResetValid));
 
             Console.WriteLine("----------------------------------------------------------------------");
 

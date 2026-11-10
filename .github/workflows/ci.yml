@@ -30,7 +30,7 @@ jobs:
           dotnet build MiniFanControl.csproj -c Release -f net10.0-windows
 
   standalone-build-and-test:
-    name: Standalone .NET 4.8 CSC Build & 36 Automated Self-Tests
+    name: Standalone .NET 4.8 CSC Build & 38 Automated Self-Tests
     runs-on: windows-latest
     steps:
       - name: Checkout Code

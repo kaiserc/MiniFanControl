@@ -37,6 +37,7 @@ namespace MiniFanControl
         public bool ShowGpu = true;
         public bool ShowNvme = true;
         public bool ShowPower = true;
+        public bool ShowRamPower = true;
         public bool ShowApuRpm = true;
         public bool ShowSysRpm = true;
         public bool AutoScale = true;
@@ -46,7 +47,7 @@ namespace MiniFanControl
 
         private int _hoverSampleIdx = -1;
         private int _hoverMouseX = -1;
-        private readonly Rectangle[] _pillRects = new Rectangle[8];
+        private readonly Rectangle[] _pillRects = new Rectangle[9];
 
         private static readonly Font AxisFont = new Font("Segoe UI", 7.0f, FontStyle.Regular);
         private static readonly Font PillFontBold = new Font("Segoe UI", 7.25f, FontStyle.Bold);
@@ -150,18 +151,24 @@ namespace MiniFanControl
                     }
                     else if (i == 4)
                     {
+                        if (HighlightMetric == 7) ShowRamPower = !ShowRamPower;
+                        else { HighlightMetric = 7; ShowRamPower = true; }
+                        if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                    }
+                    else if (i == 5)
+                    {
                         if (HighlightMetric == 4) ShowApuRpm = !ShowApuRpm;
                         else { HighlightMetric = 4; ShowApuRpm = true; }
                         if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
                     }
-                    else if (i == 5)
+                    else if (i == 6)
                     {
                         if (HighlightMetric == 5) ShowSysRpm = !ShowSysRpm;
                         else { HighlightMetric = 5; ShowSysRpm = true; }
                         if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
                     }
-                    else if (i == 6) AutoScale = !AutoScale;
-                    else if (i == 7)
+                    else if (i == 7) AutoScale = !AutoScale;
+                    else if (i == 8)
                     {
                         if (ResetPeaksRequested != null) ResetPeaksRequested(this, EventArgs.Empty);
                     }
@@ -171,13 +178,13 @@ namespace MiniFanControl
             }
         }
 
-        private static PointF[] BuildSeriesPoints(List<int> list, int count, Rectangle plot, float scaleMin, float scaleMax)
+        private static PointF[] BuildSeriesPoints(List<int> list, int count, Rectangle plot, float scaleMin, float scaleMax, float multiplier = 1.0f)
         {
             PointF[] pts = new PointF[Math.Max(2, count)];
             float span = Math.Max(1f, scaleMax - scaleMin);
             if (count == 1)
             {
-                float norm = (list[0] - scaleMin) / span;
+                float norm = (list[0] * multiplier - scaleMin) / span;
                 norm = Math.Max(0f, Math.Min(1f, norm));
                 float y = plot.Bottom - norm * plot.Height;
                 pts[0] = new PointF(plot.Left, y);
@@ -189,7 +196,7 @@ namespace MiniFanControl
                 {
                     float x = plot.Left + (plot.Width * i) / (float)(count - 1);
                     int v = i < list.Count ? list[i] : list[list.Count - 1];
-                    float norm = (v - scaleMin) / span;
+                    float norm = (v * multiplier - scaleMin) / span;
                     norm = Math.Max(0f, Math.Min(1f, norm));
                     float y = plot.Bottom - norm * plot.Height;
                     pts[i] = new PointF(x, y);
@@ -297,6 +304,7 @@ namespace MiniFanControl
             Color pwrColor = IsRadeonTheme
                 ? Color.FromArgb(0xFB, 0x92, 0x3C)
                 : (IsDarkMode ? Color.FromArgb(0xFB, 0xBF, 0x24) : Color.FromArgb(0xD9, 0x77, 0x06));
+            Color ramPwrColor = IsDarkMode ? Color.FromArgb(0x81, 0x8C, 0xF8) : Color.FromArgb(0x4F, 0x46, 0xE5);
             Color apuRpmColor = IsDarkMode ? Color.FromArgb(0xC0, 0x84, 0xFC) : Color.FromArgb(0x7C, 0x3A, 0xED);
             Color sysRpmColor = IsDarkMode ? Color.FromArgb(0x2D, 0xD4, 0xBF) : Color.FromArgb(0x0D, 0x94, 0x88);
 
@@ -308,6 +316,7 @@ namespace MiniFanControl
             int lastGpu = (Stats != null && Stats.GpuHistory.Count > 0) ? Stats.GpuHistory[Stats.GpuHistory.Count - 1] : 0;
             int lastNvme = (Stats != null && Stats.NvmeHistory.Count > 0) ? Stats.NvmeHistory[Stats.NvmeHistory.Count - 1] : 0;
             int lastPwr = (Stats != null && Stats.PowerHistory.Count > 0) ? Stats.PowerHistory[Stats.PowerHistory.Count - 1] : 0;
+            double lastRamPwr = (Stats != null && Stats.RamPowerHistory.Count > 0) ? Stats.RamPowerHistory[Stats.RamPowerHistory.Count - 1] / 10.0 : 0.0;
             int lastF1  = (Stats != null && Stats.Fan1RpmHistory.Count > 0) ? Stats.Fan1RpmHistory[Stats.Fan1RpmHistory.Count - 1] : 0;
             int lastF2  = (Stats != null && Stats.Fan2RpmHistory.Count > 0) ? Stats.Fan2RpmHistory[Stats.Fan2RpmHistory.Count - 1] : 0;
 
@@ -319,13 +328,14 @@ namespace MiniFanControl
             px = DrawLegendPill(g, 1, px, 5, string.Format("● iGPU {0}°C", lastGpu), gpuColor, ShowGpu, HighlightMetric == 2);
             px = DrawLegendPill(g, 2, px, 5, string.Format("● NVMe {0}°C", lastNvme), nvmeColor, ShowNvme, HighlightMetric == 6);
             px = DrawLegendPill(g, 3, px, 5, string.Format("● Pwr {0}W", lastPwr), pwrColor, ShowPower, HighlightMetric == 3);
-            px = DrawLegendPill(g, 4, px, 5, string.Format("● APU {0}", lastF1), apuRpmColor, ShowApuRpm, HighlightMetric == 4);
+            px = DrawLegendPill(g, 4, px, 5, string.Format("● RAM {0:0.0}W", lastRamPwr), ramPwrColor, ShowRamPower, HighlightMetric == 7);
+            px = DrawLegendPill(g, 5, px, 5, string.Format("● APU {0}", lastF1), apuRpmColor, ShowApuRpm, HighlightMetric == 4);
             if (HasDualFans)
             {
-                px = DrawLegendPill(g, 5, px, 5, string.Format("● Sys {0}", lastF2), sysRpmColor, ShowSysRpm, HighlightMetric == 5);
+                px = DrawLegendPill(g, 6, px, 5, string.Format("● Sys {0}", lastF2), sysRpmColor, ShowSysRpm, HighlightMetric == 5);
             }
-            px = DrawLegendPill(g, 6, Width - 110, 5, AutoScale ? "Auto-Zoom" : "0–100", labelColor, true, AutoScale);
-            DrawLegendPill(g, 7, Width - 48, 5, "Reset", labelColor, true, false);
+            px = DrawLegendPill(g, 7, Width - 110, 5, AutoScale ? "Auto-Zoom" : "0–100", labelColor, true, AutoScale);
+            DrawLegendPill(g, 8, Width - 48, 5, "Reset", labelColor, true, false);
 
             // Compute Left Axis (Temp °C / Power W) & Right Axis (Fan RPM) scales
             float leftMin = 0f, leftMax = 100f;
@@ -357,6 +367,12 @@ namespace MiniFanControl
                     if (ShowPower && i < Stats.PowerHistory.Count && Stats.PowerHistory[i] > 0)
                     {
                         int v = Stats.PowerHistory[i];
+                        if (v < lo) lo = v;
+                        if (v > hi) hi = v;
+                    }
+                    if (ShowRamPower && i < Stats.RamPowerHistory.Count && Stats.RamPowerHistory[i] > 0)
+                    {
+                        int v = (int)Math.Round(Stats.RamPowerHistory[i] / 10.0);
                         if (v < lo) lo = v;
                         if (v > hi) hi = v;
                     }
@@ -441,6 +457,7 @@ namespace MiniFanControl
                 PointF[] gpuPts = ShowGpu ? BuildSeriesPoints(Stats.GpuHistory, count, plot, leftMin, leftMax) : null;
                 PointF[] nvmePts = (ShowNvme && Stats != null && Stats.NvmeHistory.Count > 0) ? BuildSeriesPoints(Stats.NvmeHistory, count, plot, leftMin, leftMax) : null;
                 PointF[] pwrPts = ShowPower ? BuildSeriesPoints(Stats.PowerHistory, count, plot, leftMin, leftMax) : null;
+                PointF[] ramPts = (ShowRamPower && Stats != null && Stats.RamPowerHistory.Count > 0) ? BuildSeriesPoints(Stats.RamPowerHistory, count, plot, leftMin, leftMax, 0.1f) : null;
                 PointF[] f1Pts  = ShowApuRpm ? BuildSeriesPoints(Stats.Fan1RpmHistory, count, plot, rpmMin, rpmMax) : null;
                 PointF[] f2Pts  = (HasDualFans && ShowSysRpm) ? BuildSeriesPoints(Stats.Fan2RpmHistory, count, plot, rpmMin, rpmMax) : null;
 
@@ -449,6 +466,7 @@ namespace MiniFanControl
                 // Draw non-highlighted series first, then the highlighted spotlight series on top
                 if (f2Pts != null && hl != 5) DrawSeriesLine(g, f2Pts, plot, sysRpmColor, false, true);
                 if (f1Pts != null && hl != 4) DrawSeriesLine(g, f1Pts, plot, apuRpmColor, false, true);
+                if (ramPts != null && hl != 7) DrawSeriesLine(g, ramPts, plot, ramPwrColor, false, false);
                 if (pwrPts != null && hl != 3) DrawSeriesLine(g, pwrPts, plot, pwrColor, false, false);
                 if (nvmePts != null && hl != 6) DrawSeriesLine(g, nvmePts, plot, nvmeColor, false, false);
                 if (gpuPts != null && hl != 2) DrawSeriesLine(g, gpuPts, plot, gpuColor, false, false);
@@ -458,6 +476,7 @@ namespace MiniFanControl
                 else if (hl == 2 && gpuPts != null) DrawSeriesLine(g, gpuPts, plot, gpuColor, true, false);
                 else if (hl == 6 && nvmePts != null) DrawSeriesLine(g, nvmePts, plot, nvmeColor, true, false);
                 else if (hl == 3 && pwrPts != null) DrawSeriesLine(g, pwrPts, plot, pwrColor, true, false);
+                else if (hl == 7 && ramPts != null) DrawSeriesLine(g, ramPts, plot, ramPwrColor, true, false);
                 else if (hl == 4 && f1Pts != null) DrawSeriesLine(g, f1Pts, plot, apuRpmColor, true, false);
                 else if (hl == 5 && f2Pts != null) DrawSeriesLine(g, f2Pts, plot, sysRpmColor, true, false);
 
@@ -476,14 +495,15 @@ namespace MiniFanControl
                     int hGpu = _hoverSampleIdx < Stats.GpuHistory.Count ? Stats.GpuHistory[_hoverSampleIdx] : 0;
                     int hNvme = (Stats != null && _hoverSampleIdx < Stats.NvmeHistory.Count) ? Stats.NvmeHistory[_hoverSampleIdx] : 0;
                     int hPwr = _hoverSampleIdx < Stats.PowerHistory.Count ? Stats.PowerHistory[_hoverSampleIdx] : 0;
+                    double hRam = (Stats != null && _hoverSampleIdx < Stats.RamPowerHistory.Count) ? Stats.RamPowerHistory[_hoverSampleIdx] / 10.0 : 0.0;
                     int hF1  = _hoverSampleIdx < Stats.Fan1RpmHistory.Count ? Stats.Fan1RpmHistory[_hoverSampleIdx] : 0;
                     int hF2  = _hoverSampleIdx < Stats.Fan2RpmHistory.Count ? Stats.Fan2RpmHistory[_hoverSampleIdx] : 0;
 
                     string hud = HasDualFans
-                        ? string.Format("{0}  |  CPU {1}°C • iGPU {2}°C • NVMe {3}°C • Pwr {4}W • APU {5} RPM • Sys {6} RPM",
-                            secAgo == 0 ? "Now" : "-" + secAgo + "s", hCpu, hGpu, hNvme, hPwr, hF1, hF2)
-                        : string.Format("{0}  |  CPU {1}°C • iGPU {2}°C • NVMe {3}°C • Pwr {4}W • APU {5} RPM",
-                            secAgo == 0 ? "Now" : "-" + secAgo + "s", hCpu, hGpu, hNvme, hPwr, hF1);
+                        ? string.Format("{0}  |  CPU {1}°C • iGPU {2}°C • NVMe {3}°C • Pwr {4}W • RAM {5:0.0}W • APU {6} RPM • Sys {7} RPM",
+                            secAgo == 0 ? "Now" : "-" + secAgo + "s", hCpu, hGpu, hNvme, hPwr, hRam, hF1, hF2)
+                        : string.Format("{0}  |  CPU {1}°C • iGPU {2}°C • NVMe {3}°C • Pwr {4}W • RAM {5:0.0}W • APU {6} RPM",
+                            secAgo == 0 ? "Now" : "-" + secAgo + "s", hCpu, hGpu, hNvme, hPwr, hRam, hF1);
 
                     Size hudSz = TextRenderer.MeasureText(g, hud, HudFont, new Size(520, 24), TextFormatFlags.NoPadding);
                     int boxW = hudSz.Width + 12;

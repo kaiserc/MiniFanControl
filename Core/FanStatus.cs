@@ -53,6 +53,15 @@ namespace MiniFanControl
         public double RamUsedGb;
         public double RamTotalGb;
         public int RamLoadPct;
+        public double RamPowerWatts
+        {
+            get
+            {
+                if (RamTotalGb <= 0) return 0.0;
+                int numModules = RamTotalGb >= 32.0 ? 2 : 1;
+                return numModules * (1.3 + (Math.Max(0, Math.Min(100, RamLoadPct)) / 100.0) * 2.2);
+            }
+        }
 
         public string FormatPowerTooltip(TelemetrySessionStats stats = null)
         {
@@ -237,15 +246,22 @@ namespace MiniFanControl
             if (RamTotalGb > 0)
             {
                 int numModules = RamTotalGb >= 32.0 ? 2 : 1;
-                double loadWatts = numModules * (1.3 + (RamLoadPct / 100.0) * 2.2);
+                double loadWatts = RamPowerWatts;
                 sb.AppendFormat("• Estimated DDR5 Power: ~{0:F1} W ({1}x SO-DIMMs @ 1.1V JEDEC PMIC)\r\n", loadWatts, numModules);
             }
             if (SocPowerWatts > 0)
             {
                 sb.AppendFormat("• APU Memory Controller & Fabric (VDD_SOC): {0} W\r\n", SocPowerWatts);
             }
+            if (stats != null && stats.SampleCount > 0 && stats.MaxRamPowerWatts > 0)
+            {
+                sb.AppendLine("────────────────────────────────────────────");
+                sb.AppendFormat("Session RAM Power (Min / Avg / Peak): ~{0:0.0}W / ~{1:0.0}W / ~{2:0.0}W  (Click box to reset)\r\n",
+                    stats.MinRamPowerWatts < double.MaxValue ? stats.MinRamPowerWatts : 0.0, stats.AvgRamPowerWatts, stats.MaxRamPowerWatts);
+                sb.AppendFormat("Recent Trend (~90s): {0}\r\n", stats.GetRamPowerSparkline());
+            }
             sb.AppendLine("────────────────────────────────────────────");
-            sb.Append("Query Method: Win32 GlobalMemoryStatusEx (sub-microsecond latency, zero overhead).\r\nNote: Physical RAM sticks use motherboard/on-DIMM PMIC rails without public Win32 shunt sensors;\r\nMemory controller power is tracked by APU SoC rail.");
+            sb.Append("Query Method: Win32 GlobalMemoryStatusEx (sub-microsecond latency, zero overhead).\r\nNote: Physical RAM sticks use motherboard/on-DIMM PMIC rails without public Win32 shunt sensors;\r\nMemory controller power is tracked by APU SoC rail.\r\nLeft-click to spotlight RAM Power on the big graph • Right-click to reset peaks.");
             return sb.ToString();
         }
     }
