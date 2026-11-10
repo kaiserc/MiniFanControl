@@ -47,7 +47,9 @@ namespace MiniFanControl
         private static Mutex _ecMutex;
         private static Mutex _isaBusMutex;
         private static Mutex _pciBusMutex;
-        private static bool _initDone;
+        private static readonly object _initLock = new object();
+        private static volatile bool _initDone;
+        private static volatile bool _isSimulated;
         private static int _contentionCount;
 
         [ThreadStatic]
@@ -64,11 +66,18 @@ namespace MiniFanControl
 
         public static void EnsureCreated()
         {
-            if (_initDone) return;
-            _initDone = true;
-            _ecMutex = CreateMutex(@"Global\Access_EC");
-            _isaBusMutex = CreateMutex(@"Global\Access_ISABUS.HTP.Method");
-            _pciBusMutex = CreateMutex(@"Global\Access_PCI");
+            if (_isSimulated || _initDone) return;
+
+            lock (_initLock)
+            {
+                if (_isSimulated || _initDone) return;
+
+                if (_ecMutex == null) _ecMutex = CreateMutex(@"Global\Access_EC");
+                if (_isaBusMutex == null) _isaBusMutex = CreateMutex(@"Global\Access_ISABUS.HTP.Method");
+                if (_pciBusMutex == null) _pciBusMutex = CreateMutex(@"Global\Access_PCI");
+
+                _initDone = true;
+            }
         }
 
         private static Mutex CreateMutex(string name)
@@ -184,16 +193,27 @@ namespace MiniFanControl
 
         internal static void SetSimulatedMutexes(Mutex ec, Mutex isa, Mutex pci)
         {
-            _ecMutex = ec;
-            _isaBusMutex = isa;
-            _pciBusMutex = pci;
-            _initDone = true;
+            lock (_initLock)
+            {
+                _ecMutex = ec;
+                _isaBusMutex = isa;
+                _pciBusMutex = pci;
+                _isSimulated = true;
+                _initDone = true;
+            }
         }
 
         internal static void ResetMutexes()
         {
-            _initDone = false;
-            EnsureCreated();
+            lock (_initLock)
+            {
+                _isSimulated = false;
+                _initDone = false;
+                _ecMutex = null;
+                _isaBusMutex = null;
+                _pciBusMutex = null;
+                EnsureCreated();
+            }
         }
 
         public static bool WaitPci(int timeoutMs = 25)

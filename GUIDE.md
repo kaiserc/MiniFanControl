@@ -92,12 +92,12 @@ MiniFanControl requires kernel port access to communicate with the Embedded Cont
    - This allows `inpoutx64.dll` to extract and register its signed kernel service (`inpoutx64.sys`).
 3. Subsequent launches can be run as a standard, non-elevated user or configured to start automatically on Windows logon.
 
-### Windows 11 Core Isolation / Memory Integrity
+### Windows 11 Core Isolation & Safe Monitoring Fallback
 
-On recent Windows 11 releases, Microsoft's **Vulnerable Driver Blocklist** or **Memory Integrity** (HVCI) may block third-party kernel port drivers:
-- If you receive an error stating that the driver could not be loaded, navigate to:
-  `Windows Security` → `Device Security` → `Core Isolation Details`.
-- Temporarily disable **Memory Integrity** or toggle the **Microsoft Vulnerable Driver Blocklist**, then reboot.
+MiniFanControl respects Windows 11 **Memory Integrity** (Hypervisor-Protected Code Integrity / HVCI) and Microsoft's **Vulnerable Driver Blocklist**:
+- **Keep Memory Integrity Enabled**: We strongly recommend keeping Core Isolation and Memory Integrity **ENABLED**.
+- **Automatic Safe Read-Only Fallback**: If Windows blocks inpoutx64.sys, MiniFanControl safely falls back to Read-Only Telemetry Monitoring Mode. APU power, silicon temperatures, GPU load, and clocks continue updating natively via AMD's official WHQL-certified driver (tiadlxx.dll / mdfendrm.sys) with zero kernel port access.
+- **Future Roadmap**: Active development is underway for a signed, WHQL-certified driver framework that supports direct fan control with Memory Integrity fully enabled.
 
 ### Portable & Zero-Dependency Design
 

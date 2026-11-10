@@ -412,7 +412,8 @@ namespace MiniFanControl
 
                             {
 
-                                Console.WriteLine("{\"ok\":true,\"action\":\"auto\",\"mode\":\"Balanced\",\"fan1\":\"auto\",\"fan2\":\"auto\"}");
+                                string desc = demoMode ? "Demo Auto" : hw.GetAutoRestoreDescription();
+                                Console.WriteLine("{{\"ok\":true,\"action\":\"auto\",\"mode\":\"Balanced\",\"status\":\"{0}\",\"fan1\":\"auto\",\"fan2\":\"auto\"}}", desc);
 
                                 return 0;
 

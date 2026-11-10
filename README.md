@@ -9,7 +9,7 @@
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%208-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 28 Passed](https://img.shields.io/badge/Automated%20Tests-28%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-2828-passing)
+[![Automated Tests: 32 Passed](https://img.shields.io/badge/Automated%20Tests-32%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-3232-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 
 **MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **KTHIN Ryzen AI 9 HX 370 PRO**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
@@ -154,7 +154,7 @@ Mini PCs communicate with their embedded controller via raw ACPI I/O ports (`0x6
 
 ### Known Industry Risks & Vulnerable Driver Blocklist
 `inpoutx64.sys` is an established, widely used open-source driver (historically used by SpeedFan, LCDProc, and various diagnostic utilities). However, because unhardened builds of `inpoutx64.sys` accept arbitrary I/O requests from any local process:
-1. **Microsoft Vulnerable Driver Blocklist**: Microsoft flags `inpoutx64.sys` under Windows 11 **Memory Integrity (HVCI)**. If blocked by Windows, users must temporarily toggle *Core Isolation → Memory Integrity* to permit the service to start.
+1. **Windows 11 Memory Integrity (HVCI) & Safe Monitoring Fallback**: Microsoft flags `inpoutx64.sys` under Windows 11 **Memory Integrity**. MiniFanControl strongly recommends keeping Memory Integrity **ENABLED**. If Windows 11 blocks `inpoutx64.sys`, MiniFanControl automatically engages **Safe Read-Only Telemetry Monitoring Mode**. All CPU/iGPU temperatures, APU package power, GPU load, clocks, and voltages continue updating natively via AMD's official WHQL-certified driver interface (`atiadlxx.dll` / `amdfendrm.sys`), requiring zero unsigned kernel drivers and zero raw port I/O, while fan writes are safely disabled fail-closed.
 2. **Anti-Cheat Conflicts**: Competitive kernel-level anti-cheat software (such as Riot Vanguard, Easy Anti-Cheat, and BattlEye) may flag `inpoutx64.sys` while running.
 
 ### How MiniFanControl Hardens Driver Access (Defense-in-Depth)
@@ -194,7 +194,7 @@ We welcome community hardware profiles for new Zen 4 / Zen 5 Mini PC models! Her
 2. **First-Time Launch**:
    - Right-click `MiniFanControl.exe` and select **Run as Administrator** once so `inpoutx64.dll` can register its kernel service (`inpoutx64.sys`).
    - Subsequent runs can be launched normally without elevation.
-   - *Windows 11 Driver Security Note*: If Windows Defender blocks `inpoutx64.sys` due to Microsoft's Vulnerable Driver Blocklist, temporarily toggle **Memory Integrity** under *Windows Security → Device Security → Core Isolation*.
+   - *Windows 11 Driver Security Note*: We recommend keeping **Memory Integrity (HVCI) ENABLED**. If Windows Defender blocks `inpoutx64.sys`, MiniFanControl runs in Safe Read-Only Telemetry Mode, reading APU power and temperatures natively via AMD's official driver with full security intact.
 3. **Run the App**: Double-click `MiniFanControl.exe` (or run `run-windows.bat`).
 4. **Compile from Source (Zero Tools Required)**:
    - Double-click `build-windows.bat`. Compiles `MiniFanControl.exe` and `minifan-helper.exe` using the native `.NET` compiler included with Windows 10/11.
@@ -237,7 +237,7 @@ The included command-line tool provides full scripting, automation, and diagnost
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (28/28 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (32/32 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -266,6 +266,13 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 23. **Watchdog IPC Named-Event Fail-Closed & Auto Read-Back Verification**: Validates unnamed event fallback rejection and read-back state confirmation.
 24. **Parameter Validation & Invalid Fan ID / Mode Rejection**: Verifies out-of-bounds fan IDs (0, 3, -1), PWM percentages (<0, >100), and performance modes (<0, >2) are strictly rejected fail-closed.
 25. **Hardware Write Read-Back Verification & Read-Only Safety Protection**: Verifies read-back register mismatches, unverified read-only device profiles, and mutex contention strictly block writes and return `false`.
+26. **Strict Fail-Closed Port Whitelist Enforcement**: Verifies unlisted and sensitive port reads and writes (`0x70/0x71`, `0x92`, `0xCF9`, `0x20/0x21`, `0x40..0x43`, `0x61`) are strictly blocked fail-closed.
+27. **Centralized Hardware Initializer Safe Default**: Verifies default hardware initialization selects `unknown-safe` (`IsReadOnly = true`), preventing blind K12 writes.
+28. **Super I/O Write Read-Back & Separate Restore Paths**: Validates `WriteSuperIoHwReg()` read-back checks, `RestoreNativeEcAuto()`, and `ApplySafeSuperIoFallback()`.
+29. **Super I/O Write Failure Detection in `SetFan()`**: Verifies that any failed Super I/O configuration or PWM write is detected and causes `SetFan()` to fail closed.
+30. **Thread-Safe Mutex Initialization & Concurrency Safety**: Verifies race-free, multithreaded initialization of `EcBusMutex` under high concurrency.
+31. **Watchdog IPC Access Control List (ACL) Hardening**: Verifies named IPC events enforce least-privilege ACLs without inherited `Everyone` (`WorldSid`) permissions.
+32. **Native BIOS Auto vs. Safe Super I/O Fallback Distinction**: Validates clear distinction in status and description between native BIOS automatic mode and quiet safe Super I/O fallback.
 
 ---
 

@@ -7,8 +7,8 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-test:
-    name: Windows x64 Build & Self-Test Suite
+  sdk-multitarget-build:
+    name: Modern .NET SDK Multi-Target (.NET 4.8 & .NET 10.0-windows)
     runs-on: windows-latest
     steps:
       - name: Checkout Code
@@ -19,17 +19,29 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Build Modern SDK Multi-Target (.NET 4.8 & .NET 10.0-windows)
+      - name: Build net48 Target
         shell: cmd
         run: |
-          dotnet build MiniFanControl.csproj -c Release
+          dotnet build MiniFanControl.csproj -c Release -f net48
 
-      - name: Build Standalone Executables & Run Self-Tests (.NET 4.8 via csc)
+      - name: Build net10.0-windows Target
+        shell: cmd
+        run: |
+          dotnet build MiniFanControl.csproj -c Release -f net10.0-windows
+
+  standalone-build-and-test:
+    name: Standalone .NET 4.8 CSC Build & 32 Automated Self-Tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Compile Standalone Binaries & Run Self-Test Suite
         shell: cmd
         run: |
           call build-windows.bat
 
-      - name: Verify Automated Release Pipeline
+      - name: Verify Automated Release Packaging
         shell: cmd
         run: |
           call package-release.bat

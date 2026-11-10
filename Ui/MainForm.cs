@@ -443,8 +443,7 @@ namespace MiniFanControl
 
         private void StartWatchdogSupervisor()
         {
-            if (_watchdogStarted) return;
-            _watchdogStarted = true;
+            if (_watchdogStarted && _watchdogProcess != null && !_watchdogProcess.HasExited) return;
 
             try
             {
@@ -455,7 +454,9 @@ namespace MiniFanControl
 
                 if (_watchdogHeartbeatEvent == null || _watchdogShutdownEvent == null)
                 {
+                    WatchdogSupervisor.LogWatchdogEvent("Failed to create secure IPC events for watchdog. Supervisor not started.");
                     StopWatchdogSupervisorGracefully();
+                    _watchdogStarted = false;
                     return;
                 }
 
@@ -478,9 +479,28 @@ namespace MiniFanControl
                         WindowStyle = ProcessWindowStyle.Hidden
                     };
                     _watchdogProcess = Process.Start(psi);
+                    if (_watchdogProcess != null && !_watchdogProcess.HasExited)
+                    {
+                        _watchdogStarted = true;
+                        WatchdogSupervisor.LogWatchdogEvent(string.Format("Supervisor process PID {0} launched successfully for parent PID {1}.", _watchdogProcess.Id, myPid));
+                    }
+                    else
+                    {
+                        _watchdogStarted = false;
+                        WatchdogSupervisor.LogWatchdogEvent("Watchdog process failed to stay running after launch.");
+                    }
+                }
+                else
+                {
+                    _watchdogStarted = false;
+                    WatchdogSupervisor.LogWatchdogEvent("Watchdog helper executable not found: " + helperPath);
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _watchdogStarted = false;
+                WatchdogSupervisor.LogWatchdogEvent("Exception while starting watchdog supervisor: " + ex.Message);
+            }
         }
 
         private void PulseWatchdogHeartbeat()
