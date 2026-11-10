@@ -22,6 +22,7 @@ namespace MiniFanControl
     {
         public const string HEARTBEAT_EVENT_PREFIX = "Global\\MiniFanControl_Heartbeat_";
         public const string SHUTDOWN_EVENT_PREFIX = "Global\\MiniFanControl_Shutdown_";
+        public const string READY_EVENT_PREFIX = "Global\\MiniFanControl_Ready_";
         public const int DEFAULT_TIMEOUT_MS = 3500;
         public const int DEFAULT_POLL_INTERVAL_MS = 250;
 
@@ -33,6 +34,11 @@ namespace MiniFanControl
         public static string GetShutdownEventName(int pid)
         {
             return "MiniFanControl_Shutdown_" + pid;
+        }
+
+        public static string GetReadyEventName(int pid)
+        {
+            return "MiniFanControl_Ready_" + pid;
         }
 
         public static EventWaitHandle CreateOrOpenEvent(string baseName, EventResetMode mode, out bool createdNew)
@@ -83,15 +89,8 @@ namespace MiniFanControl
                 }
                 catch
                 {
-                    try
-                    {
-                        return new EventWaitHandle(false, mode, @"Local\" + baseName, out createdNew);
-                    }
-                    catch
-                    {
-                        // Fail-closed: do NOT return an unnamed event that cannot be signaled across processes
-                        return null;
-                    }
+                    // Fail-closed: Never fall back to unsecured event without explicit ACL!
+                    return null;
                 }
             }
         }
@@ -165,12 +164,15 @@ namespace MiniFanControl
 
             EventWaitHandle heartbeatEvent = null;
             EventWaitHandle shutdownEvent = null;
+            EventWaitHandle readyEvent = null;
 
             try
             {
                 bool createdHb, createdSd;
                 heartbeatEvent = CreateOrOpenEvent(GetHeartbeatEventName(parentPid), EventResetMode.AutoReset, out createdHb);
+                bool createdReady;
                 shutdownEvent = CreateOrOpenEvent(GetShutdownEventName(parentPid), EventResetMode.ManualReset, out createdSd);
+                readyEvent = CreateOrOpenEvent(GetReadyEventName(parentPid), EventResetMode.ManualReset, out createdReady);
 
                 if (heartbeatEvent == null || shutdownEvent == null)
                 {
@@ -179,10 +181,17 @@ namespace MiniFanControl
                     return 1;
                 }
 
+                // Explicit handshake: Signal the parent GUI that IPC channels are verified and monitor loop is starting
+                if (readyEvent != null)
+                {
+                    try { readyEvent.Set(); } catch { }
+                }
+
                 return ExecuteLoop(parentProcess, parentPid, timeoutMs, heartbeatEvent, shutdownEvent, demoMode, false);
             }
             finally
             {
+                if (readyEvent != null) { try { readyEvent.Close(); } catch { } }
                 if (heartbeatEvent != null) { try { heartbeatEvent.Close(); } catch { } }
                 if (shutdownEvent != null) { try { shutdownEvent.Close(); } catch { } }
                 if (parentProcess != null) { try { parentProcess.Dispose(); } catch { } }

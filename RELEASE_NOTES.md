@@ -211,3 +211,21 @@ Decomposed the 11,337-line monolithic `MiniFanControl.cs` into 24 maintainable, 
   30. Thread-Safe Mutex Initialization & Concurrency Safety
   31. Watchdog IPC Access Control List (ACL) Hardening
   32. Native BIOS Auto vs. Safe Super I/O Fallback Distinction
+  33. UI Write-Result Fail-Closed Handling & Independent Emergency Retries
+  34. Watchdog Ready Handshake & Fail-Closed Event Fallback
+
+### 🛡️ Phase 10: Fail-Closed UI Write Verification & Two-Way Watchdog Handshake
+
+- **UI Write-Result Fail-Closed Verification**: `MainForm.EvaluateAndApplyFanProfiles()` strictly checks all hardware write return values (`SetFan`, `SetMode`, `SetAuto`). Target fan speeds are recorded as applied *only* upon confirmed hardware register read-back verification. On rejected writes, previous state is retained, visible error banners and status alerts are surfaced with attempt counts, and re-evaluation is automatically queued on the next worker cycle.
+
+- **Independent Emergency Thermal Retries**: The emergency thermal guard (≥90°C) never caches 100% PWM on a failed write, guaranteeing independent, persistent retry attempts on every background cycle until physical hardware write verification succeeds.
+
+- **Watchdog Two-Way Ready Handshake (`ReadyEvent`)**: Replaced blind process launch verification with an explicit IPC handshake event (`MiniFanControl_Ready_<PID>`). The parent GUI waits for the supervisor daemon to confirm that IPC event handles are opened and the monitor loop has started before arming active watchdog state.
+
+- **Continuous Supervisor Health Monitoring**: The background hardware worker actively supervises the watchdog child process (`_watchdogProcess.HasExited`), automatically alerting the user and restarting the supervisor if the child exits unexpectedly.
+
+- **Elimination of Unsecured Named-Event Fallback**: Removed unauthenticated fallback event creation in `WatchdogSupervisor.CreateOrOpenEvent()`. If secured ACL creation fails, event initialization fails closed.
+
+- **Hardware-Monitoring Mutex Coexistence vs. Watchdog IPC DACL Clarification**: Explicitly documented the architectural distinction between the cross-session coexistence mutexes (`Global\Access_EC` with `WorldSid` `Synchronize | Modify` for HWiNFO64/LibreHardwareMonitor/CapFrameX interop) and the Watchdog IPC events (strict least-privilege DACLs restricted exclusively to CurrentUser, Administrators, and SYSTEM).
+
+- **Expanded 34-Point Automated Verification Suite**: Comprehensive verification covering all 34 safety checkpoints.

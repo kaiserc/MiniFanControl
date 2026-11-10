@@ -139,6 +139,19 @@ namespace MiniFanControl
         private Process _watchdogProcess;
         private EventWaitHandle _watchdogHeartbeatEvent;
         private EventWaitHandle _watchdogShutdownEvent;
+        private EventWaitHandle _watchdogReadyEvent;
+        private string _lastHardwareWriteError = null;
+        private int _consecutiveWriteFailures = 0;
+
+        internal DemoBackend DemoBackend { get { return _demo; } }
+        internal int LastAppliedApuPct { get { return _lastAppliedApuPct; } }
+        internal int LastAppliedSysPct { get { return _lastAppliedSysPct; } }
+        internal int LastAppliedEcMode { get { return _lastAppliedEcMode; } }
+        internal string LastHardwareWriteError { get { return _lastHardwareWriteError; } }
+        internal int ConsecutiveWriteFailures { get { return _consecutiveWriteFailures; } }
+        internal bool TestEvaluateAndApplyFanProfiles(int apuTemp) { return EvaluateAndApplyFanProfiles(apuTemp); }
+        internal void TestSetFanManual(int fanId, int pct) { ApplyFan(fanId, pct); }
+        internal void TestApplyAutoAll() { ApplyAutoAll(); }
         private DateTime _lastWorkerSampleUtc = DateTime.UtcNow;
         private bool _watchdogStarted = false;
         private SessionEndingEventHandler _sessionEndingHandler;
@@ -300,7 +313,7 @@ namespace MiniFanControl
         private string _lastSysFanTooltipText = "";
         private int _lastSelectedModeCode = 0;
 
-        public MainForm(bool startInDemo, bool startMinimized = false)
+        public MainForm(bool startInDemo, bool startMinimized = false, bool isUnitTest = false)
         {
             _demoMode = startInDemo;
             _startMinimized = startMinimized;
@@ -353,7 +366,9 @@ namespace MiniFanControl
             ApplyThemeToControls();
             UpdateTrayIcons(0, 0);
 
-            SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+            if (!isUnitTest)
+            {
+                SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
             _sessionEndingHandler = (s, e) => RestoreHardwareSafeAutoIfNeeded();
             _powerModeChangedHandler = (s, e) =>
             {
@@ -408,8 +423,9 @@ namespace MiniFanControl
                     MinimizeToTray();
                 }
             };
-            FormClosing += OnFormClosing;
-            _hwWakeEvent.Set();
+                FormClosing += OnFormClosing;
+                _hwWakeEvent.Set();
+            }
         }
 
         private void OnProcessOrCrashExit(object sender, EventArgs e)
@@ -448,17 +464,20 @@ namespace MiniFanControl
             try
             {
                 int myPid = Process.GetCurrentProcess().Id;
-                bool createdHb, createdSd;
+                bool createdHb, createdSd, createdReady;
                 _watchdogHeartbeatEvent = WatchdogSupervisor.CreateOrOpenEvent(WatchdogSupervisor.GetHeartbeatEventName(myPid), EventResetMode.AutoReset, out createdHb);
                 _watchdogShutdownEvent = WatchdogSupervisor.CreateOrOpenEvent(WatchdogSupervisor.GetShutdownEventName(myPid), EventResetMode.ManualReset, out createdSd);
+                _watchdogReadyEvent = WatchdogSupervisor.CreateOrOpenEvent(WatchdogSupervisor.GetReadyEventName(myPid), EventResetMode.ManualReset, out createdReady);
 
-                if (_watchdogHeartbeatEvent == null || _watchdogShutdownEvent == null)
+                if (_watchdogHeartbeatEvent == null || _watchdogShutdownEvent == null || _watchdogReadyEvent == null)
                 {
                     WatchdogSupervisor.LogWatchdogEvent("Failed to create secure IPC events for watchdog. Supervisor not started.");
                     StopWatchdogSupervisorGracefully();
                     _watchdogStarted = false;
                     return;
                 }
+
+                _watchdogReadyEvent.Reset();
 
                 string exeDir = AppDomain.CurrentDomain.BaseDirectory;
                 string helperPath = Path.Combine(exeDir, "minifan-helper.exe");
@@ -481,13 +500,26 @@ namespace MiniFanControl
                     _watchdogProcess = Process.Start(psi);
                     if (_watchdogProcess != null && !_watchdogProcess.HasExited)
                     {
-                        _watchdogStarted = true;
-                        WatchdogSupervisor.LogWatchdogEvent(string.Format("Supervisor process PID {0} launched successfully for parent PID {1}.", _watchdogProcess.Id, myPid));
+                        // Explicit handshake: Wait up to 3000ms for child helper to verify IPC and enter monitor loop
+                        bool readySignaled = _watchdogReadyEvent.WaitOne(3000);
+                        if (readySignaled && !_watchdogProcess.HasExited)
+                        {
+                            _watchdogStarted = true;
+                            WatchdogSupervisor.LogWatchdogEvent(string.Format("Supervisor process PID {0} launched and completed handshake for parent PID {1}.", _watchdogProcess.Id, myPid));
+                        }
+                        else
+                        {
+                            _watchdogStarted = false;
+                            WatchdogSupervisor.LogWatchdogEvent(string.Format("Supervisor process PID {0} failed handshake (ready={1}, hasExited={2}).",
+                                _watchdogProcess.Id, readySignaled, _watchdogProcess.HasExited));
+                            StopWatchdogSupervisorGracefully();
+                        }
                     }
                     else
                     {
                         _watchdogStarted = false;
                         WatchdogSupervisor.LogWatchdogEvent("Watchdog process failed to stay running after launch.");
+                        StopWatchdogSupervisorGracefully();
                     }
                 }
                 else
@@ -527,6 +559,7 @@ namespace MiniFanControl
             catch { }
             finally
             {
+                if (_watchdogReadyEvent != null) { try { _watchdogReadyEvent.Close(); } catch { } _watchdogReadyEvent = null; }
                 if (_watchdogHeartbeatEvent != null) { try { _watchdogHeartbeatEvent.Close(); } catch { } _watchdogHeartbeatEvent = null; }
                 if (_watchdogShutdownEvent != null) { try { _watchdogShutdownEvent.Close(); } catch { } _watchdogShutdownEvent = null; }
                 if (_watchdogProcess != null) { try { _watchdogProcess.Dispose(); } catch { } _watchdogProcess = null; }
@@ -4288,17 +4321,31 @@ namespace MiniFanControl
             {
                 if (_lastAppliedApuPct != 100)
                 {
-                    if (_demoMode) _demo.SetFan(1, 100);
-                    else _hw.SetFan(1, 100);
-                    _lastAppliedApuPct = 100;
-                    wroteHardware = true;
+                    bool ok = _demoMode ? _demo.SetFan(1, 100) : _hw.SetFan(1, 100);
+                    if (ok)
+                    {
+                        _lastAppliedApuPct = 100;
+                        wroteHardware = true;
+                        ClearHardwareWriteError();
+                    }
+                    else
+                    {
+                        RecordHardwareWriteError("Emergency APU Fan 100% write rejected / read-back verification failed");
+                    }
                 }
                 if (_hasDualFans && _lastAppliedSysPct != 100)
                 {
-                    if (_demoMode) _demo.SetFan(2, 100);
-                    else _hw.SetFan(2, 100);
-                    _lastAppliedSysPct = 100;
-                    wroteHardware = true;
+                    bool ok = _demoMode ? _demo.SetFan(2, 100) : _hw.SetFan(2, 100);
+                    if (ok)
+                    {
+                        _lastAppliedSysPct = 100;
+                        wroteHardware = true;
+                        ClearHardwareWriteError();
+                    }
+                    else
+                    {
+                        RecordHardwareWriteError("Emergency Sys Fan 100% write rejected / read-back verification failed");
+                    }
                 }
                 return wroteHardware;
             }
@@ -4336,10 +4383,17 @@ namespace MiniFanControl
             {
                 if (desiredEcMode >= 0 && _lastAppliedEcMode != desiredEcMode)
                 {
-                    if (_demoMode) _demo.SetMode(desiredEcMode);
-                    else _hw.SetMode(desiredEcMode);
-                    _lastAppliedEcMode = desiredEcMode;
-                    wroteHardware = true;
+                    bool ok = _demoMode ? _demo.SetMode(desiredEcMode) : _hw.SetMode(desiredEcMode);
+                    if (ok)
+                    {
+                        _lastAppliedEcMode = desiredEcMode;
+                        wroteHardware = true;
+                        ClearHardwareWriteError();
+                    }
+                    else
+                    {
+                        RecordHardwareWriteError(string.Format("EC Mode change (0x{0:X2}) verification failed", desiredEcMode));
+                    }
                 }
 
                 // 1. Apply APU Fan (Fan 1)
@@ -4349,10 +4403,17 @@ namespace MiniFanControl
                     {
                         if (_lastAppliedApuPct != 0)
                         {
-                            if (_demoMode) _demo.SetFan(1, 0);
-                            else _hw.SetFan(1, 0);
-                            _lastAppliedApuPct = 0;
-                            wroteHardware = true;
+                            bool ok = _demoMode ? _demo.SetFan(1, 0) : _hw.SetFan(1, 0);
+                            if (ok)
+                            {
+                                _lastAppliedApuPct = 0;
+                                wroteHardware = true;
+                                ClearHardwareWriteError();
+                            }
+                            else
+                            {
+                                RecordHardwareWriteError("APU Fan reset to Auto (0%) write verification failed");
+                            }
                         }
                     }
                     else
@@ -4361,11 +4422,18 @@ namespace MiniFanControl
                         int regPct = targetApu <= 0 ? (isSuperIo ? 0 : 1) : targetApu;
                         if (_lastAppliedApuPct < 0 || (!withinCooldownHysteresis && Math.Abs(regPct - _lastAppliedApuPct) >= 2) || regPct == 1 || regPct == 100)
                         {
-                            if (_demoMode) _demo.SetFan(1, regPct);
-                            else _hw.SetFan(1, regPct);
-                            _lastAppliedApuPct = regPct;
-                            _lastCustomEvalTemp = apuTemp;
-                            wroteHardware = true;
+                            bool ok = _demoMode ? _demo.SetFan(1, regPct) : _hw.SetFan(1, regPct);
+                            if (ok)
+                            {
+                                _lastAppliedApuPct = regPct;
+                                _lastCustomEvalTemp = apuTemp;
+                                wroteHardware = true;
+                                ClearHardwareWriteError();
+                            }
+                            else
+                            {
+                                RecordHardwareWriteError(string.Format("APU Fan speed write ({0}%) verification failed", regPct));
+                            }
                         }
                     }
                 }
@@ -4377,10 +4445,17 @@ namespace MiniFanControl
                     {
                         if (_lastAppliedSysPct != 0)
                         {
-                            if (_demoMode) _demo.SetFan(2, 0);
-                            else _hw.SetFan(2, 0);
-                            _lastAppliedSysPct = 0;
-                            wroteHardware = true;
+                            bool ok = _demoMode ? _demo.SetFan(2, 0) : _hw.SetFan(2, 0);
+                            if (ok)
+                            {
+                                _lastAppliedSysPct = 0;
+                                wroteHardware = true;
+                                ClearHardwareWriteError();
+                            }
+                            else
+                            {
+                                RecordHardwareWriteError("Sys Fan reset to Auto (0%) write verification failed");
+                            }
                         }
                     }
                     else
@@ -4389,17 +4464,65 @@ namespace MiniFanControl
                         int regPct = targetSys <= 0 ? (isSuperIo ? 0 : 1) : targetSys;
                         if (_lastAppliedSysPct < 0 || (!withinCooldownHysteresis && Math.Abs(regPct - _lastAppliedSysPct) >= 2) || regPct == 1 || regPct == 100)
                         {
-                            if (_demoMode) _demo.SetFan(2, regPct);
-                            else _hw.SetFan(2, regPct);
-                            _lastAppliedSysPct = regPct;
-                            _lastCustomEvalTemp = apuTemp;
-                            wroteHardware = true;
+                            bool ok = _demoMode ? _demo.SetFan(2, regPct) : _hw.SetFan(2, regPct);
+                            if (ok)
+                            {
+                                _lastAppliedSysPct = regPct;
+                                _lastCustomEvalTemp = apuTemp;
+                                wroteHardware = true;
+                                ClearHardwareWriteError();
+                            }
+                            else
+                            {
+                                RecordHardwareWriteError(string.Format("Sys Fan speed write ({0}%) verification failed", regPct));
+                            }
                         }
                     }
                 }
             }
             catch { }
             return wroteHardware;
+        }
+
+        private void RecordHardwareWriteError(string errorDetail)
+        {
+            _consecutiveWriteFailures++;
+            _lastHardwareWriteError = errorDetail;
+            if (IsHandleCreated && !IsDisposed)
+            {
+                try
+                {
+                    BeginInvoke((Action)(() =>
+                    {
+                        _errorBanner.Text = string.Format("⚠️ Hardware Write Failure: {0} (Attempt {1})", errorDetail, _consecutiveWriteFailures);
+                        _errorBanner.Visible = true;
+                        _statusBarLabel.ForeColor = _isDarkMode ? ErrorFgDark : ErrorFgLight;
+                        _statusBarLabel.Text = string.Format("⚠️ Hardware write rejected ({0} retries)", _consecutiveWriteFailures);
+                    }));
+                }
+                catch { }
+            }
+        }
+
+        private void ClearHardwareWriteError()
+        {
+            if (_consecutiveWriteFailures > 0 || _lastHardwareWriteError != null)
+            {
+                _consecutiveWriteFailures = 0;
+                _lastHardwareWriteError = null;
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    try
+                    {
+                        BeginInvoke((Action)(() =>
+                        {
+                            _errorBanner.Visible = false;
+                            if (_statusBarLabel != null) { _statusBarLabel.Text = "Ready"; }
+                        }));
+                    }
+                    catch { }
+                }
+            }
         }
 
         private void HardwareWorkerLoop()
@@ -4445,6 +4568,29 @@ namespace MiniFanControl
 
                 _lastWorkerSampleUtc = DateTime.UtcNow;
 
+                // Child supervisor monitoring: Check if watchdog process crashed or was terminated
+                if (_watchdogStarted && _watchdogProcess != null && _watchdogProcess.HasExited)
+                {
+                    _watchdogStarted = false;
+                    int exitCode = -1;
+                    try { exitCode = _watchdogProcess.ExitCode; } catch { }
+                    WatchdogSupervisor.LogWatchdogEvent(string.Format("ALERT: Safety watchdog supervisor process PID {0} exited unexpectedly (code {1}). Attempting automatic restart...",
+                        _watchdogProcess.Id, exitCode));
+                    if (IsHandleCreated && !IsDisposed)
+                    {
+                        try
+                        {
+                            BeginInvoke((Action)(() =>
+                            {
+                                _errorBanner.Text = string.Format("⚠️ Safety Watchdog process stopped (ExitCode: {0}). Restarting supervisor...", exitCode);
+                                _errorBanner.Visible = true;
+                                StartWatchdogSupervisor();
+                            }));
+                        }
+                        catch { }
+                    }
+                }
+
                 int waitMs = _refreshIntervalMs;
                 if (DateTime.UtcNow < _rampUntil) waitMs = Math.Min(waitMs, 250);
                 _hwWakeEvent.WaitOne(waitMs);
@@ -4474,7 +4620,17 @@ namespace MiniFanControl
 
         private void ApplyStatusToUi(FanStatus st)
         {
-            _errorBanner.Visible = false;
+            if (!string.IsNullOrEmpty(_lastHardwareWriteError))
+            {
+                _errorBanner.Text = string.Format("⚠️ Hardware Write Verification Failed: {0} (Failures: {1}, Retrying...)", _lastHardwareWriteError, _consecutiveWriteFailures);
+                _errorBanner.Visible = true;
+                _statusBarLabel.ForeColor = _isDarkMode ? ErrorFgDark : ErrorFgLight;
+                _statusBarLabel.Text = string.Format("⚠️ Hardware write rejected ({0} retries)", _consecutiveWriteFailures);
+            }
+            else
+            {
+                _errorBanner.Visible = false;
+            }
             _sessionStats.Record(st);
 
             bool isRamping = DateTime.UtcNow < _rampUntil;
@@ -4803,11 +4959,20 @@ namespace MiniFanControl
                 UpdateCurveHint();
                 SaveSettings();
 
-                if (_demoMode) _demo.SetFan(fanId, pct);
-                else _hw.SetFan(fanId, pct);
-                string fanLabel = fanId == 1 ? "APU Fan" : "Sys Fan";
-                string desc = pct == 0 ? string.Format("{0} → {1}", fanLabel, (fanId == 1 ? _apuProfile : _sysProfile).Name) : string.Format("{0} → {1}%", fanLabel, pct);
-                StartRampIndication(desc, fanId);
+                bool ok = _demoMode ? _demo.SetFan(fanId, pct) : _hw.SetFan(fanId, pct);
+                if (ok)
+                {
+                    if (fanId == 1) _lastAppliedApuPct = pct;
+                    else _lastAppliedSysPct = pct;
+                    ClearHardwareWriteError();
+                    string fanLabel = fanId == 1 ? "APU Fan" : "Sys Fan";
+                    string desc = pct == 0 ? string.Format("{0} → {1}", fanLabel, (fanId == 1 ? _apuProfile : _sysProfile).Name) : string.Format("{0} → {1}%", fanLabel, pct);
+                    StartRampIndication(desc, fanId);
+                }
+                else
+                {
+                    RecordHardwareWriteError(string.Format("Manual {0} write ({1}%) verification failed", fanId == 1 ? "APU Fan" : "Sys Fan", pct));
+                }
             }
             catch (Exception ex)
             {
@@ -4840,9 +5005,16 @@ namespace MiniFanControl
                 UpdateCurveHint();
                 SaveSettings();
 
-                if (_demoMode) _demo.SetAuto();
-                else _hw.SetAuto();
-                StartRampIndication("Reset both fans → Balanced (Auto)", 0);
+                bool ok = _demoMode ? _demo.SetAuto() : _hw.SetAuto();
+                if (ok)
+                {
+                    ClearHardwareWriteError();
+                    StartRampIndication("Reset both fans → Balanced (Auto)", 0);
+                }
+                else
+                {
+                    RecordHardwareWriteError("Reset both fans to Auto verification failed");
+                }
             }
             catch (Exception ex)
             {
@@ -5009,6 +5181,15 @@ namespace MiniFanControl
                 _overlayForm = null;
             }
             _hw.Dispose();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                OnFormClosing(this, new FormClosingEventArgs(CloseReason.UserClosing, false));
+            }
+            base.Dispose(disposing);
         }
     }
 

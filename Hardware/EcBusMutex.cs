@@ -80,6 +80,23 @@ namespace MiniFanControl
             }
         }
 
+        /// <summary>
+        /// Creates or opens an EC/ISA synchronization mutex.
+        /// 
+        /// [Cross-Process Hardware Monitoring Ecosystem Interoperability Specification]
+        /// The named mutexes "Global\Access_EC", "Global\Access_ISABUS.HTP.Method", and "Global\Access_PCI"
+        /// are established hardware-monitoring industry standards shared across HWiNFO64, LibreHardwareMonitor,
+        /// CapFrameX, and FanControl. Because these cooperating tools frequently execute under different Windows
+        /// session contexts (e.g. standard user desktop session, elevated administrator, or SYSTEM service), the
+        /// mutex DACL explicitly grants WorldSid (Everyone) MutexRights.Synchronize | MutexRights.Modify (acquire
+        /// and release permissions).
+        /// 
+        /// Unlike MiniFanControl's Watchdog IPC events (which use a strict least-privilege ACL restricted exclusively
+        /// to CurrentUser, Administrators, and SYSTEM), these hardware-bus mutexes require cross-session access to
+        /// prevent Third-Party Monitoring tools from crashing on UnauthorizedAccessException. To protect against
+        /// unauthorized deletion or DACL tampering, ownership and permission modification rights (FullControl,
+        /// TakeOwnership, ChangePermissions) are strictly withheld from WorldSid.
+        /// </summary>
         private static Mutex CreateMutex(string name)
         {
             try

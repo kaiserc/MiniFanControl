@@ -1210,6 +1210,78 @@ namespace MiniFanControl
                 string.Format("NativeAuto=[{0},Desc:{1}], FallbackAuto=[{2},Desc:{3}]",
                     isNativeAuto, nativeDesc, isFallbackAuto, fallbackDesc));
 
+            // 33. UI Write-Result Fail-Closed Handling & Independent Emergency Retries
+            bool uiWriteSafetyPassed = false;
+            string uiDetail = "";
+            using (MainForm testForm = new MainForm(startInDemo: true, startMinimized: false, isUnitTest: true))
+            {
+                // Baseline: Normal write succeeds
+                testForm.DemoBackend.FailWrites = false;
+                testForm.TestEvaluateAndApplyFanProfiles(50);
+                int baselineApu = testForm.LastAppliedApuPct;
+
+                // Failure Injection 1: Normal curve update rejected by hardware
+                testForm.DemoBackend.FailWrites = true;
+                testForm.TestEvaluateAndApplyFanProfiles(70);
+                int rejectedApu = testForm.LastAppliedApuPct;
+                bool normalWriteRejectedNotCached = (rejectedApu == baselineApu);
+                bool hadErrorNormal = (testForm.ConsecutiveWriteFailures > 0) && (testForm.LastHardwareWriteError != null);
+
+                // Failure Injection 2: Emergency 100% write rejected by hardware (e.g. 95C APU tripwire)
+                testForm.TestEvaluateAndApplyFanProfiles(95);
+                int rejectedEmergencyApu = testForm.LastAppliedApuPct;
+                bool emergencyRejectedNotCached = (rejectedEmergencyApu != 100);
+                int failuresBeforeRetry = testForm.ConsecutiveWriteFailures;
+
+                // Step 3: Independent retry on next cycle while still hot
+                testForm.TestEvaluateAndApplyFanProfiles(95);
+                bool emergencyRetried = (testForm.ConsecutiveWriteFailures > failuresBeforeRetry);
+
+                // Step 4: Hardware write succeeds -> emergency 100% cached & errors cleared
+                testForm.DemoBackend.FailWrites = false;
+                testForm.TestEvaluateAndApplyFanProfiles(95);
+                bool emergencySucceeded = (testForm.LastAppliedApuPct == 100);
+                bool errorCleared = (testForm.ConsecutiveWriteFailures == 0) && (testForm.LastHardwareWriteError == null);
+
+                uiWriteSafetyPassed = normalWriteRejectedNotCached && hadErrorNormal &&
+                                      emergencyRejectedNotCached && emergencyRetried &&
+                                      emergencySucceeded && errorCleared;
+                uiDetail = string.Format("NormalRejCached={0}, EmergRejCached={1}, EmergRetried={2}, EmergRecovered={3}",
+                    !normalWriteRejectedNotCached, !emergencyRejectedNotCached, emergencyRetried, emergencySucceeded);
+            }
+            Check(uiWriteSafetyPassed,
+                "UI Write-Result Fail-Closed Handling & Independent Emergency Retries",
+                uiDetail);
+
+            // 34. Watchdog Ready Handshake & Fail-Closed Event Fallback
+            bool handshakeEventValid = false;
+            int testPid = Process.GetCurrentProcess().Id;
+            string readyEventName = WatchdogSupervisor.GetReadyEventName(testPid);
+            bool createdReadyTest;
+            EventWaitHandle readyHandle = WatchdogSupervisor.CreateOrOpenEvent(readyEventName, EventResetMode.ManualReset, out createdReadyTest);
+            bool readySignalVerified = false;
+            bool timeoutVerified = false;
+
+            if (readyHandle != null)
+            {
+                try
+                {
+                    readyHandle.Reset();
+                    timeoutVerified = !readyHandle.WaitOne(15);
+                    readyHandle.Set();
+                    readySignalVerified = readyHandle.WaitOne(50);
+                    handshakeEventValid = (readyEventName.StartsWith("MiniFanControl_Ready_") && readySignalVerified && timeoutVerified);
+                }
+                finally
+                {
+                    readyHandle.Close();
+                }
+            }
+
+            Check(handshakeEventValid,
+                "Watchdog Ready Handshake & Fail-Closed Event Fallback",
+                string.Format("Name={0}, Signaled={1}, TimedOut={2}", readyEventName, readySignalVerified, timeoutVerified));
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));

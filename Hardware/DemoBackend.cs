@@ -29,6 +29,8 @@ namespace MiniFanControl
         private int _gpuTemp = 42;
         private readonly Random _rng = new Random();
 
+        public bool FailWrites { get; set; }
+
         public FanStatus GetStatus()
         {
             _cpuTemp = Math.Max(36, Math.Min(85, _cpuTemp + _rng.Next(-1, 2)));
@@ -76,6 +78,7 @@ namespace MiniFanControl
 
         public bool SetMode(int code)
         {
+            if (FailWrites) return false;
             if (code < 0 || code > 2) return false;
             _modeCode = code;
             return true;
@@ -83,6 +86,7 @@ namespace MiniFanControl
 
         public bool SetFan(int fanId, int pct)
         {
+            if (FailWrites) return false;
             if (fanId != 1 && fanId != 2) return false;
             if (pct < 0 || pct > 100) return false;
             if (fanId == 1)
@@ -100,6 +104,7 @@ namespace MiniFanControl
 
         public bool SetAuto()
         {
+            if (FailWrites) return false;
             _modeCode = 0;
             _fan1Manual = 0;
             _fan2Manual = 0;

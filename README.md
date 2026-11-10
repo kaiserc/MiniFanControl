@@ -6,10 +6,10 @@
 
 [![Release: v2.7.0](https://img.shields.io/badge/Release-v2.7.0-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
 [![Platform: Windows 10 / 11](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(64--bit)-blue.svg)](#-quick-start-windows)
-[![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%208-green.svg)](#-quick-start-windows)
+[![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 32 Passed](https://img.shields.io/badge/Automated%20Tests-32%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-3232-passing)
+[![Automated Tests: 34 Passed](https://img.shields.io/badge/Automated%20Tests-34%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-3434-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 
 **MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **KTHIN Ryzen AI 9 HX 370 PRO**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
@@ -196,8 +196,9 @@ We welcome community hardware profiles for new Zen 4 / Zen 5 Mini PC models! Her
    - Subsequent runs can be launched normally without elevation.
    - *Windows 11 Driver Security Note*: We recommend keeping **Memory Integrity (HVCI) ENABLED**. If Windows Defender blocks `inpoutx64.sys`, MiniFanControl runs in Safe Read-Only Telemetry Mode, reading APU power and temperatures natively via AMD's official driver with full security intact.
 3. **Run the App**: Double-click `MiniFanControl.exe` (or run `run-windows.bat`).
-4. **Compile from Source (Zero Tools Required)**:
-   - Double-click `build-windows.bat`. Compiles `MiniFanControl.exe` and `minifan-helper.exe` using the native `.NET` compiler included with Windows 10/11.
+4. **Compile from Source**:
+   - **Zero Tools Required (.NET 4.8 Framework)**: Double-click `build-windows.bat`. Compiles `MiniFanControl.exe` and `minifan-helper.exe` using the native `.NET Framework` compiler included with Windows 10/11.
+   - **Modern .NET 10.0-windows SDK**: Run `dotnet build -c Release` to build modern Windows binaries targeting .NET 10.0-windows and .NET 4.8 multi-target.
 
 ---
 
@@ -237,7 +238,7 @@ The included command-line tool provides full scripting, automation, and diagnost
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (32/32 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (34/34 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -273,6 +274,8 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 30. **Thread-Safe Mutex Initialization & Concurrency Safety**: Verifies race-free, multithreaded initialization of `EcBusMutex` under high concurrency.
 31. **Watchdog IPC Access Control List (ACL) Hardening**: Verifies named IPC events enforce least-privilege ACLs without inherited `Everyone` (`WorldSid`) permissions.
 32. **Native BIOS Auto vs. Safe Super I/O Fallback Distinction**: Validates clear distinction in status and description between native BIOS automatic mode and quiet safe Super I/O fallback.
+33. **UI Write-Result Fail-Closed Handling & Independent Emergency Retries**: Verifies UI caches fan speeds ONLY upon confirmed hardware write/read-back verification, preserves prior state on rejected writes, alerts the user visibly, and retries emergency 100% cooling independently every worker cycle.
+34. **Watchdog Ready Handshake & Fail-Closed Event Fallback**: Verifies two-way child handshake (`ReadyEvent`) before confirming active supervision, ensures absence of unverified fallbacks, and tests fail-closed timeout detection.
 
 ---
 
