@@ -500,7 +500,7 @@ namespace MiniFanControl
 
                 int hText = osd.Height;
 
-                int wTier0 = osd.Width;
+                int wTier0 = osd.Width; int targetW0 = osd.TargetWidth;
 
 
 
@@ -542,11 +542,11 @@ namespace MiniFanControl
 
                 // Test multi-tier scale sizing (100% -> 125% -> 150% -> 185%)
 
-                osd.OsdScaleTier = 1; osd.UpdateDimensions(); int wTier1 = osd.Width;
+                osd.OsdScaleTier = 1; osd.UpdateDimensions(); int wTier1 = osd.Width; int targetW1 = osd.TargetWidth;
 
-                osd.OsdScaleTier = 2; osd.UpdateDimensions(); int wTier2 = osd.Width;
+                osd.OsdScaleTier = 2; osd.UpdateDimensions(); int wTier2 = osd.Width; int targetW2 = osd.TargetWidth;
 
-                osd.OsdScaleTier = 3; osd.UpdateDimensions(); int wTier3 = osd.Width;
+                osd.OsdScaleTier = 3; osd.UpdateDimensions(); int wTier3 = osd.Width; int targetW3 = osd.TargetWidth;
 
 
 
@@ -560,13 +560,15 @@ namespace MiniFanControl
 
                 Check(hSpark > hText && hComb130 > hComb45 && hBoth > hText && hVertBoth > 0 &&
 
-                      wTier1 > wTier0 && wTier2 > wTier1 && wTier3 > wTier2 &&
+                      targetW1 > targetW0 && targetW2 > targetW1 && targetW3 > targetW2 &&
+
+                      wTier1 >= wTier0 && wTier2 >= wTier1 && wTier3 >= wTier2 &&
 
                       osd.CountVisibleMetrics() >= 4,
 
                     "CapFrameX OSD Multi-Tier Sizing (100%-185%), Live Graphs & Layout Modes",
 
-                    string.Format("w100={0}, w125={1}, w150={2}, w185={3}, h45={4}, h130={5}", wTier0, wTier1, wTier2, wTier3, hComb45, hComb130));
+                    string.Format("w100={0}, w125={1}, w150={2}, w185={3}, targetW3={4}, h45={5}, h130={6}", wTier0, wTier1, wTier2, wTier3, targetW3, hComb45, hComb130));
 
             }
 

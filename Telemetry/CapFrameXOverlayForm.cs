@@ -273,6 +273,9 @@ namespace MiniFanControl
             return Math.Max(1, c);
         }
 
+        public int TargetWidth { get; private set; }
+        public int TargetHeight { get; private set; }
+
         public void UpdateDimensions()
         {
             UpdateFontsForScale();
@@ -293,6 +296,8 @@ namespace MiniFanControl
                 {
                     h += scaledGraphH + (int)Math.Round(10 * sc);
                 }
+                TargetWidth = w;
+                TargetHeight = h;
                 Size = new Size(w, h);
             }
             else
@@ -303,6 +308,8 @@ namespace MiniFanControl
                 int w = Math.Max(minW, (int)Math.Round(14 * sc) + cols * colW);
                 int topH = (int)Math.Round((showSpark ? 50 : 32) * sc);
                 int h = topH + (showCombined ? (scaledGraphH + (int)Math.Round(8 * sc)) : 0);
+                TargetWidth = w;
+                TargetHeight = h;
                 Size = new Size(w, h);
             }
         }
