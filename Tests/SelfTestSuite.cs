@@ -1215,6 +1215,9 @@ namespace MiniFanControl
             string uiDetail = "";
             using (MainForm testForm = new MainForm(startInDemo: true, startMinimized: false, isUnitTest: true))
             {
+                // Switch to custom software curve so temperature changes trigger evaluated PWM writes
+                testForm.ApuProfile = testForm.CustomProfiles[0];
+
                 // Baseline: Normal write succeeds
                 testForm.DemoBackend.FailWrites = false;
                 testForm.TestEvaluateAndApplyFanProfiles(50);
@@ -1225,7 +1228,7 @@ namespace MiniFanControl
                 testForm.TestEvaluateAndApplyFanProfiles(70);
                 int rejectedApu = testForm.LastAppliedApuPct;
                 bool normalWriteRejectedNotCached = (rejectedApu == baselineApu);
-                bool hadErrorNormal = (testForm.ConsecutiveWriteFailures > 0) && (testForm.LastHardwareWriteError != null);
+                bool hadErrorNormal = (testForm.ConsecutiveWriteFailures > 0) && (!string.IsNullOrEmpty(testForm.LastHardwareWriteError));
 
                 // Failure Injection 2: Emergency 100% write rejected by hardware (e.g. 95C APU tripwire)
                 testForm.TestEvaluateAndApplyFanProfiles(95);
@@ -1243,11 +1246,25 @@ namespace MiniFanControl
                 bool emergencySucceeded = (testForm.LastAppliedApuPct == 100);
                 bool errorCleared = (testForm.ConsecutiveWriteFailures == 0) && (testForm.LastHardwareWriteError == null);
 
+                // Failure Injection 5: Manual slider write rejected by hardware
+                testForm.DemoBackend.FailWrites = true;
+                testForm.TestSetFanManual(1, 65);
+                bool manualRejectedNotCached = (testForm.LastAppliedApuPct != 65);
+                bool hadManualError = (testForm.ConsecutiveWriteFailures > 0);
+
+                // Step 6: Manual slider write succeeds -> cached & errors cleared
+                testForm.DemoBackend.FailWrites = false;
+                testForm.TestSetFanManual(1, 65);
+                bool manualSucceeded = (testForm.LastAppliedApuPct == 65);
+                bool manualErrorCleared = (testForm.ConsecutiveWriteFailures == 0) && (testForm.LastHardwareWriteError == null);
+
                 uiWriteSafetyPassed = normalWriteRejectedNotCached && hadErrorNormal &&
                                       emergencyRejectedNotCached && emergencyRetried &&
-                                      emergencySucceeded && errorCleared;
-                uiDetail = string.Format("NormalRejCached={0}, EmergRejCached={1}, EmergRetried={2}, EmergRecovered={3}",
-                    !normalWriteRejectedNotCached, !emergencyRejectedNotCached, emergencyRetried, emergencySucceeded);
+                                      emergencySucceeded && errorCleared &&
+                                      manualRejectedNotCached && hadManualError &&
+                                      manualSucceeded && manualErrorCleared;
+                uiDetail = string.Format("NormalRejCached={0}, HadNormErr={1}, EmergRejCached={2}, EmergRetried={3}, EmergRecovered={4}, EmergErrClr={5}, ManRejCached={6}, ManRecovered={7}",
+                    !normalWriteRejectedNotCached, hadErrorNormal, !emergencyRejectedNotCached, emergencyRetried, emergencySucceeded, errorCleared, !manualRejectedNotCached, manualSucceeded);
             }
             Check(uiWriteSafetyPassed,
                 "UI Write-Result Fail-Closed Handling & Independent Emergency Retries",

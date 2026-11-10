@@ -152,6 +152,8 @@ namespace MiniFanControl
         internal bool TestEvaluateAndApplyFanProfiles(int apuTemp) { return EvaluateAndApplyFanProfiles(apuTemp); }
         internal void TestSetFanManual(int fanId, int pct) { ApplyFan(fanId, pct); }
         internal void TestApplyAutoAll() { ApplyAutoAll(); }
+        internal FanCurveProfile ApuProfile { get { return _apuProfile; } set { _apuProfile = value; } }
+        internal List<FanCurveProfile> CustomProfiles { get { return _customProfiles; } }
         private DateTime _lastWorkerSampleUtc = DateTime.UtcNow;
         private bool _watchdogStarted = false;
         private SessionEndingEventHandler _sessionEndingHandler;
