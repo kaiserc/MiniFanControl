@@ -31,7 +31,7 @@ Because desktop utilities cannot detect this controller, Mini PC users were hist
 
 ## 🏛️ Project Architecture & Domain Organization
 
-The codebase is organized into cleanly separated domain modules supporting both native Windows builds and SDK-style multi-targeting (.NET Framework 4.8 / .NET 8.0-windows):
+The codebase is organized into cleanly separated domain modules supporting both native Windows builds and SDK-style multi-targeting (.NET Framework 4.8 / .NET 10.0-windows):
 
 ```
 MiniFanControl/
@@ -69,7 +69,7 @@ MiniFanControl/
 │   ├── workflows/ci.yml
 │   └── ISSUE_TEMPLATE/
 ├── Program.cs          # CLI dispatcher, headless automation helper & GUI entry point
-├── MiniFanControl.csproj # Multi-target SDK project file (.NET 4.8 & .NET 8)
+├── MiniFanControl.csproj # Multi-target SDK project file (.NET 4.8 & .NET 10)
 └── build-windows.bat   # Non-destructive atomic compiler script (.old.exe rotation)
 ```
 

@@ -35,7 +35,7 @@ Decomposed the 11,337-line monolithic `MiniFanControl.cs` into 24 maintainable, 
 - **`/Telemetry`**: `FpsMonitor.cs`, `CapFrameXOverlayForm.cs`
 - **`/Ui`**: `DoubleBufferedPanel.cs`, `FanCurveCanvas.cs`, `LiveTelemetryCanvas.cs`, `NewModeDialog.cs`, `FanCalibrationDialog.cs`, `AppLogoRenderer.cs`, `MainForm.cs`
 - **`/Tests`**: `SelfTestSuite.cs`
-- **Root**: `Program.cs`, `MiniFanControl.csproj` (SDK-style multi-target support for both .NET Framework 4.8 and .NET 8.0-windows).
+- **Root**: `Program.cs`, `MiniFanControl.csproj` (SDK-style multi-target support for both .NET Framework 4.8 and .NET 10.0-windows).
 
 ### 📦 Phase 5: Production Release Packaging
 - **Automated Packaging Pipeline (`package-release.bat`)**: Single-script compilation, automated test verification, release staging, ZIP compression, and SHA256 checksum generation.
@@ -62,7 +62,7 @@ Decomposed the 11,337-line monolithic `MiniFanControl.cs` into 24 maintainable, 
 - **Strict Fail-Closed Port Whitelisting (Reads & Writes)**: Hardened `IsPortWhitelisted(port, isWrite)` to strictly block arbitrary unlisted port reads fail-closed. Sensitive ports (`0x70/0x71`, `0x92`, `0xCF9`, `0x20/0x21`, `0x40..0x43`, `0x61`) are explicitly blocked for both read and write.
 - **Super I/O Write Read-Back & Separate Restore Paths**: `WriteSuperIoHwReg(reg, val)` now returns `bool` after verifying register read-back. `SetAuto()` cleanly separates into `RestoreNativeEcAuto()` and `ApplySafeSuperIoFallback()`, confirming both EC registers (`0x33/0x34 == 0x00`) and Super I/O PWM registers (`0x6B == 40`, `0x73 == 240`) before reporting success.
 - **Dual Heartbeat UI Freeze Detection & IPC Handle Validation**: Implemented dual-thread watchdog heartbeat. Heartbeat pulses are dispatched from the UI thread (`_refreshTimer.Tick` & `OnHardwareWorkerSample`) only if the background hardware worker has recently sampled within 4.5 seconds. If either the UI thread freezes or the worker hangs, the heartbeat ceases and watchdog failsafe engages. IPC event handles are validated non-null before supervisor process launch.
-- **Multi-Target CI Pipeline**: Updated `.github/workflows/ci.yml` to verify modern SDK builds (`net48` and `net8.0-windows` via `dotnet build MiniFanControl.csproj`) alongside the standalone .NET 4.8 `build-windows.bat` release pipeline.
+- **Multi-Target CI Pipeline**: Updated `.github/workflows/ci.yml` to verify modern SDK builds (`net48` and `net10.0-windows` via `dotnet build MiniFanControl.csproj`) alongside the standalone .NET 4.8 `build-windows.bat` release pipeline.
 - **Synchronized Versioning**: Authoritative version `2.7.0` synchronized across `VERSION`, `MiniFanControl.csproj`, `Ui/MainForm.cs`, `installer.iss`, `package-release.bat`, and documentation.
 - **Expanded 28-Point Automated Safety Matrix**: Added Test 26 (Strict Fail-Closed Port Whitelist Enforcement), Test 27 (Centralized Hardware Initializer Safe Default), and Test 28 (Super I/O Write Read-Back & Separate Restore Paths).
 

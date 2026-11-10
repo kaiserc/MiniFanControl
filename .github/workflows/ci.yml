@@ -17,9 +17,9 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
-      - name: Build Modern SDK Multi-Target (.NET 4.8 & .NET 8.0-windows)
+      - name: Build Modern SDK Multi-Target (.NET 4.8 & .NET 10.0-windows)
         shell: cmd
         run: |
           dotnet build MiniFanControl.csproj -c Release
