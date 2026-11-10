@@ -89,7 +89,7 @@ namespace MiniFanControl
                     return;
                 }
 
-                using (HardwareBackend hw = new HardwareBackend())
+                using (HardwareBackend hw = HardwareBackend.CreateAutoDetected())
                 {
                     bool ok = hw.SetAuto();
                     if (ok)
@@ -141,6 +141,13 @@ namespace MiniFanControl
                 heartbeatEvent = CreateOrOpenEvent(GetHeartbeatEventName(parentPid), EventResetMode.AutoReset, out createdHb);
                 shutdownEvent = CreateOrOpenEvent(GetShutdownEventName(parentPid), EventResetMode.ManualReset, out createdSd);
 
+                if (heartbeatEvent == null || shutdownEvent == null)
+                {
+                    LogWatchdogEvent("FATAL: Failed to create or open named IPC events for parent PID " + parentPid + ". Watchdog supervisor aborting.");
+                    Console.Error.WriteLine("[WATCHDOG ERROR] Failed to create or open named IPC events. Aborting.");
+                    return 1;
+                }
+
                 return ExecuteLoop(parentProcess, parentPid, timeoutMs, heartbeatEvent, shutdownEvent, demoMode, false);
             }
             finally
@@ -170,6 +177,10 @@ namespace MiniFanControl
             bool demoMode,
             bool testMode)
         {
+            if (heartbeatEvent == null || shutdownEvent == null)
+            {
+                return 1;
+            }
             DateTime lastHeartbeatUtc = DateTime.UtcNow;
             bool triggeredFailsafe = false;
 

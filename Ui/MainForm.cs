@@ -43,7 +43,7 @@ namespace MiniFanControl
         private const int HOTKEY_LOCK_OSD   = 9003;
         private const int HOTKEY_RESET_AUTO = 9004;
 
-        public const string APP_VERSION         = "2.6.0";
+        public const string APP_VERSION         = "2.7.0";
         public const string SCHTASK_NAME        = "MiniFanControl_Autostart";
         public const string URL_GMKTEC_DRIVERS  = "https://www.gmktec.com/pages/drivers-and-software";
         public const string URL_GMKTEC_FIRMWARE = "https://www.gmktec.com/pages/firmware-update";
@@ -139,6 +139,7 @@ namespace MiniFanControl
         private Process _watchdogProcess;
         private EventWaitHandle _watchdogHeartbeatEvent;
         private EventWaitHandle _watchdogShutdownEvent;
+        private DateTime _lastWorkerSampleUtc = DateTime.UtcNow;
         private bool _watchdogStarted = false;
         private SessionEndingEventHandler _sessionEndingHandler;
         private PowerModeChangedEventHandler _powerModeChangedHandler;
@@ -369,6 +370,12 @@ namespace MiniFanControl
             _refreshTimer = new System.Windows.Forms.Timer { Interval = _refreshIntervalMs };
             _refreshTimer.Tick += (s, e) =>
             {
+                // UI-thread pulse: Dual-thread heartbeat verifies both background hardware worker and UI message pump are alive
+                if ((DateTime.UtcNow - _lastWorkerSampleUtc).TotalMilliseconds < 4500)
+                {
+                    PulseWatchdogHeartbeat();
+                }
+
                 // UI-only periodic refresh (theme sync and status bar timer)
                 if (_themePref == ThemePreference.System)
                 {
@@ -445,6 +452,12 @@ namespace MiniFanControl
                 bool createdHb, createdSd;
                 _watchdogHeartbeatEvent = WatchdogSupervisor.CreateOrOpenEvent(WatchdogSupervisor.GetHeartbeatEventName(myPid), EventResetMode.AutoReset, out createdHb);
                 _watchdogShutdownEvent = WatchdogSupervisor.CreateOrOpenEvent(WatchdogSupervisor.GetShutdownEventName(myPid), EventResetMode.ManualReset, out createdSd);
+
+                if (_watchdogHeartbeatEvent == null || _watchdogShutdownEvent == null)
+                {
+                    StopWatchdogSupervisorGracefully();
+                    return;
+                }
 
                 string exeDir = AppDomain.CurrentDomain.BaseDirectory;
                 string helperPath = Path.Combine(exeDir, "minifan-helper.exe");
@@ -4408,7 +4421,7 @@ namespace MiniFanControl
                     }
                 }
 
-                PulseWatchdogHeartbeat();
+                _lastWorkerSampleUtc = DateTime.UtcNow;
 
                 int waitMs = _refreshIntervalMs;
                 if (DateTime.UtcNow < _rampUntil) waitMs = Math.Min(waitMs, 250);
@@ -4420,6 +4433,10 @@ namespace MiniFanControl
         {
             try
             {
+                if ((DateTime.UtcNow - _lastWorkerSampleUtc).TotalMilliseconds < 4500)
+                {
+                    PulseWatchdogHeartbeat();
+                }
                 ApplyStatusToUi(st);
             }
             catch { }

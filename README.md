@@ -9,7 +9,7 @@
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%208-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 25 Passed](https://img.shields.io/badge/Automated%20Tests-25%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-2525-passing)
+[![Automated Tests: 28 Passed](https://img.shields.io/badge/Automated%20Tests-28%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-2828-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 
 **MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **KTHIN Ryzen AI 9 HX 370 PRO**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
@@ -55,7 +55,7 @@ MiniFanControl/
 ├── Telemetry/          # RTSS/CapFrameX shared memory reader & transparent OSD HUD
 │   ├── CapFrameXOverlayForm.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 25-point automated hardware safety & regression test suite
+├── Tests/              # 28-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
 ├── Ui/                 # Double-buffered canvases, custom WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
@@ -159,7 +159,7 @@ Mini PCs communicate with their embedded controller via raw ACPI I/O ports (`0x6
 
 ### How MiniFanControl Hardens Driver Access (Defense-in-Depth)
 MiniFanControl wraps all ring-0 driver operations inside a strict user-mode defense layer in [`Hardware/NativeInpOut.cs`](Hardware/NativeInpOut.cs):
-- **Port Whitelist Enforcement**: `IsPortWhitelisted()` strictly permits only documented ACPI EC and Super I/O ports. Attempts to access sensitive ports (e.g., RTC `0x70/0x71`, PIC `0x20/0x21`, PCI reset `0xCF9`) are blocked fail-closed before touching the driver.
+- **Strict Fail-Closed Port Whitelist Enforcement**: `IsPortWhitelisted()` strictly permits only documented ACPI EC and Super I/O ports for both reading and writing. Arbitrary unlisted port reads and sensitive ports (e.g., RTC `0x70/0x71`, PIC `0x20/0x21`, PIT `0x40..0x43`, Fast A20/Reset `0x92`, PCI reset `0xCF9`) are blocked fail-closed before touching the driver.
 - **Strict Physical Memory Bounds**: `MapPhysToLinSafe()` strictly confines physical memory mapping to the verified IT5570E EC aperture (`0xFE0B0400`, max 4 KB). Attempts to map low memory (<1 MB) or arbitrary system RAM are blocked.
 - **Safe Driver Shutdown for Gamers**: Users playing competitive multiplayer titles can immediately unload the driver service without rebooting by running:
   ```powershell
@@ -231,13 +231,13 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Stop the kernel driver service before launching competitive anti-cheat games
 .\minifan-helper.exe driver-stop
 
-# Execute the 25-point automated hardware safety & curve test suite
+# Execute the 28-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (25/25 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (28/28 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 

@@ -319,7 +319,7 @@ Control your thermal environment without leaving full-screen games:
 ## 6. Multi-Tool Coexistence & `Global\Access_EC` Mutex
 
 ### Storage & PCIe Bus Safety (Safe AMD Driver Telemetry)
-MiniFanControl v2.6.0 uses AMD's official driver interface (`atiadlxx.dll` / `amdfendrm.sys`) for APU telemetry and CPU/iGPU temperatures. Unlike naive utilities that constantly pound raw hardware PCI configuration ports (`0xCF8/0xCFC`), MiniFanControl avoids uncoordinated port I/O during active polling. This completely eliminates race conditions with the Windows NVMe storage driver (`stornvme.sys`), protecting high-speed PCIe SSDs from transaction timeouts or in-page errors.
+MiniFanControl v2.7.0 uses AMD's official driver interface (`atiadlxx.dll` / `amdfendrm.sys`) for APU telemetry and CPU/iGPU temperatures. Unlike naive utilities that constantly pound raw hardware PCI configuration ports (`0xCF8/0xCFC`), MiniFanControl avoids uncoordinated port I/O during active polling. This completely eliminates race conditions with the Windows NVMe storage driver (`stornvme.sys`), protecting high-speed PCIe SSDs from transaction timeouts or in-page errors.
 
 Mini PCs have a single Embedded Controller communicating over shared hardware registers. If two monitoring tools (for example, MiniFanControl and HWiNFO64 or CapFrameX) read or write the EC at the exact same microsecond, register values can become corrupt.
 

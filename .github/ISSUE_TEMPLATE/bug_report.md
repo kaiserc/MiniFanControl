@@ -10,7 +10,7 @@ assignees: ''
 - System Model (e.g., KTHIN HX 370, GMKtec K12, AriesBox 10):
 - Processor (e.g., Ryzen AI 9 HX 370, Ryzen 7 8845HS):
 - OS Version: Windows 11 (64-bit) Build / Version:
-- MiniFanControl Version: v2.6.0
+- MiniFanControl Version: v2.7.0
 
 **Describe the Bug**
 A clear and concise description of what the bug is.

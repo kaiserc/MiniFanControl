@@ -97,7 +97,7 @@ namespace MiniFanControl
                 if (p.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase))
                     return p;
             }
-            return KnownProfiles[0];
+            return KnownProfiles[KnownProfiles.Length - 1];
         }
     }
 
@@ -108,7 +108,7 @@ namespace MiniFanControl
         public string BaseBoard = "Unknown";
         public string BiosVersion = "Unknown";
         public string CpuName = "AMD Ryzen APU";
-        public DeviceProfile MatchedProfile = DeviceProfile.KnownProfiles[0];
+        public DeviceProfile MatchedProfile = DeviceProfile.FindProfile("unknown-safe");
 
         public static SystemHardwareInfo Detect()
         {

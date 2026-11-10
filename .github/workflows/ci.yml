@@ -14,7 +14,17 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Build Executables & Run Self-Tests
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build Modern SDK Multi-Target (.NET 4.8 & .NET 8.0-windows)
+        shell: cmd
+        run: |
+          dotnet build MiniFanControl.csproj -c Release
+
+      - name: Build Standalone Executables & Run Self-Tests (.NET 4.8 via csc)
         shell: cmd
         run: |
           call build-windows.bat

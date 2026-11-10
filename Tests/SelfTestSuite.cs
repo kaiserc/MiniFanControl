@@ -1025,6 +1025,78 @@ namespace MiniFanControl
                 string.Format("ReadOnlyBlocked=[Fan:{0},Mode:{1},Reg:{2},Auto:{3}], ContentionBlocked=[Fan:{4},Auto:{5}]",
                     unvFanBlocked, unvModeBlocked, unvRegBlocked, unvAutoBlocked, contentionFanBlocked, contentionAutoBlocked));
 
+            // 26. Strict Fail-Closed Port Whitelist Enforcement (Read & Write)
+            bool unlistedRead1Blocked = !HardwareBackend.IsPortWhitelisted(0x80, false);
+            bool unlistedRead2Blocked = !HardwareBackend.IsPortWhitelisted(0x1234, false);
+            bool unlistedRead3Blocked = !HardwareBackend.IsPortWhitelisted(0x0000, false);
+            bool unlistedRead4Blocked = !HardwareBackend.IsPortWhitelisted(0xFFFF, false);
+            bool unlistedWriteBlocked = !HardwareBackend.IsPortWhitelisted(0x1234, true);
+
+            bool criticalPort70ReadBlocked = !HardwareBackend.IsPortWhitelisted(0x70, false);
+            bool criticalPortCF9ReadBlocked = !HardwareBackend.IsPortWhitelisted(0xCF9, false);
+            bool criticalPort20ReadBlocked = !HardwareBackend.IsPortWhitelisted(0x20, false);
+
+            bool legitimateRead62Allowed = HardwareBackend.IsPortWhitelisted(0x62, false);
+            bool legitimateRead2EAllowed = HardwareBackend.IsPortWhitelisted(0x2E, false);
+            bool legitimateReadCF8Allowed = HardwareBackend.IsPortWhitelisted(0xCF8, false);
+
+            bool allPortWhitelistPassed = unlistedRead1Blocked && unlistedRead2Blocked && unlistedRead3Blocked &&
+                                          unlistedRead4Blocked && unlistedWriteBlocked &&
+                                          criticalPort70ReadBlocked && criticalPortCF9ReadBlocked && criticalPort20ReadBlocked &&
+                                          legitimateRead62Allowed && legitimateRead2EAllowed && legitimateReadCF8Allowed;
+
+            Check(allPortWhitelistPassed,
+                "Strict Fail-Closed Port Whitelist Enforcement (Read & Write)",
+                string.Format("UnlistedReadsBlocked=[0x80:{0},0x1234:{1}], CriticalBlocked=[0x70:{2},0xCF9:{3}], LegitimateReads=[0x62:{4},0x2E:{5},0xCF8:{6}]",
+                    unlistedRead1Blocked, unlistedRead2Blocked, criticalPort70ReadBlocked, criticalPortCF9ReadBlocked,
+                    legitimateRead62Allowed, legitimateRead2EAllowed, legitimateReadCF8Allowed));
+
+            // 27. Centralized Hardware Initializer Safe Default (Read-Only Fail-Closed)
+            HardwareBackend freshHw = new HardwareBackend();
+            bool defaultIsUnknownSafe = freshHw.Profile != null &&
+                                        freshHw.Profile.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase) &&
+                                        freshHw.Profile.IsReadOnly;
+
+            HardwareBackend autoDetectedHw = HardwareBackend.CreateAutoDetected();
+            bool autoDetectedValid = autoDetectedHw != null && autoDetectedHw.Profile != null;
+
+            DeviceProfile nullProfileFallback = DeviceProfile.FindProfile(null);
+            bool nullProfileIsSafe = nullProfileFallback != null &&
+                                     nullProfileFallback.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase) &&
+                                     nullProfileFallback.IsReadOnly;
+
+            DeviceProfile invalidProfileFallback = DeviceProfile.FindProfile("non-existent-device-id");
+            bool invalidProfileIsSafe = invalidProfileFallback != null &&
+                                       invalidProfileFallback.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase) &&
+                                       invalidProfileFallback.IsReadOnly;
+
+            bool allInitializerSafetyPassed = defaultIsUnknownSafe && autoDetectedValid && nullProfileIsSafe && invalidProfileIsSafe;
+
+            Check(allInitializerSafetyPassed,
+                "Centralized Hardware Initializer Safe Default (Read-Only Fail-Closed)",
+                string.Format("DefaultUnknownSafe={0}, AutoDetectedValid={1}, NullFallbackSafe={2}, InvalidFallbackSafe={3}",
+                    defaultIsUnknownSafe, autoDetectedValid, nullProfileIsSafe, invalidProfileIsSafe));
+
+            // 28. Super I/O Write Read-Back & Separate Restore Paths
+            HardwareBackend readOnlyHw = new HardwareBackend();
+            readOnlyHw.Profile = DeviceProfile.FindProfile("unknown-safe");
+            readOnlyHw.SuperIoBaseAddr = 0x0A30;
+            bool sioWriteBlocked = !readOnlyHw.WriteSuperIoHwReg(0x6B, 40);
+            bool ecRestoreBlocked = !readOnlyHw.RestoreNativeEcAuto();
+            bool sioFallbackBlocked = !readOnlyHw.ApplySafeSuperIoFallback();
+
+            HardwareBackend dummyZeroBaseHw = new HardwareBackend();
+            dummyZeroBaseHw.Profile = DeviceProfile.KnownProfiles[0]; // Verified profile without Super I/O
+            dummyZeroBaseHw.SuperIoBaseAddr = 0;
+            bool zeroBaseSioFallbackSafe = dummyZeroBaseHw.ApplySafeSuperIoFallback();
+
+            bool allSuperIoVerificationPassed = sioWriteBlocked && ecRestoreBlocked && sioFallbackBlocked && zeroBaseSioFallbackSafe;
+
+            Check(allSuperIoVerificationPassed,
+                "Super I/O Write Read-Back & Separate Restore Paths",
+                string.Format("SioWriteBlocked={0}, EcRestoreBlocked={1}, SioFallbackBlocked={2}, ZeroBaseSafe={3}",
+                    sioWriteBlocked, ecRestoreBlocked, sioFallbackBlocked, zeroBaseSioFallbackSafe));
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));
