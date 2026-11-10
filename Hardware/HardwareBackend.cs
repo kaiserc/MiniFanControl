@@ -458,6 +458,7 @@ namespace MiniFanControl
         public void WriteSuperIoHwReg(byte reg, byte val)
         {
             if (SuperIoBaseAddr == 0) return;
+            if (Profile != null && Profile.IsReadOnly) return; // Fail-closed: read-only unverified hardware protection
             try
             {
                 ushort addrPort = (ushort)(SuperIoBaseAddr + 5);
@@ -765,6 +766,7 @@ namespace MiniFanControl
 
         public void WriteReg(byte reg, byte val)
         {
+            if (Profile != null && Profile.IsReadOnly) return; // Fail-closed: read-only unverified hardware protection
             EnsureOpen();
             using (var lockScope = EcBusMutex.AcquireEc(30))
             {
@@ -1010,6 +1012,7 @@ namespace MiniFanControl
 
         public void SetMode(int code)
         {
+            if (Profile != null && Profile.IsReadOnly) return; // Fail-closed: read-only unverified hardware protection
             EnsureOpen();
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
             WriteReg(p.RegModeCmd, EncodeModeCommand(code));
@@ -1017,6 +1020,7 @@ namespace MiniFanControl
 
         public void SetFan(int fanId, int pct)
         {
+            if (Profile != null && Profile.IsReadOnly) return; // Fail-closed: read-only unverified hardware protection
             EnsureOpen();
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
             byte val = EncodeFanCommand(pct);
@@ -1068,6 +1072,7 @@ namespace MiniFanControl
 
         public void SetAuto()
         {
+            if (Profile != null && Profile.IsReadOnly) return; // Fail-closed: read-only unverified hardware protection
             EnsureOpen();
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
             for (int attempt = 0; attempt < 3; attempt++)

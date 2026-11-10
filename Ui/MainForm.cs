@@ -585,6 +585,37 @@ namespace MiniFanControl
             RefreshStatus();
         }
 
+        private void ExportSessionTelemetryToCsv()
+        {
+            try
+            {
+                using (SaveFileDialog sfd = new SaveFileDialog())
+                {
+                    sfd.Filter = "CSV Files (*.csv)|*.csv|All Files (*.*)|*.*";
+                    sfd.FileName = string.Format("MiniFanControl-Telemetry-{0:yyyyMMdd-HHmmss}.csv", DateTime.Now);
+                    sfd.Title = "Export Session Telemetry to CSV";
+                    if (sfd.ShowDialog(this) == DialogResult.OK)
+                    {
+                        bool ok = _sessionStats.ExportToCsv(sfd.FileName);
+                        if (ok)
+                        {
+                            MessageBox.Show(this,
+                                string.Format("Successfully exported {0} telemetry records to:\n\n{1}", _sessionStats.LoggedRecordCount, sfd.FileName),
+                                "Telemetry Export", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                        else
+                        {
+                            MessageBox.Show(this, "Failed to write CSV file. Check folder write permissions.", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Error exporting telemetry: " + ex.Message, "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void InitOverlayForm()
         {
             _overlayForm = new CapFrameXOverlayForm
@@ -1168,6 +1199,8 @@ namespace MiniFanControl
                     _sessionStats.MaxCpuTemp, _sessionStats.MaxGpuTemp, _sessionStats.MaxPowerWatts)
                 : "Reset Session Peak (Max °C / W) Stats";
             menu.MenuItems.Add(resetPeaksLabel, (s, e) => ResetSessionPeaks());
+            string exportCsvLabel = string.Format("📊 Export Session Telemetry to CSV ({0} samples logged)...", _sessionStats.LoggedRecordCount);
+            menu.MenuItems.Add(exportCsvLabel, (s, e) => ExportSessionTelemetryToCsv());
             string safeExitLabel = string.Format("Safety: Restore BIOS Auto Fan on Exit ({0})",
                 _restoreAutoOnExit ? "✓ Enabled" : "Disabled");
             menu.MenuItems.Add(safeExitLabel, (s, e) =>
@@ -1260,7 +1293,14 @@ namespace MiniFanControl
             if (_hw != null) _hw.Profile = _sysInfo.MatchedProfile;
             if (_hwSubLabel != null)
             {
-                _hwSubLabel.Text = string.Format("EC Map: {0} • Global\\Access_EC Mutex • 64-bit", _sysInfo.MatchedProfile.DisplayName);
+                if (_sysInfo.MatchedProfile.IsReadOnly)
+                {
+                    _hwSubLabel.Text = string.Format("EC Map: {0} • [SAFE READ-ONLY MODE] • Global\\Access_EC Mutex", _sysInfo.MatchedProfile.DisplayName);
+                }
+                else
+                {
+                    _hwSubLabel.Text = string.Format("EC Map: {0} • Global\\Access_EC Mutex • 64-bit", _sysInfo.MatchedProfile.DisplayName);
+                }
             }
             SaveSettings();
             _driversMenu = CreateDriversAndToolsMenu();
@@ -2344,7 +2384,7 @@ namespace MiniFanControl
             _fan1Box.Controls.Add(_fan1RpmLabel);
             statusCard.Controls.Add(_fan1Box);
 
-            string fan1Tip = "APU / CPU Fan Tachometer (EC Register 0x30/0x31)\r\nLeft-click to highlight APU Fan on the big graph • Right-click to reset peaks.";
+            string fan1Tip = "APU / CPU Fan Tachometer\r\nLeft-click to highlight APU Fan on the big graph • Right-click to reset peaks.";
             _uiToolTip.SetToolTip(_fan1Box, fan1Tip);
             _uiToolTip.SetToolTip(_fan1BoxTitle, fan1Tip);
             _uiToolTip.SetToolTip(_fan1RpmLabel, fan1Tip);
@@ -2382,7 +2422,7 @@ namespace MiniFanControl
             _fan2Box.Controls.Add(_fan2RpmLabel);
             statusCard.Controls.Add(_fan2Box);
 
-            string fan2Tip = "System RAM / NVMe Fan Tachometer (EC Register 0x32/0x33)\r\nLeft-click to highlight Sys Fan on the big graph • Right-click to reset peaks.";
+            string fan2Tip = "System RAM / NVMe Fan Tachometer\r\nLeft-click to highlight Sys Fan on the big graph • Right-click to reset peaks.";
             _uiToolTip.SetToolTip(_fan2Box, fan2Tip);
             _uiToolTip.SetToolTip(_fan2BoxTitle, fan2Tip);
             _uiToolTip.SetToolTip(_fan2RpmLabel, fan2Tip);
@@ -2436,7 +2476,7 @@ namespace MiniFanControl
             {
                 if (_lastStatus.CpuTemp > 0 && _uiToolTip != null)
                 {
-                    string tip = _lastStatus.FormatApuFanTooltip(_sessionStats, FanCurveProfile.ApuMaxRpm);
+                    string tip = _lastStatus.FormatApuFanTooltip(_sessionStats, FanCurveProfile.ApuMaxRpm, _hw != null ? _hw.Profile : null);
                     _lastApuFanTooltipText = tip;
                     _uiToolTip.SetToolTip(_fan1Box, tip);
                     _uiToolTip.SetToolTip(_fan1BoxTitle, tip);
@@ -2451,7 +2491,7 @@ namespace MiniFanControl
             {
                 if (_lastStatus.CpuTemp > 0 && _uiToolTip != null)
                 {
-                    string tip = _lastStatus.FormatSysFanTooltip(_sessionStats, FanCurveProfile.SysMaxRpm, _hasDualFans);
+                    string tip = _lastStatus.FormatSysFanTooltip(_sessionStats, FanCurveProfile.SysMaxRpm, _hasDualFans, _hw != null ? _hw.Profile : null);
                     _lastSysFanTooltipText = tip;
                     _uiToolTip.SetToolTip(_fan2Box, tip);
                     _uiToolTip.SetToolTip(_fan2BoxTitle, tip);
@@ -4548,7 +4588,7 @@ namespace MiniFanControl
                 }
                 if (_uiToolTip != null && !IsBoxHovered(_fan1Box, _fan1BoxTitle, _fan1RpmLabel))
                 {
-                    string f1Tip = st.FormatApuFanTooltip(_sessionStats, FanCurveProfile.ApuMaxRpm);
+                    string f1Tip = st.FormatApuFanTooltip(_sessionStats, FanCurveProfile.ApuMaxRpm, _hw != null ? _hw.Profile : null);
                     if (f1Tip != _lastApuFanTooltipText)
                     {
                         _lastApuFanTooltipText = f1Tip;
@@ -4573,7 +4613,7 @@ namespace MiniFanControl
                 }
                 if (_uiToolTip != null && !IsBoxHovered(_fan2Box, _fan2BoxTitle, _fan2RpmLabel))
                 {
-                    string f2Tip = st.FormatSysFanTooltip(_sessionStats, FanCurveProfile.SysMaxRpm, _hasDualFans);
+                    string f2Tip = st.FormatSysFanTooltip(_sessionStats, FanCurveProfile.SysMaxRpm, _hasDualFans, _hw != null ? _hw.Profile : null);
                     if (f2Tip != _lastSysFanTooltipText)
                     {
                         _lastSysFanTooltipText = f2Tip;

@@ -26,6 +26,21 @@ Because desktop utilities cannot detect this controller, Mini PC users were hist
 
 ---
 
+## 💻 Hardware Compatibility Matrix
+
+| System Model / Platform | Processor | Controller / Super I/O | Dual Fans | Control Mode |
+| :--- | :--- | :--- | :---: | :--- |
+| **KTHIN PRO / EVO-X1 / TOPC TS-12C** | AMD Ryzen AI 9 HX 370 (Radeon 890M) | ITE IT8613E Super I/O + EC | ✅ Yes | **Verified Native (Dual PWM)** |
+| **GMKtec NucBox K12** | AMD Ryzen 7 H 255 / 8845HS (Radeon 780M) | ITE IT5570E EC @ `0xFE0B0400` | ✅ Yes | **Verified Native (Dual EC)** |
+| **GMKtec NucBox K8 Plus / K11** | AMD Ryzen 7 8845HS / 8945HS | ITE IT5570E EC @ `0xFE0B0400` | ✅ Yes | **Verified Native (Dual EC)** |
+| **ADREAMER AriesBox 10 / PB07** | AMD Ryzen 7 7840HS (Radeon 780M) | ITE IT5570E EC @ `0xFE0B0400` | ✅ Yes | **Verified Native (Dual EC)** |
+| **Generic Zen 4 / Zen 5 Mini PC** | AMD Ryzen 7000 / 8000 / AI 300 series | ITE IT5570E / Aptio V EC | Auto | **Verified Auto Detection** |
+| **Unrecognized / Unsupported System** | Any unverified CPU / Motherboard | Unverified | — | **Safe Read-Only Mode (Writes Locked)** |
+
+> 🛡️ **Fail-Closed Hardware Protection**: If run on an unverified platform, MiniFanControl engages **Safe Read-Only Monitoring Mode**. Telemetry (temperatures, clocks, package power) remains visible, but all hardware write operations are locked to guarantee physical safety. Advanced users can manually select a verified profile under **Tools & Drivers ▾**.
+
+---
+
 ## ✨ Key Features
 
 ### 🖥️ Redesigned Modern Interface (680×860)
@@ -34,7 +49,8 @@ Because desktop utilities cannot detect this controller, Mini PC users were hist
   - **CPU Temp**: Reads direct silicon core temperature (Tctl) via official AMD PMLOG (`atiadlxx.dll`) and EC/Super I/O with session peak tracking and zero raw PCI bus collisions.
   - **PCIe & NVMe Bus Safety**: Uses thread-safe AMD kernel driver APIs (`atiadlxx.dll`) for telemetry rather than uncoordinated raw `0xCF8/0xCFC` I/O ports, guaranteeing your NVMe SSD storage controller remains uninterrupted.
   - **iGPU Temp**: Reads integrated Radeon graphics telemetry via AMD Display Library (`atiadlxx.dll`).
-  - **APU Power (W)**: Total package power (PPT) with detailed core, GFX, and SoC power breakdown.
+  - **APU Power (W)**: Reads true total package power (PPT) directly from AMD silicon telemetry via ADL2 PMLOG (`atiadlxx.dll`). Hovering over the power box reveals the live breakdown: directly measured when hardware rail telemetry is available, or clearly flagged as an algorithmic estimate (`[Estimated]`) when individual rail sensors are unexposed.
+  - **Thermal History & CSV Export**: Record up to ~10,000 live telemetry samples with 1-click CSV export under **Tools & Drivers ▾** for benchmarking and temperature analysis.
   - **APU Fan RPM**: Live tachometer speed of the primary APU cooler.
   - **Sys Fan RPM**: Live tachometer speed of the secondary DDR5 RAM and NVMe SSD chassis fan.
   - **Live Sparkline Waveforms**: 118×21 px real-time mini charts inside each box. Click any box to spotlight that metric in the live telemetry graph!

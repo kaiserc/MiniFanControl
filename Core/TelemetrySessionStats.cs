@@ -18,6 +18,21 @@ using Microsoft.Win32;
 
 namespace MiniFanControl
 {
+    public class TelemetryRecord
+    {
+        public DateTime Timestamp;
+        public int CpuTemp;
+        public int GpuTemp;
+        public int ApuPowerWatts;
+        public int Fan1Rpm;
+        public int Fan2Rpm;
+        public int Fan1Pct;
+        public int Fan2Pct;
+        public string Mode;
+        public int GpuLoadPct;
+        public int Fps;
+    }
+
     public class TelemetrySessionStats
     {
         public const int HISTORY_LEN = 120;
@@ -54,6 +69,10 @@ namespace MiniFanControl
         private readonly List<int> _fan1RpmHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _fan2RpmHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _gpuLoadHist = new List<int>(HISTORY_LEN);
+        private readonly List<TelemetryRecord> _sessionLog = new List<TelemetryRecord>();
+        private readonly object _logLock = new object();
+
+        public int LoggedRecordCount { get { lock (_logLock) { return _sessionLog.Count; } } }
 
         public double AvgCpuTemp { get { return SampleCount > 0 ? (double)_sumCpuTemp / SampleCount : 0.0; } }
         public double AvgGpuTemp { get { return _gpuSampleCount > 0 ? (double)_sumGpuTemp / _gpuSampleCount : 0.0; } }
@@ -104,11 +123,30 @@ namespace MiniFanControl
             _fan1RpmHist.Clear();
             _fan2RpmHist.Clear();
             _gpuLoadHist.Clear();
+            lock (_logLock) { _sessionLog.Clear(); }
         }
 
         public void Record(FanStatus st)
         {
             if (st.CpuTemp <= 0) return;
+            lock (_logLock)
+            {
+                if (_sessionLog.Count >= 10000) _sessionLog.RemoveAt(0);
+                _sessionLog.Add(new TelemetryRecord
+                {
+                    Timestamp = DateTime.Now,
+                    CpuTemp = st.CpuTemp,
+                    GpuTemp = st.GpuTemp,
+                    ApuPowerWatts = st.ApuPowerWatts,
+                    Fan1Rpm = st.Fan1Rpm,
+                    Fan2Rpm = st.Fan2Rpm,
+                    Fan1Pct = st.Fan1Pct,
+                    Fan2Pct = st.Fan2Pct,
+                    Mode = st.Mode,
+                    GpuLoadPct = st.GfxActivityPct,
+                    Fps = st.Fps
+                });
+            }
             SampleCount++;
             if (st.CpuTemp < MinCpuTemp) MinCpuTemp = st.CpuTemp;
             if (st.CpuTemp > MaxCpuTemp) MaxCpuTemp = st.CpuTemp;
@@ -203,6 +241,41 @@ namespace MiniFanControl
                 chars[i] = SparkBlocks[idx];
             }
             return new string(chars);
+        }
+
+        public List<TelemetryRecord> GetSessionRecords()
+        {
+            lock (_logLock) { return new List<TelemetryRecord>(_sessionLog); }
+        }
+
+        public bool ExportToCsv(string filePath)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine("Timestamp,CPU_Temp_C,iGPU_Temp_C,APU_Power_W,Fan1_RPM,Fan2_RPM,Fan1_PWM_Pct,Fan2_PWM_Pct,Mode,iGPU_Load_Pct,FPS");
+                lock (_logLock)
+                {
+                    foreach (var r in _sessionLog)
+                    {
+                        sb.AppendFormat(CultureInfo.InvariantCulture,
+                            "{0:yyyy-MM-dd HH:mm:ss.fff},{1},{2},{3},{4},{5},{6},{7},\"{8}\",{9},{10}\r\n",
+                            r.Timestamp, r.CpuTemp, r.GpuTemp, r.ApuPowerWatts, r.Fan1Rpm, r.Fan2Rpm, r.Fan1Pct, r.Fan2Pct,
+                            r.Mode ?? "Auto", r.GpuLoadPct, r.Fps);
+                    }
+                }
+                string dir = Path.GetDirectoryName(filePath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+                File.WriteAllText(filePath, sb.ToString(), Encoding.UTF8);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 

@@ -393,6 +393,45 @@ namespace MiniFanControl
                 string.Format("Allow=[62:{0},2E:{1},A35:{2}], Block=[70:{3},CF9:{4},20:{5}], SafeMap=[Low:{6},Huge:{7}]",
                     port62Allow, port2EAllow, port0A35Allow, port70Blocked, portCF9Blocked, port20Blocked, lowMemMap == IntPtr.Zero, hugeMemMap == IntPtr.Zero));
 
+            // 20. Unverified Hardware Fail-Closed Read-Only Protection
+            DeviceProfile unverified = SystemHardwareInfo.MatchProfile("Intel Corporation", "NUC11PHKi7C", "11th Gen Intel(R) Core(TM) i7-1165G7 @ 2.80GHz");
+            DeviceProfile explicitUnverified = DeviceProfile.FindProfile("non-existent-device-id");
+            bool unverifiedIsReadOnly = unverified != null && unverified.IsReadOnly && !unverified.IsVerified;
+            bool explicitIsReadOnly = explicitUnverified != null && explicitUnverified.IsReadOnly && !explicitUnverified.IsVerified;
+
+            HardwareBackend safeHw = new HardwareBackend();
+            safeHw.Profile = unverified;
+            safeHw.SetFan(1, 100);
+            safeHw.SetFan(2, 80);
+            safeHw.SetMode(1);
+            safeHw.WriteReg(0x33, 0x80);
+            safeHw.WriteSuperIoHwReg(0x6B, 0);
+
+            Check(unverifiedIsReadOnly && explicitIsReadOnly && unverified.Id == "unknown-safe",
+                "Unverified Hardware Fail-Closed Read-Only Protection",
+                string.Format("MatchedId={0}, ReadOnly={1}, Verified={2}", unverified.Id, unverified.IsReadOnly, unverified.IsVerified));
+
+            // 21. Session Telemetry CSV Export Integrity & Schema Validation
+            TelemetrySessionStats testStats = new TelemetrySessionStats();
+            testStats.Record(new FanStatus { CpuTemp = 42, GpuTemp = 38, ApuPowerWatts = 18, Fan1Rpm = 1450, Fan2Rpm = 1100, Fan1Pct = 35, Fan2Pct = 30, Mode = "Balanced", GfxActivityPct = 12, Fps = 60 });
+            testStats.Record(new FanStatus { CpuTemp = 55, GpuTemp = 45, ApuPowerWatts = 28, Fan1Rpm = 2100, Fan2Rpm = 1400, Fan1Pct = 50, Fan2Pct = 40, Mode = "Performance", GfxActivityPct = 85, Fps = 120 });
+            string tempCsvPath = Path.Combine(Path.GetTempPath(), "minifan-test-export-" + Guid.NewGuid().ToString("N") + ".csv");
+            bool exportOk = testStats.ExportToCsv(tempCsvPath);
+            bool csvValid = false;
+            if (exportOk && File.Exists(tempCsvPath))
+            {
+                string[] csvLines = File.ReadAllLines(tempCsvPath);
+                csvValid = csvLines.Length == 3 &&
+                           csvLines[0].Trim() == "Timestamp,CPU_Temp_C,iGPU_Temp_C,APU_Power_W,Fan1_RPM,Fan2_RPM,Fan1_PWM_Pct,Fan2_PWM_Pct,Mode,iGPU_Load_Pct,FPS" &&
+                           csvLines[1].Contains("42,38,18,1450,1100,35,30,\"Balanced\",12,60") &&
+                           csvLines[2].Contains("55,45,28,2100,1400,50,40,\"Performance\",85,120");
+                try { File.Delete(tempCsvPath); } catch { }
+            }
+
+            Check(exportOk && csvValid && testStats.LoggedRecordCount == 2,
+                "Session Telemetry CSV Export Integrity & Schema Validation",
+                string.Format("ExportOk={0}, CsvValid={1}, Count={2}", exportOk, csvValid, testStats.LoggedRecordCount));
+
             Console.WriteLine("----------------------------------------------------------------------");
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));
             Console.WriteLine("======================================================================");

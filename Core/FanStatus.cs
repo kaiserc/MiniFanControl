@@ -32,6 +32,7 @@ namespace MiniFanControl
         public int GfxActivityPct;
         public int GfxVoltageMv;
         public int RtssFps;
+        public int Fps { get { return RtssFps; } set { RtssFps = value; } }
         public string PowerSource;
         public int Fan1Rpm;
         public int Fan2Rpm;
@@ -62,6 +63,7 @@ namespace MiniFanControl
 
             if (CpuPowerWatts > 0 || GfxPowerWatts > 0 || SocPowerWatts > 0)
             {
+                sb.AppendLine("Direct Sensor Readings (Measured AMD APU Package PMLOG):");
                 sb.AppendFormat("  • CPU Cores + Cache (VDDCR_CPU • PMLOG_CPU_POWER) : {0} W{1}\r\n",
                     CpuPowerWatts, CpuClockMhz > 0 ? string.Format("  ({0} MHz)", CpuClockMhz) : "  (Zen Cores + L2/L3)");
                 sb.AppendFormat("  • Radeon iGPU Engine (VDDCR_GFX • PMLOG_GFX_POWER): {0} W{1}\r\n",
@@ -75,9 +77,10 @@ namespace MiniFanControl
                 double gpuShare = (GpuTemp > CpuTemp - 4 && GpuTemp >= 48) ? 0.45 : 0.22;
                 int estGfx = Math.Max(2, (int)Math.Round(rem * gpuShare));
                 int estCpu = Math.Max(2, rem - estGfx);
-                sb.AppendFormat("  • CPU Cores + Cache (VDDCR_CPU) : ~{0} W  (Zen Cores + L2/L3)\r\n", estCpu);
-                sb.AppendFormat("  • Radeon iGPU Engine (VDDCR_GFX): ~{0} W  (Radeon Graphics CUs)\r\n", estGfx);
-                sb.AppendFormat("  • SoC / Memory / I/O (VDDCR_SOC): ~{0} W  (DDR5 Controller, Fabric, PCIe)\r\n", estSoc);
+                sb.AppendLine("Algorithmic Breakdown [Estimated - Individual Rail Telemetry Unexposed]:");
+                sb.AppendFormat("  • CPU Cores + Cache (VDDCR_CPU) : ~{0} W [Estimated] (Zen Cores + L2/L3)\r\n", estCpu);
+                sb.AppendFormat("  • Radeon iGPU Engine (VDDCR_GFX): ~{0} W [Estimated] (Radeon Graphics CUs)\r\n", estGfx);
+                sb.AppendFormat("  • SoC / Memory / I/O (VDDCR_SOC): ~{0} W [Estimated] (DDR5 Controller, Fabric, PCIe)\r\n", estSoc);
             }
 
             sb.AppendLine("────────────────────────────────────────────");
@@ -127,11 +130,20 @@ namespace MiniFanControl
             return sb.ToString();
         }
 
-        public string FormatApuFanTooltip(TelemetrySessionStats stats = null, int ratedMaxRpm = 0)
+        public string FormatApuFanTooltip(TelemetrySessionStats stats = null, int ratedMaxRpm = 0, DeviceProfile profile = null)
         {
             StringBuilder sb = new StringBuilder();
             sb.AppendFormat("APU / CPU Fan Tachometer: {0} RPM (PWM Duty: {1}%)\r\n", Fan1Rpm, Fan1Pct);
-            sb.AppendLine("• Hardware Sensor: EC Register 0x30/0x31 (High/Low Tachometer Byte)");
+            if (profile != null && profile.Id == "ryzen-hx370-ec")
+            {
+                sb.AppendLine("• Hardware Sensor: IT8613E Super I/O Register 0x0E/0x19 (High/Low Tachometer Byte)");
+            }
+            else
+            {
+                byte hi = profile != null ? profile.RegFan1Hi : (byte)0x35;
+                byte lo = profile != null ? profile.RegFan1Lo : (byte)0x36;
+                sb.AppendFormat("• Hardware Sensor: EC Register 0x{0:X2}/0x{1:X2} (High/Low Tachometer Byte)\r\n", hi, lo);
+            }
             sb.AppendFormat("• Minimum Spin Floor: ~{0}% PWM • Active EC Mode: {1}\r\n", FanCurveProfile.ApuMinSpinPct, Mode ?? "Auto");
             if (stats != null && stats.SampleCount > 0 && stats.MaxFan1Rpm > 0)
             {
@@ -148,7 +160,7 @@ namespace MiniFanControl
             return sb.ToString();
         }
 
-        public string FormatSysFanTooltip(TelemetrySessionStats stats = null, int ratedMaxRpm = 0, bool hasDualFans = true)
+        public string FormatSysFanTooltip(TelemetrySessionStats stats = null, int ratedMaxRpm = 0, bool hasDualFans = true, DeviceProfile profile = null)
         {
             if (!hasDualFans)
             {
@@ -156,7 +168,16 @@ namespace MiniFanControl
             }
             StringBuilder sb = new StringBuilder();
             sb.AppendFormat("System RAM / NVMe Fan Tachometer: {0} RPM (PWM Duty: {1}%)\r\n", Fan2Rpm, Fan2Pct);
-            sb.AppendLine("• Hardware Sensor: EC Register 0x32/0x33 (High/Low Tachometer Byte)");
+            if (profile != null && profile.Id == "ryzen-hx370-ec")
+            {
+                sb.AppendLine("• Hardware Sensor: IT8613E Super I/O Register 0x0F/0x1A (High/Low Tachometer Byte)");
+            }
+            else
+            {
+                byte hi = profile != null ? profile.RegFan2Hi : (byte)0x37;
+                byte lo = profile != null ? profile.RegFan2Lo : (byte)0x38;
+                sb.AppendFormat("• Hardware Sensor: EC Register 0x{0:X2}/0x{1:X2} (High/Low Tachometer Byte)\r\n", hi, lo);
+            }
             sb.AppendFormat("• Minimum Spin Floor: ~{0}% PWM • Active EC Mode: {1}\r\n", FanCurveProfile.SysMinSpinPct, Mode ?? "Auto");
             if (stats != null && stats.SampleCount > 0 && stats.MaxFan2Rpm > 0)
             {

@@ -42,10 +42,17 @@ Decomposed the 11,337-line monolithic `MiniFanControl.cs` into 24 maintainable, 
 - **Inno Setup Script (`installer.iss`)**: Professional Windows installer script with desktop/startup shortcuts and administrative permission elevation for kernel driver deployment.
 - **Non-Destructive Compilation**: `build-windows.bat` uses atomic file renaming (`.old.exe`) so the application can be rebuilt cleanly even while running.
 
+### 🛡️ Phase 6: Release Hardening & Safety Verification
+- **Unverified Hardware Protection**: `DeviceProfile` introduces an explicit `unknown-safe` profile with `IsReadOnly = true`. If run on an unrecognized hardware platform, all register writes are blocked fail-closed at the hardware layer, preventing damage while retaining safe read-only telemetry monitoring.
+- **Tachometer Register Realignment**: Resolved documentation discrepancies; tooltips now dynamically reflect the active profile's physical registers (`0x35/0x36` & `0x37/0x38` on EC, `0x0E/0x19` & `0x0F/0x1A` on IT8613 Super I/O).
+- **Power Telemetry Transparency**: Distinctly badges direct measured AMD APU silicon package telemetry (PPT via ADL2 PMLOG) vs algorithmic component breakdowns (`[Estimated]`) when individual rail sensors are unexposed.
+- **Thermal History & CSV Export**: Added 1-click session telemetry CSV export under **Tools & Drivers ▾**, recording up to 10,000 samples of timestamped temperatures, RPM, power, fan duty, mode, GPU load, and FPS for benchmarking.
+- **GitHub Actions CI/CD & Issue Templates**: Added automated build and test pipeline (`.github/workflows/ci.yml`) and structured GitHub issue templates.
+
 ---
 
 ## 🧪 Automated Verification
-- **19/19 Self-Tests Passing**:
+- **21/21 Self-Tests Passing**:
   1. Motor Stall Dead-Zone Protection
   2. 47°C Balanced Curve Stall Regression Test
   3. Zero-RPM Idle Segment & Clean Step-Up Transition
@@ -65,3 +72,5 @@ Decomposed the 11,337-line monolithic `MiniFanControl.cs` into 24 maintainable, 
   17. Safe Fail-Closed Hardware Probe Validation
   18. Hardware Watchdog Supervisor Lifecycle
   19. Driver Security Port Whitelist & Memory Map Safety Bounds
+  20. Unverified Hardware Fail-Closed Read-Only Protection
+  21. Session Telemetry CSV Export Integrity & Schema Validation

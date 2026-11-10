@@ -36,6 +36,8 @@ namespace MiniFanControl
         public byte RegCpuTemp    = 0x70;
         public byte RegGpuTemp    = 0x71;
         public bool HasDualFans   = true;
+        public bool IsReadOnly    = false;
+        public bool IsVerified    = true;
 
         public static readonly DeviceProfile[] KnownProfiles = new DeviceProfile[]
         {
@@ -68,6 +70,15 @@ namespace MiniFanControl
                 Id = "generic-it5570e",
                 DisplayName = "Generic AMD Ryzen Mini PC (ITE IT5570E / AMI Aptio V)",
                 ChipsetNotes = "Standard AMD LPC/eSPI EC window @ 0xFE0B0400"
+            },
+            new DeviceProfile
+            {
+                Id = "unknown-safe",
+                DisplayName = "Unverified Hardware (Safe Read-Only Monitoring Mode)",
+                ChipsetNotes = "Hardware registers unverified. Fan speed writes are disabled to prevent hardware damage.",
+                IsReadOnly = true,
+                IsVerified = false,
+                HasDualFans = false
             }
         };
 
@@ -80,6 +91,11 @@ namespace MiniFanControl
                     if (p.Id.Equals(id, StringComparison.OrdinalIgnoreCase))
                         return p;
                 }
+            }
+            foreach (DeviceProfile p in KnownProfiles)
+            {
+                if (p.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase))
+                    return p;
             }
             return KnownProfiles[0];
         }
@@ -141,7 +157,7 @@ namespace MiniFanControl
                 return DeviceProfile.FindProfile("gmktec-k8-k11");
             if (combined.Contains("K12") || combined.Contains("H 255") || combined.Contains("H255"))
                 return DeviceProfile.FindProfile("gmktec-k12");
-            return DeviceProfile.KnownProfiles[0];
+            return DeviceProfile.FindProfile("unknown-safe");
         }
 
         private static string ReadRegStr(RegistryKey key, string valueName, string fallback)
