@@ -510,5 +510,27 @@ yzen-hx370-ec, dreamer-ariesbox10, generic-it5570e, and unknown-safe), testing 
   - Expanded `Core/TelemetrySessionStats.cs` CSV export schema to include `NVMe_Temp_C`, `RAM_Used_GB`, and `RAM_Load_Pct` columns.
   - Updated CLI `status` command JSON output to include `nvme_temp`, `nvme_health`, `ram_used_gb`, `ram_total_gb`, and `ram_load_pct`.
 
-- **37-Point Automated Hardware Safety & Regression Test Suite**:
+- **38-Point Automated Hardware Safety & Regression Test Suite**:
   - Added Test 37 (`Native NVMe Storage & System RAM Sensor Telemetry`), verifying native memory queries, fail-safe NVMe querying, and tooltip formatting helpers.
+  - Added Test 38 (`Session Telemetry NVMe Tracking & Sparkline Generation`), verifying session min/avg/peak calculation, 120-sample rolling ring buffer history, and custom sparkline rendering for NVMe thermals.
+
+---
+
+### 🚀 Phase 12.1: Unified Thermal Telemetry Dashboard & OSD Sequence Realignment
+
+- **6-Block Primary Telemetry Grid with Native NVMe Block**:
+  - Realigned the top dashboard into 6 symmetrically balanced 101px metric blocks: `CPU` | `iGPU` | `NVMe` | `PWR` | `APU FAN` | `SYS FAN`.
+  - Upgraded NVMe to a first-class metric block with full parity:
+    - **Live & Peak Readouts**: Displays live temperature (`35°C`) and peak tracking (`NVMe • MAX 42°`).
+    - **Real-Time Sparkline History**: Bottom-anchored 120-sample sparkline rendered in electric cyan (`#22D3EE`).
+    - **Interactive Spotlighting**: Left-click spotlights NVMe on the Combined Live Telemetry Graph with dedicated axis scaling and timeline trace.
+    - **Instant Peak Reset**: Right-click resets session peaks across all metrics.
+    - **Rich Tooltip & Hover Graph**: Displays drive health %, wear %, spare blocks %, SMART status, session Min/Avg/Peak stats, and a high-resolution 90s trend mini-chart.
+- **Secondary Unified Memory & Storage Status Bar**:
+  - Row 2 spans the full width, displaying live physical memory allocation and installed NVMe drive health (e.g. `🧠 RAM: 20.8 / 47.6 GB (43% Load) • 💾 SSD: Sabrent Rocket 4.0 Plus (92% Health)`).
+- **CapFrameX OSD Sequence Reordered**:
+  - Realigned both Horizontal and Vertical in-game/desktop overlay layouts so that temperature metrics are grouped together: `CPU` -> `iGPU` -> `NVMe` -> `Power` -> `GPU Load` -> `APU Fan` -> `Sys Fan` -> `RAM` -> `Mode`.
+  - Added NVMe peak tracking (`▲{peak}°`) and optional sparkline trace directly in the OSD.
+- **RAM Power Telemetry Analysis & JEDEC Power Modeling**:
+  - In consumer Mini PCs and laptops, DDR5 SO-DIMM power is supplied via motherboard 5V rails to on-DIMM PMICs without public Win32 shunt sensors, and AMD client APUs do not expose a raw DRAM RAPL domain.
+  - Integrated JEDEC DDR5 dynamic load modeling (~1.3W idle per module, ~3.5W–5.0W active) alongside live AMD ADL2 `PMLOG_SOC_POWER` memory controller & Infinity Fabric power tracking in the RAM tooltip.

@@ -205,11 +205,10 @@ namespace MiniFanControl
         private Label _errorBanner;
         private DoubleBufferedPanel _cpuTempBox;
         private DoubleBufferedPanel _gpuTempBox;
+        private DoubleBufferedPanel _nvmeTempBox;
         private DoubleBufferedPanel _pwrBox;
         private DoubleBufferedPanel _fan1Box;
         private DoubleBufferedPanel _fan2Box;
-        private DoubleBufferedPanel _nvmeCard;
-        private Label _nvmeLabel;
         private DoubleBufferedPanel _ramCard;
         private Label _ramLabel;
         private string _lastNvmeTooltipText;
@@ -221,11 +220,13 @@ namespace MiniFanControl
         private string _profileOverrideId = "auto";
         private Label _cpuBoxTitle;
         private Label _gpuBoxTitle;
+        private Label _nvmeBoxTitle;
         private Label _pwrBoxTitle;
         private Label _fan1BoxTitle;
         private Label _fan2BoxTitle;
         private Label _cpuTempLabel;
         private Label _gpuTempLabel;
+        private Label _nvmeTempLabel;
         private Label _pwrLabel;
         private Label _fan1RpmLabel;
         private Label _fan2RpmLabel;
@@ -646,11 +647,13 @@ namespace MiniFanControl
             _sessionStats.Reset();
             _lastCpuTooltipText = "";
             _lastIgpuTooltipText = "";
+            _lastNvmeTooltipText = "";
             _lastPowerTooltipText = "";
             _lastApuFanTooltipText = "";
             _lastSysFanTooltipText = "";
             if (_cpuBoxTitle != null) _cpuBoxTitle.Text = "CPU TEMP";
             if (_gpuBoxTitle != null) _gpuBoxTitle.Text = "iGPU TEMP";
+            if (_nvmeBoxTitle != null) _nvmeBoxTitle.Text = "NVMe TEMP";
             if (_pwrBoxTitle != null) _pwrBoxTitle.Text = "POWER ⓘ";
             if (_fan1BoxTitle != null) _fan1BoxTitle.Text = "APU FAN";
             if (_fan2BoxTitle != null) _fan2BoxTitle.Text = "SYS FAN";
@@ -919,6 +922,7 @@ namespace MiniFanControl
             UpdateOsdStudioStyles();
             if (_cpuTempBox != null) _cpuTempBox.Invalidate();
             if (_gpuTempBox != null) _gpuTempBox.Invalidate();
+            if (_nvmeTempBox != null) _nvmeTempBox.Invalidate();
             if (_pwrBox != null) _pwrBox.Invalidate();
             if (_fan1Box != null) _fan1Box.Invalidate();
             if (_fan2Box != null) _fan2Box.Invalidate();
@@ -1269,8 +1273,8 @@ namespace MiniFanControl
             menu.MenuItems.Add("Configure OSD Overlay Studio...", (s, e) => OpenOsdConfigTab());
             menu.MenuItems.Add("-");
             string resetPeaksLabel = _sessionStats.SampleCount > 0
-                ? string.Format("Reset Session Peaks (Max CPU {0}°C • iGPU {1}°C • {2}W)",
-                    _sessionStats.MaxCpuTemp, _sessionStats.MaxGpuTemp, _sessionStats.MaxPowerWatts)
+                ? string.Format("Reset Session Peaks (Max CPU {0}°C • iGPU {1}°C • NVMe {2}°C • {3}W)",
+                    _sessionStats.MaxCpuTemp, _sessionStats.MaxGpuTemp, _sessionStats.MaxNvmeTemp, _sessionStats.MaxPowerWatts)
                 : "Reset Session Peak (Max °C / W) Stats";
             menu.MenuItems.Add(resetPeaksLabel, (s, e) => ResetSessionPeaks());
             string exportCsvLabel = string.Format("📊 Export Session Telemetry to CSV ({0} samples logged)...", _sessionStats.LoggedRecordCount);
@@ -1934,6 +1938,7 @@ namespace MiniFanControl
             if (c == null) return 0;
             if (c == _cpuTempBox || c == _cpuBoxTitle || c == _cpuTempLabel) return 1;
             if (c == _gpuTempBox || c == _gpuBoxTitle || c == _gpuTempLabel) return 2;
+            if (c == _nvmeTempBox || c == _nvmeBoxTitle || c == _nvmeTempLabel) return 6;
             if (c == _pwrBox || c == _pwrBoxTitle || c == _pwrLabel) return 3;
             if (c == _fan1Box || c == _fan1BoxTitle || c == _fan1RpmLabel) return 4;
             if (c == _fan2Box || c == _fan2BoxTitle || c == _fan2RpmLabel) return 5;
@@ -1986,9 +1991,10 @@ namespace MiniFanControl
                 Rectangle chartRect = new Rectangle(bounds.X + 10, bounds.Bottom - 54, bounds.Width - 20, 46);
                 List<int> samples = chartKind == 1 ? _sessionStats.CpuHistory
                     : (chartKind == 2 ? _sessionStats.GpuHistory
+                    : (chartKind == 6 ? _sessionStats.NvmeHistory
                     : (chartKind == 3 ? _sessionStats.PowerHistory
-                    : (chartKind == 4 ? _sessionStats.Fan1RpmHistory : _sessionStats.Fan2RpmHistory)));
-                string unit = chartKind == 3 ? "W" : (chartKind >= 4 ? " RPM" : "°C");
+                    : (chartKind == 4 ? _sessionStats.Fan1RpmHistory : _sessionStats.Fan2RpmHistory))));
+                string unit = chartKind == 3 ? "W" : (chartKind >= 4 && chartKind != 6 ? " RPM" : "°C");
                 Color lineCol;
                 switch (chartKind)
                 {
@@ -1997,6 +2003,9 @@ namespace MiniFanControl
                         break;
                     case 2:
                         lineCol = isRadeon ? Color.FromArgb(0x38, 0xBD, 0xF8) : Color.FromArgb(0x22, 0xC5, 0x5E);
+                        break;
+                    case 6:
+                        lineCol = _isDarkMode ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.FromArgb(0x08, 0x91, 0xB2);
                         break;
                     case 3:
                         lineCol = isRadeon ? RadeonOrange : Color.FromArgb(0xF5, 0x9E, 0x0B);
@@ -2136,6 +2145,9 @@ namespace MiniFanControl
                 case 2:
                     lineCol = isRadeon ? Color.FromArgb(0x38, 0xBD, 0xF8) : Color.FromArgb(0x22, 0xC5, 0x5E);
                     break;
+                case 6:
+                    lineCol = _isDarkMode ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.FromArgb(0x08, 0x91, 0xB2);
+                    break;
                 case 3:
                     lineCol = isRadeon ? RadeonOrange : Color.FromArgb(0xF5, 0x9E, 0x0B);
                     break;
@@ -2201,6 +2213,7 @@ namespace MiniFanControl
 
             if (_cpuTempBox != null) _cpuTempBox.Invalidate();
             if (_gpuTempBox != null) _gpuTempBox.Invalidate();
+            if (_nvmeTempBox != null) _nvmeTempBox.Invalidate();
             if (_pwrBox != null) _pwrBox.Invalidate();
             if (_fan1Box != null) _fan1Box.Invalidate();
             if (_fan2Box != null) _fan2Box.Invalidate();
@@ -2321,7 +2334,7 @@ namespace MiniFanControl
             _cpuTempBox = new DoubleBufferedPanel
             {
                 Location = new Point(8, 8),
-                Size = new Size(120, 70),
+                Size = new Size(101, 70),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
@@ -2330,7 +2343,7 @@ namespace MiniFanControl
                 Text = "CPU TEMP",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
                 Location = new Point(1, 3),
-                Size = new Size(116, 15),
+                Size = new Size(97, 15),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2339,7 +2352,7 @@ namespace MiniFanControl
                 Text = "--°C",
                 Font = new Font("Segoe UI", 15.75f, FontStyle.Bold),
                 Location = new Point(1, 17),
-                Size = new Size(116, 28),
+                Size = new Size(97, 28),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2358,8 +2371,8 @@ namespace MiniFanControl
 
             _gpuTempBox = new DoubleBufferedPanel
             {
-                Location = new Point(137, 8),
-                Size = new Size(120, 70),
+                Location = new Point(115, 8),
+                Size = new Size(101, 70),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
@@ -2368,7 +2381,7 @@ namespace MiniFanControl
                 Text = "iGPU TEMP",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
                 Location = new Point(1, 3),
-                Size = new Size(116, 15),
+                Size = new Size(97, 15),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2377,7 +2390,7 @@ namespace MiniFanControl
                 Text = "--°C",
                 Font = new Font("Segoe UI", 15.75f, FontStyle.Bold),
                 Location = new Point(1, 17),
-                Size = new Size(116, 28),
+                Size = new Size(97, 28),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2394,10 +2407,48 @@ namespace MiniFanControl
             _uiToolTip.SetToolTip(_gpuBoxTitle, gpuTip);
             _uiToolTip.SetToolTip(_gpuTempLabel, gpuTip);
 
+            _nvmeTempBox = new DoubleBufferedPanel
+            {
+                Location = new Point(222, 8),
+                Size = new Size(101, 70),
+                BorderStyle = BorderStyle.FixedSingle,
+                Cursor = Cursors.Hand
+            };
+            _nvmeBoxTitle = new Label
+            {
+                Text = "NVMe TEMP",
+                Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
+                Location = new Point(1, 3),
+                Size = new Size(97, 15),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Cursor = Cursors.Hand
+            };
+            _nvmeTempLabel = new Label
+            {
+                Text = "--°C",
+                Font = new Font("Segoe UI", 15.75f, FontStyle.Bold),
+                Location = new Point(1, 17),
+                Size = new Size(97, 28),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Cursor = Cursors.Hand
+            };
+            _nvmeTempBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _nvmeTempBox, _sessionStats.NvmeHistory, 6);
+            _nvmeTempBox.MouseUp += (s, e) => OnMetricBoxMouseUp(6, e);
+            _nvmeBoxTitle.MouseUp += (s, e) => OnMetricBoxMouseUp(6, e);
+            _nvmeTempLabel.MouseUp += (s, e) => OnMetricBoxMouseUp(6, e);
+            _nvmeTempBox.Controls.Add(_nvmeBoxTitle);
+            _nvmeTempBox.Controls.Add(_nvmeTempLabel);
+            statusCard.Controls.Add(_nvmeTempBox);
+
+            string nvmeTip = "NVMe Storage Temperature & Health\r\nLeft-click to highlight NVMe Trend on the big graph • Right-click to reset peaks.";
+            _uiToolTip.SetToolTip(_nvmeTempBox, nvmeTip);
+            _uiToolTip.SetToolTip(_nvmeBoxTitle, nvmeTip);
+            _uiToolTip.SetToolTip(_nvmeTempLabel, nvmeTip);
+
             _pwrBox = new DoubleBufferedPanel
             {
-                Location = new Point(266, 8),
-                Size = new Size(120, 70),
+                Location = new Point(329, 8),
+                Size = new Size(101, 70),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
@@ -2406,7 +2457,7 @@ namespace MiniFanControl
                 Text = "POWER ⓘ",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
                 Location = new Point(1, 3),
-                Size = new Size(116, 15),
+                Size = new Size(97, 15),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2415,7 +2466,7 @@ namespace MiniFanControl
                 Text = "--W",
                 Font = new Font("Segoe UI", 15.75f, FontStyle.Bold),
                 Location = new Point(1, 17),
-                Size = new Size(116, 28),
+                Size = new Size(97, 28),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2429,8 +2480,8 @@ namespace MiniFanControl
 
             _fan1Box = new DoubleBufferedPanel
             {
-                Location = new Point(395, 8),
-                Size = new Size(120, 70),
+                Location = new Point(436, 8),
+                Size = new Size(101, 70),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
@@ -2439,16 +2490,16 @@ namespace MiniFanControl
                 Text = "APU FAN",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
                 Location = new Point(1, 3),
-                Size = new Size(116, 15),
+                Size = new Size(97, 15),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
             _fan1RpmLabel = new Label
             {
                 Text = "-- RPM",
-                Font = new Font("Segoe UI", 12.75f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
                 Location = new Point(1, 17),
-                Size = new Size(116, 28),
+                Size = new Size(97, 28),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2467,8 +2518,8 @@ namespace MiniFanControl
 
             _fan2Box = new DoubleBufferedPanel
             {
-                Location = new Point(524, 8),
-                Size = new Size(120, 70),
+                Location = new Point(543, 8),
+                Size = new Size(101, 70),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
@@ -2477,16 +2528,16 @@ namespace MiniFanControl
                 Text = "SYS FAN",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
                 Location = new Point(1, 3),
-                Size = new Size(116, 15),
+                Size = new Size(97, 15),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
             _fan2RpmLabel = new Label
             {
                 Text = "-- RPM",
-                Font = new Font("Segoe UI", 12.75f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
                 Location = new Point(1, 17),
-                Size = new Size(116, 28),
+                Size = new Size(97, 28),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2533,6 +2584,21 @@ namespace MiniFanControl
             _gpuBoxTitle.MouseEnter += (s, e) => updateGpuTip();
             _gpuTempLabel.MouseEnter += (s, e) => updateGpuTip();
 
+            Action updateNvmeTip = () =>
+            {
+                if (_uiToolTip != null)
+                {
+                    string tip = _lastStatus.FormatNvmeTooltip(_sessionStats);
+                    _lastNvmeTooltipText = tip;
+                    _uiToolTip.SetToolTip(_nvmeTempBox, tip);
+                    _uiToolTip.SetToolTip(_nvmeBoxTitle, tip);
+                    _uiToolTip.SetToolTip(_nvmeTempLabel, tip);
+                }
+            };
+            _nvmeTempBox.MouseEnter += (s, e) => updateNvmeTip();
+            _nvmeBoxTitle.MouseEnter += (s, e) => updateNvmeTip();
+            _nvmeTempLabel.MouseEnter += (s, e) => updateNvmeTip();
+
             Action updatePwrTip = () =>
             {
                 if (_lastStatus.CpuTemp > 0 && _uiToolTip != null)
@@ -2578,47 +2644,11 @@ namespace MiniFanControl
             _fan2BoxTitle.MouseEnter += (s, e) => updateFan2Tip();
             _fan2RpmLabel.MouseEnter += (s, e) => updateFan2Tip();
 
-            // Row 2: Secondary Telemetry Row (NVMe SSD & System RAM)
-            _nvmeCard = new DoubleBufferedPanel
-            {
-                Location = new Point(8, 84),
-                Size = new Size(314, 25),
-                BorderStyle = BorderStyle.FixedSingle,
-                Cursor = Cursors.Hand
-            };
-            _nvmeLabel = new Label
-            {
-                Text = "💾 NVMe: Initializing...",
-                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(4, 3),
-                Size = new Size(304, 18),
-                TextAlign = ContentAlignment.MiddleLeft,
-                Cursor = Cursors.Hand
-            };
-            _nvmeCard.Controls.Add(_nvmeLabel);
-            statusCard.Controls.Add(_nvmeCard);
-
-            string nvmeTip = "NVMe Storage Drive Telemetry\r\nLive SSD composite temperature, controller wear and health status.\r\nCoupled to Fan 2 (Sys Fan) for proactive cooling.";
-            _uiToolTip.SetToolTip(_nvmeCard, nvmeTip);
-            _uiToolTip.SetToolTip(_nvmeLabel, nvmeTip);
-
-            Action updateNvmeTip = () =>
-            {
-                if (_uiToolTip != null)
-                {
-                    string tip = _lastStatus.FormatNvmeTooltip(_sessionStats);
-                    _lastNvmeTooltipText = tip;
-                    _uiToolTip.SetToolTip(_nvmeCard, tip);
-                    _uiToolTip.SetToolTip(_nvmeLabel, tip);
-                }
-            };
-            _nvmeCard.MouseEnter += (s, e) => updateNvmeTip();
-            _nvmeLabel.MouseEnter += (s, e) => updateNvmeTip();
-
+            // Row 2: Secondary Telemetry Row (System RAM & Installed NVMe Drive)
             _ramCard = new DoubleBufferedPanel
             {
-                Location = new Point(330, 84),
-                Size = new Size(314, 25),
+                Location = new Point(8, 84),
+                Size = new Size(636, 25),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
@@ -2626,15 +2656,15 @@ namespace MiniFanControl
             {
                 Text = "🧠 RAM: Initializing...",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(4, 3),
-                Size = new Size(304, 18),
+                Location = new Point(6, 3),
+                Size = new Size(624, 18),
                 TextAlign = ContentAlignment.MiddleLeft,
                 Cursor = Cursors.Hand
             };
             _ramCard.Controls.Add(_ramLabel);
             statusCard.Controls.Add(_ramCard);
 
-            string ramTip = "System Physical Memory Telemetry\r\nLive RAM allocation, memory load %, and total installed capacity.";
+            string ramTip = "System Physical Memory & Storage Drive Status\r\nLive RAM allocation, memory load %, and installed drive health.";
             _uiToolTip.SetToolTip(_ramCard, ramTip);
             _uiToolTip.SetToolTip(_ramLabel, ramTip);
 
@@ -2915,6 +2945,7 @@ namespace MiniFanControl
                 UpdateCurveHint();
                 if (_cpuTempBox != null) _cpuTempBox.Invalidate();
                 if (_gpuTempBox != null) _gpuTempBox.Invalidate();
+                if (_nvmeTempBox != null) _nvmeTempBox.Invalidate();
                 if (_pwrBox != null) _pwrBox.Invalidate();
                 if (_fan1Box != null) _fan1Box.Invalidate();
                 if (_fan2Box != null) _fan2Box.Invalidate();
@@ -3799,10 +3830,11 @@ namespace MiniFanControl
             if (_tabLiveGraphBtn != null)
             {
                 string hlTag = _highlightedMetric == 2 ? " (iGPU)"
+                    : (_highlightedMetric == 6 ? " (NVMe)"
                     : (_highlightedMetric == 3 ? " (Pwr)"
                     : (_highlightedMetric == 4 ? " (APU)"
                     : (_highlightedMetric == 5 ? " (Sys)"
-                    : (_highlightedMetric == 1 ? " (CPU)" : ""))));
+                    : (_highlightedMetric == 1 ? " (CPU)" : "")))));
                 _tabLiveGraphBtn.Text = _showingLiveTelemetry ? ("📈 Live" + hlTag) : "📈 Live Trend";
             }
 
@@ -3813,13 +3845,15 @@ namespace MiniFanControl
             Color sysAccent = isRadeon ? RadeonOrange : (_isDarkMode ? DarkTeal : LightTeal);
             Color liveAccent = _highlightedMetric == 2
                 ? (isRadeon ? Color.FromArgb(0x38, 0xBD, 0xF8) : Color.FromArgb(0x22, 0xC5, 0x5E))
-                : (_highlightedMetric == 3
-                    ? (isRadeon ? RadeonOrange : Color.FromArgb(0xF5, 0x9E, 0x0B))
-                    : (_highlightedMetric == 4
-                        ? Color.FromArgb(0xC0, 0x84, 0xFC)
-                        : (_highlightedMetric == 5
-                            ? Color.FromArgb(0x2D, 0xD4, 0xBF)
-                            : apuAccent)));
+                : (_highlightedMetric == 6
+                    ? (_isDarkMode ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.FromArgb(0x08, 0x91, 0xB2))
+                    : (_highlightedMetric == 3
+                        ? (isRadeon ? RadeonOrange : Color.FromArgb(0xF5, 0x9E, 0x0B))
+                        : (_highlightedMetric == 4
+                            ? Color.FromArgb(0xC0, 0x84, 0xFC)
+                            : (_highlightedMetric == 5
+                                ? Color.FromArgb(0x2D, 0xD4, 0xBF)
+                                : apuAccent))));
             Color activeFg = isRadeon ? Color.White : (_isDarkMode ? Color.Black : Color.White);
 
             if (_showingOsdConfig)
@@ -3868,7 +3902,7 @@ namespace MiniFanControl
                 if (_tabLiveGraphBtn != null)
                 {
                     _tabLiveGraphBtn.BackColor = liveAccent;
-                    _tabLiveGraphBtn.ForeColor = (_highlightedMetric == 2 || _highlightedMetric == 3) ? Color.Black : activeFg;
+                    _tabLiveGraphBtn.ForeColor = (_highlightedMetric == 2 || _highlightedMetric == 3 || _highlightedMetric == 6) ? Color.Black : activeFg;
                     if (_tabLiveGraphBtn.Font != TabFontBold) _tabLiveGraphBtn.Font = TabFontBold;
                 }
             }
@@ -4043,9 +4077,10 @@ namespace MiniFanControl
             if (_showingLiveTelemetry)
             {
                 string hlName = _highlightedMetric == 2 ? "iGPU Temp"
+                    : (_highlightedMetric == 6 ? "NVMe Temp"
                     : (_highlightedMetric == 3 ? "APU Power"
                     : (_highlightedMetric == 4 ? "APU Fan Speed"
-                    : (_highlightedMetric == 5 ? "System Fan Speed" : "CPU Temp")));
+                    : (_highlightedMetric == 5 ? "System Fan Speed" : "CPU Temp"))));
                 _curveHintLabel.Text = string.Format("Spotlighting {0} — click metric boxes or legend pills to switch, hover to inspect", hlName);
                 return;
             }
@@ -4231,14 +4266,13 @@ namespace MiniFanControl
                 }
             }
 
-            if (_nvmeCard != null)
+            if (_nvmeTempBox != null)
             {
-                _nvmeCard.BackColor = tempBoxBg;
-                if (_nvmeLabel != null)
-                {
-                    _nvmeLabel.BackColor = tempBoxBg;
-                    _nvmeLabel.ForeColor = text;
-                }
+                _nvmeTempBox.BackColor = tempBoxBg;
+                _nvmeBoxTitle.BackColor = tempBoxBg;
+                _nvmeBoxTitle.ForeColor = tempBoxTitleFg;
+                _nvmeTempLabel.BackColor = tempBoxBg;
+                _nvmeTempLabel.ForeColor = tempBoxFg;
             }
 
             if (_ramCard != null)
@@ -4849,6 +4883,35 @@ namespace MiniFanControl
                 _gpuTempBox.Invalidate();
             }
 
+            if (_nvmeTempLabel != null)
+            {
+                _nvmeTempLabel.Text = st.NvmeTemp > 0 ? string.Format("{0}°C", st.NvmeTemp) : "N/A";
+                Color nvmeFg = (st.NvmeTemp >= 70) ? Color.FromArgb(0xFB, 0x71, 0x85) : tempFg;
+                _nvmeTempLabel.ForeColor = nvmeFg;
+                if (_nvmeBoxTitle != null)
+                {
+                    string nvmeHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxNvmeTemp > 0)
+                        ? string.Format("NVMe • MAX {0}°", _sessionStats.MaxNvmeTemp)
+                        : "NVMe TEMP";
+                    if (_nvmeBoxTitle.Text != nvmeHeader) _nvmeBoxTitle.Text = nvmeHeader;
+                }
+                if (_uiToolTip != null && _nvmeTempBox != null)
+                {
+                    if (!IsBoxHovered(_nvmeTempBox, _nvmeBoxTitle, _nvmeTempLabel))
+                    {
+                        string nvmeTip = st.FormatNvmeTooltip(_sessionStats);
+                        if (nvmeTip != _lastNvmeTooltipText)
+                        {
+                            _lastNvmeTooltipText = nvmeTip;
+                            _uiToolTip.SetToolTip(_nvmeTempBox, nvmeTip);
+                            _uiToolTip.SetToolTip(_nvmeBoxTitle, nvmeTip);
+                            _uiToolTip.SetToolTip(_nvmeTempLabel, nvmeTip);
+                        }
+                    }
+                    _nvmeTempBox.Invalidate();
+                }
+            }
+
             if (_pwrLabel != null)
             {
                 _pwrLabel.Text = st.ApuPowerWatts > 0 ? string.Format("{0}W", st.ApuPowerWatts) : "--W";
@@ -4929,47 +4992,23 @@ namespace MiniFanControl
                 _fan2Box.Invalidate();
             }
 
-            if (_nvmeCard != null && _nvmeLabel != null)
+            if (_ramCard != null && _ramLabel != null)
             {
+                string ramPart = st.RamTotalGb > 0
+                    ? string.Format("🧠 RAM: {0:F1} / {1:F1} GB ({2}% Load)", st.RamUsedGb, st.RamTotalGb, st.RamLoadPct)
+                    : "🧠 RAM: N/A";
+
+                string nvmePart = "";
                 if (st.NvmeTemp > 0)
                 {
                     string modelDisplay = !string.IsNullOrEmpty(st.NvmeModel) ? st.NvmeModel : "NVMe SSD";
-                    if (modelDisplay.Length > 20) modelDisplay = modelDisplay.Substring(0, 18).Trim() + "…";
-                    _nvmeLabel.Text = string.Format("💾 NVMe: {0} • {1}°C ({2}% Health)", modelDisplay, st.NvmeTemp, st.NvmeHealthPct);
-                    Color nvmeFg = (st.NvmeTemp >= 70) ? Color.FromArgb(0xFB, 0x71, 0x85) : tempFg;
-                    _nvmeLabel.ForeColor = nvmeFg;
-                }
-                else
-                {
-                    _nvmeLabel.Text = "💾 NVMe: N/A";
-                    _nvmeLabel.ForeColor = dimText;
+                    if (modelDisplay.Length > 24) modelDisplay = modelDisplay.Substring(0, 22).Trim() + "…";
+                    nvmePart = string.Format(" • 💾 SSD: {0} ({1}% Health)", modelDisplay, st.NvmeHealthPct);
                 }
 
-                if (_uiToolTip != null && !IsMouseOverControl(_nvmeCard) && !IsMouseOverControl(_nvmeLabel))
-                {
-                    string nvmeTip = st.FormatNvmeTooltip(_sessionStats);
-                    if (nvmeTip != _lastNvmeTooltipText)
-                    {
-                        _lastNvmeTooltipText = nvmeTip;
-                        _uiToolTip.SetToolTip(_nvmeCard, nvmeTip);
-                        _uiToolTip.SetToolTip(_nvmeLabel, nvmeTip);
-                    }
-                }
-            }
-
-            if (_ramCard != null && _ramLabel != null)
-            {
-                if (st.RamTotalGb > 0)
-                {
-                    _ramLabel.Text = string.Format("🧠 RAM: {0:F1} / {1:F1} GB ({2}% Load)", st.RamUsedGb, st.RamTotalGb, st.RamLoadPct);
-                    Color ramFg = (st.RamLoadPct >= 90) ? Color.FromArgb(0xFB, 0x71, 0x85) : tempFg;
-                    _ramLabel.ForeColor = ramFg;
-                }
-                else
-                {
-                    _ramLabel.Text = "🧠 RAM: N/A";
-                    _ramLabel.ForeColor = dimText;
-                }
+                _ramLabel.Text = ramPart + nvmePart;
+                Color ramFg = (st.RamLoadPct >= 90) ? Color.FromArgb(0xFB, 0x71, 0x85) : tempFg;
+                _ramLabel.ForeColor = ramFg;
 
                 if (_uiToolTip != null && !IsMouseOverControl(_ramCard) && !IsMouseOverControl(_ramLabel))
                 {

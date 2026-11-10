@@ -1405,6 +1405,30 @@ namespace MiniFanControl
                 string.Format("MemOk={0} (Load={1}%, Total={2:F1}GB), NvmeSafe={3} (Avail={4}, Temp={5}C), TipsOk={6}",
                     memOk, testMem.LoadPct, testMem.TotalGb, nvmeSafe, testNvme.IsAvailable, testNvme.CompositeTemp, tooltipsValid));
 
+            // 38. Session Telemetry NVMe Tracking & Sparkline Generation
+            TelemetrySessionStats testStatsNvme = new TelemetrySessionStats();
+            testStatsNvme.Record(new FanStatus { CpuTemp = 50, NvmeTemp = 36, RamUsedGb = 8.0, RamTotalGb = 16.0, RamLoadPct = 50 });
+            testStatsNvme.Record(new FanStatus { CpuTemp = 55, NvmeTemp = 42, RamUsedGb = 8.2, RamTotalGb = 16.0, RamLoadPct = 51 });
+            testStatsNvme.Record(new FanStatus { CpuTemp = 52, NvmeTemp = 39, RamUsedGb = 8.1, RamTotalGb = 16.0, RamLoadPct = 51 });
+
+            bool nvmeStatsValid = testStatsNvme.MinNvmeTemp == 36 &&
+                                  testStatsNvme.MaxNvmeTemp == 42 &&
+                                  Math.Abs(testStatsNvme.AvgNvmeTemp - 39.0) < 0.1 &&
+                                  testStatsNvme.NvmeHistory != null &&
+                                  testStatsNvme.NvmeHistory.Count == 3;
+            string nvmeSpark = testStatsNvme.GetNvmeSparkline();
+            bool nvmeSparkValid = !string.IsNullOrEmpty(nvmeSpark) && nvmeSpark.Length == 3;
+
+            testStatsNvme.Reset();
+            bool nvmeResetValid = testStatsNvme.MinNvmeTemp == int.MaxValue &&
+                                  testStatsNvme.MaxNvmeTemp == 0 &&
+                                  testStatsNvme.NvmeHistory.Count == 0;
+
+            Check(nvmeStatsValid && nvmeSparkValid && nvmeResetValid,
+                "Session Telemetry NVMe Tracking & Sparkline Generation",
+                string.Format("StatsOk={0} (Min={1}, Max={2}, Avg={3:F1}), SparkOk={4} ('{5}'), ResetOk={6}",
+                    nvmeStatsValid, 36, 42, 39.0, nvmeSparkValid, nvmeSpark, nvmeResetValid));
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));

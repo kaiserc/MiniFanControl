@@ -46,6 +46,8 @@ namespace MiniFanControl
         public int MaxCpuTemp { get; private set; }
         public int MinGpuTemp { get; private set; }
         public int MaxGpuTemp { get; private set; }
+        public int MinNvmeTemp { get; private set; }
+        public int MaxNvmeTemp { get; private set; }
         public int MinPowerWatts { get; private set; }
         public int MaxPowerWatts { get; private set; }
         public int MinFan1Rpm { get; private set; }
@@ -59,6 +61,8 @@ namespace MiniFanControl
         private long _sumCpuTemp;
         private long _sumGpuTemp;
         private int _gpuSampleCount;
+        private long _sumNvmeTemp;
+        private int _nvmeSampleCount;
         private long _sumPowerWatts;
         private int _pwrSampleCount;
         private long _sumFan1Rpm;
@@ -68,6 +72,7 @@ namespace MiniFanControl
 
         private readonly List<int> _cpuHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _gpuHist = new List<int>(HISTORY_LEN);
+        private readonly List<int> _nvmeHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _pwrHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _fan1RpmHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _fan2RpmHist = new List<int>(HISTORY_LEN);
@@ -79,12 +84,14 @@ namespace MiniFanControl
 
         public double AvgCpuTemp { get { return SampleCount > 0 ? (double)_sumCpuTemp / SampleCount : 0.0; } }
         public double AvgGpuTemp { get { return _gpuSampleCount > 0 ? (double)_sumGpuTemp / _gpuSampleCount : 0.0; } }
+        public double AvgNvmeTemp { get { return _nvmeSampleCount > 0 ? (double)_sumNvmeTemp / _nvmeSampleCount : 0.0; } }
         public double AvgPowerWatts { get { return _pwrSampleCount > 0 ? (double)_sumPowerWatts / _pwrSampleCount : 0.0; } }
         public double AvgFan1Rpm { get { return _fan1SampleCount > 0 ? (double)_sumFan1Rpm / _fan1SampleCount : 0.0; } }
         public double AvgFan2Rpm { get { return _fan2SampleCount > 0 ? (double)_sumFan2Rpm / _fan2SampleCount : 0.0; } }
 
         public List<int> CpuHistory { get { return _cpuHist; } }
         public List<int> GpuHistory { get { return _gpuHist; } }
+        public List<int> NvmeHistory { get { return _nvmeHist; } }
         public List<int> PowerHistory { get { return _pwrHist; } }
         public List<int> Fan1RpmHistory { get { return _fan1RpmHist; } }
         public List<int> Fan2RpmHistory { get { return _fan2RpmHist; } }
@@ -102,6 +109,8 @@ namespace MiniFanControl
             MaxCpuTemp = 0;
             MinGpuTemp = int.MaxValue;
             MaxGpuTemp = 0;
+            MinNvmeTemp = int.MaxValue;
+            MaxNvmeTemp = 0;
             MinPowerWatts = int.MaxValue;
             MaxPowerWatts = 0;
             MinFan1Rpm = int.MaxValue;
@@ -114,6 +123,8 @@ namespace MiniFanControl
             _sumCpuTemp = 0;
             _sumGpuTemp = 0;
             _gpuSampleCount = 0;
+            _sumNvmeTemp = 0;
+            _nvmeSampleCount = 0;
             _sumPowerWatts = 0;
             _pwrSampleCount = 0;
             _sumFan1Rpm = 0;
@@ -122,6 +133,7 @@ namespace MiniFanControl
             _fan2SampleCount = 0;
             _cpuHist.Clear();
             _gpuHist.Clear();
+            _nvmeHist.Clear();
             _pwrHist.Clear();
             _fan1RpmHist.Clear();
             _fan2RpmHist.Clear();
@@ -167,6 +179,16 @@ namespace MiniFanControl
                 if (st.GpuTemp < MinGpuTemp) MinGpuTemp = st.GpuTemp;
                 if (st.GpuTemp > MaxGpuTemp) MaxGpuTemp = st.GpuTemp;
                 _sumGpuTemp += st.GpuTemp;
+            }
+
+            int nvmeVal = st.NvmeTemp > 0 ? st.NvmeTemp : (_nvmeHist.Count > 0 ? _nvmeHist[_nvmeHist.Count - 1] : 0);
+            PushSample(_nvmeHist, nvmeVal);
+            if (st.NvmeTemp > 0)
+            {
+                _nvmeSampleCount++;
+                if (st.NvmeTemp < MinNvmeTemp) MinNvmeTemp = st.NvmeTemp;
+                if (st.NvmeTemp > MaxNvmeTemp) MaxNvmeTemp = st.NvmeTemp;
+                _sumNvmeTemp += st.NvmeTemp;
             }
 
             int pwrVal = st.ApuPowerWatts > 0 ? st.ApuPowerWatts : (_pwrHist.Count > 0 ? _pwrHist[_pwrHist.Count - 1] : 0);
@@ -216,6 +238,7 @@ namespace MiniFanControl
 
         public string GetCpuSparkline() { return FormatSparkline(_cpuHist, 2); }
         public string GetGpuSparkline() { return FormatSparkline(_gpuHist, 2); }
+        public string GetNvmeSparkline() { return FormatSparkline(_nvmeHist, 2); }
         public string GetPowerSparkline() { return FormatSparkline(_pwrHist, 2); }
         public string GetFan1Sparkline() { return FormatSparkline(_fan1RpmHist, 50); }
         public string GetFan2Sparkline() { return FormatSparkline(_fan2RpmHist, 50); }

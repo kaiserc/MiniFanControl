@@ -217,8 +217,15 @@ namespace MiniFanControl
             sb.AppendFormat("• Drive Health: {0}% ({1}% Lifetime Wear)\r\n", NvmeHealthPct, NvmeWearPct);
             sb.AppendFormat("• Available Spare Blocks: {0}%\r\n", NvmeAvailableSpare);
             sb.AppendFormat("• SMART Reliability Status: {0}\r\n", NvmeCritWarning == 0 ? "Healthy (0x00)" : string.Format("WARNING (0x{0:X2})", NvmeCritWarning));
+            if (stats != null && stats.SampleCount > 0 && stats.MaxNvmeTemp > 0)
+            {
+                sb.AppendLine("────────────────────────────────────────────");
+                sb.AppendFormat("Session NVMe Temp (Min / Avg / Peak): {0}°C / {1:0.0}°C / {2}°C  (Click box to reset)\r\n",
+                    stats.MinNvmeTemp < int.MaxValue ? stats.MinNvmeTemp : 0, stats.AvgNvmeTemp, stats.MaxNvmeTemp);
+                sb.AppendFormat("Recent Trend (~90s): {0}\r\n", stats.GetNvmeSparkline());
+            }
             sb.AppendLine("────────────────────────────────────────────");
-            sb.Append("Query Method: Native Windows IOCTL_STORAGE_QUERY_PROPERTY (NVMe Log 0x02).\r\nExcludes raw PCI port I/O for zero controller bus contention.\r\nCoupled to Fan 2 (Sys Fan) for proactive M.2 SSD cooling.");
+            sb.Append("Query Method: Native Windows IOCTL_STORAGE_QUERY_PROPERTY (NVMe Log 0x02).\r\nExcludes raw PCI port I/O for zero controller bus contention.\r\nCoupled to Fan 2 (Sys Fan) for proactive M.2 SSD cooling.\r\nLeft-click to spotlight NVMe on the big graph • Right-click to reset peaks.");
             return sb.ToString();
         }
 
@@ -227,8 +234,18 @@ namespace MiniFanControl
             StringBuilder sb = new StringBuilder();
             sb.AppendFormat("System Physical Memory: {0:F1} GB Used / {1:F1} GB Total ({2}% Load)\r\n", RamUsedGb, RamTotalGb, RamLoadPct);
             sb.AppendFormat("• Available Physical RAM: {0:F1} GB\r\n", Math.Max(0.0, RamTotalGb - RamUsedGb));
+            if (RamTotalGb > 0)
+            {
+                int numModules = RamTotalGb >= 32.0 ? 2 : 1;
+                double loadWatts = numModules * (1.3 + (RamLoadPct / 100.0) * 2.2);
+                sb.AppendFormat("• Estimated DDR5 Power: ~{0:F1} W ({1}x SO-DIMMs @ 1.1V JEDEC PMIC)\r\n", loadWatts, numModules);
+            }
+            if (SocPowerWatts > 0)
+            {
+                sb.AppendFormat("• APU Memory Controller & Fabric (VDD_SOC): {0} W\r\n", SocPowerWatts);
+            }
             sb.AppendLine("────────────────────────────────────────────");
-            sb.Append("Query Method: Win32 GlobalMemoryStatusEx (sub-microsecond latency, zero overhead).\r\nMonitors live memory pressure in tandem with APU & System Fan cooling.");
+            sb.Append("Query Method: Win32 GlobalMemoryStatusEx (sub-microsecond latency, zero overhead).\r\nNote: Physical RAM sticks use motherboard/on-DIMM PMIC rails without public Win32 shunt sensors;\r\nMemory controller power is tracked by APU SoC rail.");
             return sb.ToString();
         }
     }
