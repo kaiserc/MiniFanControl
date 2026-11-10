@@ -570,6 +570,23 @@ namespace MiniFanControl
 
                     string.Format("w100={0}, w125={1}, w150={2}, w185={3}, targetW3={4}, h45={5}, h130={6}", wTier0, wTier1, wTier2, wTier3, targetW3, hComb45, hComb130));
 
+                // Test granular metric toggle controls (ShowNvme, ShowRam)
+                FanStatus testSt = new FanStatus { NvmeTemp = 48, RamTotalGb = 16 };
+                osd.UpdateMetrics(testSt, "Balanced", true);
+                int baseCount = osd.CountVisibleMetrics();
+                osd.ShowNvme = false;
+                int countWithoutNvme = osd.CountVisibleMetrics();
+                osd.ShowRam = false;
+                int countWithoutNvmeRam = osd.CountVisibleMetrics();
+                osd.ShowNvme = true;
+                osd.ShowRam = true;
+                int countRestored = osd.CountVisibleMetrics();
+
+                Check(countWithoutNvme == baseCount - 1 &&
+                      countWithoutNvmeRam == baseCount - 2 &&
+                      countRestored == baseCount,
+                    "OSD Granular Metric Toggle Verification (ShowNvme & ShowRam)",
+                    string.Format("base={0}, noNvme={1}, noNvmeRam={2}, restored={3}", baseCount, countWithoutNvme, countWithoutNvmeRam, countRestored));
             }
 
 

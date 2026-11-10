@@ -203,6 +203,20 @@ namespace MiniFanControl
             graphMenu.DropDownItems.Add(heightMenu);
             menu.Items.Add(graphMenu);
 
+            ToolStripMenuItem metricsMenu = new ToolStripMenuItem("Visible Telemetry Metrics");
+            AddMetricToggleMenuItem(metricsMenu, "CPU Temperature", () => ShowCpu, v => ShowCpu = v);
+            AddMetricToggleMenuItem(metricsMenu, "iGPU Temperature", () => ShowGpu, v => ShowGpu = v);
+            AddMetricToggleMenuItem(metricsMenu, "NVMe SSD Temp", () => ShowNvme, v => ShowNvme = v);
+            AddMetricToggleMenuItem(metricsMenu, "APU Power (W)", () => ShowPower, v => ShowPower = v);
+            AddMetricToggleMenuItem(metricsMenu, "RAM Load & Power", () => ShowRam, v => ShowRam = v);
+            AddMetricToggleMenuItem(metricsMenu, "FPS / GPU Load", () => ShowGpuLoad, v => ShowGpuLoad = v);
+            AddMetricToggleMenuItem(metricsMenu, "APU Fan Speed", () => ShowApuFan, v => ShowApuFan = v);
+            if (HasDualFans)
+                AddMetricToggleMenuItem(metricsMenu, "System Fan Speed", () => ShowSysFan, v => ShowSysFan = v);
+            AddMetricToggleMenuItem(metricsMenu, "Thermal Mode", () => ShowMode, v => ShowMode = v);
+            AddMetricToggleMenuItem(metricsMenu, "Peak Values (▲)", () => ShowPeaks, v => ShowPeaks = v);
+            menu.Items.Add(metricsMenu);
+
             menu.Items.Add("Switch Layout (Horizontal Bar / Vertical Stack)", null, (s, e) =>
             {
                 VerticalLayout = !VerticalLayout;
@@ -244,6 +258,22 @@ namespace MiniFanControl
             UpdateDimensions();
             Invalidate();
             if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
+        }
+
+        private void AddMetricToggleMenuItem(ToolStripMenuItem parent, string label, Func<bool> getter, Action<bool> setter)
+        {
+            ToolStripMenuItem item = new ToolStripMenuItem(label);
+            item.Checked = getter();
+            item.Click += (s, e) =>
+            {
+                bool next = !getter();
+                setter(next);
+                item.Checked = next;
+                UpdateDimensions();
+                Invalidate();
+                if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
+            };
+            parent.DropDownItems.Add(item);
         }
 
         public void ApplyClickThrough(bool clickThrough)
@@ -469,9 +499,21 @@ namespace MiniFanControl
                     if (v < tMin) tMin = v;
                     if (v > tMax) tMax = v;
                 }
+                if (ShowNvme && idx < Stats.NvmeHistory.Count && Stats.NvmeHistory[idx] > 0)
+                {
+                    int v = Stats.NvmeHistory[idx];
+                    if (v < tMin) tMin = v;
+                    if (v > tMax) tMax = v;
+                }
                 if (ShowPower && idx < Stats.PowerHistory.Count && Stats.PowerHistory[idx] > 0)
                 {
                     int v = Stats.PowerHistory[idx];
+                    if (v < tMin) tMin = v;
+                    if (v > tMax) tMax = v;
+                }
+                if (ShowRam && idx < Stats.RamPowerHistory.Count && Stats.RamPowerHistory[idx] > 0)
+                {
+                    int v = Stats.RamPowerHistory[idx];
                     if (v < tMin) tMin = v;
                     if (v > tMax) tMax = v;
                 }
@@ -513,8 +555,12 @@ namespace MiniFanControl
                 DrawCombinedSubSeries(g, plot, Stats.Fan2RpmHistory, start, take, rpmLo, rpmHi, sysCol, false, true, sc);
             if (ShowApuFan)
                 DrawCombinedSubSeries(g, plot, Stats.Fan1RpmHistory, start, take, rpmLo, rpmHi, apuCol, false, true, sc);
+            if (ShowRam && _status.RamPowerWatts > 0)
+                DrawCombinedSubSeries(g, plot, Stats.RamPowerHistory, start, take, leftLo, leftHi, Color.FromArgb(0x81, 0x8C, 0xF8), false, true, sc);
             if (ShowPower)
                 DrawCombinedSubSeries(g, plot, Stats.PowerHistory, start, take, leftLo, leftHi, pwrCol, false, false, sc);
+            if (ShowNvme && _status.NvmeTemp > 0)
+                DrawCombinedSubSeries(g, plot, Stats.NvmeHistory, start, take, leftLo, leftHi, CfxTeal, false, false, sc);
             if (ShowGpu)
                 DrawCombinedSubSeries(g, plot, Stats.GpuHistory, start, take, leftLo, leftHi, gpuCol, false, false, sc);
             if (ShowCpu)

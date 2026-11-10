@@ -555,3 +555,23 @@ yzen-hx370-ec, dreamer-ariesbox10, generic-it5570e, and unknown-safe), testing 
 - **Telemetry & CSV Logging**:
   - Expanded `Core/TelemetrySessionStats.cs` CSV export schema to include `RAM_Power_W` at the end while preserving full backward compatibility with existing parsers.
   - Test 38 updated to verify both NVMe and RAM power tracking, session min/max/avg statistics, and sparkline generation.
+
+---
+
+### 🎨 Phase 12.3: OSD Studio Makeover, Full Granular Metric Toggles (NVMe & RAM), and Layout De-Squashing
+
+- **Granular OSD Metric Visibility Controls (NVMe & RAM Added)**:
+  - Added dedicated toggle checkboxes for **NVMe SSD Temp** (`OsdShowNvme`) and **RAM Load & Power** (`OsdShowRam`) directly in the OSD Overlay Configuration Studio.
+  - Added full config file persistence in `minifancontrol.cfg` for `OsdShowNvme` and `OsdShowRam`.
+  - Added metric visibility toggle items inside the OSD overlay right-click context menu for instant in-game configuration.
+  - Added real-time rendering of NVMe temperature and RAM power curves in the OSD Combined Live Trend Graph.
+  - Added `Select All` and `Defaults` quick action buttons for instant telemetry preset management.
+  - Added single-fan awareness: `Sys Fan RPM` is gracefully grayed out as `Sys Fan RPM (N/A)` on single-fan mini-PCs.
+- **Studio Layout Makeover & Anti-Squash Redesign**:
+  - Resolved root cause of `"Visible Tel"` label truncation: eliminated TrackBar control overlap with the metrics section.
+  - Restructured panel into a clean 2-column side-by-side design: Graph Mode + Graph Height on Row 2, Scale Tier + Layout Direction on Row 3, Opacity Slider + Quick Snap on Row 4.
+  - Created a spacious 4-column metric checkbox grid (196–202px per column) with `UseMnemonic = false` to correctly display `RAM Load & Power`.
+  - Replaced unsupported unicode emoji characters that produced missing glyph boxes (`[]`) with clean, universally supported text and standard geometric bullets (`●`).
+- **Automated Verification**:
+  - Added automated test 39 in `Tests/SelfTestSuite.cs` validating granular metric toggling (`ShowNvme` & `ShowRam`) and visibility counts.
+  - All 39 tests passing with 0 errors.
