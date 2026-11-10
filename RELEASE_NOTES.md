@@ -464,6 +464,8 @@ Decomposed the 11,337-line monolithic `MiniFanControl.cs` into 24 maintainable, 
 
 ### 🛡️ Phase 11: Authenticated Mutex DACL, Role-Scoped Watchdog IPC & Multi-Profile Hardware Matrix
 
+- **Super I/O Hardware-Write Read-Back Routing**: Fixed false-positive verification failures on Super I/O platforms (e.g. TOPC TS-12C / KTHIN PRO with IT8613E) where `SetFan()` and `SetAuto()` previously required read-back verification against ACPI EC registers (`0x33`/`0x34`) instead of confirming physical Super I/O PWM registers (`0x6B`/`0x73`). On Super I/O platforms, fan speed writes and fallsafes now verify directly through `WriteSuperIoHwReg()` read-back checks, eliminating spurious write verification failure alerts.
+
 - **Authenticated Mutex DACL & Local Fallback Diagnostics**: Hardened Hardware/EcBusMutex.cs cross-process coexistence permissions by restricting WorldSid (Everyone) to AuthenticatedUserSid (Synchronize | Modify). This eliminates exposure to untrusted/anonymous/guest tokens while preserving seamless interop with hardware-monitoring tools (HWiNFO64, LibreHardwareMonitor, CapFrameX). Introduced UsesLocalNamespaceFallback and MutexNamespaceDiagnostic to track and report global vs local namespace fallback across CLI status JSON and system diagnostic reports.
 
 - **Role-Scoped Watchdog IPC Least-Privilege (WatchdogIpcRole)**: Refactored watchdog IPC security rules to enforce role-based access control without granting broad FullControl:
