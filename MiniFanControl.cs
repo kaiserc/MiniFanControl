@@ -1097,6 +1097,10 @@ namespace MiniFanControl
             int maxApu = 0;
             int maxSys = 0;
 
+            if (!demoMode && stepDelayMs > 0 && stepDelayMs < 5000)
+            {
+                stepDelayMs = 5000; // Incorporate a 5-second wait before measuring fan speed for rotor stabilization
+            }
             int totalUnits = numPasses * (CalibrationSteps.Length + 2);
             int completedUnits = 0;
             int tickMs = stepDelayMs >= 400 ? 250 : Math.Max(10, stepDelayMs / 3);
@@ -2284,7 +2288,7 @@ namespace MiniFanControl
                     byte aLo1 = ReadSuperIoHwReg(lsb);
                     byte aLo2 = ReadSuperIoHwReg(lsb);
                     byte aLo = (aLo1 == aLo2) ? aLo1 : aLo2;
-                    if (aHi != 0xFF && aLo > 0 && aLo < 0xFF)
+                    if (aHi != 0xFF && (aHi > 0 || aLo > 0) && !(aHi == 0xFF && aLo == 0xFF))
                     {
                         int aRaw = (aHi << 8) | aLo;
                         // Valid RPM range for Mini PC blowers (300 RPM .. 6000 RPM -> raw 112 .. 2250):
@@ -2520,6 +2524,7 @@ namespace MiniFanControl
         {
             if (AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
             {
+                if (reg >= 0x30 && reg <= 0x3F) return;
                 WriteSuperIoHwReg(reg, val);
             }
             else if (AccessMethod == EcAccessMethod.PortIo62)
@@ -2653,16 +2658,14 @@ namespace MiniFanControl
                         f1h = 0; f1l = 0; f2h = 0; f2l = 0;
                         modeVal = 0;
 
-                        byte p1Reg = _superIoFan3Present ? ReadSuperIoHwReg(0x17) : ReadSuperIoHwReg(0x15);
-                        byte p2Reg = ReadSuperIoHwReg(0x16);
-                        byte ext1 = _superIoFan3Present ? ReadSuperIoHwReg(0x73) : ReadSuperIoHwReg(0x63);
-                        byte ext2 = ReadSuperIoHwReg(0x6B);
+                        byte ext1 = ReadSuperIoHwReg(0x6B); // Fan 1 APU duty (Normal polarity)
+                        byte ext2 = ReadSuperIoHwReg(0x73); // Fan 2 Sys duty (Inverted polarity)
 
-                        bool f1Auto = (p1Reg & 0x80) != 0;
-                        bool f2Auto = (p2Reg & 0x80) != 0;
+                        bool f1Auto = (ext1 <= 40 || ext1 == 0xFF);
+                        bool f2Auto = (ext2 >= 240 || ext2 == 0x00);
 
-                        int f1Duty = f1Auto ? 0 : (ext1 > 0 ? (int)Math.Round(ext1 * 100.0 / 255.0) : (int)Math.Round((p1Reg & 0x7F) * 100.0 / 127.0));
-                        int f2Duty = f2Auto ? 0 : (ext2 > 0 ? (int)Math.Round(ext2 * 100.0 / 255.0) : (int)Math.Round((p2Reg & 0x7F) * 100.0 / 127.0));
+                        int f1Duty = f1Auto ? 0 : (int)Math.Round(ext1 * 100.0 / 255.0);
+                        int f2Duty = f2Auto ? 0 : (int)Math.Round((255 - ext2) * 100.0 / 255.0);
 
                         f1Ctrl = (byte)(f1Auto ? 0x00 : (0x80 | (f1Duty & 0x7F)));
                         f2Ctrl = (byte)(f2Auto ? 0x00 : (0x80 | (f2Duty & 0x7F)));
@@ -2802,12 +2805,14 @@ namespace MiniFanControl
 
         public void SetMode(int code)
         {
+            EnsureOpen();
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
             WriteReg(p.RegModeCmd, EncodeModeCommand(code));
         }
 
         public void SetFan(int fanId, int pct)
         {
+            EnsureOpen();
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
             byte val = EncodeFanCommand(pct);
             byte reg = (fanId == 1) ? p.RegFan1Ctrl : p.RegFan2Ctrl;
@@ -2823,49 +2828,28 @@ namespace MiniFanControl
 
                 if (SuperIoBaseAddr != 0)
                 {
-                    // Ensure FAN_MAIN_CTRL_REG (0x13) enables PWM output for this fan
+                    // On IT8613 / IT87: Enable PWM output and manual mode (0x7F, never 0x80 failsafe)
                     byte mainCtrl = ReadSuperIoHwReg(0x13);
-                    int bitMask = (1 << (fanId - 1));
-                    if ((mainCtrl & bitMask) == 0)
+                    if ((mainCtrl & 0x07) != 0x07)
                     {
-                        WriteSuperIoHwReg(0x13, (byte)(mainCtrl | bitMask));
+                        WriteSuperIoHwReg(0x13, (byte)(mainCtrl | 0x07));
                     }
+                    WriteSuperIoHwReg(0x15, 0x7F);
+                    WriteSuperIoHwReg(0x16, 0x7F);
+                    WriteSuperIoHwReg(0x17, 0x7F);
 
-                    byte sioPwmReg = (fanId == 1) ? (byte)0x15 : (byte)0x16;
-                    byte extPwmReg = (fanId == 1) ? (byte)0x63 : (byte)0x6B;
-
-                    if (pct <= 0)
+                    if (fanId == 1)
                     {
-                        // Software mode 0% (stopped)
-                        if (fanId == 1)
-                        {
-                            WriteSuperIoHwReg(0x15, 0x00);
-                            WriteSuperIoHwReg(0x63, 0x00);
-                            WriteSuperIoHwReg(0x17, 0x00);
-                            WriteSuperIoHwReg(0x73, 0x00);
-                        }
-                        else
-                        {
-                            WriteSuperIoHwReg(0x16, 0x00);
-                            WriteSuperIoHwReg(0x6B, 0x00);
-                        }
+                        // APU Fan: PWM 2 (0x6B) + sync PWM 1 (0x63), Normal Polarity (35-40 min for ~2700 RPM)
+                        byte duty = (pct <= 0) ? (byte)40 : (byte)Math.Max(35, Math.Min(255, (pct * 255) / 100));
+                        WriteSuperIoHwReg(0x6B, duty);
+                        WriteSuperIoHwReg(0x63, duty);
                     }
                     else
                     {
-                        // Software mode with target duty cycle:
-                        // In IT87/IT86: bit 7 = 0 means software PWM control
-                        byte duty8 = (byte)Math.Max(1, Math.Min(255, (pct * 255) / 100));
-                        byte duty7 = (byte)Math.Max(1, Math.Min(127, (pct * 127) / 100));
-
-                        WriteSuperIoHwReg(sioPwmReg, duty7);
-                        WriteSuperIoHwReg(extPwmReg, duty8);
-
-                        if (fanId == 1)
-                        {
-                            // Also sync Fan 3 in case CPU fan header is routed to Fan 3
-                            WriteSuperIoHwReg(0x17, duty7);
-                            WriteSuperIoHwReg(0x73, duty8);
-                        }
+                        // Sys Fan: PWM 3 (0x73), Inverted Polarity (240 idle = quiet ~2800 RPM)
+                        byte duty = (pct <= 0) ? (byte)240 : (byte)Math.Max(0, Math.Min(240, 255 - ((pct * 255) / 100)));
+                        WriteSuperIoHwReg(0x73, duty);
                     }
                 }
             }
@@ -2873,6 +2857,7 @@ namespace MiniFanControl
 
         public void SetAuto()
         {
+            EnsureOpen();
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
             for (int attempt = 0; attempt < 3; attempt++)
             {
@@ -2890,10 +2875,18 @@ namespace MiniFanControl
 
                     if (SuperIoBaseAddr != 0)
                     {
-                        // In IT87/IT86 series, setting bit 7 (0x80) on 0x15, 0x16, 0x17 restores hardware Automatic (SmartGuardian) mode
-                        WriteSuperIoHwReg(0x15, 0x80);
-                        WriteSuperIoHwReg(0x16, 0x80);
-                        WriteSuperIoHwReg(0x17, 0x80);
+                        // Ensure Super I/O PWM driving is active in manual mode (never 0x80 SmartGuardian blast)
+                        byte mainCtrl = ReadSuperIoHwReg(0x13);
+                        if ((mainCtrl & 0x07) != 0x07)
+                        {
+                            WriteSuperIoHwReg(0x13, (byte)(mainCtrl | 0x07));
+                        }
+                        WriteSuperIoHwReg(0x15, 0x7F);
+                        WriteSuperIoHwReg(0x16, 0x7F);
+                        WriteSuperIoHwReg(0x17, 0x7F);
+                        WriteSuperIoHwReg(0x6B, 40);   // APU Fan quiet idle (~2600-2800 RPM)
+                        WriteSuperIoHwReg(0x63, 40);   // APU Fan sync
+                        WriteSuperIoHwReg(0x73, 240);  // Sys Fan quiet idle (~2600-2800 RPM, inverted)
                     }
                     return;
                 }
@@ -4120,7 +4113,7 @@ namespace MiniFanControl
             _logBox.Clear();
 
             int passes = _threePassRb.Checked ? 3 : 1;
-            int stepDelayMs = _demoMode ? 350 : 3500;
+            int stepDelayMs = _demoMode ? 350 : 5000; // 5-second stabilization wait before fan measurement
 
             _workerThread = new Thread(() =>
             {
@@ -11228,7 +11221,7 @@ namespace MiniFanControl
                             Console.WriteLine(string.Format("Running MiniFanControl {0}-pass real-time fan calibration...", passes));
                             FanCalibrationResult cal = FanCalibrationResult.RunCalibration(
                                 hw, demo, demoMode,
-                                demoMode ? 60 : 3500,
+                                demoMode ? 60 : 5000, // 5-second stabilization wait before fan measurement
                                 passes,
                                 prog =>
                                 {
