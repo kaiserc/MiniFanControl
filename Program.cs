@@ -294,21 +294,15 @@ namespace MiniFanControl
                         {
 
                             FanStatus st = demoMode ? demo.GetStatus() : hw.GetStatus();
-
                             Console.WriteLine(
-
                                 "{{\"cpu_temp\":{0},\"gpu_temp\":{1},\"apu_power_w\":{2},\"fan1_rpm\":{3},\"fan2_rpm\":{4}," +
-
                                 "\"mode\":\"{5}\",\"mode_code\":{6},\"fan1_pct\":{7},\"fan2_pct\":{8}," +
-
-                                "\"fan1_manual\":{9},\"fan2_manual\":{10},\"mutex_namespace\":\"{11}\"}}",
-
+                                "\"fan1_manual\":{9},\"fan2_manual\":{10},\"nvme_temp\":{11},\"nvme_health\":{12}," +
+                                "\"ram_used_gb\":{13:0.0},\"ram_total_gb\":{14:0.0},\"ram_load_pct\":{15},\"mutex_namespace\":\"{16}\"}}",
                                 st.CpuTemp, st.GpuTemp, st.ApuPowerWatts, st.Fan1Rpm, st.Fan2Rpm,
-
                                 st.Mode, st.ModeCode, st.Fan1Pct, st.Fan2Pct,
-
-                                st.Fan1Manual, st.Fan2Manual, EcBusMutex.MutexNamespaceDiagnostic);
-
+                                st.Fan1Manual, st.Fan2Manual, st.NvmeTemp, st.NvmeHealthPct,
+                                st.RamUsedGb, st.RamTotalGb, st.RamLoadPct, EcBusMutex.MutexNamespaceDiagnostic);
                             return 0;
 
                         }

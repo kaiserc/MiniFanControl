@@ -68,6 +68,8 @@ namespace MiniFanControl
         public bool ShowSysFan = true;
         public bool ShowMode = true;
         public bool ShowPeaks = true;
+        public bool ShowNvme = true;
+        public bool ShowRam = true;
 
         public event EventHandler PositionOrLayoutChanged;
         public event EventHandler RequestHideOverlay;
@@ -270,6 +272,8 @@ namespace MiniFanControl
             if (ShowApuFan) c++;
             if (HasDualFans && ShowSysFan) c++;
             if (ShowMode) c++;
+            if (ShowNvme && _status.NvmeTemp > 0) c++;
+            if (ShowRam && _status.RamTotalGb > 0) c++;
             return Math.Max(1, c);
         }
 
@@ -620,6 +624,8 @@ namespace MiniFanControl
             using (Brush bPwr    = new SolidBrush(pwrCol))
             using (Brush bApu    = new SolidBrush(apuCol))
             using (Brush bSys    = new SolidBrush(sysCol))
+            using (Brush bNvme   = new SolidBrush(CfxTeal))
+            using (Brush bRam    = new SolidBrush(Color.FromArgb(0x81, 0x8C, 0xF8)))
             using (Brush bWhite  = new SolidBrush(CfxWhite))
             using (Brush bPeak   = new SolidBrush(Color.FromArgb(170, 203, 213, 225)))
             using (Pen sepPen    = new Pen(border, 1f))
@@ -656,6 +662,10 @@ namespace MiniFanControl
                         DrawHorizCell(g, colIdx++, colW, "APU", f1Val + "r", null, bLabel, bApu, bPeak, sepPen, showSpark ? (Stats != null ? Stats.Fan1RpmHistory : null) : null, apuCol, sc);
                     if (HasDualFans && ShowSysFan)
                         DrawHorizCell(g, colIdx++, colW, "SYS", f2Val + "r", null, bLabel, bSys, bPeak, sepPen, showSpark ? (Stats != null ? Stats.Fan2RpmHistory : null) : null, sysCol, sc);
+                    if (ShowNvme && _status.NvmeTemp > 0)
+                        DrawHorizCell(g, colIdx++, colW, "NVMe", _status.NvmeTemp + "°C", null, bLabel, bNvme, bPeak, sepPen, null, CfxTeal, sc);
+                    if (ShowRam && _status.RamTotalGb > 0)
+                        DrawHorizCell(g, colIdx++, colW, "RAM", string.Format("{0:0}G", _status.RamUsedGb), null, bLabel, bRam, bPeak, sepPen, null, Color.FromArgb(0x81, 0x8C, 0xF8), sc);
                     if (ShowMode)
                         DrawHorizCell(g, colIdx++, colW, "MODE", _modeSummary, null, bLabel, bWhite, bPeak, sepPen, null, CfxWhite, sc);
 
@@ -710,6 +720,10 @@ namespace MiniFanControl
                         DrawVertRow(g, row++, rowH, "APU Fan", f1Val + " RPM", null, bLabel, bApu, bPeak, showSpark ? (Stats != null ? Stats.Fan1RpmHistory : null) : null, apuCol, sc);
                     if (HasDualFans && ShowSysFan)
                         DrawVertRow(g, row++, rowH, "Sys Fan", f2Val + " RPM", null, bLabel, bSys, bPeak, showSpark ? (Stats != null ? Stats.Fan2RpmHistory : null) : null, sysCol, sc);
+                    if (ShowNvme && _status.NvmeTemp > 0)
+                        DrawVertRow(g, row++, rowH, "NVMe", _status.NvmeTemp + "°C", null, bLabel, bNvme, bPeak, null, CfxTeal, sc);
+                    if (ShowRam && _status.RamTotalGb > 0)
+                        DrawVertRow(g, row++, rowH, "RAM", string.Format("{0:0.0}G ({1}%)", _status.RamUsedGb, _status.RamLoadPct), null, bLabel, bRam, bPeak, null, Color.FromArgb(0x81, 0x8C, 0xF8), sc);
                     if (ShowMode)
                         DrawVertRow(g, row++, rowH, "Mode", _modeSummary, null, bLabel, bWhite, bPeak, null, CfxWhite, sc);
 

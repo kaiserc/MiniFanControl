@@ -1778,57 +1778,45 @@ namespace MiniFanControl
             if (adlPowerWatts <= 0)
 
             {
-
                 pwrSrc = "EC Thermal-TDP Model (CPU/iGPU Temp + Active BIOS Mode)";
-
             }
 
+            NvmeTelemetry nvme;
+            MemoryTelemetry mem;
+            SystemStorageMemorySensor.Sample(out nvme, out mem);
+
             FanStatus st = new FanStatus
-
             {
-
                 CpuTemp = cpuTemp,
-
                 GpuTemp = gpuTemp,
-
                 ApuPowerWatts = apuPower,
-
                 CpuPowerWatts = cpuPwr,
-
                 GfxPowerWatts = gfxPwr,
-
                 SocPowerWatts = socPwr,
-
                 ApuPowerLimitWatts = pwrLim,
-
                 CpuClockMhz = cpuClk,
-
                 GfxClockMhz = gfxClk,
-
                 GfxActivityPct = gfxAct,
-
                 GfxVoltageMv = gfxVolt,
-
                 RtssFps = FpsMonitor.TryGetRtssFps(),
-
                 PowerSource = pwrSrc,
-
                 Fan1Rpm = fan1Rpm,
-
                 Fan2Rpm = fan2Rpm,
-
                 Mode = modeStr,
-
                 ModeCode = modeCode,
-
                 Fan1Pct = (f1Ctrl != 0xFF) ? (f1Ctrl & 0x7F) : 0,
-
                 Fan2Pct = (f2Ctrl != 0xFF) ? (f2Ctrl & 0x7F) : 0,
-
                 Fan1Manual = (f1Ctrl != 0xFF && (f1Ctrl & 0x80) != 0) ? 1 : 0,
-
-                Fan2Manual = (f2Ctrl != 0xFF && (f2Ctrl & 0x80) != 0) ? 1 : 0
-
+                Fan2Manual = (f2Ctrl != 0xFF && (f2Ctrl & 0x80) != 0) ? 1 : 0,
+                NvmeTemp = nvme.IsAvailable ? nvme.CompositeTemp : 0,
+                NvmeHealthPct = nvme.IsAvailable ? nvme.HealthPct : 0,
+                NvmeModel = nvme.IsAvailable ? nvme.Model : null,
+                NvmeCritWarning = nvme.IsAvailable ? nvme.CriticalWarning : (byte)0,
+                NvmeAvailableSpare = nvme.IsAvailable ? nvme.AvailableSpare : (byte)0,
+                NvmeWearPct = nvme.IsAvailable ? nvme.PercentageUsed : (byte)0,
+                RamUsedGb = mem.IsAvailable ? mem.UsedGb : 0.0,
+                RamTotalGb = mem.IsAvailable ? mem.TotalGb : 0.0,
+                RamLoadPct = mem.IsAvailable ? mem.LoadPct : 0
             };
 
             _lastStatusCache = st;

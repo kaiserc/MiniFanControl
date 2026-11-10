@@ -72,7 +72,16 @@ namespace MiniFanControl
                 Fan1Pct = _fan1Pct,
                 Fan2Pct = _fan2Pct,
                 Fan1Manual = _fan1Manual,
-                Fan2Manual = _fan2Manual
+                Fan2Manual = _fan2Manual,
+                NvmeTemp = Math.Max(32, Math.Min(65, _cpuTemp - 10 + _rng.Next(-1, 2))),
+                NvmeHealthPct = 96,
+                NvmeModel = "Samsung 990 PRO 2TB (Demo)",
+                NvmeCritWarning = 0,
+                NvmeAvailableSpare = 100,
+                NvmeWearPct = 4,
+                RamUsedGb = 18.4,
+                RamTotalGb = 32.0,
+                RamLoadPct = 58
             };
         }
 

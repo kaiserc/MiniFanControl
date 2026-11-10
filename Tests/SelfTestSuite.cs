@@ -829,35 +829,21 @@ namespace MiniFanControl
 
 
             // 21. Session Telemetry CSV Export Integrity & Schema Validation
-
             TelemetrySessionStats testStats = new TelemetrySessionStats();
-
-            testStats.Record(new FanStatus { CpuTemp = 42, GpuTemp = 38, ApuPowerWatts = 18, Fan1Rpm = 1450, Fan2Rpm = 1100, Fan1Pct = 35, Fan2Pct = 30, Mode = "Balanced", GfxActivityPct = 12, Fps = 60 });
-
-            testStats.Record(new FanStatus { CpuTemp = 55, GpuTemp = 45, ApuPowerWatts = 28, Fan1Rpm = 2100, Fan2Rpm = 1400, Fan1Pct = 50, Fan2Pct = 40, Mode = "Performance", GfxActivityPct = 85, Fps = 120 });
+            testStats.Record(new FanStatus { CpuTemp = 42, GpuTemp = 38, ApuPowerWatts = 18, Fan1Rpm = 1450, Fan2Rpm = 1100, Fan1Pct = 35, Fan2Pct = 30, Mode = "Balanced", GfxActivityPct = 12, Fps = 60, NvmeTemp = 35, RamUsedGb = 16.5, RamLoadPct = 52 });
+            testStats.Record(new FanStatus { CpuTemp = 55, GpuTemp = 45, ApuPowerWatts = 28, Fan1Rpm = 2100, Fan2Rpm = 1400, Fan1Pct = 50, Fan2Pct = 40, Mode = "Performance", GfxActivityPct = 85, Fps = 120, NvmeTemp = 41, RamUsedGb = 18.2, RamLoadPct = 57 });
 
             string tempCsvPath = Path.Combine(Path.GetTempPath(), "minifan-test-export-" + Guid.NewGuid().ToString("N") + ".csv");
-
             bool exportOk = testStats.ExportToCsv(tempCsvPath);
-
             bool csvValid = false;
-
             if (exportOk && File.Exists(tempCsvPath))
-
             {
-
                 string[] csvLines = File.ReadAllLines(tempCsvPath);
-
                 csvValid = csvLines.Length == 3 &&
-
-                           csvLines[0].Trim() == "Timestamp,CPU_Temp_C,iGPU_Temp_C,APU_Power_W,Fan1_RPM,Fan2_RPM,Fan1_PWM_Pct,Fan2_PWM_Pct,Mode,iGPU_Load_Pct,FPS" &&
-
-                           csvLines[1].Contains("42,38,18,1450,1100,35,30,\"Balanced\",12,60") &&
-
-                           csvLines[2].Contains("55,45,28,2100,1400,50,40,\"Performance\",85,120");
-
+                           csvLines[0].Trim() == "Timestamp,CPU_Temp_C,iGPU_Temp_C,APU_Power_W,Fan1_RPM,Fan2_RPM,Fan1_PWM_Pct,Fan2_PWM_Pct,Mode,iGPU_Load_Pct,FPS,NVMe_Temp_C,RAM_Used_GB,RAM_Load_Pct" &&
+                           csvLines[1].Contains("42,38,18,1450,1100,35,30,\"Balanced\",12,60,35,16.5,52") &&
+                           csvLines[2].Contains("55,45,28,2100,1400,50,40,\"Performance\",85,120,41,18.2,57");
                 try { File.Delete(tempCsvPath); } catch { }
-
             }
 
 
@@ -1387,6 +1373,37 @@ namespace MiniFanControl
             Check(mutexDaclValid,
                 "Authenticated Mutex DACL & Local Fallback Diagnostics",
                 string.Format("Diagnostic=[{0}], LocalFallback={1}", diag, EcBusMutex.UsesLocalNamespaceFallback));
+
+            // 37. Native NVMe Storage & System RAM Sensor Telemetry
+            NvmeTelemetry testNvme;
+            MemoryTelemetry testMem;
+            SystemStorageMemorySensor.Sample(out testNvme, out testMem);
+            bool memOk = testMem.IsAvailable && testMem.TotalGb > 0 && testMem.LoadPct >= 0 && testMem.LoadPct <= 100;
+            bool nvmeSafe = !testNvme.IsAvailable || (testNvme.CompositeTemp >= 0 && testNvme.HealthPct >= 0 && testNvme.HealthPct <= 100);
+
+            FanStatus stTest = new FanStatus
+            {
+                CpuTemp = 45,
+                GpuTemp = 40,
+                NvmeTemp = 38,
+                NvmeHealthPct = 95,
+                NvmeModel = "Test NVMe Drive",
+                NvmeCritWarning = 0,
+                NvmeAvailableSpare = 100,
+                NvmeWearPct = 5,
+                RamUsedGb = 16.0,
+                RamTotalGb = 32.0,
+                RamLoadPct = 50
+            };
+            string nvmeTip = stTest.FormatNvmeTooltip();
+            string ramTip = stTest.FormatRamTooltip();
+            bool tooltipsValid = !string.IsNullOrEmpty(nvmeTip) && nvmeTip.Contains("38°C") && nvmeTip.Contains("95%") &&
+                                 !string.IsNullOrEmpty(ramTip) && ramTip.Contains("16.0 GB") && ramTip.Contains("50%");
+
+            Check(memOk && nvmeSafe && tooltipsValid,
+                "Native NVMe Storage & System RAM Sensor Telemetry",
+                string.Format("MemOk={0} (Load={1}%, Total={2:F1}GB), NvmeSafe={3} (Avail={4}, Temp={5}C), TipsOk={6}",
+                    memOk, testMem.LoadPct, testMem.TotalGb, nvmeSafe, testNvme.IsAvailable, testNvme.CompositeTemp, tooltipsValid));
 
             Console.WriteLine("----------------------------------------------------------------------");
 

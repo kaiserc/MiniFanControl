@@ -9,7 +9,7 @@
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 36 Passed](https://img.shields.io/badge/Automated%20Tests-36%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-3636-passing)
+[![Automated Tests: 37 Passed](https://img.shields.io/badge/Automated%20Tests-37%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-3737-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 
 **MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **KTHIN Ryzen AI 9 HX 370 PRO**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
@@ -50,13 +50,14 @@ MiniFanControl/
 │   ├── DriverServiceManager.cs
 │   ├── EcBusMutex.cs
 │   ├── HardwareBackend.cs
-│   └── NativeInpOut.cs
+│   ├── NativeInpOut.cs
+│   └── SystemStorageMemorySensor.cs
 ├── Safety/             # Out-of-process crash supervisor daemon & IPC heartbeat watchdog
 │   └── WatchdogSupervisor.cs
 ├── Telemetry/          # RTSS/CapFrameX shared memory reader & transparent OSD HUD
 │   ├── CapFrameXOverlayForm.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 36-point automated hardware safety & regression test suite
+├── Tests/              # 37-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
 ├── Ui/                 # Double-buffered canvases, custom WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
@@ -139,6 +140,12 @@ MiniFanControl/
 - **Heartbeat IPC**: Monitors main application health via named events (`Global\MiniFanControl_Heartbeat_<PID>`). Unnamed event fallbacks are strictly rejected fail-closed.
 - **Automatic Failsafe Restoration**: If the main process hangs for >3.5s or terminates unexpectedly, the watchdog immediately resets fan registers to BIOS Auto (`0x00`) and verifies the hardware state via register read-back before confirming recovery.
 - **Write Verification**: `SetMode`, `SetFan`, `SetAuto`, and `WriteReg` verify register latching and return explicit status codes, ensuring CLI automation never reports false successes.
+
+### 💾 Native NVMe Storage & System RAM Hardware Telemetry
+- **Microsoft Storage IOCTL (`IOCTL_STORAGE_QUERY_PROPERTY`)**: Queries NVMe SMART Log Page `0x02` directly through the Windows storage stack. Retrieves Composite Temperature (°C), Remaining Health / Wear %, Available Spare %, and Critical Warning status without touching raw PCI configuration ports (`0xCF8/0xCFC`), eliminating storage bus contention and driver lockups.
+- **Sub-Microsecond RAM Telemetry**: Uses Win32 `GlobalMemoryStatusEx` (`kernel32.dll`) to track live memory pressure (Used GB, Total Installed GB, and Memory Load %) with zero background CPU overhead.
+- **Proactive Fan 2 (Sys Fan) NVMe Thermal Coupling**: Modern Mini PCs physically position Fan 2 over the M.2 NVMe SSD bays and DDR5 SODIMM slots. MiniFanControl dynamically drives Fan 2 using `Math.Max(APU Temp, NVMe Temp)`—ensuring heavy SSD file copies, game installs, and local AI model loading automatically ramp up chassis ventilation before the SSD controller thermal throttles.
+- **Interactive GUI & OSD HUD Integration**: Features dedicated pill cards in the dashboard with rich SMART tooltips, live CapFrameX overlay rows, and CSV telemetry session exports.
 
 ### 🎨 3 High-Contrast Themes
 - **Dark Theme**: High-contrast slate and midnight blue for low-light environments.
@@ -282,6 +289,7 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 34. **Watchdog Ready Handshake & Fail-Closed Event Fallback**: Verifies two-way child handshake (`ReadyEvent`) before confirming active supervision, ensures absence of unverified fallbacks, and tests fail-closed timeout detection.
 35. **Multi-Profile Hardware Validation Matrix (6 Hardware Profiles)**: Rigorously verifies all 6 device profiles (`gmktec-k12`, `gmktec-k8-k11`, `ryzen-hx370-ec`, `adreamer-ariesbox10`, `generic-it5570e`, and `unknown-safe`), checking EC register bounds, Super I/O inverted polarity logic (40/0 and 240/0), tachometer channels, sensor loss / thermal runaway failsafe, watchdog recovery, and read-only protection.
 36. **Authenticated Mutex DACL & Local Fallback Diagnostics**: Verifies `EcBusMutex` access rules enforce least-privilege `AuthenticatedUserSid` (`Synchronize | Modify`) without untrusted `WorldSid` (`Everyone`), ensuring `UsesLocalNamespaceFallback` and `MutexNamespaceDiagnostic` track namespace state accurately.
+37. **Native NVMe Storage & System RAM Sensor Telemetry**: Verifies standard Win32 `IOCTL_STORAGE_QUERY_PROPERTY` NVMe SMART health page 0x02 parsing (Composite Temperature, Critical Warning, Available Spare %, Lifetime Wear %), native `GlobalMemoryStatusEx` physical RAM utilization (Total GB, Used GB, Load %), and `FanStatus` tooltip formatting helpers.
 
 ---
 

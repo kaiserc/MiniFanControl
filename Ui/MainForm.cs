@@ -208,6 +208,12 @@ namespace MiniFanControl
         private DoubleBufferedPanel _pwrBox;
         private DoubleBufferedPanel _fan1Box;
         private DoubleBufferedPanel _fan2Box;
+        private DoubleBufferedPanel _nvmeCard;
+        private Label _nvmeLabel;
+        private DoubleBufferedPanel _ramCard;
+        private Label _ramLabel;
+        private string _lastNvmeTooltipText;
+        private string _lastRamTooltipText;
         private Label _samplingLabel;
         private ComboBox _samplingCombo;
         private FanStatus _lastStatus;
@@ -352,7 +358,7 @@ namespace MiniFanControl
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(680, 860);
+            ClientSize = new Size(680, 888);
             try
             {
                 Icon assoc = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -2309,8 +2315,8 @@ namespace MiniFanControl
             _themeToggleBtn.Click += (s, e) => CycleThemePreference();
             Controls.Add(_themeToggleBtn);
 
-            // 1. Hardware & Live Telemetry Section (top = 62, card = 82..192, height = 110)
-            Panel statusCard = CreateSectionCard("System Telemetry & Live Hardware Sensors", 62, 110);
+            // 1. Hardware & Live Telemetry Section (top = 62, card = 82..220, height = 138)
+            Panel statusCard = CreateSectionCard("System Telemetry & Live Hardware Sensors", 62, 138);
 
             _cpuTempBox = new DoubleBufferedPanel
             {
@@ -2572,38 +2578,112 @@ namespace MiniFanControl
             _fan2BoxTitle.MouseEnter += (s, e) => updateFan2Tip();
             _fan2RpmLabel.MouseEnter += (s, e) => updateFan2Tip();
 
-            AddStaticLabel(statusCard, "Mode:", 10, 84, 44, 20);
+            // Row 2: Secondary Telemetry Row (NVMe SSD & System RAM)
+            _nvmeCard = new DoubleBufferedPanel
+            {
+                Location = new Point(8, 84),
+                Size = new Size(314, 25),
+                BorderStyle = BorderStyle.FixedSingle,
+                Cursor = Cursors.Hand
+            };
+            _nvmeLabel = new Label
+            {
+                Text = "💾 NVMe: Initializing...",
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(4, 3),
+                Size = new Size(304, 18),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Cursor = Cursors.Hand
+            };
+            _nvmeCard.Controls.Add(_nvmeLabel);
+            statusCard.Controls.Add(_nvmeCard);
+
+            string nvmeTip = "NVMe Storage Drive Telemetry\r\nLive SSD composite temperature, controller wear and health status.\r\nCoupled to Fan 2 (Sys Fan) for proactive cooling.";
+            _uiToolTip.SetToolTip(_nvmeCard, nvmeTip);
+            _uiToolTip.SetToolTip(_nvmeLabel, nvmeTip);
+
+            Action updateNvmeTip = () =>
+            {
+                if (_uiToolTip != null)
+                {
+                    string tip = _lastStatus.FormatNvmeTooltip(_sessionStats);
+                    _lastNvmeTooltipText = tip;
+                    _uiToolTip.SetToolTip(_nvmeCard, tip);
+                    _uiToolTip.SetToolTip(_nvmeLabel, tip);
+                }
+            };
+            _nvmeCard.MouseEnter += (s, e) => updateNvmeTip();
+            _nvmeLabel.MouseEnter += (s, e) => updateNvmeTip();
+
+            _ramCard = new DoubleBufferedPanel
+            {
+                Location = new Point(330, 84),
+                Size = new Size(314, 25),
+                BorderStyle = BorderStyle.FixedSingle,
+                Cursor = Cursors.Hand
+            };
+            _ramLabel = new Label
+            {
+                Text = "🧠 RAM: Initializing...",
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(4, 3),
+                Size = new Size(304, 18),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Cursor = Cursors.Hand
+            };
+            _ramCard.Controls.Add(_ramLabel);
+            statusCard.Controls.Add(_ramCard);
+
+            string ramTip = "System Physical Memory Telemetry\r\nLive RAM allocation, memory load %, and total installed capacity.";
+            _uiToolTip.SetToolTip(_ramCard, ramTip);
+            _uiToolTip.SetToolTip(_ramLabel, ramTip);
+
+            Action updateRamTip = () =>
+            {
+                if (_uiToolTip != null)
+                {
+                    string tip = _lastStatus.FormatRamTooltip(_sessionStats);
+                    _lastRamTooltipText = tip;
+                    _uiToolTip.SetToolTip(_ramCard, tip);
+                    _uiToolTip.SetToolTip(_ramLabel, tip);
+                }
+            };
+            _ramCard.MouseEnter += (s, e) => updateRamTip();
+            _ramLabel.MouseEnter += (s, e) => updateRamTip();
+
+            // Row 3: Active Fan Modes & Duty Status
+            AddStaticLabel(statusCard, "Mode:", 10, 114, 44, 20);
             _modeLabel = new Label
             {
                 Text = "--",
                 Font = new Font("Segoe UI", 9.75f, FontStyle.Bold),
-                Location = new Point(56, 83),
+                Location = new Point(56, 113),
                 Size = new Size(180, 22)
             };
             statusCard.Controls.Add(_modeLabel);
 
-            AddStaticLabel(statusCard, "APU Fan:", 248, 84, 62, 20);
+            AddStaticLabel(statusCard, "APU Fan:", 248, 114, 62, 20);
             _pct1Label = new Label
             {
                 Text = "--",
                 Font = new Font("Segoe UI", 9.25f, FontStyle.Bold),
-                Location = new Point(312, 84),
+                Location = new Point(312, 114),
                 Size = new Size(120, 20)
             };
             statusCard.Controls.Add(_pct1Label);
 
-            AddStaticLabel(statusCard, "Sys Fan:", 446, 84, 58, 20);
+            AddStaticLabel(statusCard, "Sys Fan:", 446, 114, 58, 20);
             _pct2Label = new Label
             {
                 Text = "--",
                 Font = new Font("Segoe UI", 9.25f, FontStyle.Bold),
-                Location = new Point(506, 84),
+                Location = new Point(506, 114),
                 Size = new Size(120, 20)
             };
             statusCard.Controls.Add(_pct2Label);
 
-            // 2. Modes & Fan Curve Section (top = 200, card = 220..592, height = 372)
-            Panel modeCard = CreateSectionCard("Modes, Fan Curves & Live Telemetry Graph", 200, 372);
+            // 2. Modes & Fan Curve Section (top = 228, card = 248..620, height = 372)
+            Panel modeCard = CreateSectionCard("Modes, Fan Curves & Live Telemetry Graph", 228, 372);
 
             // Row 1 (y=8): Tab Selector Row (APU Fan | Sys Fan | 📈 Live Trend | 🖥 OSD Studio)
             _tabApuCurveBtn = new Button
@@ -2861,14 +2941,14 @@ namespace MiniFanControl
             };
             modeCard.Controls.Add(_curveHintLabel);
 
-            // 3. Manual Fan Control Section (top = 598, card = 618..712, height = 94)
-            Panel fanCard = CreateSectionCard("Manual Fan Control", 598, 94);
+            // 3. Manual Fan Control Section (top = 626, card = 646..740, height = 94)
+            Panel fanCard = CreateSectionCard("Manual Fan Control", 626, 94);
 
             _calibBadgeLabel = new Label
             {
                 Text = "",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(240, 599),
+                Location = new Point(240, 627),
                 Size = new Size(426, 18),
                 TextAlign = ContentAlignment.MiddleRight,
                 Cursor = Cursors.Hand
@@ -2997,14 +3077,14 @@ namespace MiniFanControl
             _fan2AutoBtn.Click += (s, e) => ApplyFan(2, 0);
             fanCard.Controls.Add(_fan2AutoBtn);
 
-            // 4. Options Section (top = 718, card = 738..820, height = 82)
-            Panel optCard = CreateSectionCard("Options", 718, 82);
+            // 4. Options Section (top = 746, card = 766..848, height = 82)
+            Panel optCard = CreateSectionCard("Options", 746, 82);
 
             _samplingLabel = new Label
             {
                 Text = "Sampling:",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(410, 719),
+                Location = new Point(410, 747),
                 AutoSize = true,
                 Cursor = Cursors.Default
             };
@@ -3015,7 +3095,7 @@ namespace MiniFanControl
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
-                Location = new Point(480, 715),
+                Location = new Point(480, 743),
                 Size = new Size(185, 22),
                 Cursor = Cursors.Hand
             };
@@ -3142,7 +3222,7 @@ namespace MiniFanControl
             _errorBanner = new Label
             {
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
-                Location = new Point(14, 738),
+                Location = new Point(14, 766),
                 Size = new Size(652, 82),
                 Padding = new Padding(8),
                 Visible = false
@@ -3150,12 +3230,12 @@ namespace MiniFanControl
             Controls.Add(_errorBanner);
             _errorBanner.BringToFront();
 
-            // 5. Status Bar (y = 824..854)
+            // 5. Status Bar (y = 852..882)
             _statusBarLabel = new Label
             {
                 Text = "⏳ Initializing…",
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Regular),
-                Location = new Point(14, 827),
+                Location = new Point(14, 855),
                 Size = new Size(450, 22)
             };
             Controls.Add(_statusBarLabel);
@@ -3164,7 +3244,7 @@ namespace MiniFanControl
             {
                 Text = "Reset Auto",
                 FlatStyle = FlatStyle.Flat,
-                Location = new Point(478, 823),
+                Location = new Point(478, 851),
                 Size = new Size(90, 28),
                 Cursor = Cursors.Hand
             };
@@ -3176,7 +3256,7 @@ namespace MiniFanControl
             {
                 Text = "Close",
                 FlatStyle = FlatStyle.Flat,
-                Location = new Point(574, 823),
+                Location = new Point(574, 851),
                 Size = new Size(92, 28),
                 Cursor = Cursors.Hand
             };
@@ -4151,6 +4231,26 @@ namespace MiniFanControl
                 }
             }
 
+            if (_nvmeCard != null)
+            {
+                _nvmeCard.BackColor = tempBoxBg;
+                if (_nvmeLabel != null)
+                {
+                    _nvmeLabel.BackColor = tempBoxBg;
+                    _nvmeLabel.ForeColor = text;
+                }
+            }
+
+            if (_ramCard != null)
+            {
+                _ramCard.BackColor = tempBoxBg;
+                if (_ramLabel != null)
+                {
+                    _ramLabel.BackColor = tempBoxBg;
+                    _ramLabel.ForeColor = text;
+                }
+            }
+
             _modeLabel.BackColor = surface;
             _modeLabel.ForeColor = accent;
 
@@ -4376,6 +4476,12 @@ namespace MiniFanControl
                     desiredEcMode = _sysProfile.BuiltInCode;
                     sysUsesNativeEcAuto = true;
                 }
+
+                // If NVMe SSD is hot (>= 65°C), override native EC auto for Fan 2 so Fan 2 actively cools the SSD
+                if (sysUsesNativeEcAuto && _lastStatus.NvmeTemp >= 65)
+                {
+                    sysUsesNativeEcAuto = false;
+                }
             }
 
             // 2°C cooldown hysteresis for software curve updates
@@ -4462,7 +4568,8 @@ namespace MiniFanControl
                     }
                     else
                     {
-                        int targetSys = _sysProfile.EvaluateSys(apuTemp);
+                        int sysThermalSource = (_lastStatus.NvmeTemp > 0) ? Math.Max(apuTemp, _lastStatus.NvmeTemp) : apuTemp;
+                        int targetSys = _sysProfile.EvaluateSys(sysThermalSource);
                         int regPct = targetSys <= 0 ? (isSuperIo ? 0 : 1) : targetSys;
                         if (_lastAppliedSysPct < 0 || (!withinCooldownHysteresis && Math.Abs(regPct - _lastAppliedSysPct) >= 2) || regPct == 1 || regPct == 100)
                         {
@@ -4822,6 +4929,60 @@ namespace MiniFanControl
                 _fan2Box.Invalidate();
             }
 
+            if (_nvmeCard != null && _nvmeLabel != null)
+            {
+                if (st.NvmeTemp > 0)
+                {
+                    string modelDisplay = !string.IsNullOrEmpty(st.NvmeModel) ? st.NvmeModel : "NVMe SSD";
+                    if (modelDisplay.Length > 20) modelDisplay = modelDisplay.Substring(0, 18).Trim() + "…";
+                    _nvmeLabel.Text = string.Format("💾 NVMe: {0} • {1}°C ({2}% Health)", modelDisplay, st.NvmeTemp, st.NvmeHealthPct);
+                    Color nvmeFg = (st.NvmeTemp >= 70) ? Color.FromArgb(0xFB, 0x71, 0x85) : tempFg;
+                    _nvmeLabel.ForeColor = nvmeFg;
+                }
+                else
+                {
+                    _nvmeLabel.Text = "💾 NVMe: N/A";
+                    _nvmeLabel.ForeColor = dimText;
+                }
+
+                if (_uiToolTip != null && !IsMouseOverControl(_nvmeCard) && !IsMouseOverControl(_nvmeLabel))
+                {
+                    string nvmeTip = st.FormatNvmeTooltip(_sessionStats);
+                    if (nvmeTip != _lastNvmeTooltipText)
+                    {
+                        _lastNvmeTooltipText = nvmeTip;
+                        _uiToolTip.SetToolTip(_nvmeCard, nvmeTip);
+                        _uiToolTip.SetToolTip(_nvmeLabel, nvmeTip);
+                    }
+                }
+            }
+
+            if (_ramCard != null && _ramLabel != null)
+            {
+                if (st.RamTotalGb > 0)
+                {
+                    _ramLabel.Text = string.Format("🧠 RAM: {0:F1} / {1:F1} GB ({2}% Load)", st.RamUsedGb, st.RamTotalGb, st.RamLoadPct);
+                    Color ramFg = (st.RamLoadPct >= 90) ? Color.FromArgb(0xFB, 0x71, 0x85) : tempFg;
+                    _ramLabel.ForeColor = ramFg;
+                }
+                else
+                {
+                    _ramLabel.Text = "🧠 RAM: N/A";
+                    _ramLabel.ForeColor = dimText;
+                }
+
+                if (_uiToolTip != null && !IsMouseOverControl(_ramCard) && !IsMouseOverControl(_ramLabel))
+                {
+                    string ramTip = st.FormatRamTooltip(_sessionStats);
+                    if (ramTip != _lastRamTooltipText)
+                    {
+                        _lastRamTooltipText = ramTip;
+                        _uiToolTip.SetToolTip(_ramCard, ramTip);
+                        _uiToolTip.SetToolTip(_ramLabel, ramTip);
+                    }
+                }
+            }
+
             if (!_hasDualFans || apuModeName == sysModeName)
                 _modeLabel.Text = apuModeName;
             else
@@ -4857,8 +5018,10 @@ namespace MiniFanControl
             }
             else
             {
-                int sysEval = _sysProfile != null ? _sysProfile.EvaluateSys(apuTemp) : st.Fan2Pct;
-                _pct2Label.Text = (st.Fan2Manual == 0) ? string.Format("Auto ({0})", ShortModeTag(sysModeName)) : string.Format("{0}% ({1})", sysEval, ShortModeTag(sysModeName));
+                int sysThermalSource = (st.NvmeTemp > 0) ? Math.Max(apuTemp, st.NvmeTemp) : apuTemp;
+                int sysEval = _sysProfile != null ? _sysProfile.EvaluateSys(sysThermalSource) : st.Fan2Pct;
+                string nvmeTag = (st.NvmeTemp > apuTemp && st.NvmeTemp >= 50) ? string.Format(" • NVMe {0}°C", st.NvmeTemp) : "";
+                _pct2Label.Text = (st.Fan2Manual == 0) ? string.Format("Auto ({0}{1})", ShortModeTag(sysModeName), nvmeTag) : string.Format("{0}% ({1}{2})", sysEval, ShortModeTag(sysModeName), nvmeTag);
                 _pct2Label.ForeColor = autoColor;
             }
 

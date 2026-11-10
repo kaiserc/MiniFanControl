@@ -43,6 +43,17 @@ namespace MiniFanControl
         public int Fan1Manual;
         public int Fan2Manual;
 
+        // Storage & Memory Telemetry (NVMe SSD & System RAM)
+        public int NvmeTemp;
+        public int NvmeHealthPct;
+        public string NvmeModel;
+        public byte NvmeCritWarning;
+        public byte NvmeAvailableSpare;
+        public byte NvmeWearPct;
+        public double RamUsedGb;
+        public double RamTotalGb;
+        public int RamLoadPct;
+
         public string FormatPowerTooltip(TelemetrySessionStats stats = null)
         {
             string modeTdpDesc = ApuPowerLimitWatts > 0
@@ -190,7 +201,34 @@ namespace MiniFanControl
             {
                 sb.AppendFormat("Calibrated Hardware Ceiling: ~{0} RPM\r\n", ratedMaxRpm);
             }
+            if (NvmeTemp > 0)
+            {
+                sb.AppendFormat("• NVMe Thermal Coupling: Active (M.2 Temp: {0}°C)\r\n", NvmeTemp);
+            }
             sb.Append("Left-click to spotlight Sys Fan on big graph • Right-click to reset peaks.");
+            return sb.ToString();
+        }
+
+        public string FormatNvmeTooltip(TelemetrySessionStats stats = null)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendFormat("NVMe Storage: {0}\r\n", !string.IsNullOrEmpty(NvmeModel) ? NvmeModel : "NVMe Solid State Drive");
+            sb.AppendFormat("• Live Composite Temperature: {0}\r\n", NvmeTemp > 0 ? string.Format("{0}°C", NvmeTemp) : "N/A");
+            sb.AppendFormat("• Drive Health: {0}% ({1}% Lifetime Wear)\r\n", NvmeHealthPct, NvmeWearPct);
+            sb.AppendFormat("• Available Spare Blocks: {0}%\r\n", NvmeAvailableSpare);
+            sb.AppendFormat("• SMART Reliability Status: {0}\r\n", NvmeCritWarning == 0 ? "Healthy (0x00)" : string.Format("WARNING (0x{0:X2})", NvmeCritWarning));
+            sb.AppendLine("────────────────────────────────────────────");
+            sb.Append("Query Method: Native Windows IOCTL_STORAGE_QUERY_PROPERTY (NVMe Log 0x02).\r\nExcludes raw PCI port I/O for zero controller bus contention.\r\nCoupled to Fan 2 (Sys Fan) for proactive M.2 SSD cooling.");
+            return sb.ToString();
+        }
+
+        public string FormatRamTooltip(TelemetrySessionStats stats = null)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendFormat("System Physical Memory: {0:F1} GB Used / {1:F1} GB Total ({2}% Load)\r\n", RamUsedGb, RamTotalGb, RamLoadPct);
+            sb.AppendFormat("• Available Physical RAM: {0:F1} GB\r\n", Math.Max(0.0, RamTotalGb - RamUsedGb));
+            sb.AppendLine("────────────────────────────────────────────");
+            sb.Append("Query Method: Win32 GlobalMemoryStatusEx (sub-microsecond latency, zero overhead).\r\nMonitors live memory pressure in tandem with APU & System Fan cooling.");
             return sb.ToString();
         }
     }

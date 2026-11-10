@@ -31,6 +31,9 @@ namespace MiniFanControl
         public string Mode;
         public int GpuLoadPct;
         public int Fps;
+        public int NvmeTemp;
+        public double RamUsedGb;
+        public int RamLoadPct;
     }
 
     public class TelemetrySessionStats
@@ -144,7 +147,10 @@ namespace MiniFanControl
                     Fan2Pct = st.Fan2Pct,
                     Mode = st.Mode,
                     GpuLoadPct = st.GfxActivityPct,
-                    Fps = st.Fps
+                    Fps = st.Fps,
+                    NvmeTemp = st.NvmeTemp,
+                    RamUsedGb = st.RamUsedGb,
+                    RamLoadPct = st.RamLoadPct
                 });
             }
             SampleCount++;
@@ -253,15 +259,15 @@ namespace MiniFanControl
             try
             {
                 var sb = new StringBuilder();
-                sb.AppendLine("Timestamp,CPU_Temp_C,iGPU_Temp_C,APU_Power_W,Fan1_RPM,Fan2_RPM,Fan1_PWM_Pct,Fan2_PWM_Pct,Mode,iGPU_Load_Pct,FPS");
+                sb.AppendLine("Timestamp,CPU_Temp_C,iGPU_Temp_C,APU_Power_W,Fan1_RPM,Fan2_RPM,Fan1_PWM_Pct,Fan2_PWM_Pct,Mode,iGPU_Load_Pct,FPS,NVMe_Temp_C,RAM_Used_GB,RAM_Load_Pct");
                 lock (_logLock)
                 {
                     foreach (var r in _sessionLog)
                     {
                         sb.AppendFormat(CultureInfo.InvariantCulture,
-                            "{0:yyyy-MM-dd HH:mm:ss.fff},{1},{2},{3},{4},{5},{6},{7},\"{8}\",{9},{10}\r\n",
+                            "{0:yyyy-MM-dd HH:mm:ss.fff},{1},{2},{3},{4},{5},{6},{7},\"{8}\",{9},{10},{11},{12:0.0},{13}\r\n",
                             r.Timestamp, r.CpuTemp, r.GpuTemp, r.ApuPowerWatts, r.Fan1Rpm, r.Fan2Rpm, r.Fan1Pct, r.Fan2Pct,
-                            r.Mode ?? "Auto", r.GpuLoadPct, r.Fps);
+                            r.Mode ?? "Auto", r.GpuLoadPct, r.Fps, r.NvmeTemp, r.RamUsedGb, r.RamLoadPct);
                     }
                 }
                 string dir = Path.GetDirectoryName(filePath);
