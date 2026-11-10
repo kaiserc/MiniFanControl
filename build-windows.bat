@@ -11,10 +11,19 @@ if not exist "%CSC%" (
 )
 
 echo Compiling MiniFanControl.exe (GUI) and minifan-helper.exe (CLI)...
-del /f /q MiniFanControl.old.exe >nul 2>&1
-if exist MiniFanControl.exe ren MiniFanControl.exe MiniFanControl.old.exe >nul 2>&1
-del /f /q minifan-helper.old.exe >nul 2>&1
-if exist minifan-helper.exe ren minifan-helper.exe minifan-helper.old.exe >nul 2>&1
+
+rem Attempt to delete any unlocked old temporary exes
+for %%f in (*.old.exe) do (
+    del /f /q "%%f" >nul 2>&1
+)
+
+rem Safely free the filenames even if processes are currently running
+if exist MiniFanControl.exe (
+    ren MiniFanControl.exe "MiniFanControl.%RANDOM%%RANDOM%.old.exe" >nul 2>&1
+)
+if exist minifan-helper.exe (
+    ren minifan-helper.exe "minifan-helper.%RANDOM%%RANDOM%.old.exe" >nul 2>&1
+)
 
 "%CSC%" /nologo /platform:x64 /target:exe /out:minifan-helper.exe /recurse:*.cs
 if errorlevel 1 (
@@ -39,8 +48,11 @@ if errorlevel 1 (
     exit /b 1
 )
 
-del /f /q MiniFanControl.old.exe >nul 2>&1
-del /f /q minifan-helper.old.exe >nul 2>&1
+rem Clean up any old exes that may have closed
+for %%f in (*.old.exe) do (
+    del /f /q "%%f" >nul 2>&1
+)
+
 echo [OK] Build succeeded: MiniFanControl.exe and minifan-helper.exe
 echo.
 "%~dp0minifan-helper.exe" test
