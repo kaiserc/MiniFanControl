@@ -4,9 +4,8 @@ cd /d "%~dp0"
 
 set "CSC=%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if not exist "%CSC%" (
-    echo [ERROR] Built-in .NET C# compiler not found at:
-    echo         %CSC%
-    if defined GITHUB_STEP_SUMMARY echo [ERROR] Built-in .NET C# compiler not found at: %CSC% >> "%GITHUB_STEP_SUMMARY%"
+    echo ::error title=CSC Missing::Built-in .NET C# compiler not found at: %CSC%
+    echo [ERROR] Built-in .NET C# compiler not found at: %CSC%
     if "%CI%"=="" pause
     exit /b 1
 )
@@ -31,11 +30,9 @@ set CSC_ERR=%ERRORLEVEL%
 type "%TEMP%\csc_helper.log"
 if %CSC_ERR% neq 0 (
     echo [ERROR] Failed to compile minifan-helper.exe
-    if defined GITHUB_STEP_SUMMARY (
-        echo ### [ERROR] Failed to compile minifan-helper.exe >> "%GITHUB_STEP_SUMMARY%"
-        echo ``` >> "%GITHUB_STEP_SUMMARY%"
-        type "%TEMP%\csc_helper.log" >> "%GITHUB_STEP_SUMMARY%"
-        echo ``` >> "%GITHUB_STEP_SUMMARY%"
+    echo ::error title=CSC Helper Error::minifan-helper.exe compilation failed
+    for /f "delims=" %%L in ('type "%TEMP%\csc_helper.log"') do (
+        echo ::error file=minifan-helper.exe::%%L
     )
     if "%CI%"=="" pause
     exit /b 1
@@ -55,11 +52,9 @@ set CSC_GUI_ERR=%ERRORLEVEL%
 type "%TEMP%\csc_gui.log"
 if %CSC_GUI_ERR% neq 0 (
     echo [ERROR] Failed to compile MiniFanControl.exe
-    if defined GITHUB_STEP_SUMMARY (
-        echo ### [ERROR] Failed to compile MiniFanControl.exe >> "%GITHUB_STEP_SUMMARY%"
-        echo ``` >> "%GITHUB_STEP_SUMMARY%"
-        type "%TEMP%\csc_gui.log" >> "%GITHUB_STEP_SUMMARY%"
-        echo ``` >> "%GITHUB_STEP_SUMMARY%"
+    echo ::error title=CSC GUI Error::MiniFanControl.exe compilation failed
+    for /f "delims=" %%L in ('type "%TEMP%\csc_gui.log"') do (
+        echo ::error file=MiniFanControl.exe::%%L
     )
     if "%CI%"=="" pause
     exit /b 1
@@ -77,11 +72,9 @@ set TEST_ERR=%ERRORLEVEL%
 type "%TEMP%\tests.log"
 if %TEST_ERR% neq 0 (
     echo [ERROR] Automated self-tests failed!
-    if defined GITHUB_STEP_SUMMARY (
-        echo ### [ERROR] Automated self-tests failed! >> "%GITHUB_STEP_SUMMARY%"
-        echo ``` >> "%GITHUB_STEP_SUMMARY%"
-        type "%TEMP%\tests.log" >> "%GITHUB_STEP_SUMMARY%"
-        echo ``` >> "%GITHUB_STEP_SUMMARY%"
+    echo ::error title=SelfTest Failure::Automated test suite exited with error code %TEST_ERR%
+    for /f "delims=" %%L in ('type "%TEMP%\tests.log"') do (
+        echo ::error file=Tests/SelfTestSuite.cs::%%L
     )
     if "%CI%"=="" pause
     exit /b 1
