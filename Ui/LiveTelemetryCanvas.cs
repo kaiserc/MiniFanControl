@@ -20,12 +20,17 @@ namespace MiniFanControl
 {
     public class LiveTelemetryCanvas : Control
     {
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public TelemetrySessionStats Stats { get; set; }
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool IsDarkMode { get; set; }
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool IsRadeonTheme { get; set; }
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool HasDualFans { get; set; }
 
         // 0 = All / Default (CPU), 1 = Highlight CPU Temp, 2 = Highlight iGPU Temp, 3 = Highlight Power W
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public int HighlightMetric { get; set; }
 
         public bool ShowCpu = true;

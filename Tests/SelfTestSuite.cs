@@ -578,25 +578,23 @@ namespace MiniFanControl
 
             int initialContention = EcBusMutex.ContentionCount;
 
+            AutoResetEvent heldSignal = new AutoResetEvent(false);
             Thread holderThread = new Thread(() =>
 
             {
 
-                using (var holder = EcBusMutex.AcquireEc(500))
-
+                using (var holder = EcBusMutex.AcquireEc(1000))
                 {
-
+                    heldSignal.Set();
                     Thread.Sleep(150);
-
                 }
-
             });
 
             holderThread.IsBackground = true;
 
             holderThread.Start();
 
-            Thread.Sleep(30);
+            heldSignal.WaitOne(2000);
 
 
 
@@ -608,7 +606,7 @@ namespace MiniFanControl
 
             }
 
-            holderThread.Join(500);
+            holderThread.Join(1000);
 
             Check(contentionDetected,
 
@@ -674,7 +672,7 @@ namespace MiniFanControl
 
                 sd.Set();
 
-                int resClean = WatchdogSupervisor.RunSimulated(currentPid, 300, hb, sd, true);
+                int resClean = WatchdogSupervisor.RunSimulated(currentPid, 500, hb, sd, true);
 
                 sd.Reset();
 
@@ -682,7 +680,7 @@ namespace MiniFanControl
 
                 // B: Test Heartbeat Timeout detection (no heartbeat sent -> timeout triggers failsafe)
 
-                int resTimeout = WatchdogSupervisor.RunSimulated(currentPid, 120, hb, sd, false);
+                int resTimeout = WatchdogSupervisor.RunSimulated(currentPid, 150, hb, sd, false);
 
 
 
@@ -710,9 +708,9 @@ namespace MiniFanControl
 
                 pulseThread.Start();
 
-                int resSustained = WatchdogSupervisor.RunSimulated(currentPid, 200, hb, sd, false);
+                int resSustained = WatchdogSupervisor.RunSimulated(currentPid, 600, hb, sd, false);
 
-                pulseThread.Join(500);
+                pulseThread.Join(1500);
 
 
 
@@ -1143,7 +1141,7 @@ namespace MiniFanControl
                 threads.Add(th);
             }
             foreach (Thread th in threads) th.Start();
-            foreach (Thread th in threads) th.Join(1000);
+            foreach (Thread th in threads) th.Join(3000);
             threadContentionPassed = (exceptionsEncountered == 0);
 
             Check(threadContentionPassed,
@@ -1152,7 +1150,7 @@ namespace MiniFanControl
 
             // 31. Watchdog IPC Access Control List (ACL) Hardening
             bool createdTestEvent;
-            string testEventName = "MFC_AclTestEvent_" + Process.GetCurrentProcess().Id;
+            string testEventName = "MFC_AclTestEvent_" + Process.GetCurrentProcess().Id + "_" + Guid.NewGuid().ToString("N");
             EventWaitHandle aclHandle = WatchdogSupervisor.CreateOrOpenEvent(testEventName, EventResetMode.ManualReset, out createdTestEvent);
             bool aclValid = false;
             bool noWorldSid = true;

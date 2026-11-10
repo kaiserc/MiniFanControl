@@ -39,11 +39,13 @@ jobs:
       - name: Compile Standalone Binaries & Run Self-Test Suite
         shell: cmd
         run: |
+          set CI=true
           call build-windows.bat
 
       - name: Verify Automated Release Packaging
         shell: cmd
         run: |
+          set CI=true
           call package-release.bat
 
       - name: Upload Release Archive Artifact

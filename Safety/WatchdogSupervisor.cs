@@ -73,6 +73,8 @@ namespace MiniFanControl
                     }
                     SecurityIdentifier adminSid = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
                     secLocal.AddAccessRule(new EventWaitHandleAccessRule(adminSid, EventWaitHandleRights.FullControl, AccessControlType.Allow));
+                    SecurityIdentifier systemSid = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+                    secLocal.AddAccessRule(new EventWaitHandleAccessRule(systemSid, EventWaitHandleRights.FullControl, AccessControlType.Allow));
                     #if NET8_0_OR_GREATER
                     return EventWaitHandleAcl.Create(false, mode, @"Local\" + baseName, out createdNew, secLocal);
 #else
