@@ -1853,6 +1853,9 @@ namespace MiniFanControl
         public ushort SuperIoChipId = 0;
         public ushort SuperIoBaseAddr = 0;
         private static bool _superIoFan3Present = false;
+        private static readonly List<int> _fan1FilterWindow = new List<int>();
+        private static readonly List<int> _fan2FilterWindow = new List<int>();
+        private static readonly object _filterLock = new object();
 
         public const int EMERGENCY_TEMP_TRIP_C = 90;
         public const int EMERGENCY_TEMP_RECOVER_C = 75;
@@ -2275,79 +2278,90 @@ namespace MiniFanControl
             if (SuperIoBaseAddr == 0 || fanIndex < 1 || fanIndex > 6) return 0;
             try
             {
-                // Ensure 16-bit tachometer mode is active in register 0x0C:
+                // Ensure 16-bit tachometer mode (0x0C) and tachometer input enables (0x13):
                 byte modeReg = ReadSuperIoHwReg(0x0C);
-                if ((modeReg & 0x07) != 0x07)
+                if ((modeReg & 0x3F) != 0x3F)
                 {
-                    WriteSuperIoHwReg(0x0C, (byte)(modeReg | 0x07));
+                    WriteSuperIoHwReg(0x0C, (byte)(modeReg | 0x3F));
+                }
+                byte mainCtrl = ReadSuperIoHwReg(0x13);
+                if ((mainCtrl & 0x70) != 0x70)
+                {
+                    WriteSuperIoHwReg(0x13, (byte)(mainCtrl | 0x70));
                 }
 
-                Func<byte, byte, int> evalPair = (msb, lsb) =>
+                // Atomic double-read latching to prevent high/low byte counter rollover tearing
+                Func<byte, byte, int> evalTach16 = (lsbReg, msbReg) =>
                 {
-                    byte aHi = ReadSuperIoHwReg(msb);
-                    byte aLo1 = ReadSuperIoHwReg(lsb);
-                    byte aLo2 = ReadSuperIoHwReg(lsb);
-                    byte aLo = (aLo1 == aLo2) ? aLo1 : aLo2;
-                    if (aHi != 0xFF && (aHi > 0 || aLo > 0) && !(aHi == 0xFF && aLo == 0xFF))
+                    byte hi1 = ReadSuperIoHwReg(msbReg);
+                    byte lo1 = ReadSuperIoHwReg(lsbReg);
+                    byte hi2 = ReadSuperIoHwReg(msbReg);
+                    byte lo = (hi1 == hi2) ? lo1 : ReadSuperIoHwReg(lsbReg);
+                    byte hi = hi2;
+
+                    int raw = (hi << 8) | lo;
+                    if (raw <= 0 || raw >= 0xFFFF) return 0;
+                    // Valid raw 16-bit counter window for blowers (90 .. 2250 -> ~300 .. 7500 RPM)
+                    if (raw < 90 || raw > 2250) return 0;
+                    int rpm = (int)(1.35e6f / (raw * 2));
+                    if (rpm < 250 || rpm > 7500) return 0;
+                    return rpm;
+                };
+
+                int rawRpm = 0;
+                if (fanIndex == 1)
+                {
+                    // Primary APU blower: Channel 2 (0x0E / 0x19) is verified active on TS-12C / KTHIN PRO / IT8613
+                    rawRpm = evalTach16(0x0E, 0x19);
+                    if (rawRpm == 0) rawRpm = evalTach16(0x0D, 0x18);
+                    if (rawRpm == 0) rawRpm = evalTach16(0x0F, 0x1A);
+
+                    if (rawRpm > 0)
                     {
-                        int aRaw = (aHi << 8) | aLo;
-                        // Valid RPM range for Mini PC blowers (300 RPM .. 6000 RPM -> raw 112 .. 2250):
-                        if (aRaw >= 110 && aRaw <= 2250)
+                        lock (_filterLock)
                         {
-                            int aRpm = (int)(1.35e6f / (aRaw * 2));
-                            if (aRpm >= 300 && aRpm <= 6000) return aRpm;
+                            _fan1FilterWindow.Add(rawRpm);
+                            if (_fan1FilterWindow.Count > 3) _fan1FilterWindow.RemoveAt(0);
+                            var sorted = new List<int>(_fan1FilterWindow); sorted.Sort();
+                            return sorted[sorted.Count / 2]; // 3-sample median filter
                         }
                     }
                     return 0;
-                };
-
-                // On ITE IT8613E (and Ryzen AI 9 HX 370 / TS-12C / KTHIN PRO):
-                // Fan 1 / APU Blower: Extended Pair C (Reg 0x9C/0x9D), fallback to Pair A (0x8C/0x8D) or std 0x0D/0x18
-                // Fan 2 / Sys Blower: Extended Pair A (Reg 0x8C/0x8D), fallback to Pair B (0x8E/0x8F) or std 0x0E/0x19
-                // Fan 3: Extended Pair C (Reg 0x9C/0x9D)
-                // Fan 4: Extended Pair D (Reg 0x9E/0x9F)
-                int rpm = 0;
-                switch (fanIndex)
-                {
-                    case 1:
-                        rpm = evalPair(0x9C, 0x9D);
-                        if (rpm == 0) rpm = evalPair(0x18, 0x0D);
-                        if (rpm == 0) rpm = evalPair(0x1A, 0x0F);
-                        break;
-                    case 2:
-                        rpm = evalPair(0x8C, 0x8D);
-                        if (rpm == 0) rpm = evalPair(0x8E, 0x8F);
-                        if (rpm == 0) rpm = evalPair(0x9E, 0x9F);
-                        if (rpm == 0) rpm = evalPair(0x19, 0x0E);
-                        break;
-                    case 3:
-                        rpm = evalPair(0x9C, 0x9D);
-                        if (rpm == 0) rpm = evalPair(0x1A, 0x0F);
-                        break;
-                    case 4:
-                        rpm = evalPair(0x9E, 0x9F);
-                        if (rpm == 0) rpm = evalPair(0x81, 0x80);
-                        break;
-                    case 5:
-                        rpm = evalPair(0x83, 0x82);
-                        break;
-                    case 6:
-                        rpm = evalPair(0x4D, 0x4C);
-                        break;
                 }
-                if (rpm > 0) return rpm;
-
-                // 8-bit fallback if 16-bit hi counter was 0
-                byte lsbReg = (fanIndex == 1) ? (byte)0x0D : ((fanIndex == 2) ? (byte)0x0E : (byte)0x0F);
-                byte lo = ReadSuperIoHwReg(lsbReg);
-                if (lo > 0 && lo < 0xFF)
+                else if (fanIndex == 2)
                 {
-                    byte divReg = ReadSuperIoHwReg(0x0B);
-                    int shift = (fanIndex == 1) ? (divReg & 0x07) : ((divReg >> 3) & 0x07);
-                    int divisor = 1 << shift;
-                    if (divisor <= 0) divisor = 2;
-                    int rpm8 = (int)(1.35e6f / (lo * divisor));
-                    if (rpm8 > 0 && rpm8 <= 9000) return rpm8;
+                    // Secondary Sys blower (if wired on multi-tach boards):
+                    rawRpm = evalTach16(0x0D, 0x18);
+                    if (rawRpm == 0) rawRpm = evalTach16(0x0F, 0x1A);
+                    if (rawRpm == 0) rawRpm = evalTach16(0x80, 0x81);
+
+                    if (rawRpm > 0)
+                    {
+                        lock (_filterLock)
+                        {
+                            _fan2FilterWindow.Add(rawRpm);
+                            if (_fan2FilterWindow.Count > 3) _fan2FilterWindow.RemoveAt(0);
+                            var sorted = new List<int>(_fan2FilterWindow); sorted.Sort();
+                            return sorted[sorted.Count / 2]; // 3-sample median filter
+                        }
+                    }
+                    return 0;
+                }
+                else if (fanIndex == 3)
+                {
+                    return evalTach16(0x0F, 0x1A);
+                }
+                else if (fanIndex == 4)
+                {
+                    return evalTach16(0x80, 0x81);
+                }
+                else if (fanIndex == 5)
+                {
+                    return evalTach16(0x82, 0x83);
+                }
+                else if (fanIndex == 6)
+                {
+                    return evalTach16(0x4C, 0x4D);
                 }
 
                 return 0;
@@ -2380,22 +2394,7 @@ namespace MiniFanControl
                         "(and check Windows Vulnerable Driver Blocklist in Core Isolation if blocked).");
                 }
 
-                // 0. Test candidate IT87 Hardware Monitor base addresses directly (0x58=0x90):
-                ushort[] candidateBases = new ushort[] { 0x0A00, 0x0290, 0x0A10, 0x0A20, 0x0A30, 0x02A0 };
-                foreach (ushort cand in candidateBases)
-                {
-                    if (VerifyIt87HwBase(cand))
-                    {
-                        SuperIoChipId = 0x8613;
-                        SuperIoBaseAddr = cand;
-                        AccessMethod = EcAccessMethod.SuperIo2E;
-                        _isInitialized = true;
-                        DumpSuperIoDiagnostic(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sio-diag.txt"));
-                        return;
-                    }
-                }
-
-                // 1. Probe LPC Super I/O on Port 0x2E
+                // 1. Probe LPC Super I/O on Port 0x2E (True BIOS-programmed base address)
                 ushort cId, hBase;
                 if (ProbeSuperIo(0x2E, out cId, out hBase) && VerifyIt87HwBase(hBase))
                 {
@@ -2416,6 +2415,21 @@ namespace MiniFanControl
                     _isInitialized = true;
                     DumpSuperIoDiagnostic(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sio-diag.txt"));
                     return;
+                }
+
+                // 3. Fallback candidate IT87 Hardware Monitor base addresses (0x58=0x90):
+                ushort[] candidateBases = new ushort[] { 0x0A30, 0x0A00, 0x0A10, 0x0A20, 0x0290, 0x02A0 };
+                foreach (ushort cand in candidateBases)
+                {
+                    if (VerifyIt87HwBase(cand))
+                    {
+                        SuperIoChipId = 0x8613;
+                        SuperIoBaseAddr = cand;
+                        AccessMethod = EcAccessMethod.SuperIo2E;
+                        _isInitialized = true;
+                        DumpSuperIoDiagnostic(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sio-diag.txt"));
+                        return;
+                    }
                 }
 
                 // 3. Probe standard ACPI EC Port I/O (0x62 / 0x66)
@@ -2658,14 +2672,14 @@ namespace MiniFanControl
                         f1h = 0; f1l = 0; f2h = 0; f2l = 0;
                         modeVal = 0;
 
-                        byte ext1 = ReadSuperIoHwReg(0x6B); // Fan 1 APU duty (Normal polarity)
-                        byte ext2 = ReadSuperIoHwReg(0x73); // Fan 2 Sys duty (Inverted polarity)
+                        byte ext1 = ReadSuperIoHwReg(0x6B); // Fan 1 APU duty (Inverted polarity: 40 idle, 0 100%)
+                        byte ext2 = ReadSuperIoHwReg(0x73); // Fan 2 Sys duty (Inverted polarity: 240 idle, 0 100%)
 
-                        bool f1Auto = (ext1 <= 40 || ext1 == 0xFF);
+                        bool f1Auto = (ext1 >= 40 && ext1 <= 50);
                         bool f2Auto = (ext2 >= 240 || ext2 == 0x00);
 
-                        int f1Duty = f1Auto ? 0 : (int)Math.Round(ext1 * 100.0 / 255.0);
-                        int f2Duty = f2Auto ? 0 : (int)Math.Round((255 - ext2) * 100.0 / 255.0);
+                        int f1Duty = (ext1 >= 40) ? 0 : (int)Math.Round((40 - ext1) * 100.0 / 40.0);
+                        int f2Duty = (ext2 >= 240) ? 0 : (int)Math.Round((240 - ext2) * 100.0 / 240.0);
 
                         f1Ctrl = (byte)(f1Auto ? 0x00 : (0x80 | (f1Duty & 0x7F)));
                         f2Ctrl = (byte)(f2Auto ? 0x00 : (0x80 | (f2Duty & 0x7F)));
@@ -2721,9 +2735,6 @@ namespace MiniFanControl
                 default: modeCode = -1; break;
             }
 
-            int sioFan3 = ReadSuperIoFanRpm(3);
-            int sioFan4 = ReadSuperIoFanRpm(4);
-            int sioFan5 = ReadSuperIoFanRpm(5);
             int f1Ec = DecodeTachometerRpm(f1h, f1l);
             int f2Ec = DecodeTachometerRpm(f2h, f2l);
 
@@ -2732,9 +2743,8 @@ namespace MiniFanControl
 
             if (SuperIoBaseAddr != 0)
             {
-                resolvedSio1 = sioFan1 > 0 ? sioFan1 : sioFan3;
-                resolvedSio2 = sioFan2 > 0 ? sioFan2 : ReadSuperIoFanRpm(4);
-                if (resolvedSio1 == 0 && sioFan3 > 0) resolvedSio1 = sioFan3;
+                resolvedSio1 = sioFan1;
+                resolvedSio2 = sioFan2;
             }
 
             int fan1Rpm = (resolvedSio1 > 0) ? resolvedSio1 : f1Ec;
@@ -2838,17 +2848,23 @@ namespace MiniFanControl
                     WriteSuperIoHwReg(0x16, 0x7F);
                     WriteSuperIoHwReg(0x17, 0x7F);
 
+                    byte modeReg = ReadSuperIoHwReg(0x0C);
+                    if ((modeReg & 0x3F) != 0x3F)
+                    {
+                        WriteSuperIoHwReg(0x0C, (byte)(modeReg | 0x3F));
+                    }
+
                     if (fanId == 1)
                     {
-                        // APU Fan: PWM 2 (0x6B) + sync PWM 1 (0x63), Normal Polarity (35-40 min for ~2700 RPM)
-                        byte duty = (pct <= 0) ? (byte)40 : (byte)Math.Max(35, Math.Min(255, (pct * 255) / 100));
+                        // APU Fan: PWM 2 (0x6B) + sync PWM 1 (0x63), Inverted Polarity (40 quiet idle ~2500 RPM, 0 100% full speed)
+                        byte duty = (pct <= 0) ? (byte)40 : (byte)Math.Max(0, Math.Min(40, 40 - ((pct * 40) / 100)));
                         WriteSuperIoHwReg(0x6B, duty);
                         WriteSuperIoHwReg(0x63, duty);
                     }
                     else
                     {
-                        // Sys Fan: PWM 3 (0x73), Inverted Polarity (240 idle = quiet ~2800 RPM)
-                        byte duty = (pct <= 0) ? (byte)240 : (byte)Math.Max(0, Math.Min(240, 255 - ((pct * 255) / 100)));
+                        // Sys Fan: PWM 3 (0x73), Inverted Polarity (240 idle = quiet ~2500 RPM, 0 100% full speed)
+                        byte duty = (pct <= 0) ? (byte)240 : (byte)Math.Max(0, Math.Min(240, 240 - ((pct * 240) / 100)));
                         WriteSuperIoHwReg(0x73, duty);
                     }
                 }
@@ -2877,16 +2893,21 @@ namespace MiniFanControl
                     {
                         // Ensure Super I/O PWM driving is active in manual mode (never 0x80 SmartGuardian blast)
                         byte mainCtrl = ReadSuperIoHwReg(0x13);
-                        if ((mainCtrl & 0x07) != 0x07)
+                        if ((mainCtrl & 0x77) != 0x77)
                         {
-                            WriteSuperIoHwReg(0x13, (byte)(mainCtrl | 0x07));
+                            WriteSuperIoHwReg(0x13, (byte)(mainCtrl | 0x77));
+                        }
+                        byte modeReg = ReadSuperIoHwReg(0x0C);
+                        if ((modeReg & 0x3F) != 0x3F)
+                        {
+                            WriteSuperIoHwReg(0x0C, (byte)(modeReg | 0x3F));
                         }
                         WriteSuperIoHwReg(0x15, 0x7F);
                         WriteSuperIoHwReg(0x16, 0x7F);
                         WriteSuperIoHwReg(0x17, 0x7F);
-                        WriteSuperIoHwReg(0x6B, 40);   // APU Fan quiet idle (~2600-2800 RPM)
+                        WriteSuperIoHwReg(0x6B, 40);   // APU Fan quiet idle (~2500 RPM, inverted)
                         WriteSuperIoHwReg(0x63, 40);   // APU Fan sync
-                        WriteSuperIoHwReg(0x73, 240);  // Sys Fan quiet idle (~2600-2800 RPM, inverted)
+                        WriteSuperIoHwReg(0x73, 240);  // Sys Fan quiet idle (~2500 RPM, inverted)
                     }
                     return;
                 }
@@ -4813,7 +4834,7 @@ namespace MiniFanControl
             string gpuVal = _status.GpuTemp > 0 ? string.Format("{0}°C", _status.GpuTemp) : "N/A";
             string pwrVal = _status.ApuPowerWatts > 0 ? string.Format("{0}W", _status.ApuPowerWatts) : "--W";
             string f1Val  = string.Format("{0}", _status.Fan1Rpm);
-            string f2Val  = string.Format("{0}", _status.Fan2Rpm);
+            string f2Val  = _status.Fan2Rpm > 0 ? string.Format("{0}", _status.Fan2Rpm) : "--";
 
             string cpuPeak = (ShowPeaks && Stats != null && Stats.MaxCpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxCpuTemp) : null;
             string gpuPeak = (ShowPeaks && Stats != null && Stats.MaxGpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxGpuTemp) : null;
@@ -6744,7 +6765,7 @@ namespace MiniFanControl
                             if (_pwrLabel != null)
                                 _pwrLabel.Text = st.ApuPowerWatts > 0 ? string.Format("{0}W", st.ApuPowerWatts) : "--W";
                             _fan1RpmLabel.Text = string.Format("{0} RPM ↻", st.Fan1Rpm);
-                            _fan2RpmLabel.Text = _hasDualFans ? string.Format("{0} RPM ↻", st.Fan2Rpm) : "N/A (1-Fan Mode)";
+                            _fan2RpmLabel.Text = _hasDualFans ? (st.Fan2Rpm > 0 ? string.Format("{0} RPM •", st.Fan2Rpm) : "-- RPM") : "N/A (1-Fan Mode)";
                             UpdateTrayIcons(st.CpuTemp, st.GpuTemp);
                             if (_overlayForm != null && _showOverlay)
                                 _overlayForm.UpdateMetrics(st, "Calib", _hasDualFans);
@@ -10284,9 +10305,7 @@ namespace MiniFanControl
             _fan1RpmLabel.ForeColor = tempFg;
             if (_fan2RpmLabel != null)
             {
-                _fan2RpmLabel.Text = !_hasDualFans
-                    ? "N/A"
-                    : (st.Fan2Rpm > 0 ? string.Format("{0} RPM •", st.Fan2Rpm) : "0 RPM •");
+                _fan2RpmLabel.Text = !_hasDualFans ? "N/A" : (st.Fan2Rpm > 0 ? string.Format("{0} RPM •", st.Fan2Rpm) : "-- RPM");
                 _fan2RpmLabel.ForeColor = tempFg;
             }
             if (_fan1Box != null)
