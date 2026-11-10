@@ -77,7 +77,7 @@ namespace MiniFanControl
             {
                 MutexSecurity sec = new MutexSecurity();
                 SecurityIdentifier everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
-                sec.AddAccessRule(new MutexAccessRule(everyone, MutexRights.FullControl, AccessControlType.Allow));
+                sec.AddAccessRule(new MutexAccessRule(everyone, MutexRights.Synchronize | MutexRights.Modify, AccessControlType.Allow));
                 bool createdNew;
                 return new Mutex(false, name, out createdNew, sec);
             }
@@ -107,7 +107,7 @@ namespace MiniFanControl
             }
             else
             {
-                gotEc = true;
+                gotEc = false; // Fail-closed: missing EC mutex must NEVER allow unsynchronized bus access
             }
 
             if (!gotEc)
@@ -124,7 +124,7 @@ namespace MiniFanControl
             }
             else
             {
-                gotIsa = true;
+                gotIsa = false; // Fail-closed: missing ISA mutex must NEVER allow unsynchronized bus access
             }
 
             if (!gotIsa)
@@ -180,6 +180,20 @@ namespace MiniFanControl
                 _threadHoldsEc = false;
                 ReleaseEcInternal();
             }
+        }
+
+        internal static void SetSimulatedMutexes(Mutex ec, Mutex isa, Mutex pci)
+        {
+            _ecMutex = ec;
+            _isaBusMutex = isa;
+            _pciBusMutex = pci;
+            _initDone = true;
+        }
+
+        internal static void ResetMutexes()
+        {
+            _initDone = false;
+            EnsureCreated();
         }
 
         public static bool WaitPci(int timeoutMs = 25)

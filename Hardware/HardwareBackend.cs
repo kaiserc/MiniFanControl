@@ -244,9 +244,12 @@ namespace MiniFanControl
         {
             chipId = 0;
             hwBase = 0;
-            ushort valPort = (ushort)(cfgPort + 1);
-            try
+            using (var lockScope = EcBusMutex.AcquireEc(40))
             {
+                if (!lockScope.Acquired) return false; // Fail-closed: synchronize discovery with HWiNFO / LibreHardwareMonitor
+                ushort valPort = (ushort)(cfgPort + 1);
+                try
+                {
                 // IT87 enter sequence: 0x87, 0x01, 0x55, (0xAA on 0x4E, 0x55 on 0x2E)
                 WritePortByte(cfgPort, 0x87);
                 WritePortByte(cfgPort, 0x01);
@@ -358,9 +361,10 @@ namespace MiniFanControl
                     return hwBase != 0 && hwBase != 0xFFFF;
                 }
                 WritePortByte(cfgPort, 0xAA);
+                }
+                catch { }
+                return false;
             }
-            catch { }
-            return false;
         }
 
         public static bool VerifyIt87HwBase(ushort baseAddr)
@@ -764,17 +768,19 @@ namespace MiniFanControl
             }
         }
 
-        public void WriteReg(byte reg, byte val)
+        public bool WriteReg(byte reg, byte val)
         {
-            if (Profile != null && Profile.IsReadOnly) return; // Fail-closed: read-only unverified hardware protection
+            if (Profile != null && Profile.IsReadOnly) return false; // Fail-closed: read-only unverified hardware protection
             EnsureOpen();
             using (var lockScope = EcBusMutex.AcquireEc(30))
             {
                 if (!lockScope.Acquired)
                 {
-                    return; // Fail-closed: do not write without lock
+                    return false; // Fail-closed: do not write without lock
                 }
                 WriteRegInternal(reg, val);
+                byte readBack = ReadRegInternal(reg);
+                return (readBack == val);
             }
         }
 
@@ -1010,17 +1016,25 @@ namespace MiniFanControl
             return (byte)(0x80 | (pct & 0x7F));
         }
 
-        public void SetMode(int code)
+        public bool SetMode(int code)
         {
-            if (Profile != null && Profile.IsReadOnly) return; // Fail-closed: read-only unverified hardware protection
+            if (Profile != null && Profile.IsReadOnly) return false; // Fail-closed: read-only unverified hardware protection
             EnsureOpen();
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
-            WriteReg(p.RegModeCmd, EncodeModeCommand(code));
+            byte cmdByte = EncodeModeCommand(code);
+            using (var lockScope = EcBusMutex.AcquireEc(35))
+            {
+                if (!lockScope.Acquired) return false;
+                WriteRegInternal(p.RegModeCmd, cmdByte);
+                byte readBack = ReadRegInternal(p.RegModeCmd);
+                byte statusBack = ReadRegInternal(p.RegModeStatus);
+                return (readBack == cmdByte || statusBack == code);
+            }
         }
 
-        public void SetFan(int fanId, int pct)
+        public bool SetFan(int fanId, int pct)
         {
-            if (Profile != null && Profile.IsReadOnly) return; // Fail-closed: read-only unverified hardware protection
+            if (Profile != null && Profile.IsReadOnly) return false; // Fail-closed: read-only unverified hardware protection
             EnsureOpen();
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
             byte val = EncodeFanCommand(pct);
@@ -1030,7 +1044,7 @@ namespace MiniFanControl
             {
                 if (!lockScope.Acquired)
                 {
-                    return; // Fail-closed: do not write to fan control registers on contention
+                    return false; // Fail-closed: do not write to fan control registers on contention
                 }
 
                 WriteRegInternal(reg, val);
@@ -1067,12 +1081,20 @@ namespace MiniFanControl
                         WriteSuperIoHwReg(0x73, duty);
                     }
                 }
+
+                byte readBack = ReadRegInternal(reg);
+                if (readBack != val)
+                {
+                    Thread.Sleep(2);
+                    readBack = ReadRegInternal(reg);
+                }
+                return (readBack == val);
             }
         }
 
-        public void SetAuto()
+        public bool SetAuto()
         {
-            if (Profile != null && Profile.IsReadOnly) return; // Fail-closed: read-only unverified hardware protection
+            if (Profile != null && Profile.IsReadOnly) return false; // Fail-closed: read-only unverified hardware protection
             EnsureOpen();
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
             for (int attempt = 0; attempt < 3; attempt++)
@@ -1109,9 +1131,16 @@ namespace MiniFanControl
                         WriteSuperIoHwReg(0x63, 40);   // APU Fan sync
                         WriteSuperIoHwReg(0x73, 240);  // Sys Fan quiet idle (~2500 RPM, inverted)
                     }
-                    return;
+
+                    byte f1 = ReadRegInternal(p.RegFan1Ctrl);
+                    byte f2 = ReadRegInternal(p.RegFan2Ctrl);
+                    if (f1 == 0x00 && f2 == 0x00)
+                    {
+                        return true;
+                    }
                 }
             }
+            return false;
         }
 
         public byte[] ReadAllRegisters()

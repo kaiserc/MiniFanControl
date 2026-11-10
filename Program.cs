@@ -137,26 +137,50 @@ namespace MiniFanControl
                         else if (cmd == "mode")
                         {
                             int code = int.Parse(cmdArg ?? "-1");
-                            if (demoMode) demo.SetMode(code); else hw.SetMode(code);
-                            Console.WriteLine("{{\"ok\":true,\"mode_code\":{0}}}", code);
-                            return 0;
+                            bool ok = demoMode ? demo.SetMode(code) : hw.SetMode(code);
+                            if (ok)
+                            {
+                                Console.WriteLine("{{\"ok\":true,\"mode_code\":{0}}}", code);
+                                return 0;
+                            }
+                            else
+                            {
+                                Console.WriteLine("{{\"ok\":false,\"error\":\"Hardware write verification failed or profile is read-only\",\"mode_code\":{0}}}", code);
+                                return 1;
+                            }
                         }
                         else if (cmd == "fan1" || cmd == "fan2")
                         {
                             int fanId = (cmd == "fan1") ? 1 : 2;
                             int pct = int.Parse(cmdArg ?? "-1");
-                            if (demoMode) demo.SetFan(fanId, pct); else hw.SetFan(fanId, pct);
-                            if (pct == 0)
-                                Console.WriteLine("{{\"ok\":true,\"fan\":{0},\"mode\":\"auto\"}}", fanId);
+                            bool ok = demoMode ? demo.SetFan(fanId, pct) : hw.SetFan(fanId, pct);
+                            if (ok)
+                            {
+                                if (pct == 0)
+                                    Console.WriteLine("{{\"ok\":true,\"fan\":{0},\"mode\":\"auto\"}}", fanId);
+                                else
+                                    Console.WriteLine("{{\"ok\":true,\"fan\":{0},\"pct\":{1},\"mode\":\"manual\"}}", fanId, pct);
+                                return 0;
+                            }
                             else
-                                Console.WriteLine("{{\"ok\":true,\"fan\":{0},\"pct\":{1},\"mode\":\"manual\"}}", fanId, pct);
-                            return 0;
+                            {
+                                Console.WriteLine("{{\"ok\":false,\"error\":\"Hardware write verification failed or profile is read-only\",\"fan\":{0},\"pct\":{1}}}", fanId, pct);
+                                return 1;
+                            }
                         }
                         else if (cmd == "auto")
                         {
-                            if (demoMode) demo.SetAuto(); else hw.SetAuto();
-                            Console.WriteLine("{\"ok\":true,\"action\":\"auto\",\"mode\":\"Balanced\",\"fan1\":\"auto\",\"fan2\":\"auto\"}");
-                            return 0;
+                            bool ok = demoMode ? demo.SetAuto() : hw.SetAuto();
+                            if (ok)
+                            {
+                                Console.WriteLine("{\"ok\":true,\"action\":\"auto\",\"mode\":\"Balanced\",\"fan1\":\"auto\",\"fan2\":\"auto\"}");
+                                return 0;
+                            }
+                            else
+                            {
+                                Console.WriteLine("{\"ok\":false,\"error\":\"Hardware write verification failed or profile is read-only\",\"action\":\"auto\"}");
+                                return 1;
+                            }
                         }
                         else if (cmd == "dump" || cmd == "probe")
                         {

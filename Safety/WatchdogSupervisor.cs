@@ -40,17 +40,28 @@ namespace MiniFanControl
             createdNew = false;
             try
             {
-                return new EventWaitHandle(false, mode, "Global\\" + baseName, out createdNew);
+                EventWaitHandleSecurity sec = new EventWaitHandleSecurity();
+                SecurityIdentifier everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
+                sec.AddAccessRule(new EventWaitHandleAccessRule(everyone, EventWaitHandleRights.Synchronize | EventWaitHandleRights.Modify, AccessControlType.Allow));
+                return new EventWaitHandle(false, mode, @"Global\" + baseName, out createdNew, sec);
             }
             catch
             {
                 try
                 {
-                    return new EventWaitHandle(false, mode, "Local\\" + baseName, out createdNew);
+                    return new EventWaitHandle(false, mode, @"Global\" + baseName, out createdNew);
                 }
                 catch
                 {
-                    return new EventWaitHandle(false, mode);
+                    try
+                    {
+                        return new EventWaitHandle(false, mode, @"Local\" + baseName, out createdNew);
+                    }
+                    catch
+                    {
+                        // Fail-closed: do NOT return an unnamed event that cannot be signaled across processes
+                        return null;
+                    }
                 }
             }
         }
@@ -80,8 +91,17 @@ namespace MiniFanControl
 
                 using (HardwareBackend hw = new HardwareBackend())
                 {
-                    hw.SetAuto();
-                    Console.WriteLine("[WATCHDOG] Hardware fan control restored to BIOS Auto successfully.");
+                    bool ok = hw.SetAuto();
+                    if (ok)
+                    {
+                        Console.WriteLine("[WATCHDOG] Hardware fan control restored to BIOS Auto successfully.");
+                        LogWatchdogEvent("BIOS Auto restore verified by register read-back.");
+                    }
+                    else
+                    {
+                        Console.WriteLine("[WATCHDOG WARNING] SetAuto() verification did not confirm auto mode.");
+                        LogWatchdogEvent("WARNING: SetAuto() verification did not confirm auto mode.");
+                    }
                 }
             }
             catch (Exception ex)

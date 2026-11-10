@@ -7,14 +7,16 @@
 [![Platform: Windows 10 / 11](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(64--bit)-blue.svg)](#-quick-start-windows)
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%2F%20.NET%20Framework%204.8-green.svg)](#-quick-start-windows)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero%20(Native%20Windows)-brightgreen.svg)](#-quick-start-windows)
-[![Mutex: Global\Access_EC](https://img.shields.io/badge/EC%20Mutex-Global%5CAccess__EC%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
+[![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
+[![Automated Tests: 23 Passed](https://img.shields.io/badge/Automated%20Tests-23%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-2323-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 
 **MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **KTHIN Ryzen AI 9 HX 370 PRO**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
 
 > 📖 **Need a complete step-by-step walkthrough or slide deck?**  
 > - [**Complete User & Hardware Tuning Guide (GUIDE.md)**](GUIDE.md): In-depth instructions for fan calibration, motor stall prevention, OSD Studio customization, multi-monitor gaming, and EC register probing.  
-> - [**Visual Overview Slide Deck (MiniFanControl-Overview.pptx)**](MiniFanControl-Overview.pptx): 7-slide visual presentation illustrating the architecture, dual-fan curves, OSD Studio, and `Global\Access_EC` mutex.
+> - [**Visual Overview Slide Deck (MiniFanControl-Overview.pptx)**](MiniFanControl-Overview.pptx): 7-slide visual presentation illustrating the architecture, dual-fan curves, OSD Studio, and `Global\Access_EC` mutex.  
+> - [**Release Notes (RELEASE_NOTES.md)**](RELEASE_NOTES.md): Comprehensive log of architectural hardening phases and release milestones.
 
 ---
 
@@ -79,8 +81,16 @@ Because desktop utilities cannot detect this controller, Mini PC users were hist
 - **Fail-Safe Exit Handler**: Automatically restores fan control registers to native BIOS EC Auto (`0x00`) on process exit or crash.
 
 ### 🔄 Multi-Tool Coexistence (`Global\Access_EC` Mutex)
-- Acquires the system-wide `Global\Access_EC` Windows Mutex before every register read or write.
+- Acquires both `Global\Access_EC` and `Global\Access_ISABUS.HTP` mutexes with least-privilege permissions (`Synchronize | Modify`) before every register read or write.
 - Allows **MiniFanControl**, **HWiNFO64**, **CapFrameX**, and **LibreHardwareMonitor** to run simultaneously with zero EC bus collisions or register corruption.
+- **Fail-Closed Protection**: If mutex creation or acquisition fails, hardware access strictly aborts—never running uncoordinated.
+- **Synchronized Hardware Probing**: Super I/O discovery (`0x2E/0x4E`) runs inside synchronized mutex scopes to prevent bus collisions during initial hardware detection.
+
+### ⏱️ Independent Watchdog Supervisor & Register Read-Back Verification
+- **Out-of-Process Safety Daemon**: Runs as an independent process (`minifan-helper.exe --watchdog --pid <PID>`).
+- **Heartbeat IPC**: Monitors main application health via named events (`Global\MiniFanControl_Heartbeat_<PID>`). Unnamed event fallbacks are strictly rejected fail-closed.
+- **Automatic Failsafe Restoration**: If the main process hangs for >3.5s or terminates unexpectedly, the watchdog immediately resets fan registers to BIOS Auto (`0x00`) and verifies the hardware state via register read-back before confirming recovery.
+- **Write Verification**: `SetMode`, `SetFan`, `SetAuto`, and `WriteReg` verify register latching and return explicit status codes, ensuring CLI automation never reports false successes.
 
 ### 🎨 3 High-Contrast Themes
 - **Dark Theme**: High-contrast slate and midnight blue for low-light environments.
@@ -96,7 +106,7 @@ Because desktop utilities cannot detect this controller, Mini PC users were hist
 2. **First-Time Launch**:
    - Right-click `MiniFanControl.exe` and select **Run as Administrator** once so `inpoutx64.dll` can register its kernel service (`inpoutx64.sys`).
    - Subsequent runs can be launched normally without elevation.
-   - *Windows 11 Note*: If Windows blocks the driver, temporarily toggle **Memory Integrity** under *Windows Security → Device Security → Core Isolation*.
+   - *Windows 11 Driver Security Note*: If Windows Defender blocks `inpoutx64.sys` due to Microsoft's Vulnerable Driver Blocklist, temporarily toggle **Memory Integrity** under *Windows Security → Device Security → Core Isolation*. MiniFanControl hardens `inpoutx64.dll` at runtime with strict I/O port whitelisting (`0x62`, `0x66`, `0x2E`, `0x4E`, `0x0A35`) and bounded memory-mapping checks.
 3. **Run the App**: Double-click `MiniFanControl.exe` (or run `run-windows.bat`).
 4. **Compile from Source (Zero Tools Required)**:
    - Double-click `build-windows.bat`. Compiles `MiniFanControl.exe` and `minifan-helper.exe` using the native `.NET` compiler included with Windows 10/11.
@@ -130,9 +140,39 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Live-watch all 256 EC registers for 15 seconds to identify active control registers
 .\minifan-helper.exe watch
 
-# Execute the 14-point automated hardware safety & curve test suite
+# Execute the 23-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
+
+---
+
+## 🧪 Automated Hardware Safety & Curve Test Suite (23/23 Passing)
+
+The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
+
+1. **Motor Stall Dead-Zone Protection**: Verifies fan speeds 1%–29% are clamped to safe minimums across 0°C–105°C.
+2. **47°C Balanced Curve Stall Regression Test**: Confirms output never dips into the motor stall region at 47°C.
+3. **Zero-RPM Idle Segment & Clean Step-Up**: Ensures fans stay at 0% in idle (<45°C) and step up cleanly (≥30%) above 51°C.
+4. **Curve Boundary Clamping**: Verifies extreme inputs (15°C -> 0%, 99°C -> 100%) remain strictly bounded.
+5. **Tachometer Stall Filter**: Filters tachometer anomalies (8000 and 65535 RPM mapped to 0, valid speeds preserved).
+6. **EC Register Bitmask Encoding & Safety Bounds**: Validates 0x80 manual flag and clamped PWM bytes (0x32–0x34).
+7. **Custom Curve Config Save/Load Round-Trip**: Verifies serialization and deserialization integrity across profiles.
+8. **Multi-Model Ryzen Mini-PC Profile Matching**: Validates profile detection for K12, K8 Plus, HX 370, and AriesBox 10.
+9. **Simulation Backend State Machine**: Tests manual fan overrides and failsafe return to BIOS Auto.
+10. **Smart EC Candidate Scanner & Dynamic Register Override**: Validates runtime command-line register overrides.
+11. **3-Pass Fan Calibration Engine, Date Tracking & Safety Margin**: Validates multi-pass calibration and +2% safety margin.
+12. **CapFrameX `Global\Access_EC` Mutex & APU Power Breakdown**: Tests mutex acquisition and PPT breakdown tooltip.
+13. **Session Peak/Min/Avg Telemetry & Multi-Series Live Graph History**: Tests telemetry rolling window and statistical tracking.
+14. **CapFrameX OSD Multi-Tier Sizing, Live Graphs & Layout Modes**: Validates HUD geometry, scaling tiers, and rendering.
+15. **Fail-Closed EcBusMutex Contention & Safe Mutex Isolation**: Verifies fail-closed behavior under cross-process lock contention.
+16. **Emergency Thermal Safety Tripwire & Cooldown Hysteresis**: Tests instant 100% full-blast tripwire at ≥90°C and 75°C recovery.
+17. **Safe Fail-Closed Hardware Probe Validation**: Verifies probe failures cleanly reject blind port I/O fallback.
+18. **Hardware Watchdog Supervisor Lifecycle**: Tests clean shutdown handshake, heartbeat timeout triggers, and process crash recovery.
+19. **Driver Security Port Whitelist & Memory Map Safety Bounds**: Validates port whitelist security and physical memory bounds checking.
+20. **Unverified Hardware Fail-Closed Read-Only Protection**: Confirms unrecognized hardware platforms are locked to read-only mode.
+21. **Session Telemetry CSV Export Integrity & Schema Validation**: Validates 10-column CSV export format, headers, and values.
+22. **Missing-Mutex Fail-Closed Enforcement & Lock Security**: Verifies missing EC, ISA, or PCI mutex triggers fail-closed isolation.
+23. **Watchdog IPC Named-Event Fail-Closed & Auto Read-Back Verification**: Validates unnamed event fallback rejection and read-back state confirmation.
 
 ---
 
@@ -167,4 +207,4 @@ Accessible directly inside the app via **`Tools & Drivers ▾`**:
 
 ## ⚠️ Hardware Safety Disclaimer
 
-Direct hardware communication with Embedded Controller physical registers (`0xFE0B0400`) is performed at your own risk. MiniFanControl enforces minimum spinning PWM thresholds, 2°C cooldown hysteresis, safe shutdown handlers, and the `Global\Access_EC` mutex to protect your hardware, but users should always ensure adequate airflow when configuring custom fan curves.
+Direct hardware communication with Embedded Controller physical registers (`0xFE0B0400`) is performed at your own risk. MiniFanControl enforces minimum spinning PWM thresholds, 2°C cooldown hysteresis, safe shutdown handlers, out-of-process watchdog supervision, register read-back verification, and the `Global\Access_EC` mutex to protect your hardware, but users should always ensure adequate airflow when configuring custom fan curves.

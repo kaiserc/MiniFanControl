@@ -74,12 +74,13 @@ namespace MiniFanControl
             };
         }
 
-        public void SetMode(int code)
+        public bool SetMode(int code)
         {
             if (code >= 0 && code <= 2) _modeCode = code;
+            return true;
         }
 
-        public void SetFan(int fanId, int pct)
+        public bool SetFan(int fanId, int pct)
         {
             if (fanId == 1)
             {
@@ -91,15 +92,17 @@ namespace MiniFanControl
                 _fan2Manual = pct > 0 ? 1 : 0;
                 _fan2Pct = pct;
             }
+            return true;
         }
 
-        public void SetAuto()
+        public bool SetAuto()
         {
             _modeCode = 0;
             _fan1Manual = 0;
             _fan2Manual = 0;
             _fan1Pct = 0;
             _fan2Pct = 0;
+            return true;
         }
     }
 
