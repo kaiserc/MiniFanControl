@@ -140,7 +140,8 @@ namespace MiniFanControl
 
                     Console.WriteLine("  calibrate [passes] [--demo]           Execute multi-pass fan calibration curve analysis");
 
-                    Console.WriteLine("  test                                  Run 28-point automated safety & regression suite");
+                    Console.WriteLine("  test                                  Run 36-point automated safety & regression suite");
+                    Console.WriteLine("  hw-matrix                             Run multi-profile hardware validation matrix");
 
                     Console.WriteLine("  watchdog --pid <pid> [--timeout <ms>] Out-of-process safety watchdog supervisor");
 
@@ -155,6 +156,14 @@ namespace MiniFanControl
                 {
 
                     return SelfTestSuite.RunAll();
+
+                }
+
+                if (cmd == "hw-matrix" || cmd == "--hw-matrix")
+
+                {
+
+                    return SelfTestSuite.RunHardwareMatrix();
 
                 }
 
@@ -292,13 +301,13 @@ namespace MiniFanControl
 
                                 "\"mode\":\"{5}\",\"mode_code\":{6},\"fan1_pct\":{7},\"fan2_pct\":{8}," +
 
-                                "\"fan1_manual\":{9},\"fan2_manual\":{10}}}",
+                                "\"fan1_manual\":{9},\"fan2_manual\":{10},\"mutex_namespace\":\"{11}\"}}",
 
                                 st.CpuTemp, st.GpuTemp, st.ApuPowerWatts, st.Fan1Rpm, st.Fan2Rpm,
 
                                 st.Mode, st.ModeCode, st.Fan1Pct, st.Fan2Pct,
 
-                                st.Fan1Manual, st.Fan2Manual);
+                                st.Fan1Manual, st.Fan2Manual, EcBusMutex.MutexNamespaceDiagnostic);
 
                             return 0;
 

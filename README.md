@@ -9,7 +9,7 @@
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 34 Passed](https://img.shields.io/badge/Automated%20Tests-34%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-3434-passing)
+[![Automated Tests: 36 Passed](https://img.shields.io/badge/Automated%20Tests-36%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-3636-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 
 **MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **KTHIN Ryzen AI 9 HX 370 PRO**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
@@ -17,6 +17,7 @@
 > 📖 **Walkthroughs & Technical References**:  
 > - [**Complete User & Hardware Tuning Guide (GUIDE.md)**](GUIDE.md): In-depth walkthrough for fan calibration, motor stall prevention, OSD Studio customization, multi-monitor gaming, and EC register probing.  
 > - [**Visual Overview Slide Deck (MiniFanControl-Overview.pptx)**](MiniFanControl-Overview.pptx): 7-slide visual presentation illustrating the architecture, dual-fan curves, OSD Studio, and `Global\Access_EC` mutex.  
+> - [**Hardware Validation & Bench Testing Matrix (HARDWARE_VALIDATION.md)**](HARDWARE_VALIDATION.md): 6-profile register validation specifications, oscilloscope bench test protocols, and inverted Super I/O PWM polarity mapping.  
 > - [**Release Notes & Changelog (RELEASE_NOTES.md)**](RELEASE_NOTES.md): Comprehensive documentation of architectural hardening phases and release milestones.
 
 ---
@@ -55,7 +56,7 @@ MiniFanControl/
 ├── Telemetry/          # RTSS/CapFrameX shared memory reader & transparent OSD HUD
 │   ├── CapFrameXOverlayForm.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 28-point automated hardware safety & regression test suite
+├── Tests/              # 36-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
 ├── Ui/                 # Double-buffered canvases, custom WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
@@ -232,13 +233,16 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Stop the kernel driver service before launching competitive anti-cheat games
 .\minifan-helper.exe driver-stop
 
-# Execute the 28-point automated hardware safety & curve test suite
+# Validate 6 hardware profiles, register layouts, and inverted polarity matrix
+.\minifan-helper.exe hw-matrix
+
+# Execute the 36-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (34/34 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (36/36 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -276,6 +280,8 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 32. **Native BIOS Auto vs. Safe Super I/O Fallback Distinction**: Validates clear distinction in status and description between native BIOS automatic mode and quiet safe Super I/O fallback.
 33. **UI Write-Result Fail-Closed Handling & Independent Emergency Retries**: Verifies UI caches fan speeds ONLY upon confirmed hardware write/read-back verification, preserves prior state on rejected writes, alerts the user visibly, and retries emergency 100% cooling independently every worker cycle.
 34. **Watchdog Ready Handshake & Fail-Closed Event Fallback**: Verifies two-way child handshake (`ReadyEvent`) before confirming active supervision, ensures absence of unverified fallbacks, and tests fail-closed timeout detection.
+35. **Multi-Profile Hardware Validation Matrix (6 Hardware Profiles)**: Rigorously verifies all 6 device profiles (`gmktec-k12`, `gmktec-k8-k11`, `ryzen-hx370-ec`, `adreamer-ariesbox10`, `generic-it5570e`, and `unknown-safe`), checking EC register bounds, Super I/O inverted polarity logic (40/0 and 240/0), tachometer channels, sensor loss / thermal runaway failsafe, watchdog recovery, and read-only protection.
+36. **Authenticated Mutex DACL & Local Fallback Diagnostics**: Verifies `EcBusMutex` access rules enforce least-privilege `AuthenticatedUserSid` (`Synchronize | Modify`) without untrusted `WorldSid` (`Everyone`), ensuring `UsesLocalNamespaceFallback` and `MutexNamespaceDiagnostic` track namespace state accurately.
 
 ---
 

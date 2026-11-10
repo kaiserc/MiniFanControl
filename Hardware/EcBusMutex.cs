@@ -64,6 +64,15 @@ namespace MiniFanControl
             get { return _contentionCount; }
         }
 
+        public static bool UsesLocalNamespaceFallback { get; private set; }
+
+        public static string MutexNamespaceDiagnostic { get; private set; }
+
+        static EcBusMutex()
+        {
+            MutexNamespaceDiagnostic = "Uninitialized";
+        }
+
         public static void EnsureCreated()
         {
             if (_isSimulated || _initDone) return;
@@ -87,46 +96,74 @@ namespace MiniFanControl
         /// The named mutexes "Global\Access_EC", "Global\Access_ISABUS.HTP.Method", and "Global\Access_PCI"
         /// are established hardware-monitoring industry standards shared across HWiNFO64, LibreHardwareMonitor,
         /// CapFrameX, and FanControl. Because these cooperating tools frequently execute under different Windows
-        /// session contexts (e.g. standard user desktop session, elevated administrator, or SYSTEM service), the
-        /// mutex DACL explicitly grants WorldSid (Everyone) MutexRights.Synchronize | MutexRights.Modify (acquire
-        /// and release permissions).
+        /// user sessions (e.g. standard user desktop session, elevated administrator, or SYSTEM service), the
+        /// mutex DACL explicitly grants Authenticated Users (AuthenticatedUserSid) MutexRights.Synchronize | MutexRights.Modify
+        /// (acquire and release permissions), while restricting administrative control strictly to CurrentUser,
+        /// Administrators, and SYSTEM.
         /// 
-        /// Unlike MiniFanControl's Watchdog IPC events (which use a strict least-privilege ACL restricted exclusively
-        /// to CurrentUser, Administrators, and SYSTEM), these hardware-bus mutexes require cross-session access to
-        /// prevent Third-Party Monitoring tools from crashing on UnauthorizedAccessException. To protect against
-        /// unauthorized deletion or DACL tampering, ownership and permission modification rights (FullControl,
-        /// TakeOwnership, ChangePermissions) are strictly withheld from WorldSid.
+        /// Unlike earlier revisions which used broad WorldSid (Everyone) access, scoping to AuthenticatedUserSid
+        /// prevents untrusted, anonymous, or guest accounts from interfering with mutex availability, while
+        /// fully preserving multi-session coexistence with legitimate hardware monitors.
         /// </summary>
         private static Mutex CreateMutex(string name)
         {
             try
             {
                 MutexSecurity sec = new MutexSecurity();
-                SecurityIdentifier everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
-                sec.AddAccessRule(new MutexAccessRule(everyone, MutexRights.Synchronize | MutexRights.Modify, AccessControlType.Allow));
+                sec.SetAccessRuleProtection(true, false);
+
+                // Creator & Administrative identities get FullControl
+                SecurityIdentifier currentUser = WindowsIdentity.GetCurrent().User;
+                if (currentUser != null)
+                {
+                    sec.AddAccessRule(new MutexAccessRule(currentUser, MutexRights.FullControl, AccessControlType.Allow));
+                }
+                SecurityIdentifier adminSid = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+                sec.AddAccessRule(new MutexAccessRule(adminSid, MutexRights.FullControl, AccessControlType.Allow));
+                SecurityIdentifier systemSid = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+                sec.AddAccessRule(new MutexAccessRule(systemSid, MutexRights.FullControl, AccessControlType.Allow));
+
+                // Restrict cross-process coexistence to Authenticated Users (logged-on users & services)
+                // Excludes untrusted, anonymous, and guest accounts that WorldSid permits
+                SecurityIdentifier authUsers = new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null);
+                sec.AddAccessRule(new MutexAccessRule(authUsers, MutexRights.Synchronize | MutexRights.Modify, AccessControlType.Allow));
+
                 bool createdNew;
 #if NET8_0_OR_GREATER
-                return MutexAcl.Create(false, name, out createdNew, sec);
+                Mutex m = MutexAcl.Create(false, name, out createdNew, sec);
 #else
-                return new Mutex(false, name, out createdNew, sec);
+                Mutex m = new Mutex(false, name, out createdNew, sec);
 #endif
+                MutexNamespaceDiagnostic = "Global (Ecosystem Coexistence Synchronized)";
+                UsesLocalNamespaceFallback = false;
+                return m;
             }
             catch
             {
-                try { return Mutex.OpenExisting(name); }
+                try
+                {
+                    Mutex m = Mutex.OpenExisting(name);
+                    MutexNamespaceDiagnostic = "Global (Opened Existing Shared Mutex)";
+                    UsesLocalNamespaceFallback = false;
+                    return m;
+                }
                 catch
                 {
                     try
                     {
-                        // Fallback to Local\ namespace if Global\ creation is denied (e.g. non-elevated CI runner)
+                        // Fallback to Local\ namespace if Global\ creation is denied (e.g. non-elevated CI sandbox)
                         string localName = name.StartsWith(@"Global\", StringComparison.OrdinalIgnoreCase)
                             ? @"Local\" + name.Substring(7)
                             : name;
                         bool createdNew;
-                        return new Mutex(false, localName, out createdNew);
+                        Mutex m = new Mutex(false, localName, out createdNew);
+                        UsesLocalNamespaceFallback = true;
+                        MutexNamespaceDiagnostic = "Local (Session-Isolated Fallback: Cross-session HWiNFO64/CapFrameX coordination degraded)";
+                        return m;
                     }
                     catch
                     {
+                        MutexNamespaceDiagnostic = "Failed (Mutex initialization denied)";
                         return null;
                     }
                 }

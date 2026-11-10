@@ -213,6 +213,7 @@ namespace MiniFanControl
             sb.AppendLine("Active Profile   : " + MatchedProfile.DisplayName);
             sb.AppendLine("EC Communication : " + (hw != null ? hw.AccessMethodName : (demoMode ? "Simulation/Demo" : "ACPI EC Port I/O (0x62/0x66)")));
             sb.AppendLine("EC Physical Base : 0x" + MatchedProfile.EcBaseAddress.ToString("X8") + " (Size: 0x" + MatchedProfile.EcSize.ToString("X2") + ")");
+            sb.AppendLine("EC Mutex Sync    : " + EcBusMutex.MutexNamespaceDiagnostic);
             if (!demoMode)
             {
                 sb.AppendLine("----------------------------------------------------------------------");

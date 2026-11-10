@@ -41,6 +41,7 @@ copy /y "%~dp0LICENSE" "%STAGE_DIR%\" >nul
 copy /y "%~dp0VERSION" "%STAGE_DIR%\" >nul
 copy /y "%~dp0run-windows.bat" "%STAGE_DIR%\" >nul
 if exist "%~dp0RELEASE_NOTES.md" copy /y "%~dp0RELEASE_NOTES.md" "%STAGE_DIR%\" >nul
+if exist "%~dp0HARDWARE_VALIDATION.md" copy /y "%~dp0HARDWARE_VALIDATION.md" "%STAGE_DIR%\" >nul
 
 echo [3/5] Generating portable release archive .zip...
 powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; Compress-Archive -Path '%STAGE_DIR%\*' -DestinationPath '%ZIP_PATH%' -Force"
