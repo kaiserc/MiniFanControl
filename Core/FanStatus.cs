@@ -33,6 +33,14 @@ namespace MiniFanControl
         public int GfxVoltageMv;
         public int RtssFps;
         public int Fps { get { return RtssFps; } set { RtssFps = value; } }
+        public bool RtssRunning;
+        public double RtssFrametimeMs;
+        public int RtssAvgFps;
+        public int RtssMinFps;
+        public int RtssMaxFps;
+        public int RtssP1LowFps;
+        public int RtssP01LowFps;
+        public string RtssProcessName;
         public string PowerSource;
         public int Fan1Rpm;
         public int Fan2Rpm;

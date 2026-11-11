@@ -4,21 +4,27 @@
   <img src="assets/banner.png" alt="MiniFanControl Banner" width="100%" />
 </p>
 
+<p align="center">
+  <img src="assets/ui-main-osd.jpg" alt="MiniFanControl Dashboard and CapFrameX-Style OSD HUD" width="85%" />
+</p>
+
 [![Release: v2.7.0](https://img.shields.io/badge/Release-v2.7.0-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
 [![Platform: Windows 10 / 11](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(64--bit)-blue.svg)](#-quick-start-windows)
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 37 Passed](https://img.shields.io/badge/Automated%20Tests-37%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-3737-passing)
+[![Automated Tests: 40 Passed](https://img.shields.io/badge/Automated%20Tests-40%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-4040-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 
 **MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **KTHIN Ryzen AI 9 HX 370 PRO**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
 
 > 📖 **Walkthroughs & Technical References**:  
 > - [**Complete User & Hardware Tuning Guide (GUIDE.md)**](GUIDE.md): In-depth walkthrough for fan calibration, motor stall prevention, OSD Studio customization, multi-monitor gaming, and EC register probing.  
-> - [**Visual Overview Slide Deck (MiniFanControl-Overview.pptx)**](MiniFanControl-Overview.pptx): 7-slide visual presentation illustrating the architecture, dual-fan curves, OSD Studio, and `Global\Access_EC` mutex.  
+> - [**Visual Overview Slide Deck (docs/MiniFanControl-Overview.pptx)**](docs/MiniFanControl-Overview.pptx): 7-slide visual presentation illustrating the architecture, dual-fan curves, OSD Studio, and `Global\Access_EC` mutex.  
 > - [**Hardware Validation & Bench Testing Matrix (HARDWARE_VALIDATION.md)**](HARDWARE_VALIDATION.md): 6-profile register validation specifications, oscilloscope bench test protocols, and inverted Super I/O PWM polarity mapping.  
-> - [**Release Notes & Changelog (RELEASE_NOTES.md)**](RELEASE_NOTES.md): Comprehensive documentation of architectural hardening phases and release milestones.
+> - [**Changelog (CHANGELOG.md)**](CHANGELOG.md): High-level version history and release milestones.  
+> - [**Contributing & Hardware Submissions (CONTRIBUTING.md)**](CONTRIBUTING.md): Core safety principles, local build guide, and step-by-step instructions for adding new Mini PC profiles.  
+> - [**Release Notes & Architecture Log (RELEASE_NOTES.md)**](RELEASE_NOTES.md): Comprehensive documentation of architectural hardening phases and deep dives.
 
 ---
 
@@ -57,7 +63,7 @@ MiniFanControl/
 ├── Telemetry/          # RTSS/CapFrameX shared memory reader & transparent OSD HUD
 │   ├── CapFrameXOverlayForm.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 37-point automated hardware safety & regression test suite
+├── Tests/              # 40-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
 ├── Ui/                 # Double-buffered canvases, custom WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
@@ -131,7 +137,7 @@ MiniFanControl/
 
 ### 🔄 Multi-Tool Coexistence (`Global\Access_EC` Mutex)
 - Acquires both `Global\Access_EC` and `Global\Access_ISABUS.HTP` mutexes with least-privilege permissions (`Synchronize | Modify`) before every register read or write.
-- Allows **MiniFanControl**, **HWiNFO64**, **CapFrameX**, and **LibreHardwareMonitor** to run simultaneously with zero EC bus collisions or register corruption.
+- Avoids collisions and register corruption with third-party diagnostic and monitoring tools that honor the industry-standard `Global\Access_EC` and `Global\Access_ISABUS.HTP` mutexes (such as **HWiNFO64**, **CapFrameX**, and **LibreHardwareMonitor**).
 - **Fail-Closed Protection**: If mutex creation or acquisition fails, hardware access strictly aborts—never running uncoordinated.
 - **Synchronized Hardware Probing**: Super I/O discovery (`0x2E/0x4E`) runs inside synchronized mutex scopes to prevent bus collisions during initial hardware detection.
 
@@ -139,6 +145,7 @@ MiniFanControl/
 - **Out-of-Process Safety Daemon**: Runs as an independent process (`minifan-helper.exe --watchdog --pid <PID>`).
 - **Heartbeat IPC**: Monitors main application health via named events (`Global\MiniFanControl_Heartbeat_<PID>`). Unnamed event fallbacks are strictly rejected fail-closed.
 - **Automatic Failsafe Restoration**: If the main process hangs for >3.5s or terminates unexpectedly, the watchdog immediately resets fan registers to BIOS Auto (`0x00`) and verifies the hardware state via register read-back before confirming recovery.
+- **Emergency Thermal Safety Tripwire**: If CPU temperature reaches ≥90°C, an emergency hardware override triggers 100% full-blast cooling immediately, returning to curve control only after cooling below 75°C.
 - **Write Verification**: `SetMode`, `SetFan`, `SetAuto`, and `WriteReg` verify register latching and return explicit status codes, ensuring CLI automation never reports false successes.
 
 ### 💾 Native NVMe Storage & System RAM Hardware Telemetry
@@ -147,23 +154,37 @@ MiniFanControl/
 - **Proactive Fan 2 (Sys Fan) NVMe Thermal Coupling**: Modern Mini PCs physically position Fan 2 over the M.2 NVMe SSD bays and DDR5 SODIMM slots. MiniFanControl dynamically drives Fan 2 using `Math.Max(APU Temp, NVMe Temp)`—ensuring heavy SSD file copies, game installs, and local AI model loading automatically ramp up chassis ventilation before the SSD controller thermal throttles.
 - **Interactive GUI & OSD HUD Integration**: Features dedicated pill cards in the dashboard with rich SMART tooltips, live CapFrameX overlay rows, and CSV telemetry session exports.
 
-### 🎨 3 High-Contrast Themes
-- **Dark Theme**: High-contrast slate and midnight blue for low-light environments.
-- **Light Theme**: Crisp alabaster with bold slate accents.
-- **AMD Radeon Theme**: Ruby red / crimson theme inspired by AMD Adrenalin software.
-- The OSD overlay can match the active application theme or use classic CapFrameX Cyan/Amber.
+### 📊 Telemetry Architecture & Sensor Sources Breakdown
+
+To ensure zero driver conflicts and maximum stability, MiniFanControl strictly isolates sensor acquisition mechanisms:
+
+| Telemetry Metric | Primary Sensor Provider | Driver / API Mechanism | Isolation & Safety Design |
+| :--- | :--- | :--- | :--- |
+| **CPU Core Temp (Tctl)** | AMD Silicon & EC | `atiadlxx.dll` & EC Reg `0x70` | No raw PCI `0xCF8/0xCFC` bus contention |
+| **iGPU Graphics Temp** | AMD Radeon ADL2 | Official AMD `atiadlxx.dll` | Official WHQL-certified driver interface |
+| **APU Package Power (PPT)**| AMD ADL2 PMLOG | `atiadlxx.dll` (Hardware Rails) | Direct silicon sensor (TDP & rail breakdown) |
+| **APU & Sys Fan RPM** | ITE IT5570E EC | Kernel Port I/O (`0xFE0B0400`) | Synchronized via `Global\Access_EC` mutex |
+| **NVMe SSD Temp & Health**| Windows Storage Stack | `IOCTL_STORAGE_QUERY_PROPERTY` | Standard Microsoft Win32 NVMe SMART IOCTL |
+| **System RAM Load & Power**| Windows OS Kernel | `GlobalMemoryStatusEx` | Sub-microsecond Win32 memory status |
+| **In-Game FPS & Frametimes**| RTSS / CapFrameX | Win32 Named Shared Memory | Read-only passive memory mapping (no DLL injection) |
 
 ---
 
 ## 🔒 Kernel Driver Architecture & Security Deep-Dive
 
-### Why `inpoutx64.dll` is Used
+### Driver Provenance, Origin & Licensing
 Mini PCs communicate with their embedded controller via raw ACPI I/O ports (`0x62/0x66`, `0x6C/0x6E`) and LPC Super I/O ports (`0x2E/0x2F`, `0x4E/0x4F`, `0x0A30–0x0A37`). Because 64-bit Windows prohibits user-mode processes from executing raw x86 `IN`/`OUT` CPU instructions, a kernel-mode driver service (`inpoutx64.sys`) is required.
 
-### Known Industry Risks & Vulnerable Driver Blocklist
-`inpoutx64.sys` is an established, widely used open-source driver (historically used by SpeedFan, LCDProc, and various diagnostic utilities). However, because unhardened builds of `inpoutx64.sys` accept arbitrary I/O requests from any local process:
-1. **Windows 11 Memory Integrity (HVCI) & Safe Monitoring Fallback**: Microsoft flags `inpoutx64.sys` under Windows 11 **Memory Integrity**. MiniFanControl strongly recommends keeping Memory Integrity **ENABLED**. If Windows 11 blocks `inpoutx64.sys`, MiniFanControl automatically engages **Safe Read-Only Telemetry Monitoring Mode**. All CPU/iGPU temperatures, APU package power, GPU load, clocks, and voltages continue updating natively via AMD's official WHQL-certified driver interface (`atiadlxx.dll` / `amdfendrm.sys`), requiring zero unsigned kernel drivers and zero raw port I/O, while fan writes are safely disabled fail-closed.
-2. **Anti-Cheat Conflicts**: Competitive kernel-level anti-cheat software (such as Riot Vanguard, Easy Anti-Cheat, and BattlEye) may flag `inpoutx64.sys` while running.
+- **Origin & Author**: Developed by Phillip Gibbons (Highresolution Enterprises / Red Fox UK).
+- **Upstream Project**: [Highresolution Enterprises InpOut32 / InpOutx64](http://www.highrez.co.uk/downloads/inpout32/)
+- **License**: GNU General Public License (GPL v2) / Open Source Freeware.
+- **Digital Signature**: The kernel binary `inpoutx64.sys` includes a standard Windows Authenticode digital signature cross-signed by Red Fox UK.
+
+### Windows 11 Memory Integrity (HVCI) & Security Recommendations
+1. **Memory Integrity (HVCI) Compatibility**: Microsoft flags `inpoutx64.sys` under the Windows 11 Microsoft Vulnerable Driver Blocklist because legacy builds accept arbitrary I/O requests.
+2. **Safe Read-Only Telemetry Default**: MiniFanControl **recommends keeping Memory Integrity ENABLED**. If Windows Defender blocks `inpoutx64.sys`, MiniFanControl does not crash or force driver installation—it automatically engages **Safe Read-Only Telemetry Monitoring Mode**. All CPU/iGPU temperatures, APU package power, GPU load, clocks, and voltages continue updating natively via AMD's official WHQL-certified driver interface (`atiadlxx.dll` / `amdfendrm.sys`), requiring zero unsigned kernel drivers and zero raw port I/O, while fan writes are safely disabled fail-closed.
+3. **If You Choose to Enable Hardware Fan Control**: If you decide to toggle off Memory Integrity to allow custom fan curve writing, remember that you are reducing kernel memory isolation protections. Always ensure you download MiniFanControl from official repository releases and re-enable Memory Integrity if you cease using custom hardware fan curve writers.
+4. **Anti-Cheat Conflicts**: Competitive kernel-level anti-cheat software (such as Riot Vanguard, Easy Anti-Cheat, and BattlEye) may flag `inpoutx64.sys` while running. Use `minifan-helper.exe driver-stop` before launching competitive games.
 
 ### How MiniFanControl Hardens Driver Access (Defense-in-Depth)
 MiniFanControl wraps all ring-0 driver operations inside a strict user-mode defense layer in [`Hardware/NativeInpOut.cs`](Hardware/NativeInpOut.cs):
@@ -243,13 +264,13 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Validate 6 hardware profiles, register layouts, and inverted polarity matrix
 .\minifan-helper.exe hw-matrix
 
-# Execute the 36-point automated hardware safety & curve test suite
+# Execute the 40-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (36/36 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (40/40 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -290,6 +311,9 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 35. **Multi-Profile Hardware Validation Matrix (6 Hardware Profiles)**: Rigorously verifies all 6 device profiles (`gmktec-k12`, `gmktec-k8-k11`, `ryzen-hx370-ec`, `adreamer-ariesbox10`, `generic-it5570e`, and `unknown-safe`), checking EC register bounds, Super I/O inverted polarity logic (40/0 and 240/0), tachometer channels, sensor loss / thermal runaway failsafe, watchdog recovery, and read-only protection.
 36. **Authenticated Mutex DACL & Local Fallback Diagnostics**: Verifies `EcBusMutex` access rules enforce least-privilege `AuthenticatedUserSid` (`Synchronize | Modify`) without untrusted `WorldSid` (`Everyone`), ensuring `UsesLocalNamespaceFallback` and `MutexNamespaceDiagnostic` track namespace state accurately.
 37. **Native NVMe Storage & System RAM Sensor Telemetry**: Verifies standard Win32 `IOCTL_STORAGE_QUERY_PROPERTY` NVMe SMART health page 0x02 parsing (Composite Temperature, Critical Warning, Available Spare %, Lifetime Wear %), native `GlobalMemoryStatusEx` physical RAM utilization (Total GB, Used GB, Load %), and `FanStatus` tooltip formatting helpers.
+38. **Session Telemetry NVMe & RAM Power Tracking & Sparklines**: Verifies rolling history, peak/avg computations, and sparkline formatting for NVMe SSD temperature and estimated DDR5 memory power rails.
+39. **High-Resolution RTSS Frametime, Average FPS & 0.1% Lows Telemetry**: Verifies mathematical percentile computation (99th and 99.9th percentile frame times) from 1,000 synthetic frame samples, session FPS bounds, frametime sparklines, and double-buffered OSD bitmap rendering.
+40. **Hardware Validation Matrix Auto-Discovery & Polarity Testing**: Validates all 6 device profile configurations, EC register mapping bounds, inverted Super I/O PWM polarity (40/0 and 240/0), and fail-closed read-only protection.
 
 ---
 
@@ -305,6 +329,50 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 | `0x37–0x38` | Read | **Sys Fan (`Fan 2`)** RPM | `(reg[0x37] << 8) \| reg[0x38]` (Max ~1940 RPM; `8000` = motor stopped/idle) |
 | `0x70` | Read | CPU Temperature | °C |
 | `0x71` | Read | dGPU Temperature | `0` on APU models (Radeon iGPU temp is read via AMD `atiadlxx.dll`) |
+
+---
+
+## ⚙️ Configuration File Schema (`minifancontrol.cfg`)
+
+MiniFanControl automatically persists user preferences and calibrated fan thresholds to `minifancontrol.cfg` in the application directory. Advanced users and headless deployment scripts can edit this file directly:
+
+### 1. General & Hardware Settings
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `HardwareProfile` | String | `auto` | Active device profile (`auto`, `gmktec-k12`, `gmktec-k8-k11`, `ryzen-hx370-ec`, `adreamer-ariesbox10`, `unknown-safe`) |
+| `HasDualFans` | Integer | `1` | `1` = Dual fans present (APU + Sys Fan), `0` = Single fan detected |
+| `RefreshIntervalMs`| Integer | `500` | Telemetry polling rate in milliseconds (250ms = 4 Hz, 500ms = 2 Hz, 1000ms = 1 Hz) |
+| `RestoreAutoOnExit`| Integer | `1` | `1` = Restore native BIOS EC control (`0x00`) on exit/crash, `0` = Retain last manual setting |
+| `EnableHotkeys` | Integer | `1` | `1` = Enable global hotkeys (`Ctrl+Alt+F9` overlay, `Ctrl+Alt+F10..F12` modes) |
+| `Theme` | Integer | `0` | `0` = Dark Theme, `1` = Light Theme, `2` = AMD Radeon Crimson Theme |
+| `ShowCpuTray` | Integer | `0` | `1` = Show live CPU temperature badge icon in Windows system tray |
+| `ShowGpuTray` | Integer | `0` | `1` = Show live iGPU graphics temperature badge icon in Windows system tray |
+
+### 2. CapFrameX-Style OSD HUD & Graphs
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `ShowOverlay` | Integer | `1` | `1` = Enable in-game OSD overlay HUD, `0` = Disabled |
+| `LockOverlay` | Integer | `0` | `1` = Enable `WS_EX_TRANSPARENT` mouse click-through for full-screen gaming |
+| `OverlayVertical` | Integer | `1` | `1` = Vertical stack layout (`▮ Vert`), `0` = Horizontal status bar (`▬ Horiz`) |
+| `OverlayX` / `OverlayY` | Integer | `100, 100` | Screen coordinates (pixels) of the overlay HUD |
+| `OsdScaleTier` | Integer | `1` | HUD UI scaling: `0` = 100% Std, `1` = 125% Lg, `2` = 150% XL, `3` = 185% 4K |
+| `OsdGraphMode` | Integer | `3` | Live graphs: `0` = Text Only, `1` = Sparklines, `2` = Combined Graph, `3` = Both |
+| `OsdGraphHeight` | Integer | `65` | Base graph height in pixels (`45`, `65`, `95`, `130`) |
+| `OsdOpacityPct` | Integer | `95` | Overlay background opacity percentage (`20%` to `100%`) |
+| `OsdShowPeaks` | Integer | `1` | `1` = Show peak trackers (`▲`) and session averages, `0` = Hide |
+| `OsdShowFpsGraph` | Integer | `1` | `1` = Render dedicated FPS & Frametime (ms) chart at bottom of HUD |
+| `OsdPlotFpsOnTrend`| Integer | `1` | `1` = Plot live framerate series inside the upper combined trend graph |
+| `OsdShowCpu` / `Gpu` / `Nvme` / `Power` / `Ram` / `Fps` / `Lows` / `GpuLoad` / `ApuFan` / `SysFan` | Integer | `1` | Granular visibility toggles for individual telemetry rows (`1` = visible, `0` = hidden) |
+
+### 3. Fan Motor Calibration & Curves
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `ApuMinSpinPct` | Integer | `24` | Primary APU fan physical minimum spin-up threshold % (prevents motor stall) |
+| `SysMinSpinPct` | Integer | `22` | Secondary Sys fan physical minimum spin-up threshold % |
+| `ApuMaxRpm` | Integer | `3150`| Calibrated maximum RPM speed of primary APU fan cooler |
+| `SysMaxRpm` | Integer | `1940`| Calibrated maximum RPM speed of secondary chassis fan cooler |
+| `ApuMode` / `SysMode` | String | `Balanced` | Active curve mode (`Balanced`, `Performance`, `Silent`, or custom profile name) |
+| `CustomProfile` | String | `Name\|APU_Points\|SYS_Points` | Format: `Name\|42:0;55:30;68:50;80:75;90:100\|42:0;55:30;68:50;80:75;90:100` |
 
 ---
 

@@ -63,7 +63,7 @@ You can execute the hardware validation matrix directly from the command line:
 # Run the complete 6-profile hardware validation matrix
 .\minifan-helper.exe hw-matrix
 
-# Execute the 36-point automated hardware safety test suite
+# Execute the 40-point automated hardware safety & regression test suite
 .\minifan-helper.exe test
 
 # Dump hardware registers & diagnostic report for new Mini PC qualification

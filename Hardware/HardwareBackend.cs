@@ -288,12 +288,10 @@ namespace MiniFanControl
 
             }
 
-            catch
-
+            catch (Exception)
             {
-
+                // InpOut driver access blocked or port unmapped; return safe 0xFF
                 return 0xFF;
-
             }
 
         }
@@ -312,12 +310,16 @@ namespace MiniFanControl
 
             }
 
-            catch
-
+            catch (Exception)
             {
-
-                try { NativeInpOut.Out32(port, (short)val); } catch { }
-
+                try 
+                { 
+                    NativeInpOut.Out32(port, (short)val); 
+                } 
+                catch (Exception) 
+                { 
+                    // Secondary InpOut fallback write failed safely
+                }
             }
 
         }
@@ -670,7 +672,10 @@ namespace MiniFanControl
 
                 }
 
-                catch { }
+                catch (Exception)
+                {
+                    // Super I/O discovery safely aborted on port access contention
+                }
 
                 return false;
 
@@ -724,7 +729,10 @@ namespace MiniFanControl
 
             }
 
-            catch { }
+            catch (Exception)
+            {
+                // Non-existent or unresponsive hardware monitor base address candidate
+            }
 
             return false;
 
@@ -846,12 +854,10 @@ namespace MiniFanControl
 
             }
 
-            catch
-
+            catch (Exception)
             {
-
+                // InpOut driver access blocked or port unmapped; return safe 0xFF
                 return 0xFF;
-
             }
 
         }
@@ -1785,6 +1791,8 @@ namespace MiniFanControl
             MemoryTelemetry mem;
             SystemStorageMemorySensor.Sample(out nvme, out mem);
 
+            RtssTelemetry rtss = FpsMonitor.GetTelemetry();
+
             FanStatus st = new FanStatus
             {
                 CpuTemp = cpuTemp,
@@ -1798,7 +1806,15 @@ namespace MiniFanControl
                 GfxClockMhz = gfxClk,
                 GfxActivityPct = gfxAct,
                 GfxVoltageMv = gfxVolt,
-                RtssFps = FpsMonitor.TryGetRtssFps(),
+                RtssFps = rtss.IsAvailable ? rtss.Fps : -1,
+                RtssRunning = rtss.IsRtssRunning,
+                RtssFrametimeMs = rtss.IsAvailable ? rtss.FrametimeMs : 0.0,
+                RtssAvgFps = rtss.IsAvailable ? rtss.AvgFps : 0,
+                RtssMinFps = rtss.IsAvailable ? rtss.MinFps : 0,
+                RtssMaxFps = rtss.IsAvailable ? rtss.MaxFps : 0,
+                RtssP1LowFps = rtss.IsAvailable ? rtss.P1LowFps : 0,
+                RtssP01LowFps = rtss.IsAvailable ? rtss.P01LowFps : 0,
+                RtssProcessName = rtss.IsAvailable ? rtss.ProcessName : null,
                 PowerSource = pwrSrc,
                 Fan1Rpm = fan1Rpm,
                 Fan2Rpm = fan2Rpm,

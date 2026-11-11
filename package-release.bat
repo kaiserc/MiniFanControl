@@ -40,6 +40,8 @@ copy /y "%~dp0GUIDE.md" "%STAGE_DIR%\" >nul
 copy /y "%~dp0LICENSE" "%STAGE_DIR%\" >nul
 copy /y "%~dp0VERSION" "%STAGE_DIR%\" >nul
 copy /y "%~dp0run-windows.bat" "%STAGE_DIR%\" >nul
+if exist "%~dp0CHANGELOG.md" copy /y "%~dp0CHANGELOG.md" "%STAGE_DIR%\" >nul
+if exist "%~dp0CONTRIBUTING.md" copy /y "%~dp0CONTRIBUTING.md" "%STAGE_DIR%\" >nul
 if exist "%~dp0RELEASE_NOTES.md" copy /y "%~dp0RELEASE_NOTES.md" "%STAGE_DIR%\" >nul
 if exist "%~dp0HARDWARE_VALIDATION.md" copy /y "%~dp0HARDWARE_VALIDATION.md" "%STAGE_DIR%\" >nul
 

@@ -125,11 +125,15 @@ namespace MiniFanControl
         private bool _osdShowNvme = true;
         private bool _osdShowPower = true;
         private bool _osdShowRam = true;
+        private bool _osdShowFps = true;
+        private bool _osdShowLows = true;
         private bool _osdShowGpuLoad = true;
         private bool _osdShowApuFan = true;
         private bool _osdShowSysFan = true;
         private bool _osdShowMode = true;
         private bool _osdShowPeaks = true;
+        private bool _osdShowFpsGraph = true;
+        private bool _osdPlotFpsOnTrend = true;
 
         private IntPtr _cpuIconHandle = IntPtr.Zero;
         private IntPtr _gpuIconHandle = IntPtr.Zero;
@@ -290,11 +294,15 @@ namespace MiniFanControl
         private CheckBox _osdShowNvmeCb;
         private CheckBox _osdShowPowerCb;
         private CheckBox _osdShowRamCb;
+        private CheckBox _osdShowFpsCb;
+        private CheckBox _osdShowLowsCb;
         private CheckBox _osdShowGpuLoadCb;
         private CheckBox _osdShowApuFanCb;
         private CheckBox _osdShowSysFanCb;
         private CheckBox _osdShowModeCb;
         private CheckBox _osdShowPeaksCb;
+        private CheckBox _osdShowFpsGraphCb;
+        private CheckBox _osdPlotFpsOnTrendCb;
         private Button _osdSelectAllBtn;
         private Button _osdResetDefaultsBtn;
         private Button _osdQuickPosTl;
@@ -732,11 +740,15 @@ namespace MiniFanControl
                 ShowNvme = _osdShowNvme,
                 ShowPower = _osdShowPower,
                 ShowRam = _osdShowRam,
+                ShowFps = _osdShowFps,
+                ShowLows = _osdShowLows,
                 ShowGpuLoad = _osdShowGpuLoad,
                 ShowApuFan = _osdShowApuFan,
                 ShowSysFan = _osdShowSysFan,
                 ShowMode = _osdShowMode,
-                ShowPeaks = _osdShowPeaks
+                ShowPeaks = _osdShowPeaks,
+                ShowFpsGraph = _osdShowFpsGraph,
+                PlotFpsOnTrend = _osdPlotFpsOnTrend
             };
             _overlayForm.ApplyOpacity(_osdOpacityPct);
             _overlayForm.UpdateDimensions();
@@ -771,6 +783,9 @@ namespace MiniFanControl
             {
                 _overlayForm.Show();
                 _overlayForm.ApplyClickThrough(_lockOverlay);
+                _overlayForm.EnsureTopMost();
+                _overlayForm.BringToFront();
+                _overlayForm.Invalidate();
             }
         }
 
@@ -790,11 +805,15 @@ namespace MiniFanControl
             _overlayForm.ShowNvme = _osdShowNvme;
             _overlayForm.ShowPower = _osdShowPower;
             _overlayForm.ShowRam = _osdShowRam;
+            _overlayForm.ShowFps = _osdShowFps;
+            _overlayForm.ShowLows = _osdShowLows;
             _overlayForm.ShowGpuLoad = _osdShowGpuLoad;
             _overlayForm.ShowApuFan = _osdShowApuFan;
             _overlayForm.ShowSysFan = _osdShowSysFan;
             _overlayForm.ShowMode = _osdShowMode;
             _overlayForm.ShowPeaks = _osdShowPeaks;
+            _overlayForm.ShowFpsGraph = _osdShowFpsGraph;
+            _overlayForm.PlotFpsOnTrend = _osdPlotFpsOnTrend;
             _overlayForm.ApplyOpacity(_osdOpacityPct);
             _overlayForm.UpdateDimensions();
             _overlayForm.Invalidate();
@@ -815,11 +834,15 @@ namespace MiniFanControl
                 _osdShowNvme = _overlayForm.ShowNvme;
                 _osdShowPower = _overlayForm.ShowPower;
                 _osdShowRam = _overlayForm.ShowRam;
+                _osdShowFps = _overlayForm.ShowFps;
+                _osdShowLows = _overlayForm.ShowLows;
                 _osdShowGpuLoad = _overlayForm.ShowGpuLoad;
                 _osdShowApuFan = _overlayForm.ShowApuFan;
                 _osdShowSysFan = _overlayForm.ShowSysFan;
                 _osdShowMode = _overlayForm.ShowMode;
                 _osdShowPeaks = _overlayForm.ShowPeaks;
+                _osdShowFpsGraph = _overlayForm.ShowFpsGraph;
+                _osdPlotFpsOnTrend = _overlayForm.PlotFpsOnTrend;
             }
 
             if (_osdOpacitySlider != null && _osdOpacitySlider.Value != _osdOpacityPct)
@@ -832,6 +855,8 @@ namespace MiniFanControl
             if (_osdShowNvmeCb != null) _osdShowNvmeCb.Checked = _osdShowNvme;
             if (_osdShowPowerCb != null) _osdShowPowerCb.Checked = _osdShowPower;
             if (_osdShowRamCb != null) _osdShowRamCb.Checked = _osdShowRam;
+            if (_osdShowFpsCb != null) _osdShowFpsCb.Checked = _osdShowFps;
+            if (_osdShowLowsCb != null) _osdShowLowsCb.Checked = _osdShowLows;
             if (_osdShowGpuLoadCb != null) _osdShowGpuLoadCb.Checked = _osdShowGpuLoad;
             if (_osdShowApuFanCb != null) _osdShowApuFanCb.Checked = _osdShowApuFan;
             if (_osdShowSysFanCb != null)
@@ -842,6 +867,8 @@ namespace MiniFanControl
             }
             if (_osdShowModeCb != null) _osdShowModeCb.Checked = _osdShowMode;
             if (_osdShowPeaksCb != null) _osdShowPeaksCb.Checked = _osdShowPeaks;
+            if (_osdShowFpsGraphCb != null) _osdShowFpsGraphCb.Checked = _osdShowFpsGraph;
+            if (_osdPlotFpsOnTrendCb != null) _osdPlotFpsOnTrendCb.Checked = _osdPlotFpsOnTrend;
             if (_osdMatchThemeCb != null) _osdMatchThemeCb.Checked = _osdMatchTheme;
 
             if (_osdToggleOverlayBtn != null)
@@ -971,6 +998,9 @@ namespace MiniFanControl
                 {
                     if (!_overlayForm.Visible) _overlayForm.Show();
                     _overlayForm.ApplyClickThrough(_lockOverlay);
+                    _overlayForm.EnsureTopMost();
+                    _overlayForm.BringToFront();
+                    _overlayForm.Invalidate();
                 }
                 else
                 {
@@ -1580,11 +1610,15 @@ namespace MiniFanControl
                     else if (k == "OsdShowNvme") _osdShowNvme = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowPower") _osdShowPower = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowRam") _osdShowRam = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowFps") _osdShowFps = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowLows") _osdShowLows = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowGpuLoad") _osdShowGpuLoad = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowApuFan") _osdShowApuFan = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowSysFan") _osdShowSysFan = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowMode") _osdShowMode = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowPeaks") _osdShowPeaks = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowFpsGraph") _osdShowFpsGraph = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdPlotFpsOnTrend") _osdPlotFpsOnTrend = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "RestoreAutoOnExit") _restoreAutoOnExit = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "EnableHotkeys") _enableGlobalHotkeys = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "HasDualFans") _hasDualFans = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
@@ -1668,11 +1702,15 @@ namespace MiniFanControl
                 lines.Add("OsdShowNvme=" + (_osdShowNvme ? "1" : "0"));
                 lines.Add("OsdShowPower=" + (_osdShowPower ? "1" : "0"));
                 lines.Add("OsdShowRam=" + (_osdShowRam ? "1" : "0"));
+                lines.Add("OsdShowFps=" + (_osdShowFps ? "1" : "0"));
+                lines.Add("OsdShowLows=" + (_osdShowLows ? "1" : "0"));
                 lines.Add("OsdShowGpuLoad=" + (_osdShowGpuLoad ? "1" : "0"));
                 lines.Add("OsdShowApuFan=" + (_osdShowApuFan ? "1" : "0"));
                 lines.Add("OsdShowSysFan=" + (_osdShowSysFan ? "1" : "0"));
                 lines.Add("OsdShowMode=" + (_osdShowMode ? "1" : "0"));
                 lines.Add("OsdShowPeaks=" + (_osdShowPeaks ? "1" : "0"));
+                lines.Add("OsdShowFpsGraph=" + (_osdShowFpsGraph ? "1" : "0"));
+                lines.Add("OsdPlotFpsOnTrend=" + (_osdPlotFpsOnTrend ? "1" : "0"));
                 lines.Add("RestoreAutoOnExit=" + (_restoreAutoOnExit ? "1" : "0"));
                 lines.Add("EnableHotkeys=" + (_enableGlobalHotkeys ? "1" : "0"));
                 lines.Add("HasDualFans=" + (_hasDualFans ? "1" : "0"));
@@ -3779,11 +3817,15 @@ namespace MiniFanControl
                 _osdShowNvme = true;
                 _osdShowPower = true;
                 _osdShowRam = true;
+                _osdShowFps = true;
+                _osdShowLows = true;
                 _osdShowGpuLoad = true;
                 _osdShowApuFan = true;
                 if (_hasDualFans) _osdShowSysFan = true;
                 _osdShowMode = true;
                 _osdShowPeaks = true;
+                _osdShowFpsGraph = true;
+                _osdPlotFpsOnTrend = true;
                 SyncOsdStudioUiFromOverlay();
                 SyncOverlayFromStudio();
             };
@@ -3806,11 +3848,15 @@ namespace MiniFanControl
                 _osdShowNvme = true;
                 _osdShowPower = true;
                 _osdShowRam = true;
+                _osdShowFps = true;
+                _osdShowLows = true;
                 _osdShowGpuLoad = true;
                 _osdShowApuFan = true;
                 _osdShowSysFan = _hasDualFans;
                 _osdShowMode = true;
                 _osdShowPeaks = true;
+                _osdShowFpsGraph = true;
+                _osdPlotFpsOnTrend = true;
                 _osdMatchTheme = true;
                 _osdScaleTier = 0;
                 _osdGraphMode = 3;
@@ -3822,33 +3868,33 @@ namespace MiniFanControl
             };
             p.Controls.Add(_osdResetDefaultsBtn);
 
-            // Row 6 (y=191): Checkboxes Grid (4 Columns)
+            // Row 6 (y=188): Checkboxes Grid (4 Columns)
             // Column 1: x=6, Column 2: x=210, Column 3: x=414, Column 4: x=618
-            _osdShowCpuCb = new CheckBox { Text = "CPU Temp", Location = new Point(6, 191), Size = new Size(196, 20), Checked = _osdShowCpu, UseMnemonic = false };
+            _osdShowCpuCb = new CheckBox { Text = "CPU Temp", Location = new Point(6, 188), Size = new Size(196, 20), Checked = _osdShowCpu, UseMnemonic = false };
             _osdShowCpuCb.CheckedChanged += (s, e) => { _osdShowCpu = _osdShowCpuCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowCpuCb);
 
-            _osdShowGpuCb = new CheckBox { Text = "iGPU Temp", Location = new Point(210, 191), Size = new Size(196, 20), Checked = _osdShowGpu, UseMnemonic = false };
+            _osdShowGpuCb = new CheckBox { Text = "iGPU Temp", Location = new Point(210, 188), Size = new Size(196, 20), Checked = _osdShowGpu, UseMnemonic = false };
             _osdShowGpuCb.CheckedChanged += (s, e) => { _osdShowGpu = _osdShowGpuCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowGpuCb);
 
-            _osdShowNvmeCb = new CheckBox { Text = "NVMe SSD Temp", Location = new Point(414, 191), Size = new Size(196, 20), Checked = _osdShowNvme, UseMnemonic = false };
+            _osdShowNvmeCb = new CheckBox { Text = "NVMe SSD Temp", Location = new Point(414, 188), Size = new Size(196, 20), Checked = _osdShowNvme, UseMnemonic = false };
             _osdShowNvmeCb.CheckedChanged += (s, e) => { _osdShowNvme = _osdShowNvmeCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowNvmeCb);
 
-            _osdShowRamCb = new CheckBox { Text = "RAM Load & Power", Location = new Point(618, 191), Size = new Size(202, 20), Checked = _osdShowRam, UseMnemonic = false };
+            _osdShowRamCb = new CheckBox { Text = "RAM Load & Power", Location = new Point(618, 188), Size = new Size(202, 20), Checked = _osdShowRam, UseMnemonic = false };
             _osdShowRamCb.CheckedChanged += (s, e) => { _osdShowRam = _osdShowRamCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowRamCb);
 
-            // Row 7 (y=213):
-            _osdShowApuFanCb = new CheckBox { Text = "APU Fan RPM", Location = new Point(6, 213), Size = new Size(196, 20), Checked = _osdShowApuFan, UseMnemonic = false };
+            // Row 7 (y=208):
+            _osdShowApuFanCb = new CheckBox { Text = "APU Fan RPM", Location = new Point(6, 208), Size = new Size(196, 20), Checked = _osdShowApuFan, UseMnemonic = false };
             _osdShowApuFanCb.CheckedChanged += (s, e) => { _osdShowApuFan = _osdShowApuFanCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowApuFanCb);
 
             _osdShowSysFanCb = new CheckBox
             {
                 Text = _hasDualFans ? "Sys Fan RPM" : "Sys Fan RPM (N/A)",
-                Location = new Point(210, 213),
+                Location = new Point(210, 208),
                 Size = new Size(196, 20),
                 Checked = _osdShowSysFan && _hasDualFans,
                 Enabled = _hasDualFans,
@@ -3857,34 +3903,51 @@ namespace MiniFanControl
             _osdShowSysFanCb.CheckedChanged += (s, e) => { _osdShowSysFan = _osdShowSysFanCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowSysFanCb);
 
-            _osdShowPowerCb = new CheckBox { Text = "APU Power (W)", Location = new Point(414, 213), Size = new Size(196, 20), Checked = _osdShowPower, UseMnemonic = false };
+            _osdShowPowerCb = new CheckBox { Text = "APU Power (W)", Location = new Point(414, 208), Size = new Size(196, 20), Checked = _osdShowPower, UseMnemonic = false };
             _osdShowPowerCb.CheckedChanged += (s, e) => { _osdShowPower = _osdShowPowerCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowPowerCb);
 
-            _osdShowGpuLoadCb = new CheckBox { Text = "FPS / GPU Load", Location = new Point(618, 213), Size = new Size(202, 20), Checked = _osdShowGpuLoad, UseMnemonic = false };
+            _osdShowGpuLoadCb = new CheckBox { Text = "GPU Load & Clock", Location = new Point(618, 208), Size = new Size(202, 20), Checked = _osdShowGpuLoad, UseMnemonic = false };
             _osdShowGpuLoadCb.CheckedChanged += (s, e) => { _osdShowGpuLoad = _osdShowGpuLoadCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowGpuLoadCb);
 
-            // Row 8 (y=235):
-            _osdShowModeCb = new CheckBox { Text = "Thermal Mode", Location = new Point(6, 235), Size = new Size(196, 20), Checked = _osdShowMode, UseMnemonic = false };
+            // Row 8 (y=228):
+            _osdShowFpsCb = new CheckBox { Text = "Live FPS & Frametime", Location = new Point(6, 228), Size = new Size(196, 20), Checked = _osdShowFps, UseMnemonic = false };
+            _osdShowFpsCb.CheckedChanged += (s, e) => { _osdShowFps = _osdShowFpsCb.Checked; SyncOverlayFromStudio(); };
+            p.Controls.Add(_osdShowFpsCb);
+
+            _osdShowLowsCb = new CheckBox { Text = "0.1% Low & Avg FPS", Location = new Point(210, 228), Size = new Size(196, 20), Checked = _osdShowLows, UseMnemonic = false };
+            _osdShowLowsCb.CheckedChanged += (s, e) => { _osdShowLows = _osdShowLowsCb.Checked; SyncOverlayFromStudio(); };
+            p.Controls.Add(_osdShowLowsCb);
+
+            _osdShowModeCb = new CheckBox { Text = "Thermal Mode", Location = new Point(414, 228), Size = new Size(196, 20), Checked = _osdShowMode, UseMnemonic = false };
             _osdShowModeCb.CheckedChanged += (s, e) => { _osdShowMode = _osdShowModeCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowModeCb);
 
-            _osdShowPeaksCb = new CheckBox { Text = "Peak Trackers (▲)", Location = new Point(210, 235), Size = new Size(196, 20), Checked = _osdShowPeaks, UseMnemonic = false };
+            _osdShowPeaksCb = new CheckBox { Text = "Peak Trackers (▲)", Location = new Point(618, 228), Size = new Size(202, 20), Checked = _osdShowPeaks, UseMnemonic = false };
             _osdShowPeaksCb.CheckedChanged += (s, e) => { _osdShowPeaks = _osdShowPeaksCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowPeaksCb);
 
-            _osdMatchThemeCb = new CheckBox { Text = "Match App Theme", Location = new Point(414, 235), Size = new Size(196, 20), Checked = _osdMatchTheme, UseMnemonic = false };
+            // Row 9 (y=248):
+            _osdMatchThemeCb = new CheckBox { Text = "Match App Theme", Location = new Point(6, 248), Size = new Size(196, 20), Checked = _osdMatchTheme, UseMnemonic = false };
             _osdMatchThemeCb.CheckedChanged += (s, e) => { _osdMatchTheme = _osdMatchThemeCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdMatchThemeCb);
 
-            // Row 9 (y=258): Guidance Tip Box
+            _osdShowFpsGraphCb = new CheckBox { Text = "FPS & Frametime Graph", Location = new Point(210, 248), Size = new Size(196, 20), Checked = _osdShowFpsGraph, UseMnemonic = false };
+            _osdShowFpsGraphCb.CheckedChanged += (s, e) => { _osdShowFpsGraph = _osdShowFpsGraphCb.Checked; SyncOverlayFromStudio(); };
+            p.Controls.Add(_osdShowFpsGraphCb);
+
+            _osdPlotFpsOnTrendCb = new CheckBox { Text = "Plot FPS on Live Trend", Location = new Point(414, 248), Size = new Size(196, 20), Checked = _osdPlotFpsOnTrend, UseMnemonic = false };
+            _osdPlotFpsOnTrendCb.CheckedChanged += (s, e) => { _osdPlotFpsOnTrend = _osdPlotFpsOnTrendCb.Checked; SyncOverlayFromStudio(); };
+            p.Controls.Add(_osdPlotFpsOnTrendCb);
+
+            // Row 10 (y=268): Guidance Tip Box
             _osdTipLabel = new Label
             {
                 Text = "Tip: Drag OSD anywhere across multiple monitors with your mouse. Right-click the OSD anytime for quick scale, graph modes, heights & click-through lock, or press Ctrl+Alt+F9 to toggle overlay.",
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Regular),
-                Location = new Point(4, 258),
-                Size = new Size(818, 44),
+                Location = new Point(4, 268),
+                Size = new Size(818, 32),
                 Padding = new Padding(6, 4, 6, 4),
                 BorderStyle = BorderStyle.FixedSingle,
                 UseMnemonic = false
@@ -4281,7 +4344,9 @@ namespace MiniFanControl
             {
                 _osdShowCpuCb, _osdShowGpuCb, _osdShowNvmeCb, _osdShowRamCb,
                 _osdShowApuFanCb, _osdShowSysFanCb, _osdShowPowerCb, _osdShowGpuLoadCb,
-                _osdShowModeCb, _osdShowPeaksCb, _osdMatchThemeCb
+                _osdShowFpsCb, _osdShowLowsCb,
+                _osdShowModeCb, _osdShowPeaksCb, _osdMatchThemeCb,
+                _osdShowFpsGraphCb, _osdPlotFpsOnTrendCb
             };
             foreach (CheckBox cb in cbs)
             {

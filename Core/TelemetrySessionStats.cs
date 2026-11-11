@@ -31,6 +31,9 @@ namespace MiniFanControl
         public string Mode;
         public int GpuLoadPct;
         public int Fps;
+        public double FrametimeMs;
+        public int AvgFps;
+        public int P01LowFps;
         public int NvmeTemp;
         public double RamUsedGb;
         public int RamLoadPct;
@@ -59,7 +62,14 @@ namespace MiniFanControl
         public int MaxFan2Rpm { get; private set; }
         public int MinGpuLoad { get; private set; }
         public int MaxGpuLoad { get; private set; }
+        public int MinFps { get; private set; }
         public int MaxFps { get; private set; }
+        public double AvgFps { get { return _fpsSampleCount > 0 ? (double)_sumFps / _fpsSampleCount : 0.0; } }
+        public int P1LowFps { get; private set; }
+        public int P01LowFps { get; private set; }
+        public double MinFrametimeMs { get; private set; }
+        public double MaxFrametimeMs { get; private set; }
+        public double AvgFrametimeMs { get { return _frametimeSampleCount > 0 ? _sumFrametimeMs / _frametimeSampleCount : 0.0; } }
 
         private long _sumCpuTemp;
         private long _sumGpuTemp;
@@ -74,6 +84,10 @@ namespace MiniFanControl
         private int _fan1SampleCount;
         private long _sumFan2Rpm;
         private int _fan2SampleCount;
+        private long _sumFps;
+        private int _fpsSampleCount;
+        private double _sumFrametimeMs;
+        private int _frametimeSampleCount;
 
         private readonly List<int> _cpuHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _gpuHist = new List<int>(HISTORY_LEN);
@@ -83,6 +97,10 @@ namespace MiniFanControl
         private readonly List<int> _fan1RpmHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _fan2RpmHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _gpuLoadHist = new List<int>(HISTORY_LEN);
+        private readonly List<int> _fpsHist = new List<int>(HISTORY_LEN);
+        private readonly List<int> _avgFpsHist = new List<int>(HISTORY_LEN);
+        private readonly List<int> _p01LowHist = new List<int>(HISTORY_LEN);
+        private readonly List<int> _frametimeHist = new List<int>(HISTORY_LEN);
         private readonly List<TelemetryRecord> _sessionLog = new List<TelemetryRecord>();
         private readonly object _logLock = new object();
 
@@ -104,6 +122,13 @@ namespace MiniFanControl
         public List<int> Fan1RpmHistory { get { return _fan1RpmHist; } }
         public List<int> Fan2RpmHistory { get { return _fan2RpmHist; } }
         public List<int> GpuLoadHistory { get { return _gpuLoadHist; } }
+        public List<int> FpsHistory { get { return _fpsHist; } }
+        public List<int> AvgFpsHistory { get { return _avgFpsHist; } }
+        public List<int> P01LowHistory { get { return _p01LowHist; } }
+        public List<int> FrametimeHistory { get { return _frametimeHist; } }
+
+        public string GetFrametimeSparkline() { return FormatSparkline(_frametimeHist, 1); }
+        public string GetFpsSparkline() { return FormatSparkline(_fpsHist, 2); }
 
         public TelemetrySessionStats()
         {
@@ -129,7 +154,12 @@ namespace MiniFanControl
             MaxFan2Rpm = 0;
             MinGpuLoad = int.MaxValue;
             MaxGpuLoad = 0;
+            MinFps = int.MaxValue;
             MaxFps = 0;
+            P1LowFps = 0;
+            P01LowFps = 0;
+            MinFrametimeMs = double.MaxValue;
+            MaxFrametimeMs = 0.0;
             _sumCpuTemp = 0;
             _sumGpuTemp = 0;
             _gpuSampleCount = 0;
@@ -143,6 +173,10 @@ namespace MiniFanControl
             _fan1SampleCount = 0;
             _sumFan2Rpm = 0;
             _fan2SampleCount = 0;
+            _sumFps = 0;
+            _fpsSampleCount = 0;
+            _sumFrametimeMs = 0.0;
+            _frametimeSampleCount = 0;
             _cpuHist.Clear();
             _gpuHist.Clear();
             _nvmeHist.Clear();
@@ -151,12 +185,22 @@ namespace MiniFanControl
             _fan1RpmHist.Clear();
             _fan2RpmHist.Clear();
             _gpuLoadHist.Clear();
+            _fpsHist.Clear();
+            _avgFpsHist.Clear();
+            _p01LowHist.Clear();
+            _frametimeHist.Clear();
             lock (_logLock) { _sessionLog.Clear(); }
         }
 
         public void Record(FanStatus st)
         {
             if (st.CpuTemp <= 0) return;
+
+            double recFt = st.RtssFrametimeMs > 0 ? st.RtssFrametimeMs : (st.RtssFps > 0 ? (1000.0 / st.RtssFps) : 0.0);
+            int recAvg = AvgFps > 0 ? (int)Math.Round(AvgFps) : (st.RtssAvgFps > 0 ? st.RtssAvgFps : st.RtssFps);
+            if (MaxFps > 0 && recAvg > MaxFps) recAvg = MaxFps;
+            int recP01 = st.RtssP01LowFps > 0 ? st.RtssP01LowFps : P01LowFps;
+
             lock (_logLock)
             {
                 if (_sessionLog.Count >= 10000) _sessionLog.RemoveAt(0);
@@ -173,6 +217,9 @@ namespace MiniFanControl
                     Mode = st.Mode,
                     GpuLoadPct = st.GfxActivityPct,
                     Fps = st.Fps,
+                    FrametimeMs = recFt,
+                    AvgFps = recAvg,
+                    P01LowFps = recP01,
                     NvmeTemp = st.NvmeTemp,
                     RamUsedGb = st.RamUsedGb,
                     RamLoadPct = st.RamLoadPct,
@@ -236,7 +283,47 @@ namespace MiniFanControl
                 if (st.GfxActivityPct < MinGpuLoad) MinGpuLoad = st.GfxActivityPct;
                 if (st.GfxActivityPct > MaxGpuLoad) MaxGpuLoad = st.GfxActivityPct;
             }
-            if (st.RtssFps > MaxFps) MaxFps = st.RtssFps;
+
+            if (st.RtssFps > 0 && st.RtssFps <= 1000)
+            {
+                _fpsSampleCount++;
+                _sumFps += st.RtssFps;
+                if (st.RtssFps < MinFps) MinFps = st.RtssFps;
+                if (st.RtssFps > MaxFps) MaxFps = st.RtssFps;
+                PushSample(_fpsHist, st.RtssFps);
+
+                double ft = st.RtssFrametimeMs > 0 ? st.RtssFrametimeMs : (1000.0 / st.RtssFps);
+                if (ft > 0.0)
+                {
+                    _frametimeSampleCount++;
+                    _sumFrametimeMs += ft;
+                    if (ft < MinFrametimeMs) MinFrametimeMs = ft;
+                    if (ft > MaxFrametimeMs) MaxFrametimeMs = ft;
+                    PushSample(_frametimeHist, (int)Math.Round(ft * 10.0));
+                }
+
+                if (st.RtssP01LowFps > 0) P01LowFps = st.RtssP01LowFps;
+                if (st.RtssP1LowFps > 0) P1LowFps = st.RtssP1LowFps;
+
+                if (P01LowFps <= 0 && _fpsHist.Count >= 5)
+                {
+                    List<int> sorted = new List<int>(_fpsHist);
+                    sorted.Sort();
+                    int idx1 = Math.Max(0, (int)Math.Floor(sorted.Count * 0.01));
+                    int idx01 = Math.Max(0, (int)Math.Floor(sorted.Count * 0.001));
+                    P1LowFps = sorted[idx1];
+                    P01LowFps = sorted[idx01];
+                }
+
+                int curAvg = (int)Math.Round(AvgFps);
+                if (curAvg <= 0) curAvg = st.RtssFps;
+                if (MaxFps > 0 && curAvg > MaxFps) curAvg = MaxFps;
+                PushSample(_avgFpsHist, curAvg);
+
+                int curLow01 = st.RtssP01LowFps > 0 ? st.RtssP01LowFps : P01LowFps;
+                if (curLow01 <= 0) curLow01 = (int)(st.RtssFps * 0.78);
+                PushSample(_p01LowHist, curLow01);
+            }
 
             if (st.Fan1Rpm > 0)
             {

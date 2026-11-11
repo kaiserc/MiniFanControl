@@ -6,7 +6,7 @@ set "CSC=%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if not exist "%CSC%" (
     echo ::error title=CSC Missing::Built-in .NET C# compiler not found at: %CSC%
     echo [ERROR] Built-in .NET C# compiler not found at: %CSC%
-    if "%CI%"=="" pause
+    if not defined CI if not defined ANTIGRAVITY if not defined NONINTERACTIVE if "%~1"=="--pause" pause
     exit /b 1
 )
 
@@ -33,7 +33,7 @@ if %CSC_ERR% neq 0 (
     for /f "delims=" %%L in ('type "%TEMP%\csc_helper.log" ^| findstr /C:"error CS"') do (
         echo ::error file=minifan-helper.cs::%%L
     )
-    if "%CI%"=="" pause
+    if not defined CI if not defined ANTIGRAVITY if not defined NONINTERACTIVE if "%~1"=="--pause" pause
     exit /b 1
 )
 
@@ -54,7 +54,7 @@ if %CSC_GUI_ERR% neq 0 (
     for /f "delims=" %%L in ('type "%TEMP%\csc_gui.log" ^| findstr /C:"error CS"') do (
         echo ::error file=MiniFanControl.cs::%%L
     )
-    if "%CI%"=="" pause
+    if not defined CI if not defined ANTIGRAVITY if not defined NONINTERACTIVE if "%~1"=="--pause" pause
     exit /b 1
 )
 
@@ -73,6 +73,6 @@ if %TEST_ERR% neq 0 (
     for /f "delims=" %%L in ('type "%TEMP%\tests.log" ^| findstr /C:"[FAIL]" /C:"failed" /C:"Result:" /C:"Exception" /C:"Error"') do (
         echo ::error file=Tests/SelfTestSuite.cs::%%L
     )
-    if "%CI%"=="" pause
+    if not defined CI if not defined ANTIGRAVITY if not defined NONINTERACTIVE if "%~1"=="--pause" pause
     exit /b 1
 )

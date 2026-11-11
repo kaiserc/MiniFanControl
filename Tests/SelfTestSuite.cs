@@ -1456,6 +1456,72 @@ namespace MiniFanControl
                 string.Format("NvmeOk={0}, RamOk={1} (Max={2:F1}W, Avg={3:F1}W), SparksOk=({4},{5}), ResetOk={6}",
                     nvmeStatsValid, ramStatsValid, testStatsNvme.MaxRamPowerWatts, testStatsNvme.AvgRamPowerWatts, nvmeSparkValid, ramSparkValid, nvmeResetValid));
 
+            // 39. High-Resolution RTSS Frametime, Average FPS & 0.1% Lows Telemetry
+            int[] synthFrameTimes = new int[1000];
+            // 985 frames at 6.94ms (144 FPS) -> 6944 microseconds
+            for (int i = 0; i < 985; i++) synthFrameTimes[i] = 6944;
+            // 10 frames at 13.88ms (72 FPS) -> 13888 microseconds (drops to 1% low)
+            for (int i = 985; i < 995; i++) synthFrameTimes[i] = 13888;
+            // 5 frames at 25.0ms (40 FPS) -> 25000 microseconds (worst drops to 0.1% low)
+            for (int i = 995; i < 1000; i++) synthFrameTimes[i] = 25000;
+
+            int synthAvg, synthP1, synthP01;
+            FpsMonitor.CalculateLowsFromMicroseconds(synthFrameTimes, out synthAvg, out synthP1, out synthP01);
+
+            bool lowsMathValid = synthAvg >= 135 && synthAvg <= 145 &&
+                                 synthP1 >= 70 && synthP1 <= 75 &&
+                                 synthP01 >= 38 && synthP01 <= 42;
+
+            TelemetrySessionStats fpsStats = new TelemetrySessionStats();
+            fpsStats.Record(new FanStatus { CpuTemp = 60, RtssFps = 144, RtssFrametimeMs = 6.9, RtssAvgFps = 142, RtssP1LowFps = 72, RtssP01LowFps = 40 });
+            fpsStats.Record(new FanStatus { CpuTemp = 65, RtssFps = 140, RtssFrametimeMs = 7.1, RtssAvgFps = 141, RtssP1LowFps = 72, RtssP01LowFps = 40 });
+            fpsStats.Record(new FanStatus { CpuTemp = 70, RtssFps = 138, RtssFrametimeMs = 7.2, RtssAvgFps = 140, RtssP1LowFps = 72, RtssP01LowFps = 40 });
+
+            bool sessionFpsValid = fpsStats.MinFps == 138 && fpsStats.MaxFps == 144 &&
+                                   fpsStats.AvgFps > 139.0 && fpsStats.AvgFps < 142.0 &&
+                                   fpsStats.AvgFrametimeMs > 6.9 && fpsStats.AvgFrametimeMs < 7.2 &&
+                                   fpsStats.P01LowFps == 40 && fpsStats.P1LowFps == 72 &&
+                                   fpsStats.FrametimeHistory != null && fpsStats.FrametimeHistory.Count == 3 &&
+                                   fpsStats.AvgFpsHistory != null && fpsStats.AvgFpsHistory.Count == 3 &&
+                                   fpsStats.P01LowHistory != null && fpsStats.P01LowHistory.Count == 3;
+            string ftSpark = fpsStats.GetFrametimeSparkline();
+            bool ftSparkValid = !string.IsNullOrEmpty(ftSpark) && ftSpark.Length == 3;
+
+            bool osdRenderValid = false;
+            try
+            {
+                using (CapFrameXOverlayForm osdTest = new CapFrameXOverlayForm())
+                {
+                    osdTest.Stats = fpsStats;
+                    osdTest.ShowFps = true;
+                    osdTest.ShowLows = true;
+                    osdTest.ShowGpuLoad = true;
+                    osdTest.UpdateMetrics(new FanStatus { CpuTemp = 65, RtssFps = 144, RtssFrametimeMs = 6.9, RtssP01LowFps = 40, RtssAvgFps = 142 }, "Balanced", true);
+                    osdTest.VerticalLayout = false;
+                    osdTest.UpdateDimensions();
+                    int wHoriz = osdTest.Width;
+                    using (Bitmap bmpH = new Bitmap(Math.Max(1, osdTest.Width), Math.Max(1, osdTest.Height)))
+                    {
+                        osdTest.DrawToBitmap(bmpH, new Rectangle(0, 0, osdTest.Width, osdTest.Height));
+                    }
+
+                    osdTest.VerticalLayout = true;
+                    osdTest.UpdateDimensions();
+                    int wVert = osdTest.Width;
+                    using (Bitmap bmpV = new Bitmap(Math.Max(1, osdTest.Width), Math.Max(1, osdTest.Height)))
+                    {
+                        osdTest.DrawToBitmap(bmpV, new Rectangle(0, 0, osdTest.Width, osdTest.Height));
+                    }
+                    osdRenderValid = wHoriz > 0 && wVert > 0 && osdTest.CountVisibleMetrics() >= 5;
+                }
+            }
+            catch { osdRenderValid = false; }
+
+            Check(lowsMathValid && sessionFpsValid && ftSparkValid && osdRenderValid,
+                "High-Resolution RTSS Frametime, Average FPS & 0.1% Lows Telemetry",
+                string.Format("LowsMathOk={0} (Avg={1}, 1%={2}, 0.1%={3}), SessionOk={4}, SparkOk={5}, OsdRender={6}",
+                    lowsMathValid, synthAvg, synthP1, synthP01, sessionFpsValid, ftSparkValid, osdRenderValid));
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));
