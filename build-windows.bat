@@ -42,10 +42,13 @@ if errorlevel 1 (
     echo [WARNING] Icon generation step returned non-zero, continuing build...
 )
 
+set "MANIFEST_FLAG="
+if exist app.manifest set "MANIFEST_FLAG=/win32manifest:app.manifest"
+
 if exist app.ico (
-    "%CSC%" /nologo /platform:x64 /target:winexe /win32icon:app.ico /out:MiniFanControl.exe /recurse:*.cs > "%TEMP%\csc_gui.log" 2>&1
+    "%CSC%" /nologo /platform:x64 /target:winexe /win32icon:app.ico %MANIFEST_FLAG% /out:MiniFanControl.exe /recurse:*.cs > "%TEMP%\csc_gui.log" 2>&1
 ) else (
-    "%CSC%" /nologo /platform:x64 /target:winexe /out:MiniFanControl.exe /recurse:*.cs > "%TEMP%\csc_gui.log" 2>&1
+    "%CSC%" /nologo /platform:x64 /target:winexe %MANIFEST_FLAG% /out:MiniFanControl.exe /recurse:*.cs > "%TEMP%\csc_gui.log" 2>&1
 )
 set CSC_GUI_ERR=%ERRORLEVEL%
 type "%TEMP%\csc_gui.log"

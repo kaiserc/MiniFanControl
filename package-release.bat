@@ -34,6 +34,7 @@ copy /y "%~dp0MiniFanControl.exe" "%STAGE_DIR%\" >nul
 copy /y "%~dp0minifan-helper.exe" "%STAGE_DIR%\" >nul
 copy /y "%~dp0inpoutx64.dll" "%STAGE_DIR%\" >nul
 copy /y "%~dp0app.ico" "%STAGE_DIR%\" >nul
+copy /y "%~dp0app.manifest" "%STAGE_DIR%\" >nul
 copy /y "%~dp0logo.png" "%STAGE_DIR%\" >nul
 copy /y "%~dp0README.md" "%STAGE_DIR%\" >nul
 copy /y "%~dp0GUIDE.md" "%STAGE_DIR%\" >nul

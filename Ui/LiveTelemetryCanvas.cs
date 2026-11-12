@@ -27,6 +27,8 @@ namespace MiniFanControl
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool IsRadeonTheme { get; set; }
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public bool IsAfterburnerTheme { get; set; }
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool HasDualFans { get; set; }
 
         // 0 = All / Default (CPU), 1 = Highlight CPU Temp, 2 = Highlight iGPU Temp, 3 = Highlight Power W
@@ -354,29 +356,41 @@ namespace MiniFanControl
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
-            Color bg = IsRadeonTheme
-                ? Color.FromArgb(0x16, 0x0A, 0x0E)
-                : (IsDarkMode ? Color.FromArgb(0x16, 0x16, 0x22) : Color.FromArgb(0xF8, 0xFA, 0xFC));
-            Color gridColor = IsRadeonTheme
-                ? Color.FromArgb(0x42, 0x1C, 0x26)
-                : (IsDarkMode ? Color.FromArgb(0x2D, 0x2F, 0x42) : Color.FromArgb(0xE2, 0xE8, 0xF0));
-            Color labelColor = IsRadeonTheme
-                ? Color.FromArgb(0xD6, 0xA8, 0xB4)
-                : (IsDarkMode ? Color.FromArgb(0x94, 0x99, 0xB0) : Color.FromArgb(0x47, 0x55, 0x69));
+            Color bg = IsAfterburnerTheme
+                ? Color.FromArgb(0x13, 0x15, 0x19)
+                : (IsRadeonTheme
+                    ? Color.FromArgb(0x16, 0x0A, 0x0E)
+                    : (IsDarkMode ? Color.FromArgb(0x16, 0x16, 0x22) : Color.FromArgb(0xF8, 0xFA, 0xFC)));
+            Color gridColor = IsAfterburnerTheme
+                ? Color.FromArgb(0x28, 0x30, 0x3A)
+                : (IsRadeonTheme
+                    ? Color.FromArgb(0x42, 0x1C, 0x26)
+                    : (IsDarkMode ? Color.FromArgb(0x2D, 0x2F, 0x42) : Color.FromArgb(0xE2, 0xE8, 0xF0)));
+            Color labelColor = IsAfterburnerTheme
+                ? Color.FromArgb(0x8A, 0x96, 0xA8)
+                : (IsRadeonTheme
+                    ? Color.FromArgb(0xD6, 0xA8, 0xB4)
+                    : (IsDarkMode ? Color.FromArgb(0x94, 0x99, 0xB0) : Color.FromArgb(0x47, 0x55, 0x69)));
 
-            Color cpuColor = IsRadeonTheme
-                ? Color.FromArgb(0xF4, 0x3F, 0x5E)
-                : (IsDarkMode ? Color.FromArgb(0x60, 0xA5, 0xFA) : Color.FromArgb(0x25, 0x63, 0xEB));
-            Color gpuColor = IsRadeonTheme
-                ? Color.FromArgb(0x38, 0xBD, 0xF8)
-                : (IsDarkMode ? Color.FromArgb(0x4A, 0xDE, 0x80) : Color.FromArgb(0x16, 0xA3, 0x4A));
+            Color cpuColor = IsAfterburnerTheme
+                ? Color.FromArgb(0x00, 0xE6, 0x76)
+                : (IsRadeonTheme
+                    ? Color.FromArgb(0xF4, 0x3F, 0x5E)
+                    : (IsDarkMode ? Color.FromArgb(0x60, 0xA5, 0xFA) : Color.FromArgb(0x25, 0x63, 0xEB)));
+            Color gpuColor = IsAfterburnerTheme
+                ? Color.FromArgb(0x00, 0xE5, 0xFF)
+                : (IsRadeonTheme
+                    ? Color.FromArgb(0x38, 0xBD, 0xF8)
+                    : (IsDarkMode ? Color.FromArgb(0x4A, 0xDE, 0x80) : Color.FromArgb(0x16, 0xA3, 0x4A)));
             Color nvmeColor = IsDarkMode ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.FromArgb(0x08, 0x91, 0xB2);
-            Color pwrColor = IsRadeonTheme
-                ? Color.FromArgb(0xFB, 0x92, 0x3C)
-                : (IsDarkMode ? Color.FromArgb(0xFB, 0xBF, 0x24) : Color.FromArgb(0xD9, 0x77, 0x06));
+            Color pwrColor = IsAfterburnerTheme
+                ? Color.FromArgb(0xFF, 0x91, 0x00)
+                : (IsRadeonTheme
+                    ? Color.FromArgb(0xFB, 0x92, 0x3C)
+                    : (IsDarkMode ? Color.FromArgb(0xFB, 0xBF, 0x24) : Color.FromArgb(0xD9, 0x77, 0x06)));
             Color ramPwrColor = IsDarkMode ? Color.FromArgb(0x81, 0x8C, 0xF8) : Color.FromArgb(0x4F, 0x46, 0xE5);
-            Color apuRpmColor = IsDarkMode ? Color.FromArgb(0xC0, 0x84, 0xFC) : Color.FromArgb(0x7C, 0x3A, 0xED);
-            Color sysRpmColor = IsDarkMode ? Color.FromArgb(0x2D, 0xD4, 0xBF) : Color.FromArgb(0x0D, 0x94, 0x88);
+            Color apuRpmColor = IsAfterburnerTheme ? Color.FromArgb(0x00, 0xE6, 0x76) : (IsDarkMode ? Color.FromArgb(0xC0, 0x84, 0xFC) : Color.FromArgb(0x7C, 0x3A, 0xED));
+            Color sysRpmColor = IsAfterburnerTheme ? Color.FromArgb(0x00, 0xE5, 0xFF) : (IsDarkMode ? Color.FromArgb(0x2D, 0xD4, 0xBF) : Color.FromArgb(0x0D, 0x94, 0x88));
 
             g.Clear(bg);
             Rectangle plot = GetPlotRect();

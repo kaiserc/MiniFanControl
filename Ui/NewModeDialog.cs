@@ -72,6 +72,12 @@ namespace MiniFanControl
                     DialogResult = DialogResult.None;
                     return;
                 }
+                if (val.IndexOfAny(new[] { '|', ';', '=' }) >= 0)
+                {
+                    MessageBox.Show("Profile name cannot contain the characters: |, ;, or =", "Invalid Name", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    DialogResult = DialogResult.None;
+                    return;
+                }
                 ModeName = val;
             };
             Controls.Add(okBtn);
@@ -93,10 +99,4 @@ namespace MiniFanControl
             CancelButton = cancelBtn;
         }
     }
-
-    /// <summary>
-    /// Non-blocking real-time Fan Calibration Dialog.
-    /// Runs 1-pass or 3-pass fan calibration on a background worker thread while streaming
-    /// live RPM, temperature, power, progress bar, and step-by-step log updates to the UI.
-    /// </summary>
 }

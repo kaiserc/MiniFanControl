@@ -13,7 +13,7 @@
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 40 Passed](https://img.shields.io/badge/Automated%20Tests-40%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-4040-passing)
+[![Automated Tests: 41 Passed](https://img.shields.io/badge/Automated%20Tests-41%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-4141-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 
 **MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **KTHIN Ryzen AI 9 HX 370 PRO**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
@@ -172,25 +172,31 @@ To ensure zero driver conflicts and maximum stability, MiniFanControl strictly i
 
 ## 🔒 Kernel Driver Architecture & Security Deep-Dive
 
-### Driver Provenance, Origin & Licensing
-Mini PCs communicate with their embedded controller via raw ACPI I/O ports (`0x62/0x66`, `0x6C/0x6E`) and LPC Super I/O ports (`0x2E/0x2F`, `0x4E/0x4F`, `0x0A30–0x0A37`). Because 64-bit Windows prohibits user-mode processes from executing raw x86 `IN`/`OUT` CPU instructions, a kernel-mode driver service (`inpoutx64.sys`) is required.
+### Multi-Driver Support: WinRing0 1.3.1b & InpOut64 Dynamic Abstraction
+Mini PCs communicate with their embedded controller via raw ACPI I/O ports (`0x62/0x66`, `0x6C/0x6E`) and LPC Super I/O ports (`0x2E/0x2F`, `0x4E/0x4F`, `0x0A30–0x0A37`). Because 64-bit Windows prohibits user-mode processes from executing raw x86 `IN`/`OUT` CPU instructions, a kernel-mode driver service is required.
 
-- **Origin & Author**: Developed by Phillip Gibbons (Highresolution Enterprises / Red Fox UK).
-- **Upstream Project**: [Highresolution Enterprises InpOut32 / InpOutx64](http://www.highrez.co.uk/downloads/inpout32/)
-- **License**: GNU General Public License (GPL v2) / Open Source Freeware.
-- **Digital Signature**: The kernel binary `inpoutx64.sys` includes a standard Windows Authenticode digital signature cross-signed by Red Fox UK.
+MiniFanControl features a **unified multi-driver abstraction** in [`Hardware/NativeInpOut.cs`](Hardware/NativeInpOut.cs) with dynamic API loading (`LoadLibraryEx` + `GetProcAddress`), supporting both leading hardware access driver engines:
+
+1. **WinRing0 1.3.1b (`WinRing0x64.dll` / `WinRing0.sys`)**:
+   - Engine used by LibreHardwareMonitor and OpenHardwareMonitor.
+   - Automatically loaded first if present in the application or System32 folder.
+   - Direct port I/O and safe physical memory access via `ReadIoPortByte`, `WriteIoPortByte`, and `ReadPhysicalMemory`.
+2. **InpOut64 (`inpoutx64.dll` / `inpoutx64.sys`)**:
+   - Developed by Phillip Gibbons (Highresolution Enterprises / Red Fox UK).
+   - Seamlessly selected as fallback when `WinRing0x64.dll` is not present.
+   - Fully isolated port I/O and linear memory mapping.
 
 ### Windows 11 Memory Integrity (HVCI) & Security Recommendations
-1. **Memory Integrity (HVCI) Compatibility**: Microsoft flags `inpoutx64.sys` under the Windows 11 Microsoft Vulnerable Driver Blocklist because legacy builds accept arbitrary I/O requests.
-2. **Safe Read-Only Telemetry Default**: MiniFanControl **recommends keeping Memory Integrity ENABLED**. If Windows Defender blocks `inpoutx64.sys`, MiniFanControl does not crash or force driver installation—it automatically engages **Safe Read-Only Telemetry Monitoring Mode**. All CPU/iGPU temperatures, APU package power, GPU load, clocks, and voltages continue updating natively via AMD's official WHQL-certified driver interface (`atiadlxx.dll` / `amdfendrm.sys`), requiring zero unsigned kernel drivers and zero raw port I/O, while fan writes are safely disabled fail-closed.
+1. **Memory Integrity (HVCI) Compatibility**: Both legacy `WinRing0.sys` (CVE-2020-14979) and `inpoutx64.sys` are flagged by Microsoft under the Windows 11 Microsoft Vulnerable Driver Blocklist because they permit arbitrary port and physical memory access.
+2. **Safe Read-Only Telemetry Default**: MiniFanControl **recommends keeping Memory Integrity ENABLED**. If Windows Defender blocks kernel driver loading, MiniFanControl does not crash or force driver installation—it automatically engages **Safe Read-Only Telemetry Monitoring Mode**. All CPU/iGPU temperatures, APU package power, GPU load, clocks, and voltages continue updating natively via AMD's official WHQL-certified driver interface (`atiadlxx.dll` / `amdfendrm.sys`), requiring zero unsigned kernel drivers and zero raw port I/O, while fan writes are safely disabled fail-closed.
 3. **If You Choose to Enable Hardware Fan Control**: If you decide to toggle off Memory Integrity to allow custom fan curve writing, remember that you are reducing kernel memory isolation protections. Always ensure you download MiniFanControl from official repository releases and re-enable Memory Integrity if you cease using custom hardware fan curve writers.
-4. **Anti-Cheat Conflicts**: Competitive kernel-level anti-cheat software (such as Riot Vanguard, Easy Anti-Cheat, and BattlEye) may flag `inpoutx64.sys` while running. Use `minifan-helper.exe driver-stop` before launching competitive games.
+4. **Anti-Cheat Conflicts**: Competitive kernel-level anti-cheat software (such as Riot Vanguard, Easy Anti-Cheat, and BattlEye) may flag kernel drivers while running. Use `minifan-helper.exe driver-stop` before launching competitive games.
 
 ### How MiniFanControl Hardens Driver Access (Defense-in-Depth)
 MiniFanControl wraps all ring-0 driver operations inside a strict user-mode defense layer in [`Hardware/NativeInpOut.cs`](Hardware/NativeInpOut.cs):
 - **Strict Fail-Closed Port Whitelist Enforcement**: `IsPortWhitelisted()` strictly permits only documented ACPI EC and Super I/O ports for both reading and writing. Arbitrary unlisted port reads and sensitive ports (e.g., RTC `0x70/0x71`, PIC `0x20/0x21`, PIT `0x40..0x43`, Fast A20/Reset `0x92`, PCI reset `0xCF9`) are blocked fail-closed before touching the driver.
 - **Strict Physical Memory Bounds**: `MapPhysToLinSafe()` strictly confines physical memory mapping to the verified IT5570E EC aperture (`0xFE0B0400`, max 4 KB). Attempts to map low memory (<1 MB) or arbitrary system RAM are blocked.
-- **Safe Driver Shutdown for Gamers**: Users playing competitive multiplayer titles can immediately unload the driver service without rebooting by running:
+- **Safe Driver Shutdown for Gamers**: Users playing competitive multiplayer titles can immediately unload active driver services (`WinRing0_1_2_0` or `inpoutx64`) without rebooting by running:
   ```powershell
   .\minifan-helper.exe driver-stop
   ```
@@ -219,11 +225,11 @@ We welcome community hardware profiles for new Zen 4 / Zen 5 Mini PC models! Her
 
 ## 🚀 Quick Start (Windows)
 
-1. **Prerequisite**: Ensure `inpoutx64.dll` is located in the application folder (next to `MiniFanControl.exe`).
+1. **Prerequisite**: Ensure a supported kernel driver DLL (`WinRing0x64.dll` or `inpoutx64.dll`) is located in the application folder (next to `MiniFanControl.exe`).
 2. **First-Time Launch**:
-   - Right-click `MiniFanControl.exe` and select **Run as Administrator** once so `inpoutx64.dll` can register its kernel service (`inpoutx64.sys`).
+   - Right-click `MiniFanControl.exe` and select **Run as Administrator** once so the driver engine can initialize its kernel service (`WinRing0_1_2_0` or `inpoutx64`).
    - Subsequent runs can be launched normally without elevation.
-   - *Windows 11 Driver Security Note*: We recommend keeping **Memory Integrity (HVCI) ENABLED**. If Windows Defender blocks `inpoutx64.sys`, MiniFanControl runs in Safe Read-Only Telemetry Mode, reading APU power and temperatures natively via AMD's official driver with full security intact.
+   - *Windows 11 Driver Security Note*: We recommend keeping **Memory Integrity (HVCI) ENABLED**. If Windows Defender blocks kernel driver loading, MiniFanControl runs in Safe Read-Only Telemetry Mode, reading APU power and temperatures natively via AMD's official driver with full security intact.
 3. **Run the App**: Double-click `MiniFanControl.exe` (or run `run-windows.bat`).
 4. **Compile from Source**:
    - **Zero Tools Required (.NET 4.8 Framework)**: Double-click `build-windows.bat`. Compiles `MiniFanControl.exe` and `minifan-helper.exe` using the native `.NET Framework` compiler included with Windows 10/11.

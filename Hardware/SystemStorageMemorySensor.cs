@@ -173,6 +173,10 @@ namespace MiniFanControl
                 uint ret;
                 if (DeviceIoControl(h, IOCTL_STORAGE_QUERY_PROPERTY, inBuf, (uint)inSize, outBuf, (uint)outSize, out ret, IntPtr.Zero))
                 {
+                    // Ensure null-termination within the returned byte window
+                    if (ret < outSize) Marshal.WriteByte(outBuf, (int)ret, 0);
+                    else Marshal.WriteByte(outBuf, outSize - 1, 0);
+
                     int productOffset = Marshal.ReadInt32(outBuf, 16);
                     int snOffset = Marshal.ReadInt32(outBuf, 24);
 

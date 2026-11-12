@@ -101,7 +101,7 @@ namespace MiniFanControl
         private readonly List<int> _avgFpsHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _p01LowHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _frametimeHist = new List<int>(HISTORY_LEN);
-        private readonly List<TelemetryRecord> _sessionLog = new List<TelemetryRecord>();
+        private readonly Queue<TelemetryRecord> _sessionLog = new Queue<TelemetryRecord>(10000);
         private readonly object _logLock = new object();
 
         public int LoggedRecordCount { get { lock (_logLock) { return _sessionLog.Count; } } }
@@ -203,8 +203,8 @@ namespace MiniFanControl
 
             lock (_logLock)
             {
-                if (_sessionLog.Count >= 10000) _sessionLog.RemoveAt(0);
-                _sessionLog.Add(new TelemetryRecord
+                if (_sessionLog.Count >= 10000) _sessionLog.Dequeue();
+                _sessionLog.Enqueue(new TelemetryRecord
                 {
                     Timestamp = DateTime.Now,
                     CpuTemp = st.CpuTemp,
@@ -420,9 +420,4 @@ namespace MiniFanControl
             }
         }
     }
-
-    /// <summary>
-    /// Disposable guard providing fail-closed mutual exclusion for Embedded Controller bus access.
-    /// Automatically releases acquired mutexes upon disposal.
-    /// </summary>
 }

@@ -344,11 +344,4 @@ namespace MiniFanControl
             }
         }
     }
-
-    /// <summary>
-    /// CapFrameX / Radeon Adrenalin-style translucent, always-on-top On-Screen Display (OSD) overlay.
-    /// Supports Horizontal Compact Bar and Vertical Stack layouts, per-metric live Mini-Sparklines,
-    /// full Combined Multi-Series Live Graph, customizable metric visibility, opacity, theme sync,
-    /// mouse drag repositioning, and Win32 WS_EX_TRANSPARENT click-through lock mode.
-    /// </summary>
 }

@@ -43,6 +43,7 @@ Source: "{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#MyAppHelperExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "inpoutx64.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "app.manifest"; DestDir: "{app}"; Flags: ignoreversion
 Source: "logo.png"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "GUIDE.md"; DestDir: "{app}"; Flags: ignoreversion
@@ -55,7 +56,10 @@ Name: "{group}\Hardware Diagnostic Helper"; Filename: "{app}\{#MyAppHelperExe}";
 Name: "{group}\User & Tuning Guide"; Filename: "{app}\GUIDE.md"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app.ico"; Tasks: desktopicon
-Name: "{commonstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startupicon
 
 [Run]
+Filename: "{sys}\schtasks.exe"; Parameters: "/Create /F /RL HIGHEST /SC ONLOGON /TN ""MiniFanControl_Autostart"" /TR """"{app}\{#MyAppExeName}"""" --minimized"""; Flags: runhidden; Tasks: startupicon
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runascurrentuser
+
+[UninstallRun]
+Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /F /TN ""MiniFanControl_Autostart"""; Flags: runhidden

@@ -181,6 +181,11 @@ namespace MiniFanControl
                 sb.AppendFormat("Session iGPU Temp (Min / Avg / Peak): {0}°C / {1:0.0}°C / {2}°C  (Click box to reset)\r\n",
                     stats.MinGpuTemp, stats.AvgGpuTemp, stats.MaxGpuTemp);
             }
+            if (!string.IsNullOrEmpty(RadeonSoftwareVer))
+            {
+                sb.AppendLine("────────────────────────────────────────────");
+                sb.AppendFormat("Radeon Software Driver: {0}\r\n", RadeonSoftwareVer);
+            }
             sb.Append("Reads live Radeon iGPU telemetry via AMD ADL2 (atiadlxx.dll).");
             return sb.ToString();
         }

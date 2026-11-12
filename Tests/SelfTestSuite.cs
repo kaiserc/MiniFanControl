@@ -587,6 +587,38 @@ namespace MiniFanControl
                       countRestored == baseCount,
                     "OSD Granular Metric Toggle Verification (ShowNvme & ShowRam)",
                     string.Format("base={0}, noNvme={1}, noNvmeRam={2}, restored={3}", baseCount, countWithoutNvme, countWithoutNvmeRam, countRestored));
+
+                // Test horizontal bar dynamic column sizing & wide auto-expansion with all 12 metrics
+                osd.VerticalLayout = false;
+                osd.OsdScaleTier = 3; // 185%
+                osd.ShowPeaks = true;
+                osd.ShowCpu = true;
+                osd.ShowGpu = true;
+                osd.ShowNvme = true;
+                osd.ShowPower = true;
+                osd.ShowRam = true;
+                osd.ShowFps = true;
+                osd.ShowLows = true;
+                osd.ShowGpuLoad = true;
+                osd.ShowApuFan = true;
+                osd.ShowSysFan = true;
+                osd.ShowMode = true;
+                osd.ShowRadeonSettings = true;
+                osd.ShowFpsGraph = true;
+                osd.DfGraphStyle = true;
+                FanStatus fullSt = new FanStatus {
+                    CpuTemp = 45, GpuTemp = 44, NvmeTemp = 49,
+                    ApuPowerWatts = 8, RamLoadPct = 86, RamTotalGb = 16.0,
+                    Fan1Rpm = 1771, Fan2Rpm = 677, GfxActivityPct = 1,
+                    RadeonFeaturesAvailable = true,
+                    RadeonAntiLag = true, RadeonAfmf = true, RadeonBoost = true
+                };
+                osd.UpdateMetrics(fullSt, "My Quiet Curve / CKs curve", true);
+                int wideW = osd.TargetWidth;
+                int colsCount = osd.CountVisibleMetrics();
+                Check(colsCount == 12 && wideW >= 1400,
+                    "OSD Horizontal Bar Auto-Width Expansion (12 Metrics & Custom Mode Support)",
+                    string.Format("cols={0}, targetW={1}px (expected >= 1400px)", colsCount, wideW));
             }
 
 

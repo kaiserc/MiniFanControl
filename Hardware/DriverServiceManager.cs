@@ -108,10 +108,4 @@ namespace MiniFanControl
             }
         }
     }
-
-    /// <summary>
-    /// Passive in-game FPS and framerate monitor.
-    /// Safely reads live framerate metrics from RTSS (RivaTuner Statistics Server / CapFrameX / MSI Afterburner)
-    /// shared memory without injecting any DLL or triggering anti-cheat heuristics in games.
-    /// </summary>
 }

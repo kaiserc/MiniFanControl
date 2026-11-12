@@ -112,6 +112,12 @@ namespace MiniFanControl
                             t.GpuDesc = kmdKey.GetValue("DriverDesc") as string;
                             t.SoftwareEdition = kmdKey.GetValue("RadeonSoftwareEdition") as string;
                             t.SoftwareVersion = kmdKey.GetValue("RadeonSoftwareVersion") as string;
+                            if (string.IsNullOrEmpty(t.SoftwareVersion))
+                                t.SoftwareVersion = kmdKey.GetValue("Catalyst_Version") as string;
+                            if (string.IsNullOrEmpty(t.SoftwareVersion))
+                                t.SoftwareVersion = kmdKey.GetValue("DriverVersion") as string;
+                            if (string.IsNullOrEmpty(t.SoftwareVersion))
+                                t.SoftwareVersion = kmdKey.GetValue("ReleaseVersion") as string;
 
                             int deLag = GetDword(kmdKey, "KMD_DeLagEnabled");
                             int chill = GetDword(kmdKey, "KMD_ChillEnabled");
@@ -183,28 +189,15 @@ namespace MiniFanControl
                             }
                             catch { }
 
-                            // Also check Windows 11 Variable Refresh Rate (VRR / FreeSync)
-                            try
-                            {
-                                using (RegistryKey vrrKey = Registry.CurrentUser.OpenSubKey(@"Control Panel\GraphicsDrivers", false))
-                                {
-                                    if (vrrKey != null)
-                                    {
-                                        int vrr = GetDword(vrrKey, "VariableRefreshRate");
-                                        if (vrr != 0) t.FreeSync = true;
-                                    }
-                                }
-                            }
-                            catch { }
-
-                            // Detect active AMD FreeSync / VRR capability from connected display EDID (OUI 00-00-1A)
-                            if (!t.FreeSync)
-                            {
-                                t.FreeSync = CheckDisplayFreeSyncSupport();
-                            }
-
                             // Corroborate with live Adrenalin profile & gaming experience databases if accessible
                             TryCorroborateWithAdrenalinDatabase(ref t);
+
+                            // Authoritative: the driver's per-display VRR switch (Radeon Software > Display > VRR)
+                            // lives in DAL3_DATA\freesync_v1\EDID_*\userenable (0 = off, non-zero = on).
+                            // When present it overrides every heuristic above so toggling VRR is reflected live,
+                            // and monitor capability (EDID) is never mistaken for "FreeSync enabled".
+                            bool? vrrUser = ReadDriverVrrUserEnable(kmdKey);
+                            if (vrrUser.HasValue) t.FreeSync = vrrUser.Value;
 
                             t.Summary = RadeonSettingsTelemetry.BuildSummary(
                                 t.FreeSync, t.AntiLag, t.Afmf, t.RadeonBoost, t.Chill, t.Rsr, t.Ris, t.EnhancedSync, t.SmartAccessMemory, t.Frtc, t.FrtcFps);
@@ -305,6 +298,45 @@ namespace MiniFanControl
             {
                 // File access restrictions or fallback to driver registry values
             }
+        }
+
+        /// <summary>
+        /// Reads the Adrenalin per-display VRR toggle. Returns null when the driver exposes no such key
+        /// (older drivers), true when any display has VRR enabled, false when all are disabled.
+        /// </summary>
+        private static bool? ReadDriverVrrUserEnable(RegistryKey adapterKey)
+        {
+            try
+            {
+                using (RegistryKey fs = adapterKey.OpenSubKey(@"DAL3_DATA\freesync_v1", false))
+                {
+                    if (fs == null) return null;
+                    bool any = false;
+                    bool found = false;
+                    foreach (string name in fs.GetSubKeyNames())
+                    {
+                        using (RegistryKey disp = fs.OpenSubKey(name, false))
+                        {
+                            if (disp == null) continue;
+                            object v = disp.GetValue("userenable");
+                            if (v == null) continue;
+                            found = true;
+                            byte[] b = v as byte[];
+                            if (b != null)
+                            {
+                                foreach (byte x in b) { if (x != 0) { any = true; break; } }
+                            }
+                            else if (GetDword(disp, "userenable") != 0)
+                            {
+                                any = true;
+                            }
+                        }
+                    }
+                    return found ? (bool?)any : null;
+                }
+            }
+            catch { }
+            return null;
         }
 
         private static bool CheckDisplayFreeSyncSupport()

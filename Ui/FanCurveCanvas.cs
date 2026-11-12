@@ -30,12 +30,16 @@ namespace MiniFanControl
         public int CurrentApuTemp = 45;
         public bool IsDarkMode = true;
         public bool IsRadeonTheme = false;
+        public bool IsAfterburnerTheme = false;
 
         public event EventHandler CurveModified;
         public event EventHandler BuiltInCurveDragStarted;
 
         private int _dragIndex = -1;
         private int _hoverIndex = -1;
+
+        private static readonly Font AxisFont = new Font("Segoe UI", 7.25f, FontStyle.Regular);
+        private static readonly Font PointTipFont = new Font("Segoe UI", 7.5f, FontStyle.Bold);
 
         public FanCurveCanvas()
         {
@@ -184,36 +188,47 @@ namespace MiniFanControl
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
-            Color bg = IsRadeonTheme
-                ? Color.FromArgb(0x16, 0x0A, 0x0E)
-                : (IsDarkMode ? Color.FromArgb(0x16, 0x16, 0x22) : Color.FromArgb(0xF8, 0xFA, 0xFC));
-            Color gridColor = IsRadeonTheme
-                ? Color.FromArgb(0x42, 0x1C, 0x26)
-                : (IsDarkMode ? Color.FromArgb(0x2D, 0x2F, 0x42) : Color.FromArgb(0xE2, 0xE8, 0xF0));
-            Color labelColor = IsRadeonTheme
-                ? Color.FromArgb(0xD6, 0xA8, 0xB4)
-                : (IsDarkMode ? Color.FromArgb(0x94, 0x99, 0xB0) : Color.FromArgb(0x47, 0x55, 0x69));
+            Color bg = IsAfterburnerTheme
+                ? Color.FromArgb(0x13, 0x15, 0x19)
+                : (IsRadeonTheme
+                    ? Color.FromArgb(0x16, 0x0A, 0x0E)
+                    : (IsDarkMode ? Color.FromArgb(0x16, 0x16, 0x22) : Color.FromArgb(0xF8, 0xFA, 0xFC)));
+            Color gridColor = IsAfterburnerTheme
+                ? Color.FromArgb(0x28, 0x30, 0x3A)
+                : (IsRadeonTheme
+                    ? Color.FromArgb(0x42, 0x1C, 0x26)
+                    : (IsDarkMode ? Color.FromArgb(0x2D, 0x2F, 0x42) : Color.FromArgb(0xE2, 0xE8, 0xF0)));
+            Color labelColor = IsAfterburnerTheme
+                ? Color.FromArgb(0x8A, 0x96, 0xA8)
+                : (IsRadeonTheme
+                    ? Color.FromArgb(0xD6, 0xA8, 0xB4)
+                    : (IsDarkMode ? Color.FromArgb(0x94, 0x99, 0xB0) : Color.FromArgb(0x47, 0x55, 0x69)));
 
-            Color apuColor = IsRadeonTheme
-                ? Color.FromArgb(0xF4, 0x3F, 0x5E)
-                : (IsDarkMode ? Color.FromArgb(0x89, 0xB4, 0xFA) : Color.FromArgb(0x25, 0x63, 0xEB));
-            Color sysColor = IsRadeonTheme
-                ? Color.FromArgb(0xFB, 0x92, 0x3C)
-                : (IsDarkMode ? Color.FromArgb(0x2D, 0xD4, 0xBF) : Color.FromArgb(0x0D, 0x94, 0x88));
+            Color apuColor = IsAfterburnerTheme
+                ? Color.FromArgb(0x00, 0xE6, 0x76)
+                : (IsRadeonTheme
+                    ? Color.FromArgb(0xF4, 0x3F, 0x5E)
+                    : (IsDarkMode ? Color.FromArgb(0x89, 0xB4, 0xFA) : Color.FromArgb(0x25, 0x63, 0xEB)));
+            Color sysColor = IsAfterburnerTheme
+                ? Color.FromArgb(0x00, 0xE5, 0xFF)
+                : (IsRadeonTheme
+                    ? Color.FromArgb(0xFB, 0x92, 0x3C)
+                    : (IsDarkMode ? Color.FromArgb(0x2D, 0xD4, 0xBF) : Color.FromArgb(0x0D, 0x94, 0x88)));
 
             Color primaryColor = EditSysFan ? sysColor : apuColor;
             Color secondaryColor = EditSysFan ? apuColor : sysColor;
 
             Color fillTop = Color.FromArgb(IsDarkMode ? 65 : 45, primaryColor.R, primaryColor.G, primaryColor.B);
             Color fillBot = Color.FromArgb(5, primaryColor.R, primaryColor.G, primaryColor.B);
-            Color liveColor = IsRadeonTheme
-                ? Color.FromArgb(0xFA, 0xCC, 0x15)
-                : (IsDarkMode ? Color.FromArgb(0xA6, 0xE3, 0xA1) : Color.FromArgb(0x16, 0xA3, 0x4A));
+            Color liveColor = IsAfterburnerTheme
+                ? Color.FromArgb(0xFF, 0x91, 0x00)
+                : (IsRadeonTheme
+                    ? Color.FromArgb(0xFA, 0xCC, 0x15)
+                    : (IsDarkMode ? Color.FromArgb(0xA6, 0xE3, 0xA1) : Color.FromArgb(0x16, 0xA3, 0x4A)));
 
             g.Clear(bg);
             Rectangle plot = GetPlotRect();
 
-            using (Font axisFont = new Font("Segoe UI", 7.25f, FontStyle.Regular))
             using (Brush lblBrush = new SolidBrush(labelColor))
             using (Pen gridPen = new Pen(gridColor, 1f))
             {
@@ -222,8 +237,8 @@ namespace MiniFanControl
                     float y = plot.Bottom - (pct / 100f) * plot.Height;
                     g.DrawLine(gridPen, plot.Left, y, plot.Right, y);
                     string yStr = pct + "%";
-                    SizeF sz = g.MeasureString(yStr, axisFont);
-                    g.DrawString(yStr, axisFont, lblBrush, plot.Left - sz.Width - 3, y - sz.Height / 2);
+                    SizeF sz = g.MeasureString(yStr, AxisFont);
+                    g.DrawString(yStr, AxisFont, lblBrush, plot.Left - sz.Width - 3, y - sz.Height / 2);
                 }
 
                 for (int t = 30; t <= 90; t += 15)
@@ -231,8 +246,8 @@ namespace MiniFanControl
                     float x = plot.Left + ((float)(t - MIN_TEMP) / (MAX_TEMP - MIN_TEMP)) * plot.Width;
                     g.DrawLine(gridPen, x, plot.Top, x, plot.Bottom);
                     string xStr = t + "°C";
-                    SizeF sz = g.MeasureString(xStr, axisFont);
-                    g.DrawString(xStr, axisFont, lblBrush, x - sz.Width / 2, plot.Bottom + 3);
+                    SizeF sz = g.MeasureString(xStr, AxisFont);
+                    g.DrawString(xStr, AxisFont, lblBrush, x - sz.Width / 2, plot.Bottom + 3);
                 }
             }
 
@@ -306,16 +321,15 @@ namespace MiniFanControl
                     {
                         string fanTag = EditSysFan ? "Sys" : "APU";
                         string tip = string.Format("{0}: {1}°C → {2}%", fanTag, activePts[i].Temp, activePts[i].Pct);
-                        using (Font f = new Font("Segoe UI", 7.5f, FontStyle.Bold))
                         using (Brush bBg = new SolidBrush(IsDarkMode ? Color.Black : Color.White))
                         using (Brush bFg = new SolidBrush(IsDarkMode ? Color.White : Color.Black))
                         {
-                            SizeF sz = g.MeasureString(tip, f);
+                            SizeF sz = g.MeasureString(tip, PointTipFont);
                             float bx = Math.Max(plot.Left, Math.Min(plot.Right - sz.Width - 4, p.X - sz.Width / 2));
                             float by = p.Y - sz.Height - 8;
                             if (by < 2) by = p.Y + 8;
                             g.FillRectangle(bBg, bx - 2, by - 1, sz.Width + 4, sz.Height + 2);
-                            g.DrawString(tip, f, bFg, bx, by);
+                            g.DrawString(tip, PointTipFont, bFg, bx, by);
                         }
                     }
                 }
@@ -327,11 +341,4 @@ namespace MiniFanControl
             }
         }
     }
-
-    /// <summary>
-    /// Full-size (552×244) Combined Live Telemetry Trend Graph Canvas.
-    /// Displays rolling CPU Temp (°C), iGPU Temp (°C), APU Power (W), APU Fan (RPM), and Sys Fan (RPM)
-    /// with interactive legend pills, spotlight highlighting when a metric box is clicked, dual Y-axes,
-    /// auto-zoom scaling, and a time-scrubbing hover crosshair.
-    /// </summary>
 }

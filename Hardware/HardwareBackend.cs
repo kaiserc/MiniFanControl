@@ -1079,33 +1079,30 @@ namespace MiniFanControl
 
                 return;
 
-            string dllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "inpoutx64.dll");
+            string appDir = AppDomain.CurrentDomain.BaseDirectory;
+            bool winringExists = File.Exists(Path.Combine(appDir, "WinRing0x64.dll")) ||
+                                 File.Exists(Path.Combine(appDir, "WinRing0.dll"));
+            bool inpoutExists = File.Exists(Path.Combine(appDir, "inpoutx64.dll"));
 
-            if (!File.Exists(dllPath))
-
+            if (!winringExists && !inpoutExists)
             {
-
                 throw new InvalidOperationException(
-
-                    "Driver 'inpoutx64.dll' not found in application folder. " +
-
-                    "Place inpoutx64.dll in this folder and run as Administrator (or enable Demo Mode below).");
-
+                    "No supported hardware driver DLL (WinRing0x64.dll or inpoutx64.dll) found in application folder.\n" +
+                    "Place WinRing0x64.dll or inpoutx64.dll in this folder and run as Administrator (or enable Demo Mode below).");
             }
 
             try
 
             {
 
-                if (NativeInpOut.IsInpOutDriverOpen() == 0)
+                if (!NativeInpOut.IsDriverOpen())
 
                 {
 
                     throw new InvalidOperationException(
-
-                        "inpoutx64 driver could not be opened. Please run as Administrator " +
-
-                        "(and check Windows Vulnerable Driver Blocklist in Core Isolation if blocked).");
+                        string.Format("Hardware access driver could not be opened ({0}). Please run as Administrator " +
+                        "(and check Windows Vulnerable Driver Blocklist / HVCI in Core Isolation if blocked).",
+                        NativeInpOut.ActiveDriverName));
 
                 }
 
@@ -1303,24 +1300,15 @@ namespace MiniFanControl
 
             }
 
-            catch (DllNotFoundException)
-
+            catch (DllNotFoundException ex)
             {
-
                 throw new InvalidOperationException(
-
-                    "inpoutx64.dll could not be loaded. Please place 64-bit inpoutx64.dll in this folder.");
-
+                    "Hardware access driver DLL could not be loaded: " + ex.Message);
             }
-
-            catch (BadImageFormatException)
-
+            catch (BadImageFormatException ex)
             {
-
                 throw new InvalidOperationException(
-
-                    "inpoutx64.dll has the wrong architecture (64-bit DLL required).");
-
+                    "Hardware access driver DLL has the wrong architecture (64-bit DLL required): " + ex.Message);
             }
 
         }

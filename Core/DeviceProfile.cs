@@ -211,6 +211,7 @@ namespace MiniFanControl
             sb.AppendLine("BIOS Version     : " + BiosVersion);
             sb.AppendLine("CPU / APU        : " + CpuName);
             sb.AppendLine("Active Profile   : " + MatchedProfile.DisplayName);
+            sb.AppendLine("Kernel Driver    : " + NativeInpOut.ActiveDriverName);
             sb.AppendLine("EC Communication : " + (hw != null ? hw.AccessMethodName : (demoMode ? "Simulation/Demo" : "ACPI EC Port I/O (0x62/0x66)")));
             sb.AppendLine("EC Physical Base : 0x" + MatchedProfile.EcBaseAddress.ToString("X8") + " (Size: 0x" + MatchedProfile.EcSize.ToString("X2") + ")");
             sb.AppendLine("EC Mutex Sync    : " + EcBusMutex.MutexNamespaceDiagnostic);
@@ -248,6 +249,10 @@ namespace MiniFanControl
                 sb.AppendLine("LIVE SENSOR & FAN READINGS:");
                 sb.AppendLine(string.Format("  CPU Temperature (0x70) : {0} °C", st.CpuTemp));
                 sb.AppendLine(string.Format("  iGPU Temperature (ADL) : {0} °C", st.GpuTemp));
+                if (!string.IsNullOrEmpty(st.RadeonSoftwareVer))
+                {
+                    sb.AppendLine(string.Format("  Radeon Software Ver    : {0}", st.RadeonSoftwareVer));
+                }
                 sb.AppendLine(string.Format("  APU Power Usage        : {0} W", st.ApuPowerWatts));
                 sb.AppendLine(string.Format("  Performance Mode (0x31): {0} (code={1})", st.Mode, st.ModeCode));
                 sb.AppendLine(string.Format("  APU Fan (Fan 1, 0x35)  : {0} RPM | Ctrl(0x33)={1}% ({2})",

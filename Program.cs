@@ -212,27 +212,22 @@ namespace MiniFanControl
                 }
 
                 if (cmd == "driver-status")
-
                 {
-
-                    bool isRunning = DriverServiceManager.IsDriverServiceRunning("inpoutx64");
-
-                    Console.WriteLine("{{\"service\":\"inpoutx64\",\"running\":{0}}}", isRunning ? "true" : "false");
-
+                    bool inpoutRunning = DriverServiceManager.IsDriverServiceRunning("inpoutx64");
+                    bool winringRunning = DriverServiceManager.IsDriverServiceRunning("WinRing0_1_2_0");
+                    Console.WriteLine("{{\"active_driver\":\"{0}\",\"winring0_service\":{1},\"inpout_service\":{2}}}",
+                        NativeInpOut.ActiveDriverName,
+                        winringRunning ? "true" : "false",
+                        inpoutRunning ? "true" : "false");
                     return 0;
-
                 }
-
                 else if (cmd == "driver-stop")
-
                 {
-
-                    bool stopped = DriverServiceManager.StopDriverService("inpoutx64");
-
-                    Console.WriteLine("{{\"service\":\"inpoutx64\",\"action\":\"stop\",\"success\":{0}}}", stopped ? "true" : "false");
-
+                    bool s1 = DriverServiceManager.StopDriverService("WinRing0_1_2_0");
+                    bool s2 = DriverServiceManager.StopDriverService("inpoutx64");
+                    Console.WriteLine("{{\"winring0_stopped\":{0},\"inpout_stopped\":{1}}}",
+                        s1 ? "true" : "false", s2 ? "true" : "false");
                     return 0;
-
                 }
 
                 if (cmd == "gen-icon" || cmd == "--gen-icon")

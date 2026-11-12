@@ -79,6 +79,16 @@ namespace MiniFanControl
         private static readonly Color RadeonAccent   = Color.FromArgb(0xE1, 0x1D, 0x48);
         private static readonly Color RadeonOrange   = Color.FromArgb(0xF9, 0x73, 0x16);
 
+        // MSI Afterburner Homage Palette (gunmetal carbon, brushed steel, toxic neon green, cyan, amber)
+        private static readonly Color AbBg       = Color.FromArgb(0x13, 0x15, 0x19);
+        private static readonly Color AbSurface  = Color.FromArgb(0x1C, 0x20, 0x26);
+        private static readonly Color AbSurface2 = Color.FromArgb(0x25, 0x2B, 0x35);
+        private static readonly Color AbText     = Color.FromArgb(0xEE, 0xF2, 0xF6);
+        private static readonly Color AbTextDim  = Color.FromArgb(0x8A, 0x96, 0xA8);
+        private static readonly Color AbGreen    = Color.FromArgb(0x00, 0xE6, 0x76);
+        private static readonly Color AbCyan     = Color.FromArgb(0x00, 0xE5, 0xFF);
+        private static readonly Color AbOrange   = Color.FromArgb(0xFF, 0x91, 0x00);
+
         private static readonly Color ErrorBgDark   = Color.FromArgb(0x3A, 0x1A, 0x1A);
         private static readonly Color ErrorFgDark   = Color.FromArgb(0xF3, 0x8B, 0xA8);
         private static readonly Color ErrorBgLight  = Color.FromArgb(0xFE, 0xE2, 0xE2);
@@ -95,6 +105,7 @@ namespace MiniFanControl
         private readonly SystemHardwareInfo _sysInfo;
         private bool _demoMode;
 
+        private bool IsAb { get { return _themePref == ThemePreference.Afterburner; } }
         private ThemePreference _themePref = ThemePreference.System;
         private bool _isDarkMode = true;
         private bool _isTaskbarDark = true;
@@ -107,6 +118,7 @@ namespace MiniFanControl
         private int _overlayX = 24;
         private int _overlayY = 24;
         private bool _restoreAutoOnExit = true;
+        private bool _alwaysOnTop = false;
         private bool _enableGlobalHotkeys = true;
         private bool _hotkeysRegistered = false;
         private bool _startMinimized = false;
@@ -133,6 +145,7 @@ namespace MiniFanControl
         private bool _osdShowMode = true;
         private bool _osdShowPeaks = true;
         private bool _osdShowRadeon = true;
+        private bool _osdShowDriverVer = false;
         private bool _osdShowLiveTrend = true;
         private bool _osdShowFpsGraph = true;
         private bool _osdPlotFpsOnTrend = true;
@@ -306,6 +319,7 @@ namespace MiniFanControl
         private CheckBox _osdShowModeCb;
         private CheckBox _osdShowPeaksCb;
         private CheckBox _osdShowRadeonCb;
+        private CheckBox _osdShowDriverVerCb;
         private CheckBox _osdShowLiveTrendCb;
         private CheckBox _osdShowFpsGraphCb;
         private CheckBox _osdPlotFpsOnTrendCb;
@@ -342,6 +356,7 @@ namespace MiniFanControl
         private CheckBox _showOverlayCb;
         private CheckBox _lockOverlayCb;
         private CheckBox _autostartCb;
+        private CheckBox _alwaysOnTopCb;
         private CheckBox _trayCb;
         private Label _statusBarLabel;
 
@@ -743,7 +758,7 @@ namespace MiniFanControl
                 GraphHeight = _osdGraphHeight,
                 OpacityPct = _osdOpacityPct,
                 MatchAppTheme = _osdMatchTheme,
-                IsRadeonTheme = (_themePref == ThemePreference.Radeon),
+                IsRadeonTheme = (_themePref == ThemePreference.Radeon), IsAfterburnerTheme = (_themePref == ThemePreference.Afterburner), ShowDriverVersion = _osdShowDriverVer,
                 ShowCpu = _osdShowCpu,
                 ShowGpu = _osdShowGpu,
                 ShowNvme = _osdShowNvme,
@@ -823,7 +838,7 @@ namespace MiniFanControl
             _overlayForm.GraphHeight = _osdGraphHeight;
             _overlayForm.VerticalLayout = _overlayVertical;
             _overlayForm.MatchAppTheme = _osdMatchTheme;
-            _overlayForm.IsRadeonTheme = (_themePref == ThemePreference.Radeon);
+            _overlayForm.IsRadeonTheme = (_themePref == ThemePreference.Radeon); _overlayForm.IsAfterburnerTheme = (_themePref == ThemePreference.Afterburner); _overlayForm.ShowDriverVersion = _osdShowDriverVer;
             _overlayForm.ShowCpu = _osdShowCpu;
             _overlayForm.ShowGpu = _osdShowGpu;
             _overlayForm.ShowNvme = _osdShowNvme;
@@ -869,7 +884,7 @@ namespace MiniFanControl
                 _osdShowSysFan = _overlayForm.ShowSysFan;
                 _osdShowMode = _overlayForm.ShowMode;
                 _osdShowPeaks = _overlayForm.ShowPeaks;
-                _osdShowRadeon = _overlayForm.ShowRadeonSettings;
+                _osdShowRadeon = _overlayForm.ShowRadeonSettings; _osdShowDriverVer = _overlayForm.ShowDriverVersion;
                 _osdShowLiveTrend = _overlayForm.ShowLiveTrend;
                 _osdShowFpsGraph = _overlayForm.ShowFpsGraph;
                 _osdPlotFpsOnTrend = _overlayForm.PlotFpsOnTrend;
@@ -900,6 +915,7 @@ namespace MiniFanControl
             if (_osdShowModeCb != null) _osdShowModeCb.Checked = _osdShowMode;
             if (_osdShowPeaksCb != null) _osdShowPeaksCb.Checked = _osdShowPeaks;
             if (_osdShowRadeonCb != null) _osdShowRadeonCb.Checked = _osdShowRadeon;
+            if (_osdShowDriverVerCb != null) _osdShowDriverVerCb.Checked = _osdShowDriverVer;
             if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = _osdShowLiveTrend;
             if (_osdShowFpsGraphCb != null) _osdShowFpsGraphCb.Checked = _osdShowFpsGraph;
             if (_osdPlotFpsOnTrendCb != null) _osdPlotFpsOnTrendCb.Checked = _osdPlotFpsOnTrend;
@@ -1522,10 +1538,36 @@ namespace MiniFanControl
 
         private string GetSettingsPath()
         {
-            string primary = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "minifancontrol.cfg");
-            string legacy = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "k12-settings.cfg");
-            if (!File.Exists(primary) && File.Exists(legacy))
-                return legacy;
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string primary = Path.Combine(baseDir, "minifancontrol.cfg");
+            string legacy = Path.Combine(baseDir, "k12-settings.cfg");
+
+            // 1. If configuration file exists in the application directory (portable mode), use it
+            if (File.Exists(primary)) return primary;
+            if (File.Exists(legacy)) return legacy;
+
+            // 2. Determine LocalAppData path (standard for Windows desktop applications)
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string appDataDir = Path.Combine(localAppData, "MiniFanControl");
+            string appDataConfig = Path.Combine(appDataDir, "minifancontrol.cfg");
+            if (File.Exists(appDataConfig)) return appDataConfig;
+
+            // 3. If running inside Program Files, write to LocalAppData to avoid UAC / permission failures
+            string progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            string progFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+            bool inProgramFiles = (!string.IsNullOrEmpty(progFiles) && baseDir.StartsWith(progFiles, StringComparison.OrdinalIgnoreCase)) ||
+                                  (!string.IsNullOrEmpty(progFilesX86) && baseDir.StartsWith(progFilesX86, StringComparison.OrdinalIgnoreCase));
+
+            if (inProgramFiles)
+            {
+                try
+                {
+                    if (!Directory.Exists(appDataDir)) Directory.CreateDirectory(appDataDir);
+                    return appDataConfig;
+                }
+                catch { }
+            }
+
             return primary;
         }
 
@@ -1654,12 +1696,14 @@ namespace MiniFanControl
                     else if (k == "OsdShowMode") _osdShowMode = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowPeaks") _osdShowPeaks = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowRadeon") _osdShowRadeon = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowDriverVer") _osdShowDriverVer = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowLiveTrend") _osdShowLiveTrend = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowFpsGraph") _osdShowFpsGraph = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdPlotFpsOnTrend") _osdPlotFpsOnTrend = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdDfGraphStyle") _osdDfGraphStyle = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdDfGraphFirst") _osdDfGraphFirst = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "RestoreAutoOnExit") _restoreAutoOnExit = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "AlwaysOnTop") _alwaysOnTop = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "EnableHotkeys") _enableGlobalHotkeys = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "HasDualFans") _hasDualFans = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "HardwareProfile" || k == "ProfileId")
@@ -1685,7 +1729,7 @@ namespace MiniFanControl
                     else if (k == "Theme")
                     {
                         int t;
-                        if (int.TryParse(v, out t) && t >= 0 && t <= 3)
+                        if (int.TryParse(v, out t) && t >= 0 && t <= 4)
                             _themePref = (ThemePreference)t;
                     }
                     else if (k == "ActiveCustom") legacyCustomName = v;
@@ -1750,12 +1794,14 @@ namespace MiniFanControl
                 lines.Add("OsdShowMode=" + (_osdShowMode ? "1" : "0"));
                 lines.Add("OsdShowPeaks=" + (_osdShowPeaks ? "1" : "0"));
                 lines.Add("OsdShowRadeon=" + (_osdShowRadeon ? "1" : "0"));
+                lines.Add("OsdShowDriverVer=" + (_osdShowDriverVer ? "1" : "0"));
                 lines.Add("OsdShowLiveTrend=" + (_osdShowLiveTrend ? "1" : "0"));
                 lines.Add("OsdShowFpsGraph=" + (_osdShowFpsGraph ? "1" : "0"));
                 lines.Add("OsdPlotFpsOnTrend=" + (_osdPlotFpsOnTrend ? "1" : "0"));
                 lines.Add("OsdDfGraphStyle=" + (_osdDfGraphStyle ? "1" : "0"));
                 lines.Add("OsdDfGraphFirst=" + (_osdDfGraphFirst ? "1" : "0"));
                 lines.Add("RestoreAutoOnExit=" + (_restoreAutoOnExit ? "1" : "0"));
+                lines.Add("AlwaysOnTop=" + (_alwaysOnTop ? "1" : "0"));
                 lines.Add("EnableHotkeys=" + (_enableGlobalHotkeys ? "1" : "0"));
                 lines.Add("HasDualFans=" + (_hasDualFans ? "1" : "0"));
                 lines.Add("HardwareProfile=" + (_profileOverrideId ?? "auto"));
@@ -1775,8 +1821,13 @@ namespace MiniFanControl
                     lines.Add("CustomProfile=" + cp.Name.Replace("|", "/") + "|" + FormatPointList(cp.ApuPoints) + "|" + FormatPointList(cp.SysPoints));
                 }
 
-                string primary = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "minifancontrol.cfg");
-                File.WriteAllLines(primary, lines.ToArray());
+                string path = GetSettingsPath();
+                string dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+                File.WriteAllLines(path, lines.ToArray());
                 RebuildTrayContextMenus();
             }
             catch { }
@@ -1784,7 +1835,7 @@ namespace MiniFanControl
 
         private void DetectSystemTheme(out bool appDark, out bool taskbarDark)
         {
-            if (_themePref == ThemePreference.Dark || _themePref == ThemePreference.Radeon)
+            if (_themePref == ThemePreference.Dark || _themePref == ThemePreference.Radeon || _themePref == ThemePreference.Afterburner)
             {
                 appDark = true;
                 taskbarDark = true;
@@ -1986,7 +2037,16 @@ namespace MiniFanControl
                 Icon cpuIcon = RenderHighContrastTempIcon(cpuTemp, _isTaskbarDark, false, out newCpuHandle);
                 if (_cpuTrayIcon != null)
                 {
+                    Icon oldIcon = _cpuTrayIcon.Icon;
                     _cpuTrayIcon.Icon = cpuIcon;
+                    if (oldIcon != null)
+                    {
+                        try { oldIcon.Dispose(); } catch { }
+                    }
+                }
+                else if (cpuIcon != null)
+                {
+                    try { cpuIcon.Dispose(); } catch { }
                 }
                 if (_cpuIconHandle != IntPtr.Zero)
                 {
@@ -2003,7 +2063,16 @@ namespace MiniFanControl
                 Icon gpuIcon = RenderHighContrastTempIcon(gpuTemp, _isTaskbarDark, true, out newGpuHandle);
                 if (_gpuTrayIcon != null)
                 {
+                    Icon oldIcon = _gpuTrayIcon.Icon;
                     _gpuTrayIcon.Icon = gpuIcon;
+                    if (oldIcon != null)
+                    {
+                        try { oldIcon.Dispose(); } catch { }
+                    }
+                }
+                else if (gpuIcon != null)
+                {
+                    try { gpuIcon.Dispose(); } catch { }
                 }
                 if (_gpuIconHandle != IntPtr.Zero)
                 {
@@ -3414,11 +3483,28 @@ namespace MiniFanControl
             {
                 Text = "Start automatically on Windows login",
                 Location = new Point(12, 56),
-                Size = new Size(420, 22),
+                Size = new Size(280, 22),
                 Checked = IsAutostartEnabled()
             };
             _autostartCb.CheckedChanged += (s, e) => ToggleAutostart();
             optCard.Controls.Add(_autostartCb);
+
+            _alwaysOnTopCb = new CheckBox
+            {
+                Text = "Keep app on top",
+                Location = new Point(300, 56),
+                Size = new Size(170, 22),
+                Checked = _alwaysOnTop
+            };
+            _alwaysOnTopCb.CheckedChanged += (s, e) =>
+            {
+                _alwaysOnTop = _alwaysOnTopCb.Checked;
+                TopMost = _alwaysOnTop;
+                SaveSettings();
+            };
+            optCard.Controls.Add(_alwaysOnTopCb);
+            TopMost = _alwaysOnTop;
+            _uiToolTip.SetToolTip(_alwaysOnTopCb, "Keep the MiniFanControl window above all other windows (including games in borderless/windowed mode).");
             _uiToolTip.SetToolTip(_autostartCb,
                 "Registers an elevated Windows Scheduled Task (MiniFanControl_Autostart)\r\nso MiniFanControl starts on Windows login without a UAC prompt.");
 
@@ -4044,10 +4130,15 @@ namespace MiniFanControl
             p.Controls.Add(_osdDfGraphStyleCb);
 
             // Row 10 (y=298): Feature Tags & Ordering
-            _osdShowRadeonCb = new CheckBox { Text = "Radeon Features (Tags: FreeSync, Anti-Lag, AFMF, Chill, Boost, RSR, RIS)", Location = new Point(8, 298), Size = new Size(454, 21), Checked = _osdShowRadeon, UseMnemonic = false };
+            _osdShowRadeonCb = new CheckBox { Text = "Radeon Feature Tags", Location = new Point(8, 298), Size = new Size(224, 21), Checked = _osdShowRadeon, UseMnemonic = false };
             _osdShowRadeonCb.CheckedChanged += (s, e) => { _osdShowRadeon = _osdShowRadeonCb.Checked; SyncOverlayFromStudio(); };
             _uiToolTip.SetToolTip(_osdShowRadeonCb, "Display compact pill tags for active AMD Radeon features (FreeSync, Anti-Lag, AFMF, Chill, Boost, RSR, RIS)");
             p.Controls.Add(_osdShowRadeonCb);
+
+            _osdShowDriverVerCb = new CheckBox { Text = "Radeon Driver Version", Location = new Point(238, 298), Size = new Size(224, 21), Checked = _osdShowDriverVer, UseMnemonic = false };
+            _osdShowDriverVerCb.CheckedChanged += (s, e) => { _osdShowDriverVer = _osdShowDriverVerCb.Checked; SyncOverlayFromStudio(); };
+            _uiToolTip.SetToolTip(_osdShowDriverVerCb, "Show the installed AMD Radeon Software (Adrenalin) driver version on the OSD");
+            p.Controls.Add(_osdShowDriverVerCb);
 
             _osdPlotFpsOnTrendCb = new CheckBox { Text = "Plot FPS on Live Trend", Location = new Point(476, 298), Size = new Size(224, 21), Checked = _osdPlotFpsOnTrend, UseMnemonic = false };
             _osdPlotFpsOnTrendCb.CheckedChanged += (s, e) => { _osdPlotFpsOnTrend = _osdPlotFpsOnTrendCb.Checked; SyncOverlayFromStudio(); };
@@ -4210,10 +4301,10 @@ namespace MiniFanControl
             }
 
             bool isRadeon = (_themePref == ThemePreference.Radeon);
-            Color surface2 = isRadeon ? RadeonSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2);
-            Color text = isRadeon ? RadeonText : (_isDarkMode ? DarkText : LightText);
-            Color apuAccent = isRadeon ? RadeonAccent : (_isDarkMode ? DarkAccent : LightAccent);
-            Color sysAccent = isRadeon ? RadeonOrange : (_isDarkMode ? DarkTeal : LightTeal);
+            Color surface2 = isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2));
+            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
+            Color apuAccent = isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent));
+            Color sysAccent = isRadeon ? RadeonOrange : (IsAb ? AbCyan : (_isDarkMode ? DarkTeal : LightTeal));
             Color liveAccent = _highlightedMetric == 2
                 ? (isRadeon ? Color.FromArgb(0x38, 0xBD, 0xF8) : Color.FromArgb(0x22, 0xC5, 0x5E))
                 : (_highlightedMetric == 6
@@ -4227,7 +4318,7 @@ namespace MiniFanControl
                                 : (_highlightedMetric == 5
                                     ? Color.FromArgb(0x2D, 0xD4, 0xBF)
                                     : apuAccent)))));
-            Color activeFg = isRadeon ? Color.White : (_isDarkMode ? Color.Black : Color.White);
+            Color activeFg = isRadeon ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
 
             if (_showingOsdConfig)
             {
@@ -4319,12 +4410,12 @@ namespace MiniFanControl
         {
             if (_osdConfigPanel == null) return;
             bool isRadeon = (_themePref == ThemePreference.Radeon);
-            Color surface = isRadeon ? RadeonSurface : (_isDarkMode ? DarkSurface : LightSurface);
-            Color surface2 = isRadeon ? RadeonSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2);
-            Color text = isRadeon ? RadeonText : (_isDarkMode ? DarkText : LightText);
-            Color textDim = isRadeon ? RadeonTextDim : (_isDarkMode ? DarkTextDim : LightTextDim);
-            Color accent = isRadeon ? RadeonAccent : (_isDarkMode ? DarkAccent : LightAccent);
-            Color activeFg = isRadeon ? Color.White : (_isDarkMode ? Color.Black : Color.White);
+            Color surface = isRadeon ? RadeonSurface : (IsAb ? AbSurface : (_isDarkMode ? DarkSurface : LightSurface));
+            Color surface2 = isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2));
+            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
+            Color textDim = isRadeon ? RadeonTextDim : (IsAb ? AbTextDim : (_isDarkMode ? DarkTextDim : LightTextDim));
+            Color accent = isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent));
+            Color activeFg = isRadeon ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
 
             _osdConfigPanel.BackColor = surface;
 
@@ -4466,7 +4557,7 @@ namespace MiniFanControl
                 _osdShowCpuCb, _osdShowGpuCb, _osdShowNvmeCb, _osdShowRamCb,
                 _osdShowApuFanCb, _osdShowSysFanCb, _osdShowPowerCb, _osdShowGpuLoadCb,
                 _osdShowFpsCb, _osdShowLowsCb,
-                _osdShowModeCb, _osdShowPeaksCb, _osdShowRadeonCb, _osdMatchThemeCb,
+                _osdShowModeCb, _osdShowPeaksCb, _osdShowRadeonCb, _osdShowDriverVerCb, _osdMatchThemeCb,
                 _osdShowLiveTrendCb, _osdShowFpsGraphCb, _osdPlotFpsOnTrendCb, _osdDfGraphStyleCb, _osdDfGraphFirstCb
             };
             foreach (CheckBox cb in cbs)
@@ -4516,7 +4607,7 @@ namespace MiniFanControl
             bool isCalibrated, isStale;
             bool isRadeon = (_themePref == ThemePreference.Radeon);
             _calibBadgeLabel.Text = FanCurveProfile.FormatCalibrationStatusBadge(_hasDualFans, out isCalibrated, out isStale);
-            _calibBadgeLabel.BackColor = isRadeon ? RadeonBg : (_isDarkMode ? DarkBg : LightBg);
+            _calibBadgeLabel.BackColor = isRadeon ? RadeonBg : (IsAb ? AbBg : (_isDarkMode ? DarkBg : LightBg));
             if (!isCalibrated)
             {
                 _calibBadgeLabel.ForeColor = isRadeon ? RadeonTextDim : (_isDarkMode ? DarkTextDim : LightTextDim);
@@ -4537,6 +4628,7 @@ namespace MiniFanControl
             {
                 case ThemePreference.Dark: return "Theme: Dark";
                 case ThemePreference.Radeon: return "Theme: AMD Radeon";
+                case ThemePreference.Afterburner: return "Theme: Afterburner";
                 case ThemePreference.Light: return "Theme: Light";
                 default: return string.Format("Theme: System ({0})", _isDarkMode ? "Dark" : "Light");
             }
@@ -4546,7 +4638,8 @@ namespace MiniFanControl
         {
             if (_themePref == ThemePreference.System) _themePref = ThemePreference.Dark;
             else if (_themePref == ThemePreference.Dark) _themePref = ThemePreference.Radeon;
-            else if (_themePref == ThemePreference.Radeon) _themePref = ThemePreference.Light;
+            else if (_themePref == ThemePreference.Radeon) _themePref = ThemePreference.Afterburner;
+            else if (_themePref == ThemePreference.Afterburner) _themePref = ThemePreference.Light;
             else _themePref = ThemePreference.System;
 
             SaveSettings();
@@ -4560,18 +4653,18 @@ namespace MiniFanControl
         private void ApplyThemeToControls()
         {
             bool isRadeon = (_themePref == ThemePreference.Radeon);
-            Color bg = isRadeon ? RadeonBg : (_isDarkMode ? DarkBg : LightBg);
-            Color surface = isRadeon ? RadeonSurface : (_isDarkMode ? DarkSurface : LightSurface);
-            Color surface2 = isRadeon ? RadeonSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2);
-            Color text = isRadeon ? RadeonText : (_isDarkMode ? DarkText : LightText);
-            Color textDim = isRadeon ? RadeonTextDim : (_isDarkMode ? DarkTextDim : LightTextDim);
-            Color accent = isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (_isDarkMode ? DarkAccent : LightAccent);
+            Color bg = isRadeon ? RadeonBg : (IsAb ? AbBg : (_isDarkMode ? DarkBg : LightBg));
+            Color surface = isRadeon ? RadeonSurface : (IsAb ? AbSurface : (_isDarkMode ? DarkSurface : LightSurface));
+            Color surface2 = isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2));
+            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
+            Color textDim = isRadeon ? RadeonTextDim : (IsAb ? AbTextDim : (_isDarkMode ? DarkTextDim : LightTextDim));
+            Color accent = isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent));
 
-            Color tempBoxBg = isRadeon ? Color.FromArgb(0x0D, 0x05, 0x07) : (_isDarkMode ? Color.Black : Color.White);
+            Color tempBoxBg = isRadeon ? Color.FromArgb(0x0D, 0x05, 0x07) : (IsAb ? Color.FromArgb(0x0B, 0x0D, 0x10) : (_isDarkMode ? Color.Black : Color.White));
             Color tempBoxFg = _isDarkMode ? Color.White : Color.Black;
             Color tempBoxTitleFg = isRadeon
                 ? Color.FromArgb(0xFD, 0xA4, 0xAF)
-                : (_isDarkMode ? Color.FromArgb(0x94, 0xA3, 0xB8) : Color.FromArgb(0x47, 0x55, 0x69));
+                : (IsAb ? AbGreen : (_isDarkMode ? Color.FromArgb(0x94, 0xA3, 0xB8) : Color.FromArgb(0x47, 0x55, 0x69)));
 
             BackColor = bg;
             ForeColor = text;
@@ -4580,7 +4673,7 @@ namespace MiniFanControl
             {
                 _headerLogoBox.BackColor = surface;
                 Image oldImg = _headerLogoBox.Image;
-                _headerLogoBox.Image = AppLogoRenderer.RenderConcept(isRadeon ? 4 : 1, 192);
+                _headerLogoBox.Image = AppLogoRenderer.RenderConcept(isRadeon ? 4 : (IsAb ? 5 : 1), 192);
                 if (oldImg != null) oldImg.Dispose();
             }
 
@@ -4605,8 +4698,8 @@ namespace MiniFanControl
             if (_themeToggleBtn != null)
             {
                 _themeToggleBtn.Text = GetThemeButtonLabel();
-                _themeToggleBtn.BackColor = isRadeon ? RadeonAccent : surface2;
-                _themeToggleBtn.ForeColor = isRadeon ? Color.White : text;
+                _themeToggleBtn.BackColor = isRadeon ? RadeonAccent : (IsAb ? AbGreen : surface2);
+                _themeToggleBtn.ForeColor = isRadeon ? Color.White : (IsAb ? Color.Black : text);
             }
 
             foreach (Label h in _sectionHeaders)
@@ -4733,13 +4826,13 @@ namespace MiniFanControl
             if (_curveCanvas != null)
             {
                 _curveCanvas.IsDarkMode = _isDarkMode;
-                _curveCanvas.IsRadeonTheme = isRadeon;
+                _curveCanvas.IsRadeonTheme = isRadeon; _curveCanvas.IsAfterburnerTheme = IsAb;
                 _curveCanvas.Invalidate();
             }
             if (_liveCanvas != null)
             {
                 _liveCanvas.IsDarkMode = _isDarkMode;
-                _liveCanvas.IsRadeonTheme = isRadeon;
+                _liveCanvas.IsRadeonTheme = isRadeon; _liveCanvas.IsAfterburnerTheme = IsAb;
                 _liveCanvas.Invalidate();
             }
 
@@ -4768,7 +4861,7 @@ namespace MiniFanControl
                 }
             }
 
-            foreach (CheckBox cb in new[] { _showCpuTrayCb, _showGpuTrayCb, _showOverlayCb, _lockOverlayCb, _autostartCb, _trayCb })
+            foreach (CheckBox cb in new[] { _showCpuTrayCb, _showGpuTrayCb, _showOverlayCb, _lockOverlayCb, _autostartCb, _alwaysOnTopCb, _trayCb })
             {
                 if (cb != null)
                 {
@@ -4795,7 +4888,7 @@ namespace MiniFanControl
             }
             if (_overlayForm != null)
             {
-                _overlayForm.IsRadeonTheme = isRadeon;
+                _overlayForm.IsRadeonTheme = isRadeon; _overlayForm.IsAfterburnerTheme = IsAb;
                 _overlayForm.Invalidate();
             }
             UpdateOsdStudioStyles();
@@ -4807,13 +4900,13 @@ namespace MiniFanControl
         {
             _lastSelectedModeCode = activeCode;
             bool isRadeon = (_themePref == ThemePreference.Radeon);
-            Color surface2 = isRadeon ? RadeonSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2);
-            Color text = isRadeon ? RadeonText : (_isDarkMode ? DarkText : LightText);
+            Color surface2 = isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2));
+            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
             bool editSys = _curveCanvas != null && _curveCanvas.EditSysFan;
             Color accent = editSys
-                ? (isRadeon ? RadeonOrange : (_isDarkMode ? DarkTeal : LightTeal))
-                : (isRadeon ? RadeonAccent : (_isDarkMode ? DarkAccent : LightAccent));
-            Color activeFg = isRadeon ? Color.White : (_isDarkMode ? Color.Black : Color.White);
+                ? (isRadeon ? RadeonOrange : (IsAb ? AbCyan : (_isDarkMode ? DarkTeal : LightTeal)))
+                : (isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent)));
+            Color activeFg = isRadeon ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
 
             FanCurveProfile tabProf = GetSelectedTabProfile();
             bool tabManual = editSys ? _sysManualOverride : _apuManualOverride;
@@ -5237,6 +5330,13 @@ namespace MiniFanControl
 
             Text = string.Format("CPU {0}°C | iGPU {1}°C - MiniFanControl", st.CpuTemp, st.GpuTemp);
 
+            if (_hwSubLabel != null && !string.IsNullOrEmpty(st.RadeonSoftwareVer))
+            {
+                string drvTag = "Radeon Software " + st.RadeonSoftwareVer;
+                if (_hwSubLabel.Text.IndexOf("Radeon Software", StringComparison.Ordinal) < 0)
+                    _hwSubLabel.Text = _hwSubLabel.Text + " • " + drvTag;
+            }
+
             int apuTemp = Math.Max(st.CpuTemp, st.GpuTemp);
             if (_curveCanvas != null)
             {
@@ -5542,7 +5642,7 @@ namespace MiniFanControl
             if (modeName.StartsWith("Balanced", StringComparison.OrdinalIgnoreCase)) return "Bal";
             if (modeName.StartsWith("Performance", StringComparison.OrdinalIgnoreCase)) return "Perf";
             if (modeName.StartsWith("Silent", StringComparison.OrdinalIgnoreCase)) return "Sil";
-            return modeName.Length > 6 ? modeName.Substring(0, 6) : modeName;
+            return modeName.Length > 10 ? modeName.Substring(0, 10).TrimEnd() : modeName;
         }
 
         private void ApplyMode(int code)
@@ -5809,11 +5909,21 @@ namespace MiniFanControl
             if (_cpuTrayIcon != null)
             {
                 _cpuTrayIcon.Visible = false;
+                if (_cpuTrayIcon.Icon != null)
+                {
+                    try { _cpuTrayIcon.Icon.Dispose(); } catch { }
+                    _cpuTrayIcon.Icon = null;
+                }
                 _cpuTrayIcon.Dispose();
             }
             if (_gpuTrayIcon != null)
             {
                 _gpuTrayIcon.Visible = false;
+                if (_gpuTrayIcon.Icon != null)
+                {
+                    try { _gpuTrayIcon.Icon.Dispose(); } catch { }
+                    _gpuTrayIcon.Icon = null;
+                }
                 _gpuTrayIcon.Dispose();
             }
             if (_cpuIconHandle != IntPtr.Zero)

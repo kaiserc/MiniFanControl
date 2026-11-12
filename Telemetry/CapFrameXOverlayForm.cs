@@ -49,6 +49,14 @@ namespace MiniFanControl
         private static readonly Color OsdBgRadeon  = Color.FromArgb(20, 8, 12);
         private static readonly Color OsdBorderRadeon = Color.FromArgb(110, 24, 38);
 
+        // MSI Afterburner Homage Palette (Gunmetal carbon, toxic neon green & cyberpunk cyan)
+        private static readonly Color OsdBgAfterburner     = Color.FromArgb(17, 19, 23);
+        private static readonly Color OsdBorderAfterburner = Color.FromArgb(0x00, 0xCE, 0x68);
+        private static readonly Color AbGreen  = Color.FromArgb(0x00, 0xE6, 0x76);
+        private static readonly Color AbCyan   = Color.FromArgb(0x00, 0xE5, 0xFF);
+        private static readonly Color AbAmber  = Color.FromArgb(0xFF, 0x91, 0x00);
+        private static readonly Color AbWhite  = Color.FromArgb(0xEE, 0xF2, 0xF6);
+
         private static readonly Color CfxAmber   = Color.FromArgb(0xF5, 0x9E, 0x0B);
         private static readonly Color CfxRuby    = Color.FromArgb(0xF4, 0x3F, 0x5E);
         private static readonly Color CfxCyan    = Color.FromArgb(0x38, 0xBD, 0xF8);
@@ -71,6 +79,7 @@ namespace MiniFanControl
         public int OpacityPct = 88;
         public bool MatchAppTheme = true;
         public bool IsRadeonTheme = false;
+        public bool IsAfterburnerTheme = false;
 
         public bool ShowCpu = true;
         public bool ShowGpu = true;
@@ -84,6 +93,7 @@ namespace MiniFanControl
         public bool ShowPeaks = true;
         public bool ShowNvme = true;
         public bool ShowRam = true;
+        public bool ShowDriverVersion = false;
         public bool ShowRadeonSettings = true;
         public bool ShowLiveTrend = true;
         public bool PlotFpsOnTrend = true;
@@ -298,8 +308,16 @@ namespace MiniFanControl
                 AddMetricToggleMenuItem(metricsMenu, "System Fan Speed", () => ShowSysFan, v => ShowSysFan = v);
             AddMetricToggleMenuItem(metricsMenu, "Thermal Mode", () => ShowMode, v => ShowMode = v);
             AddMetricToggleMenuItem(metricsMenu, "Peak Values (▲)", () => ShowPeaks, v => ShowPeaks = v);
+            AddMetricToggleMenuItem(metricsMenu, "Radeon Driver Version", () => ShowDriverVersion, v => ShowDriverVersion = v);
             AddMetricToggleMenuItem(metricsMenu, "Radeon Features (Tags: FreeSync, Anti-Lag, AFMF, Chill, Boost, RSR, RIS)", () => ShowRadeonSettings, v => ShowRadeonSettings = v);
             menu.Items.Add(metricsMenu);
+
+            ToolStripMenuItem themeMenu = new ToolStripMenuItem("OSD Theme Palette");
+            themeMenu.DropDownItems.Add("Match Application Theme", null, (s, e) => { MatchAppTheme = true; Invalidate(); });
+            themeMenu.DropDownItems.Add("Classic CapFrameX Dark (Cyan/Amber)", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = false; Invalidate(); });
+            themeMenu.DropDownItems.Add("AMD Radeon Ruby Red", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = true; IsAfterburnerTheme = false; Invalidate(); });
+            themeMenu.DropDownItems.Add("MSI Afterburner Toxic Green", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = true; Invalidate(); });
+            menu.Items.Add(themeMenu);
 
             menu.Items.Add("Switch Layout (Horizontal Bar / Vertical Stack)", null, (s, e) =>
             {
@@ -393,6 +411,7 @@ namespace MiniFanControl
             if (ShowApuFan) c++;
             if (HasDualFans && ShowSysFan) c++;
             if (ShowMode) c++;
+            if (ShowDriverVersion && !string.IsNullOrEmpty(_status.RadeonSoftwareVer)) c++;
             if (ShowRadeonSettings && _status.RadeonFeaturesAvailable)
             {
                 List<string> tags = _status.GetActiveRadeonTags();
@@ -403,6 +422,270 @@ namespace MiniFanControl
 
         public int TargetWidth { get; private set; }
         public int TargetHeight { get; private set; }
+
+        private class HorizColumn
+        {
+            public string Key;
+            public string Label;
+            public string Value;
+            public string Peak;
+            public Brush LabelBrush;
+            public Brush ValueBrush;
+            public Brush PeakBrush;
+            public List<int> SparkSamples;
+            public Color SparkColor;
+            public List<string> RadeonTags;
+            public float MinWidth;
+            public float AllocatedWidth;
+            public float StartX;
+        }
+
+        private List<HorizColumn> BuildHorizontalColumns(
+            Graphics g, float sc, bool showSpark,
+            Brush bLabel, Brush bCpu, Brush bGpu, Brush bNvme, Brush bPwr, Brush bRam,
+            Brush bFps, Brush bLow, Brush bLoad, Brush bApu, Brush bSys, Brush bWhite, Brush bPeak,
+            Color cpuCol, Color gpuCol, Color pwrCol, Color loadCol, Color apuCol, Color sysCol)
+        {
+            List<HorizColumn> list = new List<HorizColumn>();
+
+            string cpuVal = string.Format("{0}°C", _status.CpuTemp);
+            string gpuVal = _status.GpuTemp > 0 ? string.Format("{0}°C", _status.GpuTemp) : "N/A";
+            string nvmeVal = string.Format("{0}°C", _status.NvmeTemp);
+            string pwrVal = _status.ApuPowerWatts > 0 ? string.Format("{0}W", _status.ApuPowerWatts) : "--W";
+            string f1Val  = string.Format("{0}r", _status.Fan1Rpm);
+            string f2Val  = _status.Fan2Rpm > 0 ? string.Format("{0}r", _status.Fan2Rpm) : "--";
+
+            string cpuPeak = (ShowPeaks && Stats != null && Stats.MaxCpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxCpuTemp) : null;
+            string gpuPeak = (ShowPeaks && Stats != null && Stats.MaxGpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxGpuTemp) : null;
+            string nvmePeak = (ShowPeaks && Stats != null && Stats.MaxNvmeTemp > 0) ? string.Format("▲{0}°", Stats.MaxNvmeTemp) : null;
+            string pwrPeak = (ShowPeaks && Stats != null && Stats.MaxPowerWatts > 0) ? string.Format("▲{0}W", Stats.MaxPowerWatts) : null;
+            string ramPeak = (ShowPeaks && Stats != null && Stats.MaxRamPowerWatts > 0) ? string.Format("▲{0:0.0}W", Stats.MaxRamPowerWatts) : null;
+
+            if (ShowCpu)
+            {
+                list.Add(new HorizColumn {
+                    Key = "CPU", Label = "CPU", Value = cpuVal, Peak = cpuPeak,
+                    LabelBrush = bLabel, ValueBrush = bCpu, PeakBrush = bPeak,
+                    SparkSamples = showSpark ? (Stats != null ? Stats.CpuHistory : null) : null,
+                    SparkColor = cpuCol
+                });
+            }
+
+            if (ShowGpu)
+            {
+                list.Add(new HorizColumn {
+                    Key = "iGPU", Label = "iGPU", Value = gpuVal, Peak = gpuPeak,
+                    LabelBrush = bLabel, ValueBrush = bGpu, PeakBrush = bPeak,
+                    SparkSamples = showSpark ? (Stats != null ? Stats.GpuHistory : null) : null,
+                    SparkColor = gpuCol
+                });
+            }
+
+            if (ShowNvme && _status.NvmeTemp > 0)
+            {
+                list.Add(new HorizColumn {
+                    Key = "NVMe", Label = "NVMe", Value = nvmeVal, Peak = nvmePeak,
+                    LabelBrush = bLabel, ValueBrush = bNvme, PeakBrush = bPeak,
+                    SparkSamples = showSpark ? (Stats != null ? Stats.NvmeHistory : null) : null,
+                    SparkColor = CfxTeal
+                });
+            }
+
+            if (ShowPower)
+            {
+                list.Add(new HorizColumn {
+                    Key = "PWR", Label = "PWR", Value = pwrVal, Peak = pwrPeak,
+                    LabelBrush = bLabel, ValueBrush = bPwr, PeakBrush = bPeak,
+                    SparkSamples = showSpark ? (Stats != null ? Stats.PowerHistory : null) : null,
+                    SparkColor = pwrCol
+                });
+            }
+
+            if (ShowRam && _status.RamTotalGb > 0)
+            {
+                string ramVal = _status.RamPowerWatts > 0
+                    ? string.Format("{0}% ~{1:0}W", _status.RamLoadPct, _status.RamPowerWatts)
+                    : string.Format("{0}%", _status.RamLoadPct);
+                list.Add(new HorizColumn {
+                    Key = "RAM", Label = "RAM", Value = ramVal, Peak = ramPeak,
+                    LabelBrush = bLabel, ValueBrush = bRam, PeakBrush = bPeak,
+                    SparkSamples = showSpark ? (Stats != null ? Stats.RamPowerHistory : null) : null,
+                    SparkColor = Color.FromArgb(0x81, 0x8C, 0xF8)
+                });
+            }
+
+            if (ShowFps)
+            {
+                bool hasFps = _status.RtssFps > 0;
+                string lbl = "FPS";
+                string val = hasFps ? string.Format("{0}", _status.RtssFps) : "--";
+                int sessionAvg = (Stats != null && Stats.AvgFps > 0)
+                    ? (int)Math.Round(Stats.AvgFps)
+                    : (_status.RtssAvgFps > 0 ? _status.RtssAvgFps : _status.RtssFps);
+                if (Stats != null && Stats.MaxFps > 0 && sessionAvg > Stats.MaxFps)
+                    sessionAvg = Stats.MaxFps;
+
+                string peak = hasFps
+                    ? (sessionAvg > 0 ? string.Format("Avg:{0}", sessionAvg) : (ShowPeaks && Stats != null && Stats.MaxFps > 0 ? string.Format("▲{0}", Stats.MaxFps) : null))
+                    : (_status.RtssRunning ? "RTSS Idle" : (ShowPeaks ? "Standby" : null));
+                Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8);
+
+                list.Add(new HorizColumn {
+                    Key = "FPS", Label = lbl, Value = val, Peak = peak,
+                    LabelBrush = bLabel, ValueBrush = bFps, PeakBrush = bPeak,
+                    SparkSamples = showSpark ? (Stats != null ? Stats.FpsHistory : null) : null,
+                    SparkColor = fpsCol
+                });
+            }
+
+            if (ShowLows)
+            {
+                bool hasFps = _status.RtssFps > 0;
+                int low01 = _status.RtssP01LowFps > 0 ? _status.RtssP01LowFps : (Stats != null ? Stats.P01LowFps : 0);
+                string lbl = "0.1%";
+                string val = (hasFps && low01 > 0) ? string.Format("{0}", low01) : (low01 > 0 ? string.Format("{0}", low01) : "--");
+                Color lowCol = Color.FromArgb(0xFB, 0x71, 0x85);
+
+                list.Add(new HorizColumn {
+                    Key = "0.1%", Label = lbl, Value = val, Peak = null,
+                    LabelBrush = bLabel, ValueBrush = bLow, PeakBrush = bPeak,
+                    SparkSamples = showSpark ? (Stats != null ? Stats.FrametimeHistory : null) : null,
+                    SparkColor = lowCol
+                });
+            }
+
+            if (ShowGpuLoad)
+            {
+                string lbl = "LOAD";
+                string val = string.Format("{0}%", _status.GfxActivityPct);
+                string peak = (ShowPeaks && Stats != null && Stats.MaxGpuLoad > 0) ? string.Format("▲{0}%", Stats.MaxGpuLoad) : null;
+
+                list.Add(new HorizColumn {
+                    Key = "LOAD", Label = lbl, Value = val, Peak = peak,
+                    LabelBrush = bLabel, ValueBrush = bLoad, PeakBrush = bPeak,
+                    SparkSamples = showSpark ? (Stats != null ? Stats.GpuLoadHistory : null) : null,
+                    SparkColor = loadCol
+                });
+            }
+
+            if (ShowApuFan)
+            {
+                list.Add(new HorizColumn {
+                    Key = "APU", Label = "APU", Value = f1Val, Peak = null,
+                    LabelBrush = bLabel, ValueBrush = bApu, PeakBrush = bPeak,
+                    SparkSamples = showSpark ? (Stats != null ? Stats.Fan1RpmHistory : null) : null,
+                    SparkColor = apuCol
+                });
+            }
+
+            if (HasDualFans && ShowSysFan)
+            {
+                list.Add(new HorizColumn {
+                    Key = "SYS", Label = "SYS", Value = f2Val, Peak = null,
+                    LabelBrush = bLabel, ValueBrush = bSys, PeakBrush = bPeak,
+                    SparkSamples = showSpark ? (Stats != null ? Stats.Fan2RpmHistory : null) : null,
+                    SparkColor = sysCol
+                });
+            }
+
+            if (ShowMode)
+            {
+                string modeVal = !string.IsNullOrEmpty(_modeSummary) ? _modeSummary : (!string.IsNullOrEmpty(_status.Mode) ? _status.Mode : "Auto");
+                list.Add(new HorizColumn {
+                    Key = "MODE", Label = "MODE", Value = modeVal, Peak = null,
+                    LabelBrush = bLabel, ValueBrush = bWhite, PeakBrush = bPeak,
+                    SparkSamples = null, SparkColor = Color.Empty
+                });
+            }
+
+            if (ShowDriverVersion && !string.IsNullOrEmpty(_status.RadeonSoftwareVer))
+            {
+                list.Add(new HorizColumn {
+                    Key = "DRV", Label = "DRV", Value = _status.RadeonSoftwareVer, Peak = null,
+                    LabelBrush = bLabel, ValueBrush = bWhite, PeakBrush = bPeak,
+                    SparkSamples = null, SparkColor = Color.Empty
+                });
+            }
+
+            if (ShowRadeonSettings && _status.RadeonFeaturesAvailable)
+            {
+                List<string> radTags = _status.GetActiveRadeonTags();
+                if (radTags != null && radTags.Count > 0)
+                {
+                    list.Add(new HorizColumn {
+                        Key = "RADEON", Label = "RADEON", Value = null, Peak = null,
+                        LabelBrush = bLabel, ValueBrush = null, PeakBrush = null,
+                        SparkSamples = null, SparkColor = Color.Empty,
+                        RadeonTags = radTags
+                    });
+                }
+            }
+
+            // Dynamically calculate required minimum content width for each column
+            foreach (var col in list)
+            {
+                if (col.Key == "RADEON")
+                {
+                    float hdrW = g.MeasureString("RADEON", _fontHdr).Width;
+                    float tagsW = 0f;
+                    int padH = (int)Math.Round(3 * sc);
+                    if (col.RadeonTags != null && col.RadeonTags.Count > 0)
+                    {
+                        foreach (string t in col.RadeonTags)
+                        {
+                            SizeF sz = g.MeasureString(t, _fontTrace);
+                            tagsW += (float)Math.Ceiling(sz.Width) + padH * 2 + (4f * sc);
+                        }
+                    }
+                    float radW = Math.Max(hdrW, tagsW) + (16f * sc);
+                    col.MinWidth = Math.Max(100f * sc, radW);
+                }
+                else if (col.Key == "MODE")
+                {
+                    float lblW = g.MeasureString("MODE", _fontLabel).Width;
+                    float valW = g.MeasureString(col.Value, _fontVal).Width;
+                    float modeW = lblW + valW + (20f * sc);
+                    col.MinWidth = Math.Max(104f * sc, modeW);
+                }
+                else
+                {
+                    float lblW = g.MeasureString(col.Label, _fontLabel).Width;
+                    float valW = g.MeasureString(col.Value, _fontVal).Width;
+                    float pkW = !string.IsNullOrEmpty(col.Peak) ? g.MeasureString(col.Peak, _fontPeak).Width + (4f * sc) : 0f;
+                    float contentW = lblW + valW + pkW + (14f * sc);
+
+                    if (showSpark && col.SparkSamples != null)
+                    {
+                        col.MinWidth = Math.Max(95f * sc, contentW);
+                    }
+                    else
+                    {
+                        col.MinWidth = Math.Max((ShowPeaks ? 92f : 78f) * sc, contentW);
+                    }
+                }
+            }
+
+            return list;
+        }
+
+        private float MeasureHorizontalRequiredWidth(float sc, bool showSpark)
+        {
+            using (Bitmap bmp = new Bitmap(1, 1))
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+                List<HorizColumn> cols = BuildHorizontalColumns(
+                    g, sc, showSpark,
+                    null, null, null, null, null, null, null, null, null, null, null, null, null,
+                    Color.Empty, Color.Empty, Color.Empty, Color.Empty, Color.Empty, Color.Empty);
+                float total = 0f;
+                foreach (var c in cols)
+                {
+                    total += c.MinWidth;
+                }
+                return total;
+            }
+        }
 
         public void UpdateDimensions()
         {
@@ -454,12 +737,7 @@ namespace MiniFanControl
             }
             else
             {
-                int baseColW = ShowPeaks ? 104 : 88;
-                int colW = (int)Math.Round(baseColW * sc);
-                int numGraphs = (showCombined ? 1 : 0) + (hasFpsGraph ? (DfGraphStyle ? 2 : 1) : 0);
-                int minW = (int)Math.Round((numGraphs > 0 ? 390 : 160) * sc);
-                int w = Math.Max(minW, (int)Math.Round(14 * sc) + (cols > 0 ? cols * colW : 0));
-                int topH = (cols > 0) ? (int)Math.Round((showSpark ? 50 : 32) * sc) : (int)Math.Round(24 * sc);
+                int topH = (cols > 0) ? (int)Math.Round((showSpark ? 50 : 36) * sc) : (int)Math.Round(24 * sc);
                 int h = topH;
                 if (showCombined) h += scaledGraphH + (int)Math.Round(10 * sc);
                 if (hasFpsGraph)
@@ -469,9 +747,33 @@ namespace MiniFanControl
                     else
                         h += scaledGraphH + (int)Math.Round(10 * sc);
                 }
+
+                int numGraphs = (showCombined ? 1 : 0) + (hasFpsGraph ? (DfGraphStyle ? 2 : 1) : 0);
+                int minW = (int)Math.Round((numGraphs > 0 ? 420 : 180) * sc);
+
+                float requiredColsW = MeasureHorizontalRequiredWidth(sc, showSpark);
+                int w = Math.Max(minW, (int)Math.Ceiling(requiredColsW + (16f * sc)));
+
+                Screen scr = Screen.FromControl(this);
+                Rectangle wa = (scr != null) ? scr.WorkingArea : Screen.PrimaryScreen.WorkingArea;
+                if (w > wa.Width - 16)
+                {
+                    w = wa.Width - 16;
+                }
+
                 TargetWidth = w;
                 TargetHeight = Math.Max((int)Math.Round(28 * sc), h);
                 Size = new Size(TargetWidth, TargetHeight);
+
+                // Ensure the horizontal overlay bar does not spill off the right edge of the monitor
+                if (Location.X + TargetWidth > wa.Right - 8)
+                {
+                    int newX = Math.Max(wa.Left + 8, wa.Right - TargetWidth - 8);
+                    if (newX != Location.X)
+                    {
+                        Location = new Point(newX, Location.Y);
+                    }
+                }
             }
         }
 
@@ -480,14 +782,16 @@ namespace MiniFanControl
             int prevCols = CountVisibleMetrics();
             int prevTags = (_status.GetActiveRadeonTags() != null) ? _status.GetActiveRadeonTags().Count : 0;
             bool layoutChanged = (HasDualFans != hasDualFans);
+            string prevMode = _modeSummary;
             _status = st;
             _modeSummary = string.IsNullOrEmpty(modeSummary) ? st.Mode : modeSummary;
             HasDualFans = hasDualFans;
 
             int newCols = CountVisibleMetrics();
             int newTags = (_status.GetActiveRadeonTags() != null) ? _status.GetActiveRadeonTags().Count : 0;
+            bool modeChanged = (prevMode != _modeSummary);
 
-            if (layoutChanged || prevCols != newCols || prevTags != newTags || TargetHeight != Height || TargetWidth != Width)
+            if (layoutChanged || modeChanged || prevCols != newCols || prevTags != newTags || TargetHeight != Height || TargetWidth != Width)
                 UpdateDimensions();
             Invalidate();
         }
@@ -724,9 +1028,12 @@ namespace MiniFanControl
             if (rect.Width < 20 || rect.Height < 16) return;
             float sc = GetScaleMultiplier();
 
-            Color chartBg = (MatchAppTheme && IsRadeonTheme)
-                ? Color.FromArgb(180, 10, 4, 6)
-                : Color.FromArgb(180, 10, 12, 18);
+            bool afterburner = MatchAppTheme && IsAfterburnerTheme;
+            Color chartBg = afterburner
+                ? Color.FromArgb(190, 12, 14, 18)
+                : ((MatchAppTheme && IsRadeonTheme)
+                    ? Color.FromArgb(180, 10, 4, 6)
+                    : Color.FromArgb(180, 10, 12, 18));
 
             using (SolidBrush bgBr = new SolidBrush(chartBg))
             using (Pen borderPen = new Pen(gridCol, 1f))
@@ -1433,15 +1740,16 @@ namespace MiniFanControl
                 float sc = GetScaleMultiplier();
                 int scaledGraphH = (int)Math.Round(GraphHeight * sc);
 
-                bool radeon = MatchAppTheme && IsRadeonTheme;
-                Color bg = radeon ? OsdBgRadeon : OsdBgDark;
-                Color border = radeon ? OsdBorderRadeon : OsdBorderDark;
-                Color accentCol = radeon ? CfxRuby : CfxAmber;
-            Color cpuCol = radeon ? CfxRuby : CfxCyan;
-            Color gpuCol = radeon ? CfxCyan : CfxGreen;
-            Color pwrCol = CfxYellow;
-            Color apuCol = CfxViolet;
-            Color sysCol = CfxTeal;
+                bool radeon = (MatchAppTheme && IsRadeonTheme) || (!MatchAppTheme && IsRadeonTheme);
+                bool afterburner = (MatchAppTheme && IsAfterburnerTheme) || (!MatchAppTheme && IsAfterburnerTheme);
+                Color bg = afterburner ? OsdBgAfterburner : (radeon ? OsdBgRadeon : OsdBgDark);
+                Color border = afterburner ? OsdBorderAfterburner : (radeon ? OsdBorderRadeon : OsdBorderDark);
+                Color accentCol = afterburner ? AbGreen : (radeon ? CfxRuby : CfxAmber);
+                Color cpuCol = afterburner ? AbGreen : (radeon ? CfxRuby : CfxCyan);
+                Color gpuCol = afterburner ? AbCyan : (radeon ? CfxCyan : CfxGreen);
+                Color pwrCol = afterburner ? AbAmber : CfxYellow;
+                Color apuCol = afterburner ? AbGreen : CfxViolet;
+                Color sysCol = afterburner ? AbCyan : CfxTeal;
 
             g.Clear(bg);
 
@@ -1480,86 +1788,65 @@ namespace MiniFanControl
             {
                 if (!VerticalLayout)
                 {
-                    int cols = CountVisibleMetrics();
-                    int availW = Width - (int)Math.Round(12 * sc);
-                    float colW = (float)availW / cols;
-                    int colIdx = 0;
+                    Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8);
+                    Color lowCol = Color.FromArgb(0xFB, 0x71, 0x85);
+                    Color loadCol = radeon ? CfxCyan : Color.FromArgb(0xC0, 0x84, 0xFC);
 
-                    if (ShowCpu)
-                        DrawHorizCell(g, colIdx++, colW, "CPU", cpuVal, cpuPeak, bLabel, bCpu, bPeak, sepPen, showSpark ? (Stats != null ? Stats.CpuHistory : null) : null, cpuCol, sc);
-                    if (ShowGpu)
-                        DrawHorizCell(g, colIdx++, colW, "iGPU", gpuVal, gpuPeak, bLabel, bGpu, bPeak, sepPen, showSpark ? (Stats != null ? Stats.GpuHistory : null) : null, gpuCol, sc);
-                    if (ShowNvme && _status.NvmeTemp > 0)
-                        DrawHorizCell(g, colIdx++, colW, "NVMe", _status.NvmeTemp + "°C", nvmePeak, bLabel, bNvme, bPeak, sepPen, showSpark ? (Stats != null ? Stats.NvmeHistory : null) : null, CfxTeal, sc);
-                    if (ShowPower)
-                        DrawHorizCell(g, colIdx++, colW, "PWR", pwrVal, pwrPeak, bLabel, bPwr, bPeak, sepPen, showSpark ? (Stats != null ? Stats.PowerHistory : null) : null, pwrCol, sc);
-                    if (ShowRam && _status.RamTotalGb > 0)
+                    using (Brush bFps = new SolidBrush(fpsCol))
+                    using (Brush bLow = new SolidBrush(lowCol))
+                    using (Brush bLoad = new SolidBrush(loadCol))
                     {
-                        string ramVal = _status.RamPowerWatts > 0
-                            ? string.Format("{0}% ~{1:0}W", _status.RamLoadPct, _status.RamPowerWatts)
-                            : string.Format("{0}%", _status.RamLoadPct);
-                        DrawHorizCell(g, colIdx++, colW, "RAM", ramVal, ramPeak, bLabel, bRam, bPeak, sepPen, showSpark ? (Stats != null ? Stats.RamPowerHistory : null) : null, Color.FromArgb(0x81, 0x8C, 0xF8), sc);
-                    }
-                    if (ShowFps)
-                    {
-                        bool hasFps = _status.RtssFps > 0;
-                        string lbl = "FPS";
-                        string val = hasFps ? string.Format("{0}", _status.RtssFps) : "--";
-                        int sessionAvg = (Stats != null && Stats.AvgFps > 0)
-                            ? (int)Math.Round(Stats.AvgFps)
-                            : (_status.RtssAvgFps > 0 ? _status.RtssAvgFps : _status.RtssFps);
-                        if (Stats != null && Stats.MaxFps > 0 && sessionAvg > Stats.MaxFps)
-                            sessionAvg = Stats.MaxFps;
+                        List<HorizColumn> horizCols = BuildHorizontalColumns(
+                            g, sc, showSpark,
+                            bLabel, bCpu, bGpu, bNvme, bPwr, bRam, bFps, bLow, bLoad, bApu, bSys, bWhite, bPeak,
+                            cpuCol, gpuCol, pwrCol, loadCol, apuCol, sysCol);
 
-                        string peak = hasFps
-                            ? (sessionAvg > 0 ? string.Format("Avg:{0}", sessionAvg) : (ShowPeaks && Stats != null && Stats.MaxFps > 0 ? string.Format("▲{0}", Stats.MaxFps) : null))
-                            : (_status.RtssRunning ? "RTSS Idle" : (ShowPeaks ? "Standby" : null));
-                        Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8);
-                        using (Brush bFps = new SolidBrush(fpsCol))
+                        float totalMinW = 0f;
+                        for (int i = 0; i < horizCols.Count; i++)
                         {
-                            DrawHorizCell(g, colIdx++, colW, lbl, val, peak, bLabel, bFps, bPeak, sepPen, showSpark ? (Stats != null ? Stats.FpsHistory : null) : null, fpsCol, sc);
+                            totalMinW += horizCols[i].MinWidth;
                         }
-                    }
-                    if (ShowLows)
-                    {
-                        bool hasFps = _status.RtssFps > 0;
-                        int low01 = _status.RtssP01LowFps > 0 ? _status.RtssP01LowFps : (Stats != null ? Stats.P01LowFps : 0);
-                        string lbl = "0.1%";
-                        string val = (hasFps && low01 > 0) ? string.Format("{0}", low01) : (low01 > 0 ? string.Format("{0}", low01) : "--");
-                        string peak = null;
-                        Color lowCol = Color.FromArgb(0xFB, 0x71, 0x85);
-                        using (Brush bLow = new SolidBrush(lowCol))
+
+                        float availW = Math.Max(10f, (float)Width - (16f * sc));
+                        float surplus = Math.Max(0f, availW - totalMinW);
+
+                        float curX = 8f * sc;
+                        for (int i = 0; i < horizCols.Count; i++)
                         {
-                            DrawHorizCell(g, colIdx++, colW, lbl, val, peak, bLabel, bLow, bPeak, sepPen, showSpark ? (Stats != null ? Stats.FrametimeHistory : null) : null, lowCol, sc);
+                            HorizColumn col = horizCols[i];
+                            float wAlloc = col.MinWidth;
+                            if (totalMinW > 0f)
+                            {
+                                if (availW < totalMinW)
+                                {
+                                    wAlloc = Math.Max(30f * sc, col.MinWidth * (availW / totalMinW));
+                                }
+                                else if (surplus > 0f)
+                                {
+                                    wAlloc += surplus * (col.MinWidth / totalMinW);
+                                }
+                            }
+                            col.AllocatedWidth = wAlloc;
+                            col.StartX = curX;
+                            curX += wAlloc;
                         }
-                    }
-                    if (ShowGpuLoad)
-                    {
-                        string lbl = "LOAD";
-                        string val = string.Format("{0}%", _status.GfxActivityPct);
-                        string peak = (ShowPeaks && Stats != null && Stats.MaxGpuLoad > 0) ? string.Format("▲{0}%", Stats.MaxGpuLoad) : null;
-                        Color loadCol = radeon ? CfxCyan : Color.FromArgb(0xC0, 0x84, 0xFC);
-                        using (Brush bLoad = new SolidBrush(loadCol))
+
+                        for (int i = 0; i < horizCols.Count; i++)
                         {
-                            DrawHorizCell(g, colIdx++, colW, lbl, val, peak, bLabel, bLoad, bPeak, sepPen, showSpark ? (Stats != null ? Stats.GpuLoadHistory : null) : null, loadCol, sc);
-                        }
-                    }
-                    if (ShowApuFan)
-                        DrawHorizCell(g, colIdx++, colW, "APU", f1Val + "r", null, bLabel, bApu, bPeak, sepPen, showSpark ? (Stats != null ? Stats.Fan1RpmHistory : null) : null, apuCol, sc);
-                    if (HasDualFans && ShowSysFan)
-                        DrawHorizCell(g, colIdx++, colW, "SYS", f2Val + "r", null, bLabel, bSys, bPeak, sepPen, showSpark ? (Stats != null ? Stats.Fan2RpmHistory : null) : null, sysCol, sc);
-                    if (ShowMode)
-                        DrawHorizCell(g, colIdx++, colW, "MODE", _modeSummary, null, bLabel, bWhite, bPeak, sepPen, null, CfxWhite, sc);
-                    if (ShowRadeonSettings && _status.RadeonFeaturesAvailable)
-                    {
-                        List<string> radTags = _status.GetActiveRadeonTags();
-                        if (radTags != null && radTags.Count > 0)
-                        {
-                            DrawHorizontalRadeonTagsCell(g, colIdx++, colW, radTags, bLabel, sepPen, sc);
+                            HorizColumn col = horizCols[i];
+                            bool drawSep = (i > 0);
+                            if (col.Key == "RADEON")
+                            {
+                                DrawHorizontalRadeonTagsCell(g, col.StartX, col.AllocatedWidth, drawSep, col.RadeonTags, col.LabelBrush, sepPen, sc);
+                            }
+                            else
+                            {
+                                DrawHorizCell(g, col.StartX, col.AllocatedWidth, drawSep, col.Label, col.Value, col.Peak, col.LabelBrush, col.ValueBrush, col.PeakBrush, sepPen, col.SparkSamples, col.SparkColor, sc);
+                            }
                         }
                     }
 
-                    int curY = (colIdx > 0) ? (int)Math.Round((showSpark ? 50 : 32) * sc) : (int)Math.Round(24 * sc);
+                    int curY = (CountVisibleMetrics() > 0) ? (int)Math.Round((showSpark ? 50 : 36) * sc) : (int)Math.Round(24 * sc);
 
                     Action drawHorizTrend = () =>
                     {
@@ -1626,7 +1913,7 @@ namespace MiniFanControl
                 }
                 else
                 {
-                    g.DrawString(radeon ? "RADEON TELEMETRY OSD" : "MINIFANCONTROL OSD", _fontHdr, bLabel, 10f * sc, 6f * sc);
+                    g.DrawString(afterburner ? "AFTERBURNER OSD" : (radeon ? "RADEON TELEMETRY OSD" : "MINIFANCONTROL OSD"), _fontHdr, bLabel, 10f * sc, 6f * sc);
                     g.DrawLine(sepPen, (int)Math.Round(10 * sc), (int)Math.Round(24 * sc), Width - (int)Math.Round(10 * sc), (int)Math.Round(24 * sc));
 
                     int row = 0;
@@ -1719,6 +2006,8 @@ namespace MiniFanControl
                         DrawVertRow(g, row++, rowH, "Sys Fan", f2Val + " RPM", null, bLabel, bSys, bPeak, showSpark ? (Stats != null ? Stats.Fan2RpmHistory : null) : null, sysCol, sc);
                     if (ShowMode)
                         DrawVertRow(g, row++, rowH, "Mode", _modeSummary, null, bLabel, bWhite, bPeak, null, CfxWhite, sc);
+                    if (ShowDriverVersion && !string.IsNullOrEmpty(_status.RadeonSoftwareVer))
+                        DrawVertRow(g, row++, rowH, "Driver", _status.RadeonSoftwareVer, null, bLabel, bWhite, bPeak, null, CfxWhite, sc);
                     if (ShowRadeonSettings && _status.RadeonFeaturesAvailable)
                     {
                         List<string> radTags = _status.GetActiveRadeonTags();
@@ -1814,22 +2103,42 @@ namespace MiniFanControl
         }
     }
 
-        private void DrawHorizCell(Graphics g, int colIdx, float colW, string lbl, string val, string peak, Brush bLbl, Brush bVal, Brush bPeak, Pen sepPen, List<int> sparkSamples, Color sparkCol, float sc)
+        private void DrawHorizCell(Graphics g, float cellX, float colW, bool drawSep, string lbl, string val, string peak, Brush bLbl, Brush bVal, Brush bPeak, Pen sepPen, List<int> sparkSamples, Color sparkCol, float sc)
         {
-            float x = (8f * sc) + colIdx * colW;
-            if (colIdx > 0)
+            if (drawSep && sepPen != null)
             {
-                g.DrawLine(sepPen, x - 3f * sc, 5f * sc, x - 3f * sc, (GraphMode == 1 || GraphMode == 3) ? (45f * sc) : (27f * sc));
+                g.DrawLine(sepPen, cellX - 3f * sc, 5f * sc, cellX - 3f * sc, (GraphMode == 1 || GraphMode == 3) ? (45f * sc) : (30f * sc));
             }
 
-            g.DrawString(lbl, _fontLabel, bLbl, x, 6f * sc);
+            g.DrawString(lbl, _fontLabel, bLbl, cellX, 6f * sc);
             float lblW = g.MeasureString(lbl, _fontLabel).Width;
-            g.DrawString(val, _fontVal, bVal, x + lblW - 1f, 5f * sc);
+
+            float pkW = 0f;
+            if (!string.IsNullOrEmpty(peak))
+            {
+                pkW = g.MeasureString(peak, _fontPeak).Width + (3f * sc);
+            }
+
+            float availValW = Math.Max(10f, colW - lblW - pkW - (4f * sc));
+            float valW = g.MeasureString(val, _fontVal).Width;
+
+            if (valW > availValW && availValW > 12f)
+            {
+                RectangleF valRect = new RectangleF(cellX + lblW - 1f, 5f * sc, availValW, 20f * sc);
+                using (StringFormat sf = new StringFormat(StringFormatFlags.NoWrap) { Trimming = StringTrimming.EllipsisCharacter })
+                {
+                    g.DrawString(val, _fontVal, bVal, valRect, sf);
+                }
+            }
+            else
+            {
+                g.DrawString(val, _fontVal, bVal, cellX + lblW - 1f, 5f * sc);
+            }
 
             if (!string.IsNullOrEmpty(peak))
             {
-                float valW = g.MeasureString(val, _fontVal).Width;
-                g.DrawString(peak, _fontPeak, bPeak, x + lblW + valW + (3f * sc), 7f * sc);
+                float actualValW = Math.Min(valW, availValW);
+                g.DrawString(peak, _fontPeak, bPeak, cellX + lblW + actualValW + (3f * sc), 7f * sc);
             }
 
             if (sparkSamples != null)
@@ -1837,7 +2146,7 @@ namespace MiniFanControl
                 int sparkY = (int)Math.Round(26f * sc);
                 int sparkH = (int)Math.Round(20f * sc);
                 int sparkW = Math.Max((int)Math.Round(16 * sc), (int)colW - (int)Math.Round(8 * sc));
-                Rectangle sparkRect = new Rectangle((int)x + 1, sparkY, sparkW, sparkH);
+                Rectangle sparkRect = new Rectangle((int)cellX + 1, sparkY, sparkW, sparkH);
                 DrawInlineSparkline(g, sparkRect, sparkSamples, sparkCol, sc);
             }
         }
@@ -1923,8 +2232,8 @@ namespace MiniFanControl
             int textYOffset = (int)Math.Round(1 * sc);
 
             bool radeon = MatchAppTheme && IsRadeonTheme;
-            Color pillBg = radeon ? Color.FromArgb(170, 50, 15, 25) : Color.FromArgb(160, 40, 18, 22);
-            Color pillBorder = radeon ? Color.FromArgb(240, 235, 45, 65) : Color.FromArgb(230, 220, 50, 60);
+            Color pillBg = IsAfterburnerTheme ? Color.FromArgb(170, 8, 40, 26) : (radeon ? Color.FromArgb(170, 50, 15, 25) : Color.FromArgb(160, 40, 18, 22));
+            Color pillBorder = IsAfterburnerTheme ? Color.FromArgb(240, 0, 230, 118) : (radeon ? Color.FromArgb(240, 235, 45, 65) : Color.FromArgb(230, 220, 50, 60));
             Color pillText = Color.FromArgb(255, 255, 240, 242);
 
             using (SolidBrush bgBrush = new SolidBrush(pillBg))
@@ -1945,20 +2254,24 @@ namespace MiniFanControl
             }
         }
 
-        private void DrawHorizontalRadeonTagsCell(Graphics g, int colIdx, float colW, List<string> tags, Brush bLabel, Pen sepPen, float sc)
+        private void DrawHorizontalRadeonTagsCell(Graphics g, float cellX, float colW, bool drawSep, List<string> tags, Brush bLabel, Pen sepPen, float sc)
         {
             if (tags == null || tags.Count == 0) return;
-            int cellX = (int)Math.Round(8 * sc) + (int)Math.Round(colIdx * colW);
+            if (drawSep && sepPen != null)
+            {
+                g.DrawLine(sepPen, cellX - 3f * sc, 5f * sc, cellX - 3f * sc, (GraphMode == 1 || GraphMode == 3) ? (45f * sc) : (30f * sc));
+            }
+
             int padH = (int)Math.Round(3 * sc);
             int pillH = (int)Math.Round(13 * sc);
-            int curX = cellX;
-            int curY = (int)Math.Round(18 * sc);
+            float curX = cellX;
+            float curY = 18f * sc;
 
-            g.DrawString("RADEON", _fontHdr, bLabel, cellX, (int)Math.Round(4 * sc));
+            g.DrawString("RADEON", _fontHdr, bLabel, cellX, 4f * sc);
 
             bool radeon = MatchAppTheme && IsRadeonTheme;
-            Color pillBg = radeon ? Color.FromArgb(170, 50, 15, 25) : Color.FromArgb(160, 40, 18, 22);
-            Color pillBorder = radeon ? Color.FromArgb(240, 235, 45, 65) : Color.FromArgb(230, 220, 50, 60);
+            Color pillBg = IsAfterburnerTheme ? Color.FromArgb(170, 8, 40, 26) : (radeon ? Color.FromArgb(170, 50, 15, 25) : Color.FromArgb(160, 40, 18, 22));
+            Color pillBorder = IsAfterburnerTheme ? Color.FromArgb(240, 0, 230, 118) : (radeon ? Color.FromArgb(240, 235, 45, 65) : Color.FromArgb(230, 220, 50, 60));
             Color pillText = Color.FromArgb(255, 255, 240, 242);
 
             using (SolidBrush bgBrush = new SolidBrush(pillBg))
@@ -1970,22 +2283,20 @@ namespace MiniFanControl
                     string tag = tags[i];
                     SizeF sz = g.MeasureString(tag, _fontTrace);
                     int pillW = (int)Math.Ceiling(sz.Width) + padH * 2;
-                    if (curX + pillW > cellX + colW - 2 && i > 0)
+                    bool canWrap = (GraphMode == 1 || GraphMode == 3);
+                    if (curX + pillW > cellX + colW - (2f * sc) && i > 0 && canWrap)
                     {
                         curX = cellX;
-                        curY += pillH + (int)Math.Round(2 * sc);
+                        curY += pillH + (2f * sc);
                     }
-                    Rectangle pillRect = new Rectangle(curX, curY, pillW, pillH);
-                    DrawRoundedRectangle(g, borderPen, bgBrush, pillRect, (int)Math.Round(2 * sc));
-                    g.DrawString(tag, _fontTrace, textBrush, pillRect.X + padH, pillRect.Y);
-                    curX += pillW + (int)Math.Round(3 * sc);
+                    if (curX + pillW <= cellX + colW + (4f * sc))
+                    {
+                        Rectangle pillRect = new Rectangle((int)curX, (int)curY, pillW, pillH);
+                        DrawRoundedRectangle(g, borderPen, bgBrush, pillRect, (int)Math.Round(2 * sc));
+                        g.DrawString(tag, _fontTrace, textBrush, pillRect.X + padH, pillRect.Y);
+                        curX += pillW + (3f * sc);
+                    }
                 }
-            }
-
-            if (sepPen != null)
-            {
-                int lineX = cellX + (int)Math.Round(colW) - 1;
-                g.DrawLine(sepPen, lineX, (int)Math.Round(4 * sc), lineX, (int)Math.Round(42 * sc));
             }
         }
     }

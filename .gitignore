@@ -1,12 +1,21 @@
-*.old.exe
-*.old*.exe
+# Visual Studio & VS Code
+.vs/
+.vscode/
+bin/
+obj/
+
+# Runtime configurations & logs
 minifancontrol.cfg
 k12-settings.cfg
 ec-probe-report.txt
-.vs/
-.vscode/
-
 sio-diag.txt
 watchdog.log
 *.log
+
+# Build outputs & temporaries
+*.old.exe
+*.old*.exe
+*.pdb
+
+# Release packages
 dist/
