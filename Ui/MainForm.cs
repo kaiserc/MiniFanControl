@@ -1149,6 +1149,97 @@ namespace MiniFanControl
             }
         }
 
+        private void SubmitHardwareProfileOnline()
+        {
+            try
+            {
+                string report = _sysInfo.BuildProbeReport(_hw, _demo, _demoMode);
+                string outPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ec-probe-report.txt");
+                File.WriteAllText(outPath, report, Encoding.UTF8);
+
+                try
+                {
+                    Clipboard.SetText(report);
+                }
+                catch { }
+
+                string url = "https://github.com/kaiserc/MiniFanControl/issues/new?template=unsupported_hardware.md";
+                OpenUrlSafe(url);
+
+                MessageBox.Show(this,
+                    "Your system hardware probe report has been copied to your clipboard and saved to:\n" + outPath +
+                    "\n\nOpening the GitHub New Issue page in your browser — simply paste (Ctrl+V) into the issue description!",
+                    "Submit Hardware Compatibility Profile", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not prepare hardware profile submission:\n" + ex.Message,
+                    "MiniFanControl", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void CopyCurveToClipboard()
+        {
+            try
+            {
+                FanCurveProfile cur = (_curveCanvas != null && _curveCanvas.EditSysFan) ? _sysProfile : _apuProfile;
+                string curveStr = cur.Name + "|" + FormatPointList(cur.ApuPoints) + "|" + FormatPointList(cur.SysPoints);
+                Clipboard.SetText(curveStr);
+                _statusBarLabel.Text = "✓ Copied curve profile '" + cur.Name + "' to clipboard!";
+                MessageBox.Show(this,
+                    "Active curve snippet copied to clipboard:\n\n" + curveStr +
+                    "\n\nYou can share this snippet in GitHub Discussions or Discord with other Mini PC owners!",
+                    "Curve Profile Exported", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not copy curve to clipboard:\n" + ex.Message, "MiniFanControl", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ImportCurveFromClipboard()
+        {
+            try
+            {
+                if (!Clipboard.ContainsText())
+                {
+                    MessageBox.Show(this, "Clipboard is empty or does not contain text.", "MiniFanControl", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                string text = Clipboard.GetText().Trim();
+                string[] parts = text.Split('|');
+                if (parts.Length < 2)
+                {
+                    MessageBox.Show(this, "Invalid curve snippet format. Expected: Name|Temp:Pwm,...[|Temp:Pwm,...]", "MiniFanControl", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                string name = parts[0].Trim();
+                CurvePoint[] apuPts = ParsePointList(parts[1]);
+                CurvePoint[] sysPts = parts.Length >= 3 ? ParsePointList(parts[2]) : FanCurveProfile.ClonePoints(apuPts);
+                if (apuPts.Length < 2)
+                {
+                    MessageBox.Show(this, "Snippet contains insufficient curve points (minimum 2 required).", "MiniFanControl", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                FanCurveProfile imported = new FanCurveProfile(name, false, -1, apuPts, sysPts);
+                _customProfiles.Add(imported);
+                ActivateCustomProfile(imported);
+                if (_customModeCombo != null)
+                {
+                    PopulateCustomCombo();
+                }
+                SaveSettings();
+                _driversMenu = CreateDriversAndToolsMenu();
+                _statusBarLabel.Text = "✓ Imported custom curve '" + name + "'!";
+                MessageBox.Show(this, "Successfully imported and applied custom curve:\n" + name, "Curve Imported", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not import curve snippet:\n" + ex.Message, "MiniFanControl", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void ShowHardwareCompatibilityDialog()
         {
             StringBuilder sb = new StringBuilder();
@@ -1431,6 +1522,8 @@ namespace MiniFanControl
             menu.MenuItems.Add(resetPeaksLabel, (s, e) => ResetSessionPeaks());
             string exportCsvLabel = string.Format("📊 Export Session Telemetry to CSV ({0} samples logged)...", _sessionStats.LoggedRecordCount);
             menu.MenuItems.Add(exportCsvLabel, (s, e) => ExportSessionTelemetryToCsv());
+            menu.MenuItems.Add("📋 Copy Active Fan Curve to Clipboard (Share Curve)...", (s, e) => CopyCurveToClipboard());
+            menu.MenuItems.Add("📥 Import Fan Curve from Clipboard...", (s, e) => ImportCurveFromClipboard());
             string safeExitLabel = string.Format("Safety: Restore BIOS Auto Fan on Exit ({0})",
                 _restoreAutoOnExit ? "✓ Enabled" : "Disabled");
             menu.MenuItems.Add(safeExitLabel, (s, e) =>
@@ -1483,6 +1576,7 @@ namespace MiniFanControl
             menu.MenuItems.Add(profileSubMenu);
             menu.MenuItems.Add("-");
             menu.MenuItems.Add("Export Hardware & EC Probe Report (for HX 370 / New PCs)...", (s, e) => ExportHardwareProbeReport());
+            menu.MenuItems.Add("🚀 Submit Hardware Profile to GitHub (1-Click)...", (s, e) => SubmitHardwareProfileOnline());
             menu.MenuItems.Add("Detected Hardware & Multi-Model Info...", (s, e) => ShowHardwareCompatibilityDialog());
             menu.MenuItems.Add("-");
             menu.MenuItems.Add("GMKtec Official Drivers & Manuals (K12 / Mini PCs)...", (s, e) => OpenUrlSafe(URL_GMKTEC_DRIVERS));

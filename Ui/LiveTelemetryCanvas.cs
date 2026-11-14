@@ -118,9 +118,47 @@ namespace MiniFanControl
             }
         }
 
+        public void SaveGraphAsPng(string path)
+        {
+            try
+            {
+                using (Bitmap bmp = new Bitmap(Math.Max(1, Width), Math.Max(1, Height)))
+                {
+                    DrawToBitmap(bmp, new Rectangle(0, 0, Width, Height));
+                    bmp.Save(path, ImageFormat.Png);
+                }
+            }
+            catch { }
+        }
+
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
+
+            if (e.Button == MouseButtons.Right)
+            {
+                ContextMenu cm = new ContextMenu();
+                cm.MenuItems.Add("Save Live Graph Snapshot as PNG...", (s, args) =>
+                {
+                    using (SaveFileDialog sfd = new SaveFileDialog())
+                    {
+                        sfd.Filter = "PNG Image (*.png)|*.png";
+                        sfd.FileName = string.Format("telemetry-graph-{0:yyyyMMdd-HHmmss}.png", DateTime.Now);
+                        if (sfd.ShowDialog() == DialogResult.OK)
+                        {
+                            SaveGraphAsPng(sfd.FileName);
+                        }
+                    }
+                });
+                cm.MenuItems.Add("-");
+                cm.MenuItems.Add("Reset Session Peaks", (s, args) =>
+                {
+                    if (ResetPeaksRequested != null) ResetPeaksRequested(this, EventArgs.Empty);
+                });
+                cm.Show(this, e.Location);
+                return;
+            }
+
             if (e.Button != MouseButtons.Left) return;
 
             for (int i = 0; i < _pillRects.Length; i++)

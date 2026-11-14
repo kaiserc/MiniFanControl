@@ -1833,15 +1833,15 @@ namespace MiniFanControl
             string singleInstanceDetails = "";
             try
             {
-                const string MUTEX_NAME = @"Global\MiniFanControl_SingleInstance_GUI";
+                string testMutexName = @"Local\MiniFanControl_SingleInstance_Test_" + Guid.NewGuid().ToString("N");
                 bool createdFirst = false;
                 bool createdSecond = true;
-                using (Mutex m1 = new Mutex(true, MUTEX_NAME, out createdFirst))
+                using (Mutex m1 = new Mutex(true, testMutexName, out createdFirst))
                 {
                     // Second instance attempting to acquire the same mutex must detect createdNew = false
                     try
                     {
-                        using (Mutex m2 = new Mutex(true, MUTEX_NAME, out createdSecond))
+                        using (Mutex m2 = new Mutex(true, testMutexName, out createdSecond))
                         {
                             // createdSecond must be false because m1 owns it
                         }
