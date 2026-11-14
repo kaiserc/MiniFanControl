@@ -1523,13 +1523,14 @@ namespace MiniFanControl
             if (_hw != null) _hw.Profile = _sysInfo.MatchedProfile;
             if (_hwSubLabel != null)
             {
+                string drvInfo = NativeInpOut.ActiveDriverName;
                 if (_sysInfo.MatchedProfile.IsReadOnly)
                 {
-                    _hwSubLabel.Text = string.Format("EC Map: {0} • [SAFE READ-ONLY MODE] • Global\\Access_EC Mutex", _sysInfo.MatchedProfile.DisplayName);
+                    _hwSubLabel.Text = string.Format("EC Map: {0} • [SAFE READ-ONLY MODE] • Driver: {1} • Global\\Access_EC Mutex", _sysInfo.MatchedProfile.DisplayName, drvInfo);
                 }
                 else
                 {
-                    _hwSubLabel.Text = string.Format("EC Map: {0} • Global\\Access_EC Mutex • 64-bit", _sysInfo.MatchedProfile.DisplayName);
+                    _hwSubLabel.Text = string.Format("EC Map: {0} • Driver: {1} • Global\\Access_EC Mutex • 64-bit", _sysInfo.MatchedProfile.DisplayName, drvInfo);
                 }
             }
             SaveSettings();
@@ -2521,12 +2522,13 @@ namespace MiniFanControl
                 string.Format("{0} ({1})\r\nAPU: {2}\r\nActive EC Map: {3}\r\nClick for Hardware & Multi-Model Details",
                     _sysInfo.ProductName, _sysInfo.BaseBoard, _sysInfo.CpuName, _sysInfo.MatchedProfile.DisplayName));
 
+            string initialDrv = NativeInpOut.ActiveDriverName;
             _hwSubLabel = new Label
             {
-                Text = string.Format("EC Map: {0} • Global\\Access_EC Mutex • 64-bit", _sysInfo.MatchedProfile.DisplayName),
+                Text = string.Format("EC Map: {0} • Driver: {1} • Global\\Access_EC Mutex • 64-bit", _sysInfo.MatchedProfile.DisplayName, initialDrv),
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Regular),
                 Location = new Point(68, 32),
-                Size = new Size(580, 18),
+                Size = new Size(620, 18),
                 Cursor = Cursors.Hand,
                 UseMnemonic = false
             };

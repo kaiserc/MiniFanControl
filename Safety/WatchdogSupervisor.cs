@@ -159,7 +159,10 @@ namespace MiniFanControl
         {
             try
             {
-                string logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "watchdog.log");
+                string localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string logDir = !string.IsNullOrEmpty(localApp) ? Path.Combine(localApp, "MiniFanControl") : AppDomain.CurrentDomain.BaseDirectory;
+                try { Directory.CreateDirectory(logDir); } catch { }
+                string logPath = Path.Combine(logDir, "watchdog.log");
                 string line = string.Format("{0:yyyy-MM-dd HH:mm:ss.fff} [PID {1}] {2}{3}",
                     DateTime.Now, Process.GetCurrentProcess().Id, message, Environment.NewLine);
                 File.AppendAllText(logPath, line);
@@ -167,7 +170,7 @@ namespace MiniFanControl
             catch { }
         }
 
-        public static void RestoreAutoFailsafe(bool demoMode)
+        public static bool RestoreAutoFailsafe(bool demoMode)
         {
             try
             {
@@ -175,7 +178,7 @@ namespace MiniFanControl
                 if (demoMode)
                 {
                     Console.WriteLine("[WATCHDOG] Demo mode: Auto failsafe engaged.");
-                    return;
+                    return true;
                 }
 
                 using (HardwareBackend hw = HardwareBackend.CreateAutoDetected())
@@ -186,11 +189,13 @@ namespace MiniFanControl
                         string desc = hw.GetAutoRestoreDescription();
                         Console.WriteLine("[WATCHDOG] Hardware fan control restored: " + desc + ".");
                         LogWatchdogEvent("Restore verified by register read-back: " + desc);
+                        return true;
                     }
                     else
                     {
                         Console.WriteLine("[WATCHDOG WARNING] SetAuto() verification did not confirm auto mode.");
                         LogWatchdogEvent("WARNING: SetAuto() verification did not confirm auto mode.");
+                        return false;
                     }
                 }
             }
@@ -199,6 +204,7 @@ namespace MiniFanControl
                 string err = "[WATCHDOG ERROR] Failed to restore BIOS Auto: " + ex.Message;
                 Console.Error.WriteLine(err);
                 LogWatchdogEvent(err);
+                return false;
             }
         }
 
@@ -336,8 +342,15 @@ namespace MiniFanControl
                     {
                         Console.WriteLine(string.Format("[WATCHDOG TRIGGER] Parent PID {0} heartbeat missed for {1:0}ms (Timeout: {2}ms)! Main thread hung. Restoring BIOS fan control...", parentPid, elapsedMs, timeoutMs));
                         LogWatchdogEvent(string.Format("Parent PID {0} heartbeat missed for {1:0}ms! Restoring BIOS fan control...", parentPid, elapsedMs));
-                        RestoreAutoFailsafe(demoMode);
-                        triggeredFailsafe = true;
+                        bool restored = RestoreAutoFailsafe(demoMode);
+                        if (restored || testMode)
+                        {
+                            triggeredFailsafe = true;
+                        }
+                        else
+                        {
+                            LogWatchdogEvent("Failsafe restore will retry on next poll interval due to mutex contention.");
+                        }
                         if (testMode) return 3;
                     }
                 }

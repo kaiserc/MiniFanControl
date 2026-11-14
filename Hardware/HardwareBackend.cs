@@ -1243,41 +1243,39 @@ namespace MiniFanControl
                 }
 
                 // 5. Try MMIO mapping (e.g. 0xFE0B0400)
-
                 ulong baseAddr = Profile != null ? Profile.EcBaseAddress : EC_BASE;
-
                 IntPtr handle;
-
                 IntPtr mapped = NativeInpOut.MapPhysToLinSafe(new IntPtr(unchecked((long)baseAddr)), EC_SIZE, out handle);
-
                 if (mapped != IntPtr.Zero)
-
                 {
-
                     byte m0 = Marshal.ReadByte(mapped, 0);
-
                     byte m1 = Marshal.ReadByte(mapped, 1);
-
                     byte mCpu = Marshal.ReadByte(mapped, Profile != null ? Profile.RegCpuTemp : REG_CPU_TEMP);
-
                     if (!(m0 == 0xFF && m1 == 0xFF && mCpu == 0xFF))
-
                     {
-
                         _physHandle = handle;
-
                         _linAddr = mapped;
-
                         AccessMethod = EcAccessMethod.Mmio;
-
                         _isInitialized = true;
-
                         return;
-
                     }
-
                     NativeInpOut.UnmapPhysicalMemory(handle, mapped);
-
+                }
+                else if (NativeInpOut.ActiveDriver == HardwareDriverEngine.WinRing0)
+                {
+                    // WinRing0 does not support process linear mapping, but provides direct physical memory IOCTLs.
+                    // Probe directly through the driver without creating disconnected heap buffers.
+                    byte m0 = NativeInpOut.ReadPhysicalByteSafe(baseAddr);
+                    byte m1 = NativeInpOut.ReadPhysicalByteSafe(baseAddr + 1);
+                    byte mCpu = NativeInpOut.ReadPhysicalByteSafe(baseAddr + (Profile != null ? Profile.RegCpuTemp : REG_CPU_TEMP));
+                    if (!(m0 == 0xFF && m1 == 0xFF && mCpu == 0xFF))
+                    {
+                        _physHandle = IntPtr.Zero;
+                        _linAddr = IntPtr.Zero;
+                        AccessMethod = EcAccessMethod.Mmio;
+                        _isInitialized = true;
+                        return;
+                    }
                 }
 
                 // Fail-Closed Safety Check:
@@ -1357,64 +1355,53 @@ namespace MiniFanControl
 
             }
 
-            if (_linAddr != IntPtr.Zero)
-
+            if (AccessMethod == EcAccessMethod.Mmio)
             {
-
-                return Marshal.ReadByte(_linAddr, reg);
-
+                if (_linAddr != IntPtr.Zero)
+                {
+                    return Marshal.ReadByte(_linAddr, reg);
+                }
+                // WinRing0 per-access direct physical memory IOCTL
+                ulong baseAddr = Profile != null ? Profile.EcBaseAddress : EC_BASE;
+                return NativeInpOut.ReadPhysicalByteSafe(baseAddr + reg);
             }
 
             return 0xFF;
-
         }
 
         private void WriteRegInternal(byte reg, byte val)
-
         {
-
             if (_isSimulatedMode)
-
             {
-
                 if (reg < _simulatedEcRegs.Length) _simulatedEcRegs[reg] = val;
-
                 return;
-
             }
 
             if (AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
-
             {
-
                 if (reg >= 0x30 && reg <= 0x3F) return;
-
                 WriteSuperIoHwReg(reg, val);
-
             }
-
             else if (AccessMethod == EcAccessMethod.PortIo62)
-
             {
-
                 TryPortIoWrite(0x62, 0x66, reg, val);
-
             }
-
             else if (AccessMethod == EcAccessMethod.PortIo6C)
-
             {
-
                 TryPortIoWrite(0x6C, 0x6E, reg, val);
-
             }
-
-            else if (_linAddr != IntPtr.Zero)
-
+            else if (AccessMethod == EcAccessMethod.Mmio)
             {
-
-                Marshal.WriteByte(_linAddr, reg, val);
-
+                if (_linAddr != IntPtr.Zero)
+                {
+                    Marshal.WriteByte(_linAddr, reg, val);
+                }
+                else
+                {
+                    // WinRing0 per-access direct physical memory IOCTL (writes directly to hardware, not heap)
+                    ulong baseAddr = Profile != null ? Profile.EcBaseAddress : EC_BASE;
+                    NativeInpOut.WritePhysicalByteSafe(baseAddr + reg, val);
+                }
             }
 
         }
@@ -1575,104 +1562,72 @@ namespace MiniFanControl
 
         private FanStatus _lastStatusCache;
 
+        public bool IsDriverAvailable { get { return NativeInpOut.ActiveDriver != HardwareDriverEngine.None; } }
+
+        public bool IsEcActive { get { return _isInitialized && AccessMethod != EcAccessMethod.Unknown; } }
+
         public FanStatus GetStatus()
-
         {
-
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
+            bool ecAvailable = true;
+            try
+            {
+                EnsureOpen();
+            }
+            catch
+            {
+                ecAvailable = false;
+            }
 
-            EnsureOpen();
-
-            byte f1h = 0, f1l = 0, f2h = 0, f2l = 0, modeVal = 0, f1Ctrl = 0, f2Ctrl = 0;
-
+            byte f1h = 0, f1l = 0, f2h = 0, f2l = 0, modeVal = 0xFF, f1Ctrl = 0, f2Ctrl = 0;
             int ecCpuTemp = 0, ecGpuTemp = 0;
-
             int sioFan1 = 0, sioFan2 = 0;
 
-            using (var lockScope = EcBusMutex.AcquireEc(35))
-
+            if (ecAvailable)
             {
-
-                if (!lockScope.Acquired)
-
+                using (var lockScope = EcBusMutex.AcquireEc(35))
                 {
-
-                    // Fail-closed on mutex contention: return last cached status rather than corrupting readings
-
-                    if (_lastStatusCache.CpuTemp > 0)
-
+                    if (!lockScope.Acquired)
                     {
-
-                        return _lastStatusCache;
-
+                        // Fail-closed on mutex contention: return last cached status rather than corrupting readings
+                        if (_lastStatusCache.CpuTemp > 0)
+                        {
+                            return _lastStatusCache;
+                        }
                     }
-
-                }
-
-                else
-
-                {
-
-                    if (AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
-
-                    {
-
-                        sioFan1 = ReadSuperIoFanRpm(1);
-
-                        sioFan2 = ReadSuperIoFanRpm(2);
-
-                        ecCpuTemp = ReadSuperIoHwReg(0x29); // IT87 Temp 1
-
-                        ecGpuTemp = ReadSuperIoHwReg(0x2A); // IT87 Temp 2
-
-                        f1h = 0; f1l = 0; f2h = 0; f2l = 0;
-
-                        modeVal = 0;
-
-                        byte ext1 = ReadSuperIoHwReg(0x6B); // Fan 1 APU duty (Inverted polarity: 40 idle, 0 100%)
-
-                        byte ext2 = ReadSuperIoHwReg(0x73); // Fan 2 Sys duty (Inverted polarity: 240 idle, 0 100%)
-
-                        bool f1Auto = (ext1 >= 40 && ext1 <= 50);
-
-                        bool f2Auto = (ext2 >= 240 || ext2 == 0x00);
-
-                        int f1Duty = (ext1 >= 40) ? 0 : (int)Math.Round((40 - ext1) * 100.0 / 40.0);
-
-                        int f2Duty = (ext2 >= 240) ? 0 : (int)Math.Round((240 - ext2) * 100.0 / 240.0);
-
-                        f1Ctrl = (byte)(f1Auto ? 0x00 : (0x80 | (f1Duty & 0x7F)));
-
-                        f2Ctrl = (byte)(f2Auto ? 0x00 : (0x80 | (f2Duty & 0x7F)));
-
-                    }
-
                     else
-
                     {
-
-                        f1h = ReadRegInternal(p.RegFan1Hi);
-
-                        f1l = ReadRegInternal(p.RegFan1Lo);
-
-                        f2h = ReadRegInternal(p.RegFan2Hi);
-
-                        f2l = ReadRegInternal(p.RegFan2Lo);
-
-                        ecCpuTemp = ReadRegInternal(p.RegCpuTemp);
-
-                        ecGpuTemp = ReadRegInternal(p.RegGpuTemp);
-
-                        modeVal = ReadRegInternal(p.RegModeStatus);
-
-                        f1Ctrl  = ReadRegInternal(p.RegFan1Ctrl);
-
-                        f2Ctrl  = ReadRegInternal(p.RegFan2Ctrl);
-
+                        if (AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
+                        {
+                            sioFan1 = ReadSuperIoFanRpm(1);
+                            sioFan2 = ReadSuperIoFanRpm(2);
+                            ecCpuTemp = ReadSuperIoHwReg(0x29); // IT87 Temp 1
+                            ecGpuTemp = ReadSuperIoHwReg(0x2A); // IT87 Temp 2
+                            f1h = 0; f1l = 0; f2h = 0; f2l = 0;
+                            modeVal = 0;
+                            byte ext1 = ReadSuperIoHwReg(0x6B); // Fan 1 APU duty (Inverted polarity: 40 idle, 0 100%)
+                            byte ext2 = ReadSuperIoHwReg(0x73); // Fan 2 Sys duty (Inverted polarity: 240 idle, 0 100%)
+                            bool f1Auto = (ext1 >= 40 && ext1 <= 50);
+                            bool f2Auto = (ext2 >= 240 || ext2 == 0x00);
+                            int f1Duty = (ext1 >= 40) ? 0 : (int)Math.Round((40 - ext1) * 100.0 / 40.0);
+                            int f2Duty = (ext2 >= 240) ? 0 : (int)Math.Round((240 - ext2) * 100.0 / 240.0);
+                            f1Ctrl = (byte)(f1Auto ? 0x00 : (0x80 | (f1Duty & 0x7F)));
+                            f2Ctrl = (byte)(f2Auto ? 0x00 : (0x80 | (f2Duty & 0x7F)));
+                        }
+                        else
+                        {
+                            f1h = ReadRegInternal(p.RegFan1Hi);
+                            f1l = ReadRegInternal(p.RegFan1Lo);
+                            f2h = ReadRegInternal(p.RegFan2Hi);
+                            f2l = ReadRegInternal(p.RegFan2Lo);
+                            ecCpuTemp = ReadRegInternal(p.RegCpuTemp);
+                            ecGpuTemp = ReadRegInternal(p.RegGpuTemp);
+                            modeVal = ReadRegInternal(p.RegModeStatus);
+                            f1Ctrl  = ReadRegInternal(p.RegFan1Ctrl);
+                            f2Ctrl  = ReadRegInternal(p.RegFan2Ctrl);
+                        }
                     }
-
                 }
-
             }
 
             int adlTemp, adlCpuTemp, adlPowerWatts, cpuPwr, gfxPwr, socPwr, pwrLim, cpuClk, gfxClk, gfxAct, gfxVolt;
@@ -1724,21 +1679,20 @@ namespace MiniFanControl
                 : ((ecGpuTemp > 0 && ecGpuTemp < 255) ? ecGpuTemp : 0);
 
             string modeStr = "Unknown";
-
             int modeCode = (modeVal <= 2) ? (int)modeVal : -1;
-
-            switch (modeVal)
-
+            if (!ecAvailable)
             {
-
-                case 0: modeStr = "Balanced"; break;
-
-                case 1: modeStr = "Performance"; break;
-
-                case 2: modeStr = "Silent"; break;
-
-                default: modeCode = -1; break;
-
+                modeStr = "[Safe Telemetry]";
+            }
+            else
+            {
+                switch (modeVal)
+                {
+                    case 0: modeStr = "Balanced"; break;
+                    case 1: modeStr = "Performance"; break;
+                    case 2: modeStr = "Silent"; break;
+                    default: modeCode = -1; break;
+                }
             }
 
             int f1Ec = DecodeTachometerRpm(f1h, f1l);
@@ -1899,8 +1853,9 @@ namespace MiniFanControl
             EnsureOpen();
             if (SuperIoBaseAddr != 0 || AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
             {
-                // Super I/O chips control PWM outputs directly; ACPI EC mode registers do not apply
-                return true;
+                // Super I/O chips control PWM outputs directly; ACPI EC mode registers do not apply.
+                // Fail-closed: return false to prevent pretending a hardware mode switch took place.
+                return false;
             }
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];
             byte cmdByte = EncodeModeCommand(code);
@@ -2027,13 +1982,16 @@ namespace MiniFanControl
         {
             if (Profile != null && Profile.IsReadOnly) return false; // Fail-closed: read-only unverified hardware protection
             try { EnsureOpen(); } catch { return false; }
-            for (int attempt = 0; attempt < 3; attempt++)
+            // Escalating backoff retry loop (5 attempts: 50ms, 100ms, 170ms, 260ms, 370ms)
+            // to ensure supervisor failsafe can acquire mutex even under temporary contention
+            for (int attempt = 0; attempt < 5; attempt++)
             {
-                using (var lockScope = EcBusMutex.AcquireEc(40))
+                int waitTimeout = 50 + (attempt * 70);
+                using (var lockScope = EcBusMutex.AcquireEc(waitTimeout))
                 {
                     if (!lockScope.Acquired)
                     {
-                        Thread.Sleep(10);
+                        Thread.Sleep(15);
                         continue;
                     }
 

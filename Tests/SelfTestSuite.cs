@@ -1722,6 +1722,159 @@ namespace MiniFanControl
                 "Digital Foundry Dual Graphs Dynamic Scale Ladder & Baseline Anti-Clipping",
                 dfDetails);
 
+            // 46. Driver Engine Isolation & WinRing0 MMIO Heap-Mapping Prevention
+            bool driverEngineIsolationOk = false;
+            string driverEngineDetails = "";
+            try
+            {
+                // Test A: MapPhysToLinSafe strictly blocks low addresses (< 0x000E0000) and excessive apertures (> 16MB)
+                IntPtr h1, h2;
+                IntPtr lowPhys = NativeInpOut.MapPhysToLinSafe(new IntPtr(0x1000), 4096, out h1);
+                IntPtr excessivePhys = NativeInpOut.MapPhysToLinSafe(new IntPtr(0xFE0B0400), 32 * 1024 * 1024, out h2);
+                bool boundsOk = (lowPhys == IntPtr.Zero && excessivePhys == IntPtr.Zero);
+
+                // Test B: ReadPhysicalByteSafe & WritePhysicalByteSafe enforce minimum physical address boundary
+                byte lowByte = NativeInpOut.ReadPhysicalByteSafe(0x00001000);
+                bool writeLowOk = NativeInpOut.WritePhysicalByteSafe(0x00001000, 0x55);
+                bool lowPhysBlocked = (lowByte == 0xFF && !writeLowOk);
+
+                // Test C: UnmapPhysicalMemory handles null pointers safely
+                int unmapZero = NativeInpOut.UnmapPhysicalMemory(IntPtr.Zero, IntPtr.Zero);
+                bool unmapSafe = (unmapZero == 0);
+
+                // Test D: HardwareBackend fails closed if unverified or without linear map
+                using (HardwareBackend hwTest = new HardwareBackend())
+                {
+                    hwTest.Profile = DeviceProfile.FindProfile("unknown-safe");
+                    bool writeBlocked = !hwTest.WriteReg(0x32, 0x01); // Read-only profile blocks writes
+                    bool setModeBlocked = !hwTest.SetMode(1);
+                    bool readBackSafe = writeBlocked && setModeBlocked;
+
+                    driverEngineIsolationOk = boundsOk && lowPhysBlocked && unmapSafe && readBackSafe;
+                    driverEngineDetails = string.Format("BoundsOk={0}, LowBlocked={1}, UnmapSafe={2}, ReadBackFailClosed={3}, ActiveDriver={4}",
+                        boundsOk, lowPhysBlocked, unmapSafe, readBackSafe, NativeInpOut.ActiveDriverName);
+                }
+            }
+            catch (Exception ex)
+            {
+                driverEngineIsolationOk = false;
+                driverEngineDetails = ex.Message;
+            }
+
+            Check(driverEngineIsolationOk,
+                "Driver Engine Isolation & WinRing0 MMIO Heap-Mapping Prevention",
+                driverEngineDetails);
+
+            // 47. Strict Fail-Closed Dword Port Whitelist Aperture Enforcement
+            bool dwordWhitelistOk = false;
+            string dwordWhitelistDetails = "";
+            try
+            {
+                // DlPortReadPortUlong / DlPortWritePortUlong must strictly permit ONLY 0xCF8 and 0xCFC
+                uint readRtc = NativeInpOut.DlPortReadPortUlong(0x70);
+                uint readPic = NativeInpOut.DlPortReadPortUlong(0x20);
+                uint readPit = NativeInpOut.DlPortReadPortUlong(0x40);
+                uint readEc = NativeInpOut.DlPortReadPortUlong(0x62);
+                uint readSio = NativeInpOut.DlPortReadPortUlong(0x2E);
+
+                // Attempting dword writes to sensitive or non-PCI ports must be blocked
+                NativeInpOut.DlPortWritePortUlong(0x70, 0x12345678);
+                NativeInpOut.DlPortWritePortUlong(0x20, 0x12345678);
+                NativeInpOut.DlPortWritePortUlong(0x40, 0x12345678);
+                NativeInpOut.DlPortWritePortUlong(0x62, 0x12345678);
+
+                bool portsBlocked = (readRtc == 0 && readPic == 0 && readPit == 0 && readEc == 0 && readSio == 0);
+                dwordWhitelistOk = portsBlocked;
+                dwordWhitelistDetails = string.Format("Blocked=[RTC:{0},PIC:{1},PIT:{2},EC:{3},SIO:{4}]",
+                    readRtc == 0, readPic == 0, readPit == 0, readEc == 0, readSio == 0);
+            }
+            catch (Exception ex)
+            {
+                dwordWhitelistOk = false;
+                dwordWhitelistDetails = ex.Message;
+            }
+
+            Check(dwordWhitelistOk,
+                "Strict Fail-Closed Dword Port Whitelist Aperture Enforcement (0xCF8/0xCFC Only)",
+                dwordWhitelistDetails);
+
+            // 48. Safe Read-Only Telemetry Fallback When Kernel Driver Is Blocked
+            bool safeTelemetryOk = false;
+            string safeTelemetryDetails = "";
+            try
+            {
+                using (HardwareBackend hwSafe = new HardwareBackend())
+                {
+                    hwSafe.Profile = DeviceProfile.FindProfile("unknown-safe");
+                    // Calling GetStatus on unverified profile must not throw unhandled exception
+                    FanStatus st = hwSafe.GetStatus();
+                    bool validStatus = !string.IsNullOrEmpty(st.Mode);
+                    bool readOnlySafe = hwSafe.Profile.IsReadOnly;
+                    bool writeSafe = !hwSafe.WriteReg(0x32, 0x01); // Fan writes must fail closed
+                    bool setAutoSafe = !hwSafe.SetAuto();          // Fan auto must fail closed on read-only
+
+                    safeTelemetryOk = validStatus && readOnlySafe && writeSafe && setAutoSafe;
+                    safeTelemetryDetails = string.Format("ValidStatus={0}, ReadOnly={1}, WriteSafe={2}, AutoSafe={3}, Mode={4}",
+                        validStatus, readOnlySafe, writeSafe, setAutoSafe, st.Mode);
+                }
+            }
+            catch (Exception ex)
+            {
+                safeTelemetryOk = false;
+                safeTelemetryDetails = ex.Message;
+            }
+
+            Check(safeTelemetryOk,
+                "Safe Read-Only Telemetry Fallback When Kernel Driver Is Blocked",
+                safeTelemetryDetails);
+
+            // 49. Single-Instance Mutex & Clean Driver Shutdown Lifecycle
+            bool singleInstanceOk = false;
+            string singleInstanceDetails = "";
+            try
+            {
+                const string MUTEX_NAME = @"Global\MiniFanControl_SingleInstance_GUI";
+                bool createdFirst = false;
+                bool createdSecond = true;
+                using (Mutex m1 = new Mutex(true, MUTEX_NAME, out createdFirst))
+                {
+                    // Second instance attempting to acquire the same mutex must detect createdNew = false
+                    try
+                    {
+                        using (Mutex m2 = new Mutex(true, MUTEX_NAME, out createdSecond))
+                        {
+                            // createdSecond must be false because m1 owns it
+                        }
+                    }
+                    catch (AbandonedMutexException)
+                    {
+                        createdSecond = false;
+                    }
+                }
+
+                bool mutexDetected = createdFirst && !createdSecond;
+
+                // Test clean shutdown
+                NativeInpOut.Shutdown();
+                bool shutdownOk = (NativeInpOut.ActiveDriver == HardwareDriverEngine.None);
+
+                // Re-preload driver to restore state for any subsequent operations
+                NativeInpOut.PreloadDriverDll();
+
+                singleInstanceOk = mutexDetected && shutdownOk;
+                singleInstanceDetails = string.Format("MutexGuard={0} (First={1}, Second={2}), ShutdownOk={3}",
+                    mutexDetected, createdFirst, createdSecond, shutdownOk);
+            }
+            catch (Exception ex)
+            {
+                singleInstanceOk = false;
+                singleInstanceDetails = ex.Message;
+            }
+
+            Check(singleInstanceOk,
+                "Single-Instance Mutex & Clean Driver Shutdown Lifecycle",
+                singleInstanceDetails);
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));

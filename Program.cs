@@ -41,10 +41,19 @@ namespace MiniFanControl
     {
 
         [DllImport("kernel32.dll")]
-
         private static extern bool AttachConsole(int dwProcessId);
-
         private const int ATTACH_PARENT_PROCESS = -1;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        private const int SW_RESTORE = 9;
 
         [STAThread]
 
@@ -643,9 +652,60 @@ namespace MiniFanControl
 
             };
 
-            Application.Run(new MainForm(demoMode, startMinimized));
+            // Single-Instance Guard: Prevent dual GUI instances from racing on hardware control loops
+            const string SINGLE_INSTANCE_MUTEX_NAME = @"Global\MiniFanControl_SingleInstance_GUI";
+            bool createdNew = false;
+            Mutex singleInstanceMutex = null;
+            try
+            {
+                singleInstanceMutex = new Mutex(true, SINGLE_INSTANCE_MUTEX_NAME, out createdNew);
+            }
+            catch (AbandonedMutexException)
+            {
+                createdNew = true;
+            }
+            catch
+            {
+                try
+                {
+                    singleInstanceMutex = new Mutex(true, @"Local\MiniFanControl_SingleInstance_GUI", out createdNew);
+                }
+                catch { createdNew = true; }
+            }
 
-            return 0;
+            if (!createdNew)
+            {
+                try
+                {
+                    Process current = Process.GetCurrentProcess();
+                    foreach (Process p in Process.GetProcessesByName(current.ProcessName))
+                    {
+                        if (p.Id != current.Id && p.MainWindowHandle != IntPtr.Zero)
+                        {
+                            ShowWindow(p.MainWindowHandle, SW_RESTORE);
+                            SetForegroundWindow(p.MainWindowHandle);
+                            break;
+                        }
+                    }
+                }
+                catch { }
+                return 0;
+            }
+
+            try
+            {
+                Application.Run(new MainForm(demoMode, startMinimized));
+                return 0;
+            }
+            finally
+            {
+                NativeInpOut.Shutdown();
+                if (singleInstanceMutex != null)
+                {
+                    try { singleInstanceMutex.ReleaseMutex(); } catch { }
+                    try { singleInstanceMutex.Close(); } catch { }
+                }
+            }
 
         }
 

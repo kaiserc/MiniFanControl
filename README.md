@@ -13,7 +13,7 @@
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 41 Passed](https://img.shields.io/badge/Automated%20Tests-41%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-4141-passing)
+[![Automated Tests: 49 Passed](https://img.shields.io/badge/Automated%20Tests-49%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-4949-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 
 **MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **KTHIN Ryzen AI 9 HX 370 PRO**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
@@ -63,7 +63,7 @@ MiniFanControl/
 ├── Telemetry/          # RTSS/CapFrameX shared memory reader & transparent OSD HUD
 │   ├── CapFrameXOverlayForm.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 40-point automated hardware safety & regression test suite
+├── Tests/              # 49-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
 ├── Ui/                 # Double-buffered canvases, custom WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
@@ -172,30 +172,30 @@ To ensure zero driver conflicts and maximum stability, MiniFanControl strictly i
 
 ## 🔒 Kernel Driver Architecture & Security Deep-Dive
 
-### Multi-Driver Support: WinRing0 1.3.1b & InpOut64 Dynamic Abstraction
+### Multi-Driver Support: Bundled InpOut64 & WinRing0 Dynamic Abstraction
 Mini PCs communicate with their embedded controller via raw ACPI I/O ports (`0x62/0x66`, `0x6C/0x6E`) and LPC Super I/O ports (`0x2E/0x2F`, `0x4E/0x4F`, `0x0A30–0x0A37`). Because 64-bit Windows prohibits user-mode processes from executing raw x86 `IN`/`OUT` CPU instructions, a kernel-mode driver service is required.
 
 MiniFanControl features a **unified multi-driver abstraction** in [`Hardware/NativeInpOut.cs`](Hardware/NativeInpOut.cs) with dynamic API loading (`LoadLibraryEx` + `GetProcAddress`), supporting both leading hardware access driver engines:
 
-1. **WinRing0 1.3.1b (`WinRing0x64.dll` / `WinRing0.sys`)**:
-   - Engine used by LibreHardwareMonitor and OpenHardwareMonitor.
-   - Automatically loaded first if present in the application or System32 folder.
-   - Direct port I/O and safe physical memory access via `ReadIoPortByte`, `WriteIoPortByte`, and `ReadPhysicalMemory`.
-2. **InpOut64 (`inpoutx64.dll` / `inpoutx64.sys`)**:
+1. **InpOut64 (`inpoutx64.dll` / `inpoutx64.sys`) — Primary Engine**:
    - Developed by Phillip Gibbons (Highresolution Enterprises / Red Fox UK).
-   - Seamlessly selected as fallback when `WinRing0x64.dll` is not present.
+   - Bundled with MiniFanControl and prioritized first from the application folder.
    - Fully isolated port I/O and linear memory mapping.
+2. **WinRing0 1.3.1b (`WinRing0x64.dll` / `WinRing0.sys`) — Optional Fallback**:
+   - Engine used by LibreHardwareMonitor and OpenHardwareMonitor.
+   - Loaded as secondary fallback only if present in the application folder (**System32 is never probed** to eliminate DLL hijacking and silent engine substitution).
+   - Direct port I/O and per-access direct physical memory IOCTLs via `ReadPhysicalMemory`/`WritePhysicalMemory` with live device read-back verification.
 
 ### Windows 11 Memory Integrity (HVCI) & Security Recommendations
-1. **Memory Integrity (HVCI) Compatibility**: Both legacy `WinRing0.sys` (CVE-2020-14979) and `inpoutx64.sys` are flagged by Microsoft under the Windows 11 Microsoft Vulnerable Driver Blocklist because they permit arbitrary port and physical memory access.
-2. **Safe Read-Only Telemetry Default**: MiniFanControl **recommends keeping Memory Integrity ENABLED**. If Windows Defender blocks kernel driver loading, MiniFanControl does not crash or force driver installation—it automatically engages **Safe Read-Only Telemetry Monitoring Mode**. All CPU/iGPU temperatures, APU package power, GPU load, clocks, and voltages continue updating natively via AMD's official WHQL-certified driver interface (`atiadlxx.dll` / `amdfendrm.sys`), requiring zero unsigned kernel drivers and zero raw port I/O, while fan writes are safely disabled fail-closed.
+1. **Memory Integrity (HVCI) Compatibility**: Both legacy `WinRing0.sys` (CVE-2020-14979) and `inpoutx64.sys` are flagged by Microsoft under the Windows 11 Microsoft Vulnerable Driver Blocklist because they permit raw port and physical memory access.
+2. **Safe Read-Only Telemetry Default**: MiniFanControl **recommends keeping Memory Integrity ENABLED**. If Windows Defender blocks kernel driver loading or if launched without elevation, MiniFanControl does not crash—it automatically engages **Safe Read-Only Telemetry Monitoring Mode**. All CPU/iGPU temperatures, APU package power, GPU load, clocks, voltages, NVMe temperatures, and RAM load continue updating natively via AMD's official WHQL-certified driver interface (`atiadlxx.dll` / `amdfendrm.sys`) and Windows APIs, requiring zero unsigned kernel drivers and zero raw port I/O, while fan writes are safely disabled fail-closed.
 3. **If You Choose to Enable Hardware Fan Control**: If you decide to toggle off Memory Integrity to allow custom fan curve writing, remember that you are reducing kernel memory isolation protections. Always ensure you download MiniFanControl from official repository releases and re-enable Memory Integrity if you cease using custom hardware fan curve writers.
 4. **Anti-Cheat Conflicts**: Competitive kernel-level anti-cheat software (such as Riot Vanguard, Easy Anti-Cheat, and BattlEye) may flag kernel drivers while running. Use `minifan-helper.exe driver-stop` before launching competitive games.
 
 ### How MiniFanControl Hardens Driver Access (Defense-in-Depth)
 MiniFanControl wraps all ring-0 driver operations inside a strict user-mode defense layer in [`Hardware/NativeInpOut.cs`](Hardware/NativeInpOut.cs):
-- **Strict Fail-Closed Port Whitelist Enforcement**: `IsPortWhitelisted()` strictly permits only documented ACPI EC and Super I/O ports for both reading and writing. Arbitrary unlisted port reads and sensitive ports (e.g., RTC `0x70/0x71`, PIC `0x20/0x21`, PIT `0x40..0x43`, Fast A20/Reset `0x92`, PCI reset `0xCF9`) are blocked fail-closed before touching the driver.
-- **Strict Physical Memory Bounds**: `MapPhysToLinSafe()` strictly confines physical memory mapping to the verified IT5570E EC aperture (`0xFE0B0400`, max 4 KB). Attempts to map low memory (<1 MB) or arbitrary system RAM are blocked.
+- **Strict Fail-Closed Port Whitelist Enforcement**: `IsPortWhitelisted()` strictly permits only documented ACPI EC, Super I/O, and PCI SMN ports for reading and writing (`0x62/0x66`, `0x6C/0x6E`, `0x2E/0x2F`, `0x4E/0x4F`, `0x0A30..0x0A37`, `0xCF8/0xCFC`). Arbitrary unlisted port reads/writes and sensitive system ports (e.g., RTC `0x70/0x71`, PIC `0x20/0x21`, PIT `0x40..0x43`, Fast A20/Reset `0x92`, PCI reset `0xCF9`) are blocked fail-closed before touching the driver.
+- **Strict Physical Memory Bounds**: `MapPhysToLinSafe()` and physical memory IOCTLs strictly enforce a minimum safe physical address boundary (≥ `0x000E0000`, protecting low memory and kernel tables) with a 16 MB maximum size ceiling. Linear mapping is restricted to live driver virtual mappings; disconnected heap snapshots are rejected.
 - **Safe Driver Shutdown for Gamers**: Users playing competitive multiplayer titles can immediately unload active driver services (`WinRing0_1_2_0` or `inpoutx64`) without rebooting by running:
   ```powershell
   .\minifan-helper.exe driver-stop
@@ -225,11 +225,10 @@ We welcome community hardware profiles for new Zen 4 / Zen 5 Mini PC models! Her
 
 ## 🚀 Quick Start (Windows)
 
-1. **Prerequisite**: Ensure a supported kernel driver DLL (`WinRing0x64.dll` or `inpoutx64.dll`) is located in the application folder (next to `MiniFanControl.exe`).
-2. **First-Time Launch**:
-   - Right-click `MiniFanControl.exe` and select **Run as Administrator** once so the driver engine can initialize its kernel service (`WinRing0_1_2_0` or `inpoutx64`).
-   - Subsequent runs can be launched normally without elevation.
-   - *Windows 11 Driver Security Note*: We recommend keeping **Memory Integrity (HVCI) ENABLED**. If Windows Defender blocks kernel driver loading, MiniFanControl runs in Safe Read-Only Telemetry Mode, reading APU power and temperatures natively via AMD's official driver with full security intact.
+1. **Prerequisite**: Ensure a supported kernel driver DLL (`inpoutx64.dll` bundled, or optional `WinRing0x64.dll`) is located in the application folder (next to `MiniFanControl.exe`).
+2. **Launch & Permissions**:
+   - **Full Hardware Fan Control**: Right-click `MiniFanControl.exe` and select **Run as Administrator** (or install the Task Scheduler autostart task created by the installer) so the driver service can initialize its kernel handle.
+   - **Safe Read-Only Telemetry**: When launched without elevation or when Windows Defender HVCI blocks kernel drivers, MiniFanControl starts cleanly in Safe Read-Only Telemetry Mode, reading APU power, temperatures, GPU clocks, NVMe SSD temp, and RAM load natively via AMD's official driver with full security intact.
 3. **Run the App**: Double-click `MiniFanControl.exe` (or run `run-windows.bat`).
 4. **Compile from Source**:
    - **Zero Tools Required (.NET 4.8 Framework)**: Double-click `build-windows.bat`. Compiles `MiniFanControl.exe` and `minifan-helper.exe` using the native `.NET Framework` compiler included with Windows 10/11.
@@ -270,13 +269,13 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Validate 6 hardware profiles, register layouts, and inverted polarity matrix
 .\minifan-helper.exe hw-matrix
 
-# Execute the 40-point automated hardware safety & curve test suite
+# Execute the 49-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (40/40 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (49/49 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -320,6 +319,15 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 38. **Session Telemetry NVMe & RAM Power Tracking & Sparklines**: Verifies rolling history, peak/avg computations, and sparkline formatting for NVMe SSD temperature and estimated DDR5 memory power rails.
 39. **High-Resolution RTSS Frametime, Average FPS & 0.1% Lows Telemetry**: Verifies mathematical percentile computation (99th and 99.9th percentile frame times) from 1,000 synthetic frame samples, session FPS bounds, frametime sparklines, and double-buffered OSD bitmap rendering.
 40. **Hardware Validation Matrix Auto-Discovery & Polarity Testing**: Validates all 6 device profile configurations, EC register mapping bounds, inverted Super I/O PWM polarity (40/0 and 240/0), and fail-closed read-only protection.
+41. **OSD Driver Version & Afterburner Theme Integration**: Validates Afterburner theme palette styling, green/cyan contrast ratios, and Radeon driver version row rendering.
+42. **OSD Center-Top & Center-Bottom Snap Location Geometry**: Validates multi-monitor snap calculations and non-overlapping coordinate positioning.
+43. **OSD Granular Metric Toggle & Horizontal Auto-Width Expansion**: Validates metric toggle permutations and horizontal bar width auto-sizing across custom configurations.
+44. **UI Layout Anti-Clipping Geometry**: Validates non-overlapping layout bounds across telemetry boxes, OSD Studio, and Options card.
+45. **Digital Foundry Dual Graphs Dynamic Scale Ladder & Baseline Anti-Clipping**: Validates 60/120/180/240 ladder selection, rolling 20-sample window, and 4-tier heights (75px Compact, 105px Medium, 140px Large, 180px XL).
+46. **Driver Engine Isolation & WinRing0 MMIO Heap-Mapping Prevention**: Validates linear map isolation (never heap snapshots), minimum physical memory bounds (≥ 0x000E0000), and direct device write verification.
+47. **Strict Fail-Closed Dword Port Whitelist Aperture Enforcement**: Validates that 32-bit dword port reads/writes strictly permit only `0xCF8` and `0xCFC` for PCI SMN access.
+48. **Safe Read-Only Telemetry Fallback When Kernel Driver Is Blocked**: Validates that unverified platforms or blocked kernel drivers gracefully return ADL/Storage telemetry without throwing unhandled exceptions.
+49. **Single-Instance Mutex & Clean Driver Shutdown Lifecycle**: Validates single-instance guard (`Global\MiniFanControl_SingleInstance_GUI`) and complete driver resource de-initialization.
 
 ---
 

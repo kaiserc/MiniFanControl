@@ -171,15 +171,46 @@ namespace MiniFanControl
                 if (ActiveDriver != HardwareDriverEngine.None) return true;
 
                 string appDir = AppDomain.CurrentDomain.BaseDirectory;
-                string sys32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
 
-                // Priority 1: Check for WinRing0 (WinRing0x64.dll or WinRing0.dll)
+                // Priority 1: Check for bundled InpOut (inpoutx64.dll) in application directory
+                string[] inpoutCandidates = new string[]
+                {
+                    Path.Combine(appDir, "inpoutx64.dll")
+                };
+
+                foreach (string candidate in inpoutCandidates)
+                {
+                    if (File.Exists(candidate))
+                    {
+                        try
+                        {
+                            IntPtr hDll = LoadLibraryEx(candidate, IntPtr.Zero, LOAD_WITH_ALTERED_SEARCH_PATH);
+                            if (hDll != IntPtr.Zero)
+                            {
+                                _hDriverDll = hDll;
+                                _inpoutIsOpen = GetProcDelegate<InpOutIsOpenDelegate>(hDll, "IsInpOutDriverOpen");
+                                _inpoutReadByte = GetProcDelegate<InpOutReadUcharDelegate>(hDll, "DlPortReadPortUchar");
+                                _inpoutWriteByte = GetProcDelegate<InpOutWriteUcharDelegate>(hDll, "DlPortWritePortUchar");
+                                _inpoutReadDword = GetProcDelegate<InpOutReadUlongDelegate>(hDll, "DlPortReadPortUlong");
+                                _inpoutWriteDword = GetProcDelegate<InpOutWriteUlongDelegate>(hDll, "DlPortWritePortUlong");
+                                _inpoutInp32 = GetProcDelegate<InpOutInp32Delegate>(hDll, "Inp32");
+                                _inpoutOut32 = GetProcDelegate<InpOutOut32Delegate>(hDll, "Out32");
+                                _inpoutMapPhys = GetProcDelegate<InpOutMapPhysToLinDelegate>(hDll, "MapPhysToLin");
+                                _inpoutUnmap = GetProcDelegate<InpOutUnmapPhysicalMemoryDelegate>(hDll, "UnmapPhysicalMemory");
+
+                                ActiveDriver = HardwareDriverEngine.InpOut64;
+                                return true;
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                // Priority 2: Fallback to WinRing0 (WinRing0x64.dll or WinRing0.dll) in application directory ONLY (never probe System32)
                 string[] winringCandidates = new string[]
                 {
                     Path.Combine(appDir, "WinRing0x64.dll"),
-                    Path.Combine(appDir, "WinRing0.dll"),
-                    Path.Combine(sys32, "WinRing0x64.dll"),
-                    Path.Combine(sys32, "WinRing0.dll")
+                    Path.Combine(appDir, "WinRing0.dll")
                 };
 
                 foreach (string candidate in winringCandidates)
@@ -218,41 +249,6 @@ namespace MiniFanControl
                                     }
                                 }
                                 FreeLibrary(hDll);
-                            }
-                        }
-                        catch { }
-                    }
-                }
-
-                // Priority 2: Check for InpOut (inpoutx64.dll)
-                string[] inpoutCandidates = new string[]
-                {
-                    Path.Combine(appDir, "inpoutx64.dll"),
-                    Path.Combine(sys32, "inpoutx64.dll")
-                };
-
-                foreach (string candidate in inpoutCandidates)
-                {
-                    if (File.Exists(candidate))
-                    {
-                        try
-                        {
-                            IntPtr hDll = LoadLibraryEx(candidate, IntPtr.Zero, LOAD_WITH_ALTERED_SEARCH_PATH);
-                            if (hDll != IntPtr.Zero)
-                            {
-                                _hDriverDll = hDll;
-                                _inpoutIsOpen = GetProcDelegate<InpOutIsOpenDelegate>(hDll, "IsInpOutDriverOpen");
-                                _inpoutReadByte = GetProcDelegate<InpOutReadUcharDelegate>(hDll, "DlPortReadPortUchar");
-                                _inpoutWriteByte = GetProcDelegate<InpOutWriteUcharDelegate>(hDll, "DlPortWritePortUchar");
-                                _inpoutReadDword = GetProcDelegate<InpOutReadUlongDelegate>(hDll, "DlPortReadPortUlong");
-                                _inpoutWriteDword = GetProcDelegate<InpOutWriteUlongDelegate>(hDll, "DlPortWritePortUlong");
-                                _inpoutInp32 = GetProcDelegate<InpOutInp32Delegate>(hDll, "Inp32");
-                                _inpoutOut32 = GetProcDelegate<InpOutOut32Delegate>(hDll, "Out32");
-                                _inpoutMapPhys = GetProcDelegate<InpOutMapPhysToLinDelegate>(hDll, "MapPhysToLin");
-                                _inpoutUnmap = GetProcDelegate<InpOutUnmapPhysicalMemoryDelegate>(hDll, "UnmapPhysicalMemory");
-
-                                ActiveDriver = HardwareDriverEngine.InpOut64;
-                                return true;
                             }
                         }
                         catch { }
@@ -331,6 +327,9 @@ namespace MiniFanControl
 
         public static uint DlPortReadPortUlong(ushort port)
         {
+            // Strict PCI/SMN Dword Whitelist: Only PCI Config Address (0xCF8) and Data (0xCFC) are permitted
+            if (port != 0xCF8 && port != 0xCFC) return 0;
+
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
             if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringReadDword != null)
@@ -346,6 +345,9 @@ namespace MiniFanControl
 
         public static void DlPortWritePortUlong(ushort port, uint value)
         {
+            // Strict PCI/SMN Dword Whitelist: Only PCI Config Address (0xCF8) and Data (0xCFC) are permitted
+            if (port != 0xCF8 && port != 0xCFC) return;
+
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
             if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringWriteDword != null)
@@ -379,25 +381,11 @@ namespace MiniFanControl
 
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
+            // WinRing0 does NOT support process virtual linear mapping (it only provides per-access physical R/W IOCTLs).
+            // Never fake a linear mapping with AllocHGlobal as that produces disconnected heap snapshots that defeat write verification.
             if (ActiveDriver == HardwareDriverEngine.InpOut64 && _inpoutMapPhys != null)
             {
                 try { return _inpoutMapPhys(pbPhysAddr, dwPhysSize, out pPhysicalMemoryHandle); } catch { return IntPtr.Zero; }
-            }
-            if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringReadMem != null)
-            {
-                try
-                {
-                    byte[] buffer = new byte[dwPhysSize];
-                    uint ok = _winringReadMem(new UIntPtr(addr), buffer, dwPhysSize, 1);
-                    if (ok != 0)
-                    {
-                        IntPtr unmanaged = Marshal.AllocHGlobal((int)dwPhysSize);
-                        Marshal.Copy(buffer, 0, unmanaged, (int)dwPhysSize);
-                        pPhysicalMemoryHandle = new IntPtr(0x57494E52); // "WINR" tag
-                        return unmanaged;
-                    }
-                }
-                catch { }
             }
             return IntPtr.Zero;
         }
@@ -406,20 +394,47 @@ namespace MiniFanControl
         {
             if (pbLinAddr == IntPtr.Zero) return 0;
 
-            if (PhysicalMemoryHandle == new IntPtr(0x57494E52))
-            {
-                try
-                {
-                    Marshal.FreeHGlobal(pbLinAddr);
-                    return 1;
-                }
-                catch { return 0; }
-            }
             if (ActiveDriver == HardwareDriverEngine.InpOut64 && _inpoutUnmap != null)
             {
                 try { return _inpoutUnmap(PhysicalMemoryHandle, pbLinAddr); } catch { return 0; }
             }
             return 0;
+        }
+
+        public static byte ReadPhysicalByteSafe(ulong physAddr)
+        {
+            if (physAddr < MIN_SAFE_PHYSICAL_ADDR) return 0xFF;
+            if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
+
+            if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringReadMem != null)
+            {
+                try
+                {
+                    byte[] buffer = new byte[1];
+                    uint ok = _winringReadMem(new UIntPtr(physAddr), buffer, 1, 1);
+                    if (ok != 0) return buffer[0];
+                }
+                catch { }
+            }
+            return 0xFF;
+        }
+
+        public static bool WritePhysicalByteSafe(ulong physAddr, byte value)
+        {
+            if (physAddr < MIN_SAFE_PHYSICAL_ADDR) return false;
+            if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
+
+            if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringWriteMem != null)
+            {
+                try
+                {
+                    byte[] buffer = new byte[] { value };
+                    uint ok = _winringWriteMem(new UIntPtr(physAddr), buffer, 1, 1);
+                    return ok != 0;
+                }
+                catch { }
+            }
+            return false;
         }
 
         public static void Shutdown()
