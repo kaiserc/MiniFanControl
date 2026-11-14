@@ -57,43 +57,124 @@ namespace MiniFanControl
         private const uint FILE_MAP_ALL_ACCESS = 0x000F001F;
         private const uint FILE_MAP_COPY = 0x0001;
 
-        private static bool IsIgnoredProcess(string name)
+        public static bool IsIgnoredProcess(string name)
         {
             if (string.IsNullOrEmpty(name)) return true;
             string n = Path.GetFileName(name).ToLowerInvariant();
-            return n == "dwm.exe" ||
-                   n == "explorer.exe" ||
-                   n == "sechealthui.exe" ||
-                   n == "shellexperiencehost.exe" ||
-                   n == "startmenuexperiencehost.exe" ||
-                   n == "searchhost.exe" ||
-                   n == "applicationframehost.exe" ||
-                   n == "systemsettings.exe" ||
-                   n == "textinputhost.exe" ||
-                   n == "lockapp.exe" ||
-                   n == "taskmgr.exe" ||
-                   n == "minifancontrol.exe" ||
-                   n == "minifan-helper.exe" ||
-                   n == "steam.exe" ||
-                   n == "steamwebhelper.exe" ||
-                   n == "gameoverlayui.exe" ||
-                   n == "amdow.exe" ||
-                   n == "amdrsserv.exe" ||
-                   n == "radeonsoftware.exe" ||
-                   n == "discord.exe" ||
-                   n == "discordcanary.exe" ||
-                   n == "discordptb.exe" ||
-                   n == "spotify.exe" ||
-                   n == "chrome.exe" ||
-                   n == "msedge.exe" ||
-                   n == "firefox.exe" ||
-                   n == "epicgameslauncher.exe" ||
-                   n == "epicwebhelper.exe" ||
-                   n == "galaxyclient.exe" ||
-                   n == "battlenet.exe" ||
-                   n == "rtss.exe" ||
-                   n == "rtsshooksloader.exe" ||
-                   n == "rtsshooksloader64.exe";
+            if (n.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                n = n.Substring(0, n.Length - 4);
+
+            return n == "dwm" ||
+                   n == "explorer" ||
+                   n == "sechealthui" ||
+                   n == "shellexperiencehost" ||
+                   n == "startmenuexperiencehost" ||
+                   n == "searchhost" ||
+                   n == "applicationframehost" ||
+                   n == "systemsettings" ||
+                   n == "textinputhost" ||
+                   n == "lockapp" ||
+                   n == "taskmgr" ||
+                   n == "minifancontrol" ||
+                   n == "minifan-helper" ||
+                   n == "steam" ||
+                   n == "steamwebhelper" ||
+                   n == "gameoverlayui" ||
+                   n == "amdow" ||
+                   n == "amdrsserv" ||
+                   n == "radeonsoftware" ||
+                   n == "discord" ||
+                   n == "discordcanary" ||
+                   n == "discordptb" ||
+                   n == "spotify" ||
+                   n == "chrome" ||
+                   n == "msedge" ||
+                   n == "firefox" ||
+                   n == "brave" ||
+                   n == "opera" ||
+                   n == "vivaldi" ||
+                   n == "epicgameslauncher" ||
+                   n == "epicwebhelper" ||
+                   n == "galaxyclient" ||
+                   n == "battlenet" ||
+                   n == "eadesktop" ||
+                   n == "origin" ||
+                   n == "ubisoftconnect" ||
+                   n == "riotclientux" ||
+                   n == "rtss" ||
+                   n == "rtsshooksloader" ||
+                   n == "rtsshooksloader64" ||
+                   n == "notepad" ||
+                   n == "notepad++" ||
+                   n == "code" ||
+                   n == "devenv" ||
+                   n == "cmd" ||
+                   n == "powershell" ||
+                   n == "pwsh" ||
+                   n == "conhost" ||
+                   n == "windowsterminal" ||
+                   n == "slack" ||
+                   n == "teams" ||
+                   n == "zoom" ||
+                   n == "winword" ||
+                   n == "excel" ||
+                   n == "powerpnt" ||
+                   n == "outlook";
+        }
+
+        private static string _lastActiveGameProcess = null;
+        private static DateTime _lastActiveGameTime = DateTime.MinValue;
+
+        private static void TryResolveGameProcess(ref RtssTelemetry best, uint knownFgPid)
+        {
+            if (!string.IsNullOrEmpty(_lastActiveGameProcess))
+            {
+                try
+                {
+                    string procBase = Path.GetFileNameWithoutExtension(_lastActiveGameProcess);
+                    if (!string.IsNullOrEmpty(procBase) && Process.GetProcessesByName(procBase).Length > 0)
+                    {
+                        best.ProcessName = _lastActiveGameProcess;
+                        return;
+                    }
+                    else
+                    {
+                        _lastActiveGameProcess = null;
+                    }
+                }
+                catch
+                {
+                    _lastActiveGameProcess = null;
+                }
+            }
+
+            try
+            {
+                uint fgPid = knownFgPid;
+                if (fgPid == 0)
+                {
+                    IntPtr hFg = GetForegroundWindow();
+                    if (hFg != IntPtr.Zero)
+                    {
+                        GetWindowThreadProcessId(hFg, out fgPid);
+                    }
+                }
+
+                if (fgPid != 0 && fgPid != (uint)Process.GetCurrentProcess().Id)
+                {
+                    using (Process fgProc = Process.GetProcessById((int)fgPid))
+                    {
+                        string fgName = fgProc.ProcessName;
+                        if (!IsIgnoredProcess(fgName))
+                        {
+                            best.ProcessName = fgName + ".exe";
+                            _lastActiveGameProcess = best.ProcessName;
+                            _lastActiveGameTime = DateTime.UtcNow;
+                        }
+                    }
+                }
+            }
+            catch { }
         }
 
         private static readonly string[] MappingNames = new[]
@@ -154,7 +235,10 @@ namespace MiniFanControl
                 }
 
                 if (hMap == IntPtr.Zero)
+                {
+                    TryResolveGameProcess(ref best, 0);
                     return best;
+                }
 
                 pView = MapViewOfFile(hMap, grantedAccess == FILE_MAP_ALL_ACCESS ? FILE_MAP_ALL_ACCESS : FILE_MAP_READ, 0, 0, UIntPtr.Zero);
                 if (pView == IntPtr.Zero)
@@ -162,7 +246,10 @@ namespace MiniFanControl
                     pView = MapViewOfFile(hMap, FILE_MAP_READ, 0, 0, UIntPtr.Zero);
                 }
                 if (pView == IntPtr.Zero)
+                {
+                    TryResolveGameProcess(ref best, 0);
                     return best;
+                }
 
                 // Check signature 'RTSS' (0x53535452 in little-endian or 0x52545353)
                 int sig = Marshal.ReadInt32(pView, 0);
@@ -413,6 +500,17 @@ namespace MiniFanControl
                         }
                     }
                 }
+
+                if (best.IsAvailable && !string.IsNullOrEmpty(best.ProcessName))
+                {
+                    _lastActiveGameProcess = best.ProcessName;
+                    _lastActiveGameTime = DateTime.UtcNow;
+                }
+                else if (string.IsNullOrEmpty(best.ProcessName))
+                {
+                    TryResolveGameProcess(ref best, fgPid);
+                }
+
                 return best;
             }
             catch

@@ -147,6 +147,7 @@ namespace MiniFanControl
         private bool _osdShowRadeon = true;
         private bool _osdShowDriverVer = false;
         private bool _osdShowClocks = false;
+        private bool _osdShowGameName = true;
         private bool _osdSparklineBg = false;
         private bool _osdShowLiveTrend = true;
         private bool _osdShowFpsGraph = true;
@@ -332,6 +333,7 @@ namespace MiniFanControl
         private CheckBox _osdShowRadeonCb;
         private CheckBox _osdShowDriverVerCb;
         private CheckBox _osdShowClocksCb;
+        private CheckBox _osdShowGameNameCb;
         private CheckBox _osdSparklineBgCb;
         private CheckBox _osdShowLiveTrendCb;
         private CheckBox _osdShowFpsGraphCb;
@@ -774,7 +776,7 @@ namespace MiniFanControl
                 OpacityPct = _osdOpacityPct,
                 MatchAppTheme = _osdMatchTheme,
                 IsRadeonTheme = (_themePref == ThemePreference.Radeon), IsAfterburnerTheme = (_themePref == ThemePreference.Afterburner), ShowDriverVersion = _osdShowDriverVer,
-                ShowClocks = _osdShowClocks, SparklinesAsBackground = _osdSparklineBg,
+                ShowClocks = _osdShowClocks, ShowGameName = _osdShowGameName, SparklinesAsBackground = _osdSparklineBg,
                 ShowCpu = _osdShowCpu,
                 ShowGpu = _osdShowGpu,
                 ShowNvme = _osdShowNvme,
@@ -860,6 +862,7 @@ namespace MiniFanControl
             _overlayForm.MatchAppTheme = _osdMatchTheme;
             _overlayForm.IsRadeonTheme = (_themePref == ThemePreference.Radeon); _overlayForm.IsAfterburnerTheme = (_themePref == ThemePreference.Afterburner); _overlayForm.ShowDriverVersion = _osdShowDriverVer;
             _overlayForm.ShowClocks = _osdShowClocks;
+            _overlayForm.ShowGameName = _osdShowGameName;
             _overlayForm.SparklinesAsBackground = _osdSparklineBg;
             _overlayForm.ShowCpu = _osdShowCpu;
             _overlayForm.ShowGpu = _osdShowGpu;
@@ -908,6 +911,7 @@ namespace MiniFanControl
                 _osdShowPeaks = _overlayForm.ShowPeaks;
                 _osdShowRadeon = _overlayForm.ShowRadeonSettings; _osdShowDriverVer = _overlayForm.ShowDriverVersion;
                 _osdShowClocks = _overlayForm.ShowClocks;
+                _osdShowGameName = _overlayForm.ShowGameName;
                 _osdSparklineBg = _overlayForm.SparklinesAsBackground;
                 _osdShowLiveTrend = _overlayForm.ShowLiveTrend;
                 _osdShowFpsGraph = _overlayForm.ShowFpsGraph;
@@ -941,6 +945,7 @@ namespace MiniFanControl
             if (_osdShowRadeonCb != null) _osdShowRadeonCb.Checked = _osdShowRadeon;
             if (_osdShowDriverVerCb != null) _osdShowDriverVerCb.Checked = _osdShowDriverVer;
             if (_osdShowClocksCb != null) _osdShowClocksCb.Checked = _osdShowClocks;
+            if (_osdShowGameNameCb != null) _osdShowGameNameCb.Checked = _osdShowGameName;
             if (_osdSparklineBgCb != null) _osdSparklineBgCb.Checked = _osdSparklineBg;
             if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = _osdShowLiveTrend;
             if (_osdShowFpsGraphCb != null) _osdShowFpsGraphCb.Checked = _osdShowFpsGraph;
@@ -1836,6 +1841,7 @@ namespace MiniFanControl
                     else if (k == "OsdShowRadeon") _osdShowRadeon = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowDriverVer") _osdShowDriverVer = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowClocks") _osdShowClocks = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowGameName") _osdShowGameName = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdSparklineBg") _osdSparklineBg = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowLiveTrend") _osdShowLiveTrend = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowFpsGraph") _osdShowFpsGraph = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
@@ -1936,6 +1942,7 @@ namespace MiniFanControl
                 lines.Add("OsdShowRadeon=" + (_osdShowRadeon ? "1" : "0"));
                 lines.Add("OsdShowDriverVer=" + (_osdShowDriverVer ? "1" : "0"));
                 lines.Add("OsdShowClocks=" + (_osdShowClocks ? "1" : "0"));
+                lines.Add("OsdShowGameName=" + (_osdShowGameName ? "1" : "0"));
                 lines.Add("OsdSparklineBg=" + (_osdSparklineBg ? "1" : "0"));
                 lines.Add("OsdShowLiveTrend=" + (_osdShowLiveTrend ? "1" : "0"));
                 lines.Add("OsdShowFpsGraph=" + (_osdShowFpsGraph ? "1" : "0"));
@@ -4113,6 +4120,7 @@ namespace MiniFanControl
                 _osdShowPeaks = true;
                 _osdShowRadeon = true;
                 _osdShowClocks = false;
+                _osdShowGameName = true;
                 _osdSparklineBg = false;
                 _osdShowLiveTrend = true;
                 _osdShowFpsGraph = true;
@@ -4147,6 +4155,7 @@ namespace MiniFanControl
                 _osdShowMode = false;
                 _osdShowPeaks = false;
                 _osdShowRadeon = false;
+                _osdShowGameName = false;
                 SyncOsdStudioUiFromOverlay();
                 SyncOverlayFromStudio();
             };
@@ -4178,6 +4187,7 @@ namespace MiniFanControl
                 _osdShowPeaks = true;
                 _osdShowRadeon = true;
                 _osdShowClocks = false;
+                _osdShowGameName = true;
                 _osdSparklineBg = false;
                 _osdShowLiveTrend = true;
                 _osdShowFpsGraph = true;
@@ -4319,6 +4329,11 @@ namespace MiniFanControl
             _osdSparklineBgCb.CheckedChanged += (s, e) => { _osdSparklineBg = _osdSparklineBgCb.Checked; SyncOverlayFromStudio(); };
             _uiToolTip.SetToolTip(_osdSparklineBgCb, "Render sparklines as full-width glowing background underlays across each metric row");
             p.Controls.Add(_osdSparklineBgCb);
+
+            _osdShowGameNameCb = new CheckBox { Text = "Active Game Title", Location = new Point(476, 326), Size = new Size(224, 21), Checked = _osdShowGameName, UseMnemonic = false };
+            _osdShowGameNameCb.CheckedChanged += (s, e) => { _osdShowGameName = _osdShowGameNameCb.Checked; SyncOverlayFromStudio(); };
+            _uiToolTip.SetToolTip(_osdShowGameNameCb, "Display the active 3D game process name on the OSD header and horizontal bar");
+            p.Controls.Add(_osdShowGameNameCb);
 
             // Row 12 (y=348): Guidance Tip Box
             _osdTipLabel = new Label
@@ -4729,7 +4744,7 @@ namespace MiniFanControl
                 _osdShowApuFanCb, _osdShowSysFanCb, _osdShowPowerCb, _osdShowGpuLoadCb,
                 _osdShowFpsCb, _osdShowLowsCb,
                 _osdShowModeCb, _osdShowPeaksCb, _osdShowRadeonCb, _osdShowDriverVerCb,
-                _osdShowClocksCb, _osdSparklineBgCb, _osdMatchThemeCb,
+                _osdShowClocksCb, _osdShowGameNameCb, _osdSparklineBgCb, _osdMatchThemeCb,
                 _osdShowLiveTrendCb, _osdShowFpsGraphCb, _osdPlotFpsOnTrendCb, _osdDfGraphStyleCb, _osdDfGraphFirstCb
             };
             foreach (CheckBox cb in cbs)

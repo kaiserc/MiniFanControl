@@ -12,6 +12,7 @@ using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -95,7 +96,9 @@ namespace MiniFanControl
         public bool ShowRam = true;
         public bool ShowDriverVersion = false;
         public bool ShowClocks = false;
+        public bool ShowGameName = true;
         public bool SparklinesAsBackground = false;
+        private string _lastGameTitle = null;
         public bool ShowRadeonSettings = true;
         public bool ShowLiveTrend = true;
         public bool PlotFpsOnTrend = true;
@@ -264,6 +267,105 @@ namespace MiniFanControl
             return 50; // Zoomed in default for clean pacing (16.6ms / 19.3ms gameplay)
         }
 
+        private static readonly Dictionary<string, string> KnownGameNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "metro", "METRO" },
+            { "metroll", "METRO LAST LIGHT" },
+            { "metro2033", "METRO 2033" },
+            { "metroexodus", "METRO EXODUS" },
+            { "cyberpunk2077", "CYBERPUNK 2077" },
+            { "witcher3", "THE WITCHER 3" },
+            { "witcher2", "THE WITCHER 2" },
+            { "witcher", "THE WITCHER" },
+            { "starfield", "STARFIELD" },
+            { "rdr2", "RED DEAD REDEMPTION 2" },
+            { "gta5", "GTA V" },
+            { "gtav", "GTA V" },
+            { "cs2", "COUNTER-STRIKE 2" },
+            { "csgo", "CS:GO" },
+            { "dota2", "DOTA 2" },
+            { "eldenring", "ELDEN RING" },
+            { "baldursgate3", "BALDUR'S GATE 3" },
+            { "bg3", "BALDUR'S GATE 3" },
+            { "blackmythwukong", "BLACK MYTH: WUKONG" },
+            { "b1", "BLACK MYTH: WUKONG" },
+            { "hogwartslegacy", "HOGWARTS LEGACY" },
+            { "forzahorizon5", "FORZA HORIZON 5" },
+            { "forza_horizon_5", "FORZA HORIZON 5" },
+            { "forza5", "FORZA HORIZON 5" },
+            { "forzahorizon4", "FORZA HORIZON 4" },
+            { "godofwar", "GOD OF WAR" },
+            { "gow", "GOD OF WAR" },
+            { "spiderman", "SPIDER-MAN" },
+            { "milesmorales", "MILES MORALES" },
+            { "horizonzerodawn", "HORIZON ZERO DAWN" },
+            { "horizonforbiddenwest", "HORIZON FORBIDDEN WEST" },
+            { "r5apex", "APEX LEGENDS" },
+            { "overwatch", "OVERWATCH" },
+            { "overwatch2", "OVERWATCH 2" },
+            { "valorant", "VALORANT" },
+            { "fortniteclient", "FORTNITE" },
+            { "fortnite", "FORTNITE" },
+            { "doom", "DOOM" },
+            { "doometernal", "DOOM ETERNAL" },
+            { "haloinfinite", "HALO INFINITE" },
+            { "helldivers2", "HELLDIVERS 2" },
+            { "palworld", "PALWORLD" },
+            { "fallout4", "FALLOUT 4" },
+            { "skyrim", "SKYRIM" },
+            { "skyrimse", "SKYRIM SE" }
+        };
+
+        public static string FormatGameName(string procName)
+        {
+            if (string.IsNullOrEmpty(procName)) return null;
+            string clean = Path.GetFileNameWithoutExtension(procName).Trim();
+            if (string.IsNullOrEmpty(clean) || FpsMonitor.IsIgnoredProcess(clean)) return null;
+
+            string[] suffixes = new[] {
+                "-Win64-Shipping", "_Shipping", "-Win64", "_Win64", "_x64", "-x64",
+                "_DX11", "_DX12", "_VK", "_vk", "_Release", "_Final"
+            };
+            foreach (string sfx in suffixes)
+            {
+                if (clean.EndsWith(sfx, StringComparison.OrdinalIgnoreCase))
+                {
+                    clean = clean.Substring(0, clean.Length - sfx.Length);
+                    break;
+                }
+            }
+
+            if (clean.EndsWith("Client", StringComparison.OrdinalIgnoreCase) && clean.Length > 6)
+            {
+                clean = clean.Substring(0, clean.Length - 6);
+            }
+
+            string known;
+            if (KnownGameNames.TryGetValue(clean, out known))
+            {
+                return known;
+            }
+
+            string norm = clean.Replace("_", "").Replace("-", "").Replace(" ", "");
+            if (KnownGameNames.TryGetValue(norm, out known))
+            {
+                return known;
+            }
+
+            string spaced = Regex.Replace(clean, @"([a-z])([A-Z])", "$1 $2");
+            spaced = Regex.Replace(spaced, @"([A-Za-z])([0-9])", "$1 $2");
+            spaced = Regex.Replace(spaced, @"([0-9])([A-Za-z])", "$1 $2");
+            spaced = spaced.Replace('_', ' ').Replace('-', ' ');
+            spaced = Regex.Replace(spaced, @"\s+", " ").Trim();
+
+            if (spaced.Length > 22)
+            {
+                spaced = spaced.Substring(0, 20).TrimEnd() + "..";
+            }
+
+            return spaced.ToUpperInvariant();
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
@@ -399,6 +501,7 @@ namespace MiniFanControl
             menu.Items.Add(graphMenu);
 
             ToolStripMenuItem metricsMenu = new ToolStripMenuItem("Visible Telemetry Metrics");
+            AddMetricToggleMenuItem(metricsMenu, "Active Game Title", () => ShowGameName, v => { ShowGameName = v; UpdateDimensions(); Invalidate(); });
             AddMetricToggleMenuItem(metricsMenu, "CPU Temperature", () => ShowCpu, v => ShowCpu = v);
             AddMetricToggleMenuItem(metricsMenu, "iGPU Temperature", () => ShowGpu, v => ShowGpu = v);
             AddMetricToggleMenuItem(metricsMenu, "Clock Speeds (@ GHz / MHz)", () => ShowClocks, v => { ShowClocks = v; UpdateDimensions(); Invalidate(); });
@@ -514,6 +617,7 @@ namespace MiniFanControl
         public int CountVisibleMetrics()
         {
             int c = 0;
+            if (!VerticalLayout && ShowGameName && !string.IsNullOrEmpty(FormatGameName(_status.RtssProcessName))) c++;
             if (ShowCpu) c++;
             if (ShowGpu || ShowGpuLoad) c++;
             if (ShowNvme && _status.NvmeTemp > 0) c++;
@@ -633,6 +737,19 @@ namespace MiniFanControl
             string nvmePeak = (ShowPeaks && Stats != null && Stats.MaxNvmeTemp > 0) ? string.Format("▲{0}°", Stats.MaxNvmeTemp) : null;
             string pwrPeak = (ShowPeaks && Stats != null && Stats.MaxPowerWatts > 0) ? string.Format("▲{0}W", Stats.MaxPowerWatts) : null;
             string ramPeak = (ShowPeaks && Stats != null && Stats.MaxRamPowerWatts > 0) ? string.Format("▲{0:0.0}W", Stats.MaxRamPowerWatts) : null;
+
+            if (ShowGameName)
+            {
+                string gameTitle = FormatGameName(_status.RtssProcessName);
+                if (!string.IsNullOrEmpty(gameTitle))
+                {
+                    list.Add(new HorizColumn {
+                        Key = "GAME", Label = "GAME", Value = gameTitle, Peak = null,
+                        LabelBrush = bLabel, ValueBrush = bWhite, PeakBrush = null,
+                        SparkSamples = null, SparkColor = Color.Empty
+                    });
+                }
+            }
 
             if (ShowCpu)
             {
@@ -883,6 +1000,15 @@ namespace MiniFanControl
                     }
                     baseW = Math.Max(baseW, Math.Max(230, neededW));
                 }
+                if (ShowGameName)
+                {
+                    string gameTitle = FormatGameName(_status.RtssProcessName);
+                    if (!string.IsNullOrEmpty(gameTitle))
+                    {
+                        int neededGameW = (int)Math.Round((("GAME: " + gameTitle).Length * 7.5f) + 32);
+                        baseW = Math.Max(baseW, neededGameW);
+                    }
+                }
                 int w = (int)Math.Round(baseW * sc);
                 int rowH = (int)Math.Round((showSpark ? 25 : 21) * sc);
                 int topH = (int)Math.Round(24 * sc);
@@ -950,15 +1076,18 @@ namespace MiniFanControl
             int prevTags = (_status.GetActiveRadeonTags() != null) ? _status.GetActiveRadeonTags().Count : 0;
             bool layoutChanged = (HasDualFans != hasDualFans);
             string prevMode = _modeSummary;
+            string prevGame = _lastGameTitle;
             _status = st;
             _modeSummary = string.IsNullOrEmpty(modeSummary) ? st.Mode : modeSummary;
             HasDualFans = hasDualFans;
+            _lastGameTitle = ShowGameName ? FormatGameName(st.RtssProcessName) : null;
+            bool gameChanged = (prevGame != _lastGameTitle);
 
             int newCols = CountVisibleMetrics();
             int newTags = (_status.GetActiveRadeonTags() != null) ? _status.GetActiveRadeonTags().Count : 0;
             bool modeChanged = (prevMode != _modeSummary);
 
-            if (layoutChanged || modeChanged || prevCols != newCols || prevTags != newTags || TargetHeight != Height || TargetWidth != Width)
+            if (layoutChanged || modeChanged || gameChanged || prevCols != newCols || prevTags != newTags || TargetHeight != Height || TargetWidth != Width)
                 UpdateDimensions();
             Invalidate();
         }
@@ -2394,7 +2523,11 @@ namespace MiniFanControl
                 }
                 else
                 {
-                    g.DrawString(afterburner ? "AFTERBURNER OSD" : (radeon ? "RADEON TELEMETRY OSD" : "MINIFANCONTROL OSD"), _fontHdr, bLabel, 10f * sc, 6f * sc);
+                    string gameTitle = ShowGameName ? FormatGameName(_status.RtssProcessName) : null;
+                    string headerText = !string.IsNullOrEmpty(gameTitle)
+                        ? "GAME: " + gameTitle
+                        : (afterburner ? "AFTERBURNER OSD" : (radeon ? "RADEON TELEMETRY OSD" : "MINIFANCONTROL OSD"));
+                    g.DrawString(headerText, _fontHdr, bLabel, 10f * sc, 6f * sc);
                     g.DrawLine(sepPen, (int)Math.Round(10 * sc), (int)Math.Round(24 * sc), Width - (int)Math.Round(10 * sc), (int)Math.Round(24 * sc));
 
                     int row = 0;

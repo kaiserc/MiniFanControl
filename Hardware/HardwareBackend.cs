@@ -1764,7 +1764,7 @@ namespace MiniFanControl
                 RtssMaxFps = rtss.IsAvailable ? rtss.MaxFps : 0,
                 RtssP1LowFps = rtss.IsAvailable ? rtss.P1LowFps : 0,
                 RtssP01LowFps = rtss.IsAvailable ? rtss.P01LowFps : 0,
-                RtssProcessName = rtss.IsAvailable ? rtss.ProcessName : null,
+                RtssProcessName = !string.IsNullOrEmpty(rtss.ProcessName) ? rtss.ProcessName : null,
                 PowerSource = pwrSrc,
                 Fan1Rpm = fan1Rpm,
                 Fan2Rpm = fan2Rpm,

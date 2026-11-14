@@ -2040,9 +2040,41 @@ namespace MiniFanControl
                     mergedPeaksOk = osdMerge.TargetWidth > 0 && osdMerge.TargetHeight > 0;
                 }
 
-                extendedTelemetryOk = cpuTipOk && gpuTipOk && ramTipOk && overlayHorizOk && overlayVertOk && adlSafe && mergedPeaksOk && cpuStatsOk && nativeCpuOk;
-                extendedDetails = string.Format("CpuTip={0}, GpuTip={1}, RamTip={2}, HorizOk={3}, VertOk={4}, AdlSafe={5}, MergedPeaks={6}, CpuStats={7}, NativeCpu={8} ({9}%)",
-                    cpuTipOk, gpuTipOk, ramTipOk, overlayHorizOk, overlayVertOk, adlSafe, mergedPeaksOk, cpuStatsOk, nativeCpuOk, nativeCpuUsage);
+                // Verify active game title formatting and OSD display (Vertical header & Horizontal bar)
+                bool gameFmtOk = (CapFrameXOverlayForm.FormatGameName("metro.exe") == "METRO")
+                    && (CapFrameXOverlayForm.FormatGameName("MetroLL.exe") == "METRO LAST LIGHT")
+                    && (CapFrameXOverlayForm.FormatGameName("Cyberpunk2077.exe") == "CYBERPUNK 2077")
+                    && (CapFrameXOverlayForm.FormatGameName("FortniteClient-Win64-Shipping.exe") == "FORTNITE")
+                    && (CapFrameXOverlayForm.FormatGameName("explorer.exe") == null);
+
+                bool gameOsdOk = false;
+                using (CapFrameXOverlayForm osdGame = new CapFrameXOverlayForm())
+                {
+                    osdGame.ShowGameName = true;
+                    FanStatus gameSt = new FanStatus { CpuTemp = 55, CpuLoadPct = 30, GpuTemp = 48, GfxActivityPct = 85, RtssFps = 60, RtssProcessName = "metro.exe" };
+                    osdGame.VerticalLayout = true;
+                    osdGame.UpdateMetrics(gameSt, "Balanced", true);
+                    osdGame.UpdateDimensions();
+                    using (Bitmap bmpVert = new Bitmap(osdGame.TargetWidth, osdGame.TargetHeight))
+                    {
+                        osdGame.DrawToBitmap(bmpVert, new Rectangle(0, 0, osdGame.TargetWidth, osdGame.TargetHeight));
+                    }
+                    bool vertGameOk = osdGame.TargetWidth > 0 && osdGame.TargetHeight > 0;
+
+                    osdGame.VerticalLayout = false;
+                    osdGame.UpdateMetrics(gameSt, "Balanced", true);
+                    osdGame.UpdateDimensions();
+                    using (Bitmap bmpHoriz = new Bitmap(osdGame.TargetWidth, osdGame.TargetHeight))
+                    {
+                        osdGame.DrawToBitmap(bmpHoriz, new Rectangle(0, 0, osdGame.TargetWidth, osdGame.TargetHeight));
+                    }
+                    bool horizGameOk = osdGame.TargetWidth > 0 && osdGame.TargetHeight > 0;
+                    gameOsdOk = vertGameOk && horizGameOk;
+                }
+
+                extendedTelemetryOk = cpuTipOk && gpuTipOk && ramTipOk && overlayHorizOk && overlayVertOk && adlSafe && mergedPeaksOk && cpuStatsOk && nativeCpuOk && gameFmtOk && gameOsdOk;
+                extendedDetails = string.Format("CpuTip={0}, GpuTip={1}, RamTip={2}, HorizOk={3}, VertOk={4}, AdlSafe={5}, MergedPeaks={6}, CpuStats={7}, NativeCpu={8} ({9}%), GameFmt={10}, GameOsd={11}",
+                    cpuTipOk, gpuTipOk, ramTipOk, overlayHorizOk, overlayVertOk, adlSafe, mergedPeaksOk, cpuStatsOk, nativeCpuOk, nativeCpuUsage, gameFmtOk, gameOsdOk);
             }
             catch (Exception ex)
             {
