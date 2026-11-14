@@ -1741,6 +1741,7 @@ namespace MiniFanControl
             FanStatus st = new FanStatus
             {
                 CpuTemp = cpuTemp,
+                CpuLoadPct = SystemStorageMemorySensor.GetCpuUsage(),
                 GpuTemp = gpuTemp,
                 ApuPowerWatts = apuPower,
                 CpuPowerWatts = cpuPwr,

@@ -22,6 +22,7 @@ namespace MiniFanControl
     {
         public DateTime Timestamp;
         public int CpuTemp;
+        public int CpuLoadPct;
         public int GpuTemp;
         public int ApuPowerWatts;
         public int Fan1Rpm;
@@ -48,6 +49,8 @@ namespace MiniFanControl
         public int SampleCount { get; private set; }
         public int MinCpuTemp { get; private set; }
         public int MaxCpuTemp { get; private set; }
+        public int MinCpuLoad { get; private set; }
+        public int MaxCpuLoad { get; private set; }
         public int MinGpuTemp { get; private set; }
         public int MaxGpuTemp { get; private set; }
         public int MinNvmeTemp { get; private set; }
@@ -140,6 +143,8 @@ namespace MiniFanControl
             SampleCount = 0;
             MinCpuTemp = int.MaxValue;
             MaxCpuTemp = 0;
+            MinCpuLoad = int.MaxValue;
+            MaxCpuLoad = 0;
             MinGpuTemp = int.MaxValue;
             MaxGpuTemp = 0;
             MinNvmeTemp = int.MaxValue;
@@ -210,6 +215,7 @@ namespace MiniFanControl
                 {
                     Timestamp = DateTime.Now,
                     CpuTemp = st.CpuTemp,
+                    CpuLoadPct = st.CpuLoadPct,
                     GpuTemp = st.GpuTemp,
                     ApuPowerWatts = st.ApuPowerWatts,
                     Fan1Rpm = st.Fan1Rpm,
@@ -231,6 +237,11 @@ namespace MiniFanControl
             SampleCount++;
             if (st.CpuTemp < MinCpuTemp) MinCpuTemp = st.CpuTemp;
             if (st.CpuTemp > MaxCpuTemp) MaxCpuTemp = st.CpuTemp;
+            if (st.CpuLoadPct >= 0)
+            {
+                if (st.CpuLoadPct < MinCpuLoad) MinCpuLoad = st.CpuLoadPct;
+                if (st.CpuLoadPct > MaxCpuLoad) MaxCpuLoad = st.CpuLoadPct;
+            }
             _sumCpuTemp += st.CpuTemp;
             PushSample(_cpuHist, st.CpuTemp);
 

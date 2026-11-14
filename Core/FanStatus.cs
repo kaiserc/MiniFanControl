@@ -28,6 +28,7 @@ namespace MiniFanControl
         public int SocPowerWatts;
         public int ApuPowerLimitWatts;
         public int CpuClockMhz;
+        public int CpuLoadPct;
         public int GfxClockMhz;
         public int GfxActivityPct;
         public int GfxVoltageMv;
@@ -152,16 +153,18 @@ namespace MiniFanControl
         {
             StringBuilder sb = new StringBuilder();
             sb.AppendFormat("APU / CPU Package Temperature: {0}°C (EC Register 0x70 • Tctl/Tdie)\r\n", CpuTemp);
-            if (CpuClockMhz > 0 || CpuPowerWatts > 0)
+            if (CpuClockMhz > 0 || CpuPowerWatts > 0 || CpuLoadPct >= 0)
             {
+                if (CpuLoadPct >= 0) sb.AppendFormat("  • CPU Total Load                      : {0}%\r\n", CpuLoadPct);
                 if (CpuClockMhz > 0) sb.AppendFormat("  • CPU Effective Clock (PMLOG_CLK_CPUCLK): {0} MHz ({1:0.00} GHz)\r\n", CpuClockMhz, CpuClockMhz / 1000.0);
                 if (CpuPowerWatts > 0) sb.AppendFormat("  • CPU Core Power (PMLOG_CPU_POWER)     : {0} W\r\n", CpuPowerWatts);
             }
             if (stats != null && stats.SampleCount > 0 && stats.MaxCpuTemp > 0)
             {
                 sb.AppendLine("────────────────────────────────────────────");
-                sb.AppendFormat("Session CPU Temp (Min / Avg / Peak): {0}°C / {1:0.0}°C / {2}°C  (Click box to reset)\r\n",
-                    stats.MinCpuTemp, stats.AvgCpuTemp, stats.MaxCpuTemp);
+                string loadPeakPart = stats.MaxCpuLoad > 0 ? string.Format(" (Peak Load: {0}%)", stats.MaxCpuLoad) : "";
+                sb.AppendFormat("Session CPU Temp (Min / Avg / Peak): {0}°C / {1:0.0}°C / {2}°C{3}  (Click box to reset)\r\n",
+                    stats.MinCpuTemp, stats.AvgCpuTemp, stats.MaxCpuTemp, loadPeakPart);
             }
             sb.Append("Primary thermal input used by hardware and custom fan curves.");
             return sb.ToString();

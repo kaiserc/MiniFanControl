@@ -1950,6 +1950,7 @@ namespace MiniFanControl
                 FanStatus extStatus = new FanStatus
                 {
                     CpuTemp = 78,
+                    CpuLoadPct = 62,
                     CpuClockMhz = 4300,
                     CpuPowerWatts = 35,
                     GpuTemp = 66,
@@ -1971,7 +1972,7 @@ namespace MiniFanControl
                 string extGpuTip = extStatus.FormatIgpuTooltip();
                 string extRamTip = extStatus.FormatRamTooltip();
 
-                bool cpuTipOk = extCpuTip.Contains("PMLOG_CLK_CPUCLK") && extCpuTip.Contains("4300 MHz") && extCpuTip.Contains("4.30 GHz");
+                bool cpuTipOk = extCpuTip.Contains("PMLOG_CLK_CPUCLK") && extCpuTip.Contains("4300 MHz") && extCpuTip.Contains("4.30 GHz") && extCpuTip.Contains("CPU Total Load") && extCpuTip.Contains("62%");
                 bool gpuTipOk = extGpuTip.Contains("PMLOG_HOTSPOT") && extGpuTip.Contains("72 °C") && extGpuTip.Contains("PMLOG_NPU_BUSY_AVG");
                 bool ramTipOk = extRamTip.Contains("PMLOG_CLK_MEMCLK") && extRamTip.Contains("2800 MHz") && extRamTip.Contains("DDR5-5600");
 
@@ -1998,7 +1999,7 @@ namespace MiniFanControl
                     {
                         osd.DrawToBitmap(bmp, new Rectangle(0, 0, osd.TargetWidth, osd.TargetHeight));
                     }
-                    overlayVertOk = osd.TargetWidth >= 280 && osd.TargetHeight > 50;
+                    overlayVertOk = osd.TargetWidth >= 285 && osd.TargetHeight > 50;
                 }
 
                 // Verify AmdAdlGpuSensor 16-parameter overload safety when uninitialized
@@ -2011,14 +2012,21 @@ namespace MiniFanControl
 
                 bool adlSafe = (hotspot >= 0 && memClk >= 0 && npuClk >= 0 && (npuAct == -1 || (npuAct >= 0 && npuAct <= 100)));
 
-                // Verify merged iGPU & GPU load formatting with both peaks
+                // Verify merged iGPU & GPU load formatting with both peaks + CPU load tracking
                 bool mergedPeaksOk = false;
+                bool cpuStatsOk = false;
+                int nativeCpuUsage = SystemStorageMemorySensor.GetCpuUsage();
+                bool nativeCpuOk = nativeCpuUsage >= 0 && nativeCpuUsage <= 100;
+
                 using (CapFrameXOverlayForm osdMerge = new CapFrameXOverlayForm())
                 {
                     TelemetrySessionStats mergeStats = new TelemetrySessionStats();
-                    mergeStats.Record(new FanStatus { GpuTemp = 55, GfxActivityPct = 99 });
+                    mergeStats.Record(new FanStatus { CpuTemp = 60, CpuLoadPct = 45, GpuTemp = 55, GfxActivityPct = 99 });
+                    cpuStatsOk = (mergeStats.MaxCpuLoad == 45 && mergeStats.MinCpuLoad == 45);
+
                     osdMerge.Stats = mergeStats;
                     osdMerge.ShowPeaks = true;
+                    osdMerge.ShowCpu = true;
                     osdMerge.ShowGpu = true;
                     osdMerge.ShowGpuLoad = true;
                     osdMerge.UpdateMetrics(extStatus, "Custom 4", true);
@@ -2026,9 +2034,9 @@ namespace MiniFanControl
                     mergedPeaksOk = osdMerge.TargetWidth > 0 && osdMerge.TargetHeight > 0;
                 }
 
-                extendedTelemetryOk = cpuTipOk && gpuTipOk && ramTipOk && overlayHorizOk && overlayVertOk && adlSafe && mergedPeaksOk;
-                extendedDetails = string.Format("CpuTip={0}, GpuTip={1}, RamTip={2}, HorizOk={3}, VertOk={4}, AdlSafe={5}, MergedPeaks={6} (Hotspot={7}, MemClk={8})",
-                    cpuTipOk, gpuTipOk, ramTipOk, overlayHorizOk, overlayVertOk, adlSafe, mergedPeaksOk, hotspot, memClk);
+                extendedTelemetryOk = cpuTipOk && gpuTipOk && ramTipOk && overlayHorizOk && overlayVertOk && adlSafe && mergedPeaksOk && cpuStatsOk && nativeCpuOk;
+                extendedDetails = string.Format("CpuTip={0}, GpuTip={1}, RamTip={2}, HorizOk={3}, VertOk={4}, AdlSafe={5}, MergedPeaks={6}, CpuStats={7}, NativeCpu={8} ({9}%)",
+                    cpuTipOk, gpuTipOk, ramTipOk, overlayHorizOk, overlayVertOk, adlSafe, mergedPeaksOk, cpuStatsOk, nativeCpuOk, nativeCpuUsage);
             }
             catch (Exception ex)
             {

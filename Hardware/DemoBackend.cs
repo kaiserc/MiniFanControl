@@ -53,6 +53,7 @@ namespace MiniFanControl
             return new FanStatus
             {
                 CpuTemp = _cpuTemp,
+                CpuLoadPct = Math.Max(2, Math.Min(98, (_cpuTemp - 38) * 3)),
                 GpuTemp = _gpuTemp,
                 ApuPowerWatts = pwrWatts,
                 CpuPowerWatts = cpuW,

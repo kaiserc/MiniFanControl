@@ -62,6 +62,9 @@ namespace MiniFanControl
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetSystemTimes(out long lpIdleTime, out long lpKernelTime, out long lpUserTime);
+
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         private static extern SafeFileHandle CreateFile(
             string lpFileName,
@@ -89,6 +92,64 @@ namespace MiniFanControl
         private static NvmeTelemetry _cachedNvme = new NvmeTelemetry { IsAvailable = false };
         private static DateTime _lastNvmeQueryUtc = DateTime.MinValue;
         private static readonly object _syncLock = new object();
+
+        // High-Precision Native CPU Usage Tracking (kernel32 GetSystemTimes)
+        private static long _prevIdle = 0;
+        private static long _prevKernel = 0;
+        private static long _prevUser = 0;
+        private static int _lastCpuLoad = 0;
+        private static bool _firstCpuSample = true;
+        private static readonly object _cpuLock = new object();
+
+        /// <summary>
+        /// Queries total real-time system CPU utilization percentage (0-100%) via GetSystemTimes.
+        /// Zero allocation, sub-microsecond latency, no WMI or COM dependencies.
+        /// </summary>
+        public static int GetCpuUsage()
+        {
+            try
+            {
+                lock (_cpuLock)
+                {
+                    long idle, kernel, user;
+                    if (!GetSystemTimes(out idle, out kernel, out user))
+                    {
+                        return _lastCpuLoad;
+                    }
+
+                    if (_firstCpuSample)
+                    {
+                        _prevIdle = idle;
+                        _prevKernel = kernel;
+                        _prevUser = user;
+                        _firstCpuSample = false;
+                        return _lastCpuLoad;
+                    }
+
+                    long dIdle = idle - _prevIdle;
+                    long dKernel = kernel - _prevKernel;
+                    long dUser = user - _prevUser;
+
+                    _prevIdle = idle;
+                    _prevKernel = kernel;
+                    _prevUser = user;
+
+                    long dTotal = dKernel + dUser;
+                    if (dTotal > 0)
+                    {
+                        long dBusy = dTotal - dIdle;
+                        if (dBusy < 0) dBusy = 0;
+                        int pct = (int)Math.Round((double)(dBusy * 100) / dTotal);
+                        _lastCpuLoad = Math.Max(0, Math.Min(100, pct));
+                    }
+                    return _lastCpuLoad;
+                }
+            }
+            catch
+            {
+                return _lastCpuLoad;
+            }
+        }
 
         public static void Sample(out NvmeTelemetry nvme, out MemoryTelemetry mem)
         {
