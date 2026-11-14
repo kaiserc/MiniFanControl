@@ -760,30 +760,30 @@ namespace MiniFanControl
                             tagsW += (float)Math.Ceiling(sz.Width) + padH * 2 + (4f * sc);
                         }
                     }
-                    float radW = Math.Max(hdrW, tagsW) + (16f * sc);
-                    col.MinWidth = Math.Max(100f * sc, radW);
+                    float radW = Math.Max(hdrW, tagsW) + (12f * sc);
+                    col.MinWidth = Math.Max(80f * sc, radW);
                 }
                 else if (col.Key == "MODE")
                 {
                     float lblW = g.MeasureString("MODE", _fontLabel).Width;
                     float valW = g.MeasureString(col.Value, _fontVal).Width;
-                    float modeW = lblW + valW + (20f * sc);
-                    col.MinWidth = Math.Max(104f * sc, modeW);
+                    float modeW = lblW + valW + (10f * sc);
+                    col.MinWidth = Math.Max(38f * sc, modeW);
                 }
                 else
                 {
                     float lblW = g.MeasureString(col.Label, _fontLabel).Width;
                     float valW = g.MeasureString(col.Value, _fontVal).Width;
-                    float pkW = !string.IsNullOrEmpty(col.Peak) ? g.MeasureString(col.Peak, _fontPeak).Width + (4f * sc) : 0f;
-                    float contentW = lblW + valW + pkW + (14f * sc);
+                    float pkW = !string.IsNullOrEmpty(col.Peak) ? g.MeasureString(col.Peak, _fontPeak).Width + (3f * sc) : 0f;
+                    float contentW = lblW + valW + pkW + (10f * sc);
 
                     if (showSpark && col.SparkSamples != null)
                     {
-                        col.MinWidth = Math.Max(95f * sc, contentW);
+                        col.MinWidth = Math.Max(65f * sc, contentW);
                     }
                     else
                     {
-                        col.MinWidth = Math.Max((ShowPeaks ? 92f : 78f) * sc, contentW);
+                        col.MinWidth = Math.Max(38f * sc, contentW);
                     }
                 }
             }
@@ -2449,17 +2449,73 @@ namespace MiniFanControl
             float availValW = Math.Max(10f, colW - lblW - pkW - (4f * sc));
             float valW = g.MeasureString(val, _fontVal).Width;
 
-            if (valW > availValW && availValW > 12f)
+            string drawVal = val;
+            Font drawFont = _fontVal;
+            bool disposeFont = false;
+
+            if (valW > availValW)
             {
-                RectangleF valRect = new RectangleF(cellX + lblW - 1f, 5f * sc, availValW, 20f * sc);
-                using (StringFormat sf = new StringFormat(StringFormatFlags.NoWrap) { Trimming = StringTrimming.EllipsisCharacter })
+                // 1. If string contains " @ ", try compact notation without "@" (e.g. "45°C 3.8G" or "74% 2800M")
+                if (drawVal.Contains(" @ "))
                 {
-                    g.DrawString(val, _fontVal, bVal, valRect, sf);
+                    string cand1 = drawVal.Replace(" @ ", " ");
+                    float cand1W = g.MeasureString(cand1, _fontVal).Width;
+                    if (cand1W <= availValW)
+                    {
+                        drawVal = cand1;
+                        valW = cand1W;
+                    }
+                    else
+                    {
+                        string cand2 = cand1.Replace("°C", "°");
+                        float cand2W = g.MeasureString(cand2, _fontVal).Width;
+                        if (cand2W <= availValW)
+                        {
+                            drawVal = cand2;
+                            valW = cand2W;
+                        }
+                        else
+                        {
+                            drawVal = cand1;
+                            valW = cand1W;
+                        }
+                    }
+                }
+
+                // 2. If still slightly too wide, dynamically scale the font down to fit with 100% fidelity
+                if (valW > availValW && availValW > 16f * sc)
+                {
+                    float scaleRatio = availValW / valW;
+                    if (scaleRatio >= 0.75f)
+                    {
+                        drawFont = new Font(_fontVal.FontFamily, _fontVal.Size * scaleRatio, _fontVal.Style);
+                        disposeFont = true;
+                        valW = g.MeasureString(drawVal, drawFont).Width;
+                    }
                 }
             }
-            else
+
+            try
             {
-                g.DrawString(val, _fontVal, bVal, cellX + lblW - 1f, 5f * sc);
+                if (valW > availValW && availValW > 12f)
+                {
+                    RectangleF valRect = new RectangleF(cellX + lblW - 1f, 5f * sc, availValW, 20f * sc);
+                    using (StringFormat sf = new StringFormat(StringFormatFlags.NoWrap) { Trimming = StringTrimming.EllipsisCharacter })
+                    {
+                        g.DrawString(drawVal, drawFont, bVal, valRect, sf);
+                    }
+                }
+                else
+                {
+                    g.DrawString(drawVal, drawFont, bVal, cellX + lblW - 1f, 5f * sc);
+                }
+            }
+            finally
+            {
+                if (disposeFont && drawFont != null)
+                {
+                    drawFont.Dispose();
+                }
             }
 
             if (!string.IsNullOrEmpty(peak))
@@ -2515,17 +2571,71 @@ namespace MiniFanControl
             }
 
             float availW = targetRight - valX;
-            if (valW > availW && availW > 12f)
+            string drawVal = val;
+            Font drawFont = _fontVal;
+            bool disposeFont = false;
+
+            if (valW > availW)
             {
-                RectangleF valRect = new RectangleF(valX, y - 1f, availW, rowH);
-                using (StringFormat sf = new StringFormat(StringFormatFlags.NoWrap) { Trimming = StringTrimming.EllipsisCharacter })
+                if (drawVal.Contains(" @ "))
                 {
-                    g.DrawString(val, _fontVal, bVal, valRect, sf);
+                    string cand1 = drawVal.Replace(" @ ", " ");
+                    float cand1W = g.MeasureString(cand1, _fontVal).Width;
+                    if (cand1W <= availW)
+                    {
+                        drawVal = cand1;
+                        valW = cand1W;
+                    }
+                    else
+                    {
+                        string cand2 = cand1.Replace("°C", "°");
+                        float cand2W = g.MeasureString(cand2, _fontVal).Width;
+                        if (cand2W <= availW)
+                        {
+                            drawVal = cand2;
+                            valW = cand2W;
+                        }
+                        else
+                        {
+                            drawVal = cand1;
+                            valW = cand1W;
+                        }
+                    }
+                }
+
+                if (valW > availW && availW > 16f * sc)
+                {
+                    float scaleRatio = availW / valW;
+                    if (scaleRatio >= 0.75f)
+                    {
+                        drawFont = new Font(_fontVal.FontFamily, _fontVal.Size * scaleRatio, _fontVal.Style);
+                        disposeFont = true;
+                        valW = g.MeasureString(drawVal, drawFont).Width;
+                    }
                 }
             }
-            else
+
+            try
             {
-                g.DrawString(val, _fontVal, bVal, valX, y - 1f);
+                if (valW > availW && availW > 12f)
+                {
+                    RectangleF valRect = new RectangleF(valX, y - 1f, availW, rowH);
+                    using (StringFormat sf = new StringFormat(StringFormatFlags.NoWrap) { Trimming = StringTrimming.EllipsisCharacter })
+                    {
+                        g.DrawString(drawVal, drawFont, bVal, valRect, sf);
+                    }
+                }
+                else
+                {
+                    g.DrawString(drawVal, drawFont, bVal, valX, y - 1f);
+                }
+            }
+            finally
+            {
+                if (disposeFont && drawFont != null)
+                {
+                    drawFont.Dispose();
+                }
             }
         }
 
