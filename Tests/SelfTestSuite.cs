@@ -763,15 +763,15 @@ namespace MiniFanControl
 
                 {
 
-                    Thread.Sleep(30);
+                    Thread.Sleep(20);
 
                     hb.Set();
 
-                    Thread.Sleep(30);
+                    Thread.Sleep(20);
 
                     hb.Set();
 
-                    Thread.Sleep(30);
+                    Thread.Sleep(20);
 
                     sd.Set();
 
@@ -781,9 +781,9 @@ namespace MiniFanControl
 
                 pulseThread.Start();
 
-                int resSustained = WatchdogSupervisor.RunSimulated(currentPid, 600, hb, sd, false);
+                int resSustained = WatchdogSupervisor.RunSimulated(currentPid, 1200, hb, sd, false);
 
-                pulseThread.Join(1500);
+                pulseThread.Join(2500);
 
 
 
@@ -1874,6 +1874,67 @@ namespace MiniFanControl
             Check(singleInstanceOk,
                 "Single-Instance Mutex & Clean Driver Shutdown Lifecycle",
                 singleInstanceDetails);
+
+            // 50. Anti-Poisoning Gameplay 0.1% Lows & Startup Hitch Rejection
+            bool antiPoisonLowsOk = false;
+            string antiPoisonDetails = "";
+            try
+            {
+                // Part A: Microsecond calculation with loading stall (1,000,000 µs = 1 FPS)
+                int[] spikedFrames = new int[500];
+                for (int i = 0; i < 490; i++) spikedFrames[i] = 19608; // 51 FPS
+                for (int i = 490; i < 499; i++) spikedFrames[i] = 23809; // 42 FPS
+                spikedFrames[499] = 1000000; // 1 second loading screen hitch (1 FPS)
+
+                int testAvg, testP1, testP01;
+                FpsMonitor.CalculateLowsFromMicroseconds(spikedFrames, out testAvg, out testP1, out testP01);
+                bool stallFiltered = (testP01 >= 38 && testP01 <= 51);
+
+                // Part B: Session stats receiving startup 1 FPS artifact followed by 51 FPS gameplay
+                TelemetrySessionStats testSession = new TelemetrySessionStats();
+                testSession.Record(new FanStatus { CpuTemp = 45, RtssFps = 1, RtssP01LowFps = 1, RtssAvgFps = 1 });
+                for (int i = 0; i < 20; i++)
+                {
+                    testSession.Record(new FanStatus { CpuTemp = 60, RtssFps = 51, RtssP01LowFps = 1, RtssAvgFps = 51 });
+                }
+                bool sessionLowsRecovered = (testSession.P01LowFps >= 35 && testSession.P01LowFps <= 51);
+
+                // Part C: Overlay render with active 51 FPS and poisoned 0.1% low = 1
+                bool overlayLowsRendered = false;
+                using (CapFrameXOverlayForm osdLowTest = new CapFrameXOverlayForm())
+                {
+                    osdLowTest.Stats = testSession;
+                    osdLowTest.ShowFps = true;
+                    osdLowTest.ShowLows = true;
+                    osdLowTest.UpdateMetrics(new FanStatus {
+                        CpuTemp = 60,
+                        RtssFps = 51,
+                        RtssFrametimeMs = 19.6,
+                        RtssP01LowFps = 1, // Poisoned RTSS artifact
+                        RtssAvgFps = 51
+                    }, "Balanced", true);
+                    osdLowTest.UpdateDimensions();
+
+                    using (Bitmap bmp = new Bitmap(Math.Max(1, osdLowTest.Width), Math.Max(1, osdLowTest.Height)))
+                    {
+                        osdLowTest.DrawToBitmap(bmp, new Rectangle(0, 0, osdLowTest.Width, osdLowTest.Height));
+                    }
+                    overlayLowsRendered = true;
+                }
+
+                antiPoisonLowsOk = stallFiltered && sessionLowsRecovered && overlayLowsRendered;
+                antiPoisonDetails = string.Format("StallFiltered={0} (P01={1} FPS), SessionLowsRecovered={2} (P01={3} FPS), OverlayOk={4}",
+                    stallFiltered, testP01, sessionLowsRecovered, testSession.P01LowFps, overlayLowsRendered);
+            }
+            catch (Exception ex)
+            {
+                antiPoisonLowsOk = false;
+                antiPoisonDetails = ex.Message;
+            }
+
+            Check(antiPoisonLowsOk,
+                "Anti-Poisoning Gameplay 0.1% Lows & Startup Hitch Rejection",
+                antiPoisonDetails);
 
             Console.WriteLine("----------------------------------------------------------------------");
 

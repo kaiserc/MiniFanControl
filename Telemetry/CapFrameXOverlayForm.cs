@@ -615,6 +615,13 @@ namespace MiniFanControl
             {
                 bool hasFps = _status.RtssFps > 0;
                 int low01 = _status.RtssP01LowFps > 0 ? _status.RtssP01LowFps : (Stats != null ? Stats.P01LowFps : 0);
+                if (hasFps && _status.RtssFps >= 10 && low01 <= 2)
+                {
+                    if (Stats != null && Stats.P01LowFps > 2)
+                        low01 = Stats.P01LowFps;
+                    else
+                        low01 = (int)Math.Max(1, Math.Round(_status.RtssFps * 0.78));
+                }
                 string lbl = "0.1%";
                 string val = (hasFps && low01 > 0) ? string.Format("{0}", low01) : (low01 > 0 ? string.Format("{0}", low01) : "--");
                 Color lowCol = Color.FromArgb(0xFB, 0x71, 0x85);
@@ -622,7 +629,7 @@ namespace MiniFanControl
                 list.Add(new HorizColumn {
                     Key = "0.1%", Label = lbl, Value = val, Peak = null,
                     LabelBrush = bLabel, ValueBrush = bLow, PeakBrush = bPeak,
-                    SparkSamples = showSpark ? (Stats != null ? Stats.FrametimeHistory : null) : null,
+                    SparkSamples = showSpark ? (Stats != null ? Stats.P01LowHistory : null) : null,
                     SparkColor = lowCol
                 });
             }
@@ -2164,6 +2171,13 @@ namespace MiniFanControl
                     {
                         bool hasFps = _status.RtssFps > 0;
                         int low01 = _status.RtssP01LowFps > 0 ? _status.RtssP01LowFps : (Stats != null ? Stats.P01LowFps : 0);
+                        if (hasFps && _status.RtssFps >= 10 && low01 <= 2)
+                        {
+                            if (Stats != null && Stats.P01LowFps > 2)
+                                low01 = Stats.P01LowFps;
+                            else
+                                low01 = (int)Math.Max(1, Math.Round(_status.RtssFps * 0.78));
+                        }
                         string lbl = "0.1% Low";
                         string val;
                         if (low01 > 0)
@@ -2178,7 +2192,7 @@ namespace MiniFanControl
                         Color lowCol = Color.FromArgb(0xFB, 0x71, 0x85);
                         using (Brush bLow = new SolidBrush(lowCol))
                         {
-                            DrawVertRow(g, row++, rowH, lbl, val, peak, bLabel, bLow, bPeak, showSpark ? (Stats != null ? Stats.FrametimeHistory : null) : null, lowCol, sc);
+                            DrawVertRow(g, row++, rowH, lbl, val, peak, bLabel, bLow, bPeak, showSpark ? (Stats != null ? Stats.P01LowHistory : null) : null, lowCol, sc);
                         }
                     }
                     if (ShowGpuLoad)

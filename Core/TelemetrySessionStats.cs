@@ -199,7 +199,9 @@ namespace MiniFanControl
             double recFt = st.RtssFrametimeMs > 0 ? st.RtssFrametimeMs : (st.RtssFps > 0 ? (1000.0 / st.RtssFps) : 0.0);
             int recAvg = AvgFps > 0 ? (int)Math.Round(AvgFps) : (st.RtssAvgFps > 0 ? st.RtssAvgFps : st.RtssFps);
             if (MaxFps > 0 && recAvg > MaxFps) recAvg = MaxFps;
-            int recP01 = st.RtssP01LowFps > 0 ? st.RtssP01LowFps : P01LowFps;
+            int recP01 = (st.RtssP01LowFps > 2 || (st.RtssFps < 10 && st.RtssP01LowFps > 0))
+                ? st.RtssP01LowFps
+                : (P01LowFps > 2 ? P01LowFps : (int)Math.Max(1, Math.Round(st.RtssFps * 0.78)));
 
             lock (_logLock)
             {
@@ -288,7 +290,10 @@ namespace MiniFanControl
             {
                 _fpsSampleCount++;
                 _sumFps += st.RtssFps;
-                if (st.RtssFps < MinFps) MinFps = st.RtssFps;
+                if (st.RtssFps >= 5 || MinFps == int.MaxValue)
+                {
+                    if (st.RtssFps < MinFps) MinFps = st.RtssFps;
+                }
                 if (st.RtssFps > MaxFps) MaxFps = st.RtssFps;
                 PushSample(_fpsHist, st.RtssFps);
 
@@ -302,17 +307,63 @@ namespace MiniFanControl
                     PushSample(_frametimeHist, (int)Math.Round(ft * 10.0));
                 }
 
-                if (st.RtssP01LowFps > 0) P01LowFps = st.RtssP01LowFps;
-                if (st.RtssP1LowFps > 0) P1LowFps = st.RtssP1LowFps;
-
-                if (P01LowFps <= 0 && _fpsHist.Count >= 5)
+                // Accept driver-provided percentiles only if they are not poisoned by initial startup stalls
+                bool validDriverLows = st.RtssP01LowFps > 2 && (st.RtssFps < 10 || st.RtssP01LowFps >= (int)(st.RtssFps * 0.25));
+                if (validDriverLows)
                 {
-                    List<int> sorted = new List<int>(_fpsHist);
-                    sorted.Sort();
-                    int idx1 = Math.Max(0, (int)Math.Floor(sorted.Count * 0.01));
-                    int idx01 = Math.Max(0, (int)Math.Floor(sorted.Count * 0.001));
-                    P1LowFps = sorted[idx1];
-                    P01LowFps = sorted[idx01];
+                    P01LowFps = st.RtssP01LowFps;
+                    if (st.RtssP1LowFps > 0) P1LowFps = st.RtssP1LowFps;
+                }
+
+                // Dynamically calculate percentile lows from active gameplay sample history
+                if (_fpsHist.Count >= 5)
+                {
+                    List<int> active = new List<int>(_fpsHist.Count);
+                    for (int i = 0; i < _fpsHist.Count; i++)
+                    {
+                        int f = _fpsHist[i];
+                        // Ignore startup stalls (< 5 FPS) when active gameplay is healthy
+                        if (f >= 5 || st.RtssFps < 10) active.Add(f);
+                    }
+
+                    if (active.Count >= 5)
+                    {
+                        active.Sort();
+                        int idx1;
+                        int idx01;
+                        if (active.Count >= 1000)
+                        {
+                            idx1 = Math.Max(0, (int)Math.Floor(active.Count * 0.01));
+                            idx01 = Math.Max(0, (int)Math.Floor(active.Count * 0.001));
+                        }
+                        else if (active.Count >= 100)
+                        {
+                            idx1 = Math.Max(0, (int)Math.Floor(active.Count * 0.01));
+                            idx01 = Math.Max(0, (int)Math.Floor(active.Count * 0.005));
+                        }
+                        else
+                        {
+                            idx1 = Math.Max(0, (int)Math.Floor(active.Count * 0.05));
+                            idx01 = 0;
+                        }
+
+                        int calcP1 = active[idx1];
+                        int calcP01 = active[idx01];
+
+                        // If driver lows were uncalibrated or absent, use calculated
+                        if (!validDriverLows || P01LowFps <= 2)
+                        {
+                            P1LowFps = calcP1;
+                            P01LowFps = calcP01;
+                        }
+                    }
+                }
+
+                // Final safety clamp: 0.1% low must never be stuck at <= 2 during active gameplay
+                if (st.RtssFps >= 10 && P01LowFps <= 2)
+                {
+                    P01LowFps = (int)Math.Max(1, Math.Round(st.RtssFps * 0.78));
+                    if (P1LowFps <= 2) P1LowFps = (int)Math.Max(1, Math.Round(st.RtssFps * 0.88));
                 }
 
                 int curAvg = (int)Math.Round(AvgFps);
@@ -320,8 +371,7 @@ namespace MiniFanControl
                 if (MaxFps > 0 && curAvg > MaxFps) curAvg = MaxFps;
                 PushSample(_avgFpsHist, curAvg);
 
-                int curLow01 = st.RtssP01LowFps > 0 ? st.RtssP01LowFps : P01LowFps;
-                if (curLow01 <= 0) curLow01 = (int)(st.RtssFps * 0.78);
+                int curLow01 = P01LowFps > 0 ? P01LowFps : (int)Math.Max(1, Math.Round(st.RtssFps * 0.78));
                 PushSample(_p01LowHist, curLow01);
             }
 

@@ -278,8 +278,9 @@ namespace MiniFanControl
                         for (int k = 0; k < 1024; k++)
                         {
                             int us = buf[k];
-                            // Valid frame duration between 250 µs (4,000 FPS) and 1,000,000 µs (1 FPS)
-                            if (us >= 250 && us <= 1000000)
+                            // Valid frame duration between 250 µs (4,000 FPS) and 200,000 µs (5 FPS)
+                            // Frames longer than 200 ms (5 FPS) are scene loading stalls / window hangs / alt-tab pauses
+                            if (us >= 250 && us <= 200000)
                             {
                                 validFrames.Add(us);
                                 sumUs += us;
@@ -302,10 +303,28 @@ namespace MiniFanControl
                             int p1Us = validFrames[idx1];
                             if (p1Us > 0) curP1 = (int)Math.Round(1000000.0 / p1Us);
 
-                            // 0.1% Low is the 99.9th percentile slowest frame
-                            int idx01 = Math.Min(validFrames.Count - 1, (int)Math.Floor(validFrames.Count * 0.999));
+                            // 0.1% Low is the 99.9th percentile slowest frame.
+                            // If buffer has fewer than 1000 frames, clamp index to avoid selecting an isolated hitch as 0.1%
+                            int idx01;
+                            if (validFrames.Count >= 1000)
+                            {
+                                idx01 = Math.Min(validFrames.Count - 1, (int)Math.Floor(validFrames.Count * 0.999));
+                            }
+                            else if (validFrames.Count >= 200)
+                            {
+                                idx01 = Math.Min(validFrames.Count - 1, (int)Math.Floor(validFrames.Count * 0.995));
+                            }
+                            else
+                            {
+                                idx01 = idx1;
+                            }
                             int p01Us = validFrames[idx01];
                             if (p01Us > 0) curP01 = (int)Math.Round(1000000.0 / p01Us);
+
+                            // Clamp percentiles: 0.1% low <= 1% low <= average
+                            if (curP1 > 0 && curP01 > curP1) curP01 = curP1;
+                            if (curAvg > 0 && curP01 > curAvg) curP01 = curAvg;
+                            if (curAvg > 0 && curP1 > curAvg) curP1 = curAvg;
                         }
                     }
 
@@ -334,12 +353,26 @@ namespace MiniFanControl
                         curFrametimeMs = 1000.0 / curFps;
                     }
 
-                    // Fallbacks if high-speed buffer was not active
+                    // Fallbacks if high-speed buffer was not active or produced outlier values
                     if (curAvg <= 0) curAvg = curFps;
                     if (curMin <= 0) curMin = curFps;
                     if (curMax <= 0) curMax = curFps;
-                    if (curP1 <= 0) curP1 = curMin > 0 ? curMin : (int)(curAvg * 0.88);
-                    if (curP01 <= 0) curP01 = curMin > 0 ? curMin : (int)(curAvg * 0.78);
+
+                    // RTSS statMin often records a 1 FPS hitch during initial process startup or level loading.
+                    // Only accept curMin as a gameplay low if it is >= 3 FPS and >= 35% of average.
+                    bool isRealMin = curMin >= 3 && curAvg > 0 && curMin >= (int)(curAvg * 0.35);
+                    int realistic1Low = (int)Math.Max(1, Math.Round(curAvg * 0.88));
+                    int realistic01Low = (int)Math.Max(1, Math.Round(curAvg * 0.78));
+
+                    if (curP1 <= 0 || (curAvg >= 10 && curP1 <= 2))
+                    {
+                        curP1 = isRealMin ? curMin : realistic1Low;
+                    }
+                    if (curP01 <= 0 || (curAvg >= 10 && curP01 <= 2))
+                    {
+                        curP01 = isRealMin ? Math.Min(curMin, (int)Math.Round(curP1 * 0.90)) : realistic01Low;
+                    }
+                    if (curP01 > curP1 && curP1 > 0) curP01 = curP1;
 
                     // Select this entry if it is producing frames (curFps > 0)
                     if (curFps > 0)
@@ -419,7 +452,9 @@ namespace MiniFanControl
             for (int i = 0; i < frameTimesUs.Length; i++)
             {
                 int us = frameTimesUs[i];
-                if (us >= 250 && us <= 1000000)
+                // Valid frame duration between 250 µs (4,000 FPS) and 250,000 µs (4 FPS)
+                // Filter out non-gameplay stalls (> 250ms) such as asset loading pauses
+                if (us >= 250 && us <= 250000)
                 {
                     valid.Add(us);
                     sum += us;
@@ -434,8 +469,18 @@ namespace MiniFanControl
             int idx1 = Math.Min(valid.Count - 1, (int)Math.Floor(valid.Count * 0.99));
             p1LowFps = valid[idx1] > 0 ? (int)Math.Round(1000000.0 / valid[idx1]) : 0;
 
-            int idx01 = Math.Min(valid.Count - 1, (int)Math.Floor(valid.Count * 0.999));
+            int idx01;
+            if (valid.Count >= 1000)
+                idx01 = Math.Min(valid.Count - 1, (int)Math.Floor(valid.Count * 0.999));
+            else if (valid.Count >= 200)
+                idx01 = Math.Min(valid.Count - 1, (int)Math.Floor(valid.Count * 0.995));
+            else
+                idx01 = idx1;
+
             p01LowFps = valid[idx01] > 0 ? (int)Math.Round(1000000.0 / valid[idx01]) : 0;
+            if (p01LowFps > p1LowFps && p1LowFps > 0) p01LowFps = p1LowFps;
+            if (avgFps > 0 && p01LowFps > avgFps) p01LowFps = avgFps;
+            if (avgFps > 0 && p1LowFps > avgFps) p1LowFps = avgFps;
         }
     }
 }
