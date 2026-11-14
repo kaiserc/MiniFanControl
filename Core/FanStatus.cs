@@ -31,6 +31,10 @@ namespace MiniFanControl
         public int GfxClockMhz;
         public int GfxActivityPct;
         public int GfxVoltageMv;
+        public int MemClockMhz;
+        public int GpuHotspotTemp;
+        public int NpuClockMhz;
+        public int NpuActivityPct;
         public int RtssFps;
         public int Fps { get { return RtssFps; } set { RtssFps = value; } }
         public bool RtssRunning;
@@ -150,8 +154,8 @@ namespace MiniFanControl
             sb.AppendFormat("APU / CPU Package Temperature: {0}°C (EC Register 0x70 • Tctl/Tdie)\r\n", CpuTemp);
             if (CpuClockMhz > 0 || CpuPowerWatts > 0)
             {
-                if (CpuClockMhz > 0) sb.AppendFormat("  • CPU Core Clock (PMLOG_CLK_CPUCLK) : {0} MHz\r\n", CpuClockMhz);
-                if (CpuPowerWatts > 0) sb.AppendFormat("  • CPU Core Power (PMLOG_CPU_POWER)  : {0} W\r\n", CpuPowerWatts);
+                if (CpuClockMhz > 0) sb.AppendFormat("  • CPU Effective Clock (PMLOG_CLK_CPUCLK): {0} MHz ({1:0.00} GHz)\r\n", CpuClockMhz, CpuClockMhz / 1000.0);
+                if (CpuPowerWatts > 0) sb.AppendFormat("  • CPU Core Power (PMLOG_CPU_POWER)     : {0} W\r\n", CpuPowerWatts);
             }
             if (stats != null && stats.SampleCount > 0 && stats.MaxCpuTemp > 0)
             {
@@ -166,14 +170,18 @@ namespace MiniFanControl
         public string FormatIgpuTooltip(TelemetrySessionStats stats = null)
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendFormat("Integrated Radeon Graphics Temperature: {0}°C\r\n", GpuTemp);
-            if (GfxClockMhz > 0 || GfxActivityPct >= 0 || GfxVoltageMv > 0 || GfxPowerWatts > 0)
+            string hotspotPart = GpuHotspotTemp > 0 ? string.Format(" (Hotspot: {0}°C)", GpuHotspotTemp) : "";
+            sb.AppendFormat("Integrated Radeon Graphics Temperature: {0}°C{1}\r\n", GpuTemp, hotspotPart);
+            if (GfxClockMhz > 0 || GfxActivityPct >= 0 || GfxVoltageMv > 0 || GfxPowerWatts > 0 || GpuHotspotTemp > 0 || NpuActivityPct >= 0)
             {
                 sb.AppendLine("────────────────────────────────────────────");
-                if (GfxClockMhz > 0) sb.AppendFormat("  • Core Clock (PMLOG_CLK_GFXCLK)      : {0} MHz\r\n", GfxClockMhz);
-                if (GfxActivityPct >= 0) sb.AppendFormat("  • iGPU Activity (PMLOG_ACTIVITY_GFX) : {0}%\r\n", GfxActivityPct);
-                if (GfxPowerWatts > 0) sb.AppendFormat("  • iGPU Power (PMLOG_GFX_POWER)       : {0} W\r\n", GfxPowerWatts);
-                if (GfxVoltageMv > 0) sb.AppendFormat("  • Core Voltage (PMLOG_GFX_VOLTAGE)   : {0} mV\r\n", GfxVoltageMv);
+                if (GfxClockMhz > 0) sb.AppendFormat("  • Core Clock (PMLOG_CLK_GFXCLK)         : {0} MHz\r\n", GfxClockMhz);
+                if (GfxActivityPct >= 0) sb.AppendFormat("  • iGPU Activity (PMLOG_ACTIVITY_GFX)    : {0}%\r\n", GfxActivityPct);
+                if (GfxPowerWatts > 0) sb.AppendFormat("  • iGPU Power (PMLOG_GFX_POWER)          : {0} W\r\n", GfxPowerWatts);
+                if (GfxVoltageMv > 0) sb.AppendFormat("  • Core Voltage (PMLOG_GFX_VOLTAGE)      : {0} mV\r\n", GfxVoltageMv);
+                if (GpuHotspotTemp > 0) sb.AppendFormat("  • Junction Hotspot (PMLOG_HOTSPOT)      : {0} °C\r\n", GpuHotspotTemp);
+                if (NpuActivityPct >= 0 || NpuClockMhz > 0) sb.AppendFormat("  • Ryzen AI NPU (PMLOG_NPU_BUSY_AVG)     : {0}%{1}\r\n",
+                    NpuActivityPct >= 0 ? NpuActivityPct : 0, NpuClockMhz > 0 ? string.Format(" @ {0} MHz", NpuClockMhz) : "");
             }
             if (stats != null && stats.SampleCount > 0 && stats.MaxGpuTemp > 0)
             {
@@ -283,6 +291,13 @@ namespace MiniFanControl
             StringBuilder sb = new StringBuilder();
             sb.AppendFormat("System Physical Memory: {0:F1} GB Used / {1:F1} GB Total ({2}% Load)\r\n", RamUsedGb, RamTotalGb, RamLoadPct);
             sb.AppendFormat("• Available Physical RAM: {0:F1} GB\r\n", Math.Max(0.0, RamTotalGb - RamUsedGb));
+            if (MemClockMhz > 0)
+            {
+                string standard = MemClockMhz >= 3200
+                    ? string.Format("LPDDR5X-{0}", MemClockMhz * 2)
+                    : (MemClockMhz >= 2400 ? string.Format("DDR5-{0}", MemClockMhz * 2) : string.Format("DDR4-{0}", MemClockMhz * 2));
+                sb.AppendFormat("• Memory Clock (PMLOG_CLK_MEMCLK): {0} MHz ({1} Effective Data Rate)\r\n", MemClockMhz, standard);
+            }
             if (RamTotalGb > 0)
             {
                 int numModules = RamTotalGb >= 32.0 ? 2 : 1;

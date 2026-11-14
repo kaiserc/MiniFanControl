@@ -1630,13 +1630,15 @@ namespace MiniFanControl
                 }
             }
 
-            int adlTemp, adlCpuTemp, adlPowerWatts, cpuPwr, gfxPwr, socPwr, pwrLim, cpuClk, gfxClk, gfxAct, gfxVolt;
+            int adlTemp, adlCpuTemp, adlPowerWatts, cpuPwr, gfxPwr, socPwr, pwrLim, cpuClk, gfxClk, gfxAct, gfxVolt, memClk, hotspot, npuClk, npuAct;
 
             string pwrSrc;
 
             _adlSensor.ReadTelemetryDetailed(out adlTemp, out adlCpuTemp, out adlPowerWatts, out cpuPwr, out gfxPwr, out socPwr,
 
-                out pwrLim, out cpuClk, out gfxClk, out gfxAct, out gfxVolt, out pwrSrc);
+                out pwrLim, out cpuClk, out gfxClk, out gfxAct, out gfxVolt, out pwrSrc,
+
+                out memClk, out hotspot, out npuClk, out npuAct);
 
             // Safe multi-tier temperature resolution:
 
@@ -1749,6 +1751,10 @@ namespace MiniFanControl
                 GfxClockMhz = gfxClk,
                 GfxActivityPct = gfxAct,
                 GfxVoltageMv = gfxVolt,
+                MemClockMhz = memClk,
+                GpuHotspotTemp = hotspot,
+                NpuClockMhz = npuClk,
+                NpuActivityPct = npuAct,
                 RtssFps = rtss.IsAvailable ? rtss.Fps : -1,
                 RtssRunning = rtss.IsRtssRunning,
                 RtssFrametimeMs = rtss.IsAvailable ? rtss.FrametimeMs : 0.0,

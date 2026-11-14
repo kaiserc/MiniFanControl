@@ -5501,9 +5501,10 @@ namespace MiniFanControl
             _cpuTempLabel.ForeColor = tempFg;
             if (_cpuBoxTitle != null)
             {
+                string clkPart = st.CpuClockMhz > 0 ? string.Format(" • {0:0.0}G", st.CpuClockMhz / 1000.0) : "";
                 string cpuHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxCpuTemp > 0)
-                    ? string.Format("CPU • MAX {0}°", _sessionStats.MaxCpuTemp)
-                    : "CPU TEMP";
+                    ? string.Format("CPU • MAX {0}°{1}", _sessionStats.MaxCpuTemp, clkPart)
+                    : (st.CpuClockMhz > 0 ? string.Format("CPU • {0:0.0} GHz", st.CpuClockMhz / 1000.0) : "CPU TEMP");
                 if (_cpuBoxTitle.Text != cpuHeader) _cpuBoxTitle.Text = cpuHeader;
             }
             if (_uiToolTip != null && _cpuTempBox != null)
@@ -5526,9 +5527,10 @@ namespace MiniFanControl
             _gpuTempLabel.ForeColor = tempFg;
             if (_gpuBoxTitle != null)
             {
+                string hotPart = st.GpuHotspotTemp > 0 ? string.Format(" • 🔥{0}°", st.GpuHotspotTemp) : "";
                 string gpuHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxGpuTemp > 0)
-                    ? string.Format("iGPU • MAX {0}°", _sessionStats.MaxGpuTemp)
-                    : "iGPU TEMP";
+                    ? string.Format("iGPU • MAX {0}°{1}", _sessionStats.MaxGpuTemp, hotPart)
+                    : (st.GpuHotspotTemp > 0 ? string.Format("iGPU • 🔥{0}°C", st.GpuHotspotTemp) : "iGPU TEMP");
                 if (_gpuBoxTitle.Text != gpuHeader) _gpuBoxTitle.Text = gpuHeader;
             }
             if (_uiToolTip != null && _gpuTempBox != null)
@@ -5582,9 +5584,10 @@ namespace MiniFanControl
                 _pwrLabel.ForeColor = tempFg;
                 if (_pwrBoxTitle != null)
                 {
+                    string limPart = st.ApuPowerLimitWatts > 0 ? string.Format("/{0}W", st.ApuPowerLimitWatts) : "";
                     string pwrHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxPowerWatts > 0)
-                        ? string.Format("PWR • MAX {0}W •", _sessionStats.MaxPowerWatts)
-                        : "POWER •";
+                        ? string.Format("PWR • MAX {0}W{1}", _sessionStats.MaxPowerWatts, limPart)
+                        : (st.ApuPowerLimitWatts > 0 ? string.Format("PWR • {0}W LIMIT", st.ApuPowerLimitWatts) : "POWER •");
                     if (_pwrBoxTitle.Text != pwrHeader) _pwrBoxTitle.Text = pwrHeader;
                 }
                 if (_uiToolTip != null && !IsBoxHovered(_pwrBox, _pwrBoxTitle, _pwrLabel))
@@ -5683,8 +5686,9 @@ namespace MiniFanControl
 
             if (_ramCard != null && _ramLabel != null)
             {
+                string memSpeedPart = st.MemClockMhz > 0 ? string.Format(" @ {0}MHz", st.MemClockMhz) : "";
                 string ramPart = st.RamTotalGb > 0
-                    ? string.Format("🧠 RAM: {0:F1} / {1:F1} GB ({2}% Load)", st.RamUsedGb, st.RamTotalGb, st.RamLoadPct)
+                    ? string.Format("🧠 RAM: {0:F1} / {1:F1} GB ({2}% Load{3})", st.RamUsedGb, st.RamTotalGb, st.RamLoadPct, memSpeedPart)
                     : "🧠 RAM: N/A";
 
                 string nvmePart = "";

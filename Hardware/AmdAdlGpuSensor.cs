@@ -116,10 +116,11 @@ namespace MiniFanControl
 
         public void ReadTelemetry(out int igpuTemp, out int apuPowerWatts)
         {
-            int cpuT, cpuP, gfxP, socP, pwrLim, cpuClk, gfxClk, gfxAct, gfxVolt;
+            int cpuT, cpuP, gfxP, socP, pwrLim, cpuClk, gfxClk, gfxAct, gfxVolt, memClk, hotspot, npuClk, npuAct;
             string src;
             ReadTelemetryDetailed(out igpuTemp, out cpuT, out apuPowerWatts, out cpuP, out gfxP, out socP,
-                out pwrLim, out cpuClk, out gfxClk, out gfxAct, out gfxVolt, out src);
+                out pwrLim, out cpuClk, out gfxClk, out gfxAct, out gfxVolt, out src,
+                out memClk, out hotspot, out npuClk, out npuAct);
         }
 
         public void ReadTelemetryDetailed(
@@ -136,6 +137,30 @@ namespace MiniFanControl
             out int gfxVoltageMv,
             out string powerSource)
         {
+            int memClk, hotspot, npuClk, npuAct;
+            ReadTelemetryDetailed(out igpuTemp, out adlCpuTemp, out apuPowerWatts, out cpuPowerWatts, out gfxPowerWatts, out socPowerWatts,
+                out apuPowerLimitWatts, out cpuClockMhz, out gfxClockMhz, out gfxActivityPct, out gfxVoltageMv, out powerSource,
+                out memClk, out hotspot, out npuClk, out npuAct);
+        }
+
+        public void ReadTelemetryDetailed(
+            out int igpuTemp,
+            out int adlCpuTemp,
+            out int apuPowerWatts,
+            out int cpuPowerWatts,
+            out int gfxPowerWatts,
+            out int socPowerWatts,
+            out int apuPowerLimitWatts,
+            out int cpuClockMhz,
+            out int gfxClockMhz,
+            out int gfxActivityPct,
+            out int gfxVoltageMv,
+            out string powerSource,
+            out int memClockMhz,
+            out int gpuHotspotTemp,
+            out int npuClockMhz,
+            out int npuActivityPct)
+        {
             igpuTemp = 0;
             adlCpuTemp = 0;
             apuPowerWatts = 0;
@@ -147,6 +172,10 @@ namespace MiniFanControl
             gfxClockMhz = 0;
             gfxActivityPct = -1;
             gfxVoltageMv = 0;
+            memClockMhz = 0;
+            gpuHotspotTemp = 0;
+            npuClockMhz = 0;
+            npuActivityPct = -1;
             powerSource = "";
             EnsureInitialized();
             if (_context == IntPtr.Zero || _numAdapters <= 0)
@@ -172,6 +201,7 @@ namespace MiniFanControl
                             }
                         }
 
+                        gpuHotspotTemp = ReadSensorVal(pm.sensors, ADL_PMLOG_TEMPERATURE_HOTSPOT, 1, 140);
                         adlCpuTemp = ReadSensorVal(pm.sensors, ADL_PMLOG_TEMPERATURE_CPU, 1, 140);
                         cpuPowerWatts = ReadSensorVal(pm.sensors, ADL_PMLOG_CPU_POWER, 1, 140);
                         gfxPowerWatts = ReadSensorVal(pm.sensors, ADL_PMLOG_GFX_POWER, 1, 140);
@@ -184,6 +214,9 @@ namespace MiniFanControl
                         gfxClockMhz = ReadSensorVal(pm.sensors, ADL_PMLOG_CLK_GFXCLK, 50, 4500);
                         gfxActivityPct = ReadSensorVal(pm.sensors, ADL_PMLOG_INFO_ACTIVITY_GFX, 0, 100);
                         gfxVoltageMv = ReadSensorVal(pm.sensors, ADL_PMLOG_GFX_VOLTAGE, 200, 2000);
+                        memClockMhz = ReadSensorVal(pm.sensors, ADL_PMLOG_CLK_MEMCLK, 100, 6000);
+                        npuClockMhz = ReadSensorVal(pm.sensors, ADL_PMLOG_CLK_NPUCLK, 50, 4500);
+                        npuActivityPct = ReadSensorVal(pm.sensors, ADL_PMLOG_NPU_BUSY_AVG, 0, 100);
 
                         // 1. Check SmartShift Paired APU Power / Board Power / ASIC Power first
                         foreach (int pwrId in new[] { ADL_PMLOG_SSPAIRED_ASICPOWER, ADL_PMLOG_BOARD_POWER, ADL_PMLOG_ASIC_POWER })

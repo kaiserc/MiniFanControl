@@ -13,7 +13,7 @@
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 50 Passed](https://img.shields.io/badge/Automated%20Tests-50%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-5050-passing)
+[![Automated Tests: 51 Passed](https://img.shields.io/badge/Automated%20Tests-51%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-5151-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 
 **MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **KTHIN Ryzen AI 9 HX 370 PRO**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
@@ -63,7 +63,7 @@ MiniFanControl/
 ├── Telemetry/          # RTSS/CapFrameX shared memory reader & transparent OSD HUD
 │   ├── CapFrameXOverlayForm.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 50-point automated hardware safety & regression test suite
+├── Tests/              # 51-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
 ├── Ui/                 # Double-buffered canvases, custom WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
@@ -269,13 +269,13 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Validate 6 hardware profiles, register layouts, and inverted polarity matrix
 .\minifan-helper.exe hw-matrix
 
-# Execute the 50-point automated hardware safety & curve test suite
+# Execute the 51-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (50/50 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (51/51 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -329,6 +329,7 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 48. **Safe Read-Only Telemetry Fallback When Kernel Driver Is Blocked**: Validates that unverified platforms or blocked kernel drivers gracefully return ADL/Storage telemetry without throwing unhandled exceptions.
 49. **Single-Instance Mutex & Clean Driver Shutdown Lifecycle**: Validates single-instance guard (`Global\MiniFanControl_SingleInstance_GUI`) and complete driver resource de-initialization.
 50. **Anti-Poisoning Gameplay 0.1% Lows & Startup Hitch Rejection**: Validates that 1-second loading pauses and RTSS initialization artifacts (1 FPS) never permanently corrupt or stick 0.1% low framerate metrics during active gameplay.
+51. **AMD Silicon & ADL Extended Telemetry Validation**: Validates CPU core clocks, memory controller clock rates (DDR5/LPDDR5X), junction hotspot temperatures, and APU PPT power envelope limits.
 
 ---
 

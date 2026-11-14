@@ -558,10 +558,16 @@ namespace MiniFanControl
         {
             List<HorizColumn> list = new List<HorizColumn>();
 
-            string cpuVal = string.Format("{0}°C", _status.CpuTemp);
-            string gpuVal = _status.GpuTemp > 0 ? string.Format("{0}°C", _status.GpuTemp) : "N/A";
+            string cpuVal = _status.CpuClockMhz > 0
+                ? string.Format("{0}°C @ {1:0.0}G", _status.CpuTemp, _status.CpuClockMhz / 1000.0)
+                : string.Format("{0}°C", _status.CpuTemp);
+            string gpuVal = _status.GpuTemp > 0
+                ? (_status.GpuHotspotTemp > 0 ? string.Format("{0}°C (🔥{1}°)", _status.GpuTemp, _status.GpuHotspotTemp) : string.Format("{0}°C", _status.GpuTemp))
+                : "N/A";
             string nvmeVal = string.Format("{0}°C", _status.NvmeTemp);
-            string pwrVal = _status.ApuPowerWatts > 0 ? string.Format("{0}W", _status.ApuPowerWatts) : "--W";
+            string pwrVal = _status.ApuPowerWatts > 0
+                ? (_status.ApuPowerLimitWatts > 0 ? string.Format("{0}W/{1}W", _status.ApuPowerWatts, _status.ApuPowerLimitWatts) : string.Format("{0}W", _status.ApuPowerWatts))
+                : "--W";
             string f1Val  = string.Format("{0}r", _status.Fan1Rpm);
             string f2Val  = _status.Fan2Rpm > 0 ? string.Format("{0}r", _status.Fan2Rpm) : "--";
 
@@ -613,9 +619,9 @@ namespace MiniFanControl
 
             if (ShowRam && _status.RamTotalGb > 0)
             {
-                string ramVal = _status.RamPowerWatts > 0
-                    ? string.Format("{0}% ~{1:0}W", _status.RamLoadPct, _status.RamPowerWatts)
-                    : string.Format("{0}%", _status.RamLoadPct);
+                string ramVal = _status.MemClockMhz > 0
+                    ? string.Format("{0}% @ {1}M", _status.RamLoadPct, _status.MemClockMhz)
+                    : (_status.RamPowerWatts > 0 ? string.Format("{0}% ~{1:0}W", _status.RamLoadPct, _status.RamPowerWatts) : string.Format("{0}%", _status.RamLoadPct));
                 list.Add(new HorizColumn {
                     Key = "RAM", Label = "RAM", Value = ramVal, Peak = ramPeak,
                     LabelBrush = bLabel, ValueBrush = bRam, PeakBrush = bPeak,
@@ -819,10 +825,10 @@ namespace MiniFanControl
 
             if (VerticalLayout)
             {
-                int baseW = showSpark ? 280 : (ShowPeaks ? 260 : 224);
+                int baseW = showSpark ? 290 : (ShowPeaks ? 280 : 235);
                 if (showCombined || hasFpsGraph)
                 {
-                    baseW = Math.Max(baseW, 260);
+                    baseW = Math.Max(baseW, 280);
                 }
                 if (hasRadeonTags)
                 {
@@ -2070,9 +2076,15 @@ namespace MiniFanControl
             bool showSpark = (GraphMode == 1 || GraphMode == 3);
             bool showCombined = ShowLiveTrend;
 
-            string cpuVal = string.Format("{0}°C", _status.CpuTemp);
-            string gpuVal = _status.GpuTemp > 0 ? string.Format("{0}°C", _status.GpuTemp) : "N/A";
-            string pwrVal = _status.ApuPowerWatts > 0 ? string.Format("{0}W", _status.ApuPowerWatts) : "--W";
+            string cpuVal = _status.CpuClockMhz > 0
+                ? string.Format("{0}°C @ {1:0.0}G", _status.CpuTemp, _status.CpuClockMhz / 1000.0)
+                : string.Format("{0}°C", _status.CpuTemp);
+            string gpuVal = _status.GpuTemp > 0
+                ? (_status.GpuHotspotTemp > 0 ? string.Format("{0}°C (🔥{1}°)", _status.GpuTemp, _status.GpuHotspotTemp) : string.Format("{0}°C", _status.GpuTemp))
+                : "N/A";
+            string pwrVal = _status.ApuPowerWatts > 0
+                ? (_status.ApuPowerLimitWatts > 0 ? string.Format("{0}W/{1}W", _status.ApuPowerWatts, _status.ApuPowerLimitWatts) : string.Format("{0}W", _status.ApuPowerWatts))
+                : "--W";
             string f1Val  = string.Format("{0}", _status.Fan1Rpm);
             string f2Val  = _status.Fan2Rpm > 0 ? string.Format("{0}", _status.Fan2Rpm) : "--";
 
@@ -2236,9 +2248,9 @@ namespace MiniFanControl
                         DrawVertRow(g, row++, rowH, "Power", pwrVal, pwrPeak, bLabel, bPwr, bPeak, showSpark ? (Stats != null ? Stats.PowerHistory : null) : null, pwrCol, sc);
                     if (ShowRam && _status.RamTotalGb > 0)
                     {
-                        string ramVal = _status.RamPowerWatts > 0
-                            ? string.Format("{0}% • ~{1:0.0}W", _status.RamLoadPct, _status.RamPowerWatts)
-                            : string.Format("{0}%", _status.RamLoadPct);
+                        string ramVal = _status.MemClockMhz > 0
+                            ? string.Format("{0}% @ {1}M", _status.RamLoadPct, _status.MemClockMhz)
+                            : (_status.RamPowerWatts > 0 ? string.Format("{0}% • ~{1:0.0}W", _status.RamLoadPct, _status.RamPowerWatts) : string.Format("{0}%", _status.RamLoadPct));
                         DrawVertRow(g, row++, rowH, "RAM", ramVal, ramPeak, bLabel, bRam, bPeak, showSpark ? (Stats != null ? Stats.RamPowerHistory : null) : null, Color.FromArgb(0x81, 0x8C, 0xF8), sc);
                     }
                     if (ShowFps)

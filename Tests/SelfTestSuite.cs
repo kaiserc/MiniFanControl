@@ -1942,6 +1942,89 @@ namespace MiniFanControl
                 "Anti-Poisoning Gameplay 0.1% Lows & Startup Hitch Rejection",
                 antiPoisonDetails);
 
+            // Test 51: AMD Silicon & ADL Extended Telemetry Validation (CPU Clocks, Memory Clock, Hotspot & Power Limits)
+            bool extendedTelemetryOk = false;
+            string extendedDetails = "";
+            try
+            {
+                FanStatus extStatus = new FanStatus
+                {
+                    CpuTemp = 78,
+                    CpuClockMhz = 4300,
+                    CpuPowerWatts = 35,
+                    GpuTemp = 66,
+                    GpuHotspotTemp = 72,
+                    GfxClockMhz = 2400,
+                    GfxActivityPct = 96,
+                    GfxPowerWatts = 18,
+                    ApuPowerWatts = 53,
+                    ApuPowerLimitWatts = 65,
+                    MemClockMhz = 2800,
+                    NpuClockMhz = 1600,
+                    NpuActivityPct = 14,
+                    RamLoadPct = 94,
+                    RamUsedGb = 12.0,
+                    RamTotalGb = 12.8
+                };
+
+                string extCpuTip = extStatus.FormatCpuTooltip();
+                string extGpuTip = extStatus.FormatIgpuTooltip();
+                string extRamTip = extStatus.FormatRamTooltip();
+
+                bool cpuTipOk = extCpuTip.Contains("PMLOG_CLK_CPUCLK") && extCpuTip.Contains("4300 MHz") && extCpuTip.Contains("4.30 GHz");
+                bool gpuTipOk = extGpuTip.Contains("PMLOG_HOTSPOT") && extGpuTip.Contains("72 °C") && extGpuTip.Contains("PMLOG_NPU_BUSY_AVG");
+                bool ramTipOk = extRamTip.Contains("PMLOG_CLK_MEMCLK") && extRamTip.Contains("2800 MHz") && extRamTip.Contains("DDR5-5600");
+
+                bool overlayHorizOk = false;
+                bool overlayVertOk = false;
+
+                using (CapFrameXOverlayForm osd = new CapFrameXOverlayForm())
+                {
+                    osd.VerticalLayout = false;
+                    osd.ShowPeaks = true;
+                    osd.ShowPower = true;
+                    osd.ShowRam = true;
+                    osd.UpdateMetrics(extStatus, "Custom 4", true);
+                    osd.UpdateDimensions();
+                    using (Bitmap bmp = new Bitmap(Math.Max(1, osd.TargetWidth), Math.Max(1, osd.TargetHeight)))
+                    {
+                        osd.DrawToBitmap(bmp, new Rectangle(0, 0, osd.TargetWidth, osd.TargetHeight));
+                    }
+                    overlayHorizOk = osd.TargetWidth > 200 && osd.TargetHeight > 20;
+
+                    osd.VerticalLayout = true;
+                    osd.UpdateDimensions();
+                    using (Bitmap bmp = new Bitmap(Math.Max(1, osd.TargetWidth), Math.Max(1, osd.TargetHeight)))
+                    {
+                        osd.DrawToBitmap(bmp, new Rectangle(0, 0, osd.TargetWidth, osd.TargetHeight));
+                    }
+                    overlayVertOk = osd.TargetWidth >= 280 && osd.TargetHeight > 50;
+                }
+
+                // Verify AmdAdlGpuSensor 16-parameter overload safety when uninitialized
+                AmdAdlGpuSensor adl = new AmdAdlGpuSensor();
+                int iGpu, adlCpu, apuP, cpuP, gfxP, socP, pwrLim, cpuClk, gfxClk, gfxAct, gfxVolt, memClk, hotspot, npuClk, npuAct;
+                string pwrSrc;
+                adl.ReadTelemetryDetailed(out iGpu, out adlCpu, out apuP, out cpuP, out gfxP, out socP,
+                    out pwrLim, out cpuClk, out gfxClk, out gfxAct, out gfxVolt, out pwrSrc,
+                    out memClk, out hotspot, out npuClk, out npuAct);
+
+                bool adlSafe = (hotspot >= 0 && memClk >= 0 && npuClk >= 0 && (npuAct == -1 || (npuAct >= 0 && npuAct <= 100)));
+
+                extendedTelemetryOk = cpuTipOk && gpuTipOk && ramTipOk && overlayHorizOk && overlayVertOk && adlSafe;
+                extendedDetails = string.Format("CpuTip={0}, GpuTip={1}, RamTip={2}, HorizOk={3}, VertOk={4}, AdlSafe={5} (Hotspot={6}, MemClk={7}, NpuClk={8})",
+                    cpuTipOk, gpuTipOk, ramTipOk, overlayHorizOk, overlayVertOk, adlSafe, hotspot, memClk, npuClk);
+            }
+            catch (Exception ex)
+            {
+                extendedTelemetryOk = false;
+                extendedDetails = ex.Message;
+            }
+
+            Check(extendedTelemetryOk,
+                "AMD Silicon & ADL Extended Telemetry Validation (CPU Clocks, Memory Clock, Hotspot & Power Limits)",
+                extendedDetails);
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));
