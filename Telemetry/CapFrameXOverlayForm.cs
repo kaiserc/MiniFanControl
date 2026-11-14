@@ -94,6 +94,8 @@ namespace MiniFanControl
         public bool ShowNvme = true;
         public bool ShowRam = true;
         public bool ShowDriverVersion = false;
+        public bool ShowClocks = false;
+        public bool SparklinesAsBackground = false;
         public bool ShowRadeonSettings = true;
         public bool ShowLiveTrend = true;
         public bool PlotFpsOnTrend = true;
@@ -393,11 +395,13 @@ namespace MiniFanControl
             AddMetricToggleMenuItem(graphMenu, "Plot FPS on Live Trend", () => PlotFpsOnTrend, v => PlotFpsOnTrend = v);
             AddMetricToggleMenuItem(graphMenu, "Digital Foundry (DF) Style Graphs", () => DfGraphStyle, v => DfGraphStyle = v);
             AddMetricToggleMenuItem(graphMenu, "Show DF Graphs Before Live Trend", () => DfGraphFirst, v => DfGraphFirst = v);
+            AddMetricToggleMenuItem(graphMenu, "Background Sparklines (Underlay)", () => SparklinesAsBackground, v => { SparklinesAsBackground = v; Invalidate(); });
             menu.Items.Add(graphMenu);
 
             ToolStripMenuItem metricsMenu = new ToolStripMenuItem("Visible Telemetry Metrics");
             AddMetricToggleMenuItem(metricsMenu, "CPU Temperature", () => ShowCpu, v => ShowCpu = v);
             AddMetricToggleMenuItem(metricsMenu, "iGPU Temperature", () => ShowGpu, v => ShowGpu = v);
+            AddMetricToggleMenuItem(metricsMenu, "Clock Speeds (@ GHz / MHz)", () => ShowClocks, v => { ShowClocks = v; UpdateDimensions(); Invalidate(); });
             AddMetricToggleMenuItem(metricsMenu, "NVMe SSD Temp", () => ShowNvme, v => ShowNvme = v);
             AddMetricToggleMenuItem(metricsMenu, "APU Power (W)", () => ShowPower, v => ShowPower = v);
             AddMetricToggleMenuItem(metricsMenu, "RAM Load & Power", () => ShowRam, v => ShowRam = v);
@@ -558,7 +562,7 @@ namespace MiniFanControl
             List<HorizColumn> list = new List<HorizColumn>();
 
             string cpuVal;
-            if (_status.CpuClockMhz > 0)
+            if (ShowClocks && _status.CpuClockMhz > 0)
             {
                 cpuVal = _status.CpuLoadPct >= 0
                     ? string.Format("{0}°C {1}% @ {2:0.0}G", _status.CpuTemp, _status.CpuLoadPct, _status.CpuClockMhz / 1000.0)
@@ -583,11 +587,11 @@ namespace MiniFanControl
                 : null;
 
             string horizGpuLoadPart = null;
-            if (hasGpuLoad && hasGpuClock)
+            if (hasGpuLoad && ShowClocks && hasGpuClock)
                 horizGpuLoadPart = string.Format("{0}% @ {1}M", _status.GfxActivityPct, _status.GfxClockMhz);
             else if (hasGpuLoad)
                 horizGpuLoadPart = string.Format("{0}%", _status.GfxActivityPct);
-            else if (hasGpuClock)
+            else if (ShowClocks && hasGpuClock)
                 horizGpuLoadPart = string.Format("@ {0}M", _status.GfxClockMhz);
 
             string gpuVal;
@@ -672,7 +676,7 @@ namespace MiniFanControl
 
             if (ShowRam && _status.RamTotalGb > 0)
             {
-                string ramVal = _status.MemClockMhz > 0
+                string ramVal = (ShowClocks && _status.MemClockMhz > 0)
                     ? string.Format("{0}% @ {1}M", _status.RamLoadPct, _status.MemClockMhz)
                     : (_status.RamPowerWatts > 0 ? string.Format("{0}% ~{1:0}W", _status.RamLoadPct, _status.RamPowerWatts) : string.Format("{0}%", _status.RamLoadPct));
                 list.Add(new HorizColumn {
@@ -1078,6 +1082,71 @@ namespace MiniFanControl
             }
 
             using (Pen p = new Pen(color, Math.Max(1.4f, 1.4f * sc)))
+            {
+                p.LineJoin = LineJoin.Round;
+                g.DrawLines(p, pts);
+            }
+        }
+
+        private static void DrawBackgroundSparkline(Graphics g, Rectangle rect, List<int> samples, Color color, float sc)
+        {
+            if (samples == null || samples.Count == 0 || rect.Width < 8 || rect.Height < 4)
+                return;
+
+            int take = Math.Min(samples.Count, 40);
+            int start = samples.Count - take;
+            int minV = int.MaxValue, maxV = int.MinValue;
+            for (int i = 0; i < take; i++)
+            {
+                int v = samples[start + i];
+                if (v < minV) minV = v;
+                if (v > maxV) maxV = v;
+            }
+
+            float scaleMin = minV - 1.5f;
+            float scaleMax = maxV + 1.5f;
+            if (scaleMax - scaleMin < 4f)
+            {
+                float mid = (minV + maxV) * 0.5f;
+                scaleMin = mid - 2f;
+                scaleMax = mid + 2f;
+            }
+
+            PointF[] pts = new PointF[Math.Max(2, take)];
+            if (take == 1)
+            {
+                float y = rect.Y + rect.Height * 0.5f;
+                pts[0] = new PointF(rect.X, y);
+                pts[1] = new PointF(rect.Right, y);
+            }
+            else
+            {
+                for (int i = 0; i < take; i++)
+                {
+                    float x = rect.X + (rect.Width * i) / (float)(take - 1);
+                    float norm = (samples[start + i] - scaleMin) / (scaleMax - scaleMin);
+                    norm = Math.Max(0f, Math.Min(1f, norm));
+                    float y = rect.Bottom - 1 - norm * (rect.Height - 3);
+                    pts[i] = new PointF(x, y);
+                }
+            }
+
+            PointF[] poly = new PointF[pts.Length + 2];
+            Array.Copy(pts, 0, poly, 0, pts.Length);
+            poly[pts.Length] = new PointF(pts[pts.Length - 1].X, rect.Bottom);
+            poly[pts.Length + 1] = new PointF(pts[0].X, rect.Bottom);
+
+            // Subtle glowing underlay gradient: softly visible behind numbers with perfect text contrast
+            using (LinearGradientBrush fillBr = new LinearGradientBrush(
+                new Rectangle(rect.X, rect.Y, Math.Max(1, rect.Width), Math.Max(1, rect.Height)),
+                Color.FromArgb(45, color),
+                Color.FromArgb(4, color),
+                LinearGradientMode.Vertical))
+            {
+                g.FillPolygon(fillBr, poly);
+            }
+
+            using (Pen p = new Pen(Color.FromArgb(135, color), Math.Max(1.0f, 1.2f * sc)))
             {
                 p.LineJoin = LineJoin.Round;
                 g.DrawLines(p, pts);
@@ -2117,7 +2186,7 @@ namespace MiniFanControl
             bool showCombined = ShowLiveTrend;
 
             string cpuVal;
-            if (_status.CpuClockMhz > 0)
+            if (ShowClocks && _status.CpuClockMhz > 0)
             {
                 cpuVal = _status.CpuLoadPct >= 0
                     ? string.Format("{0}°C {1}% @ {2:0.0}G", _status.CpuTemp, _status.CpuLoadPct, _status.CpuClockMhz / 1000.0)
@@ -2141,11 +2210,11 @@ namespace MiniFanControl
                 : null;
 
             string vertGpuLoadPart = null;
-            if (vertHasGpuLoad && vertHasGpuClock)
+            if (vertHasGpuLoad && ShowClocks && vertHasGpuClock)
                 vertGpuLoadPart = string.Format("{0}% @ {1}MHz", _status.GfxActivityPct, _status.GfxClockMhz);
             else if (vertHasGpuLoad)
                 vertGpuLoadPart = string.Format("{0}%", _status.GfxActivityPct);
-            else if (vertHasGpuClock)
+            else if (ShowClocks && vertHasGpuClock)
                 vertGpuLoadPart = string.Format("@ {0}MHz", _status.GfxClockMhz);
 
             string gpuVal;
@@ -2340,7 +2409,7 @@ namespace MiniFanControl
                         DrawVertRow(g, row++, rowH, "Power", pwrVal, pwrPeak, bLabel, bPwr, bPeak, showSpark ? (Stats != null ? Stats.PowerHistory : null) : null, pwrCol, sc);
                     if (ShowRam && _status.RamTotalGb > 0)
                     {
-                        string ramVal = _status.MemClockMhz > 0
+                        string ramVal = (ShowClocks && _status.MemClockMhz > 0)
                             ? string.Format("{0}% @ {1}M", _status.RamLoadPct, _status.MemClockMhz)
                             : (_status.RamPowerWatts > 0 ? string.Format("{0}% ~{1:0.0}W", _status.RamLoadPct, _status.RamPowerWatts) : string.Format("{0}%", _status.RamLoadPct));
                         DrawVertRow(g, row++, rowH, "RAM", ramVal, ramPeak, bLabel, bRam, bPeak, showSpark ? (Stats != null ? Stats.RamPowerHistory : null) : null, Color.FromArgb(0x81, 0x8C, 0xF8), sc);
@@ -2616,19 +2685,18 @@ namespace MiniFanControl
         private void DrawVertRow(Graphics g, int rowIndex, int rowH, string lbl, string val, string peak, Brush bLbl, Brush bVal, Brush bPeak, List<int> sparkSamples, Color sparkCol, float sc)
         {
             float y = (27f * sc) + rowIndex * rowH;
-            g.DrawString(lbl, _fontLabel, bLbl, 10f * sc, y);
 
             float rightMargin = 14f * sc;
             float lblW = g.MeasureString(lbl, _fontLabel).Width;
             float minValX = (10f * sc) + lblW + (6f * sc);
 
             float pkW = 0f;
+            float peakX = 0f;
             if (!string.IsNullOrEmpty(peak))
             {
                 float rawPkW = g.MeasureString(peak, _fontPeak).Width;
                 pkW = rawPkW + 6f * sc;
-                float peakX = Width - rightMargin - rawPkW;
-                g.DrawString(peak, _fontPeak, bPeak, peakX, y + 1f);
+                peakX = Width - rightMargin - rawPkW;
             }
 
             float valW = g.MeasureString(val, _fontVal).Width;
@@ -2642,11 +2710,40 @@ namespace MiniFanControl
             {
                 int sparkLeft = (int)Math.Round((10f * sc) + lblW + (8f * sc));
                 int sparkW = Math.Max(0, (int)valX - sparkLeft - (int)Math.Round(6 * sc));
-                if (sparkW >= (int)Math.Round(16 * sc))
+
+                if (SparklinesAsBackground)
+                {
+                    int bgLeft = sparkLeft;
+                    int bgRight = Width - (int)Math.Round(rightMargin);
+                    int bgW = Math.Max(0, bgRight - bgLeft);
+                    if (bgW >= (int)Math.Round(16 * sc))
+                    {
+                        Rectangle bgRect = new Rectangle(bgLeft, (int)y, bgW, Math.Max(4, rowH - 4));
+                        DrawBackgroundSparkline(g, bgRect, sparkSamples, sparkCol, sc);
+                    }
+                }
+                else if (sparkW >= (int)Math.Round(18 * sc))
                 {
                     Rectangle sparkRect = new Rectangle(sparkLeft, (int)y + 1, sparkW, (int)Math.Round(18f * sc));
                     DrawInlineSparkline(g, sparkRect, sparkSamples, sparkCol, sc);
                 }
+                else
+                {
+                    int bgLeft = sparkLeft;
+                    int bgRight = Width - (int)Math.Round(rightMargin);
+                    int bgW = Math.Max(0, bgRight - bgLeft);
+                    if (bgW >= (int)Math.Round(16 * sc))
+                    {
+                        Rectangle bgRect = new Rectangle(bgLeft, (int)y, bgW, Math.Max(4, rowH - 4));
+                        DrawBackgroundSparkline(g, bgRect, sparkSamples, sparkCol, sc);
+                    }
+                }
+            }
+
+            g.DrawString(lbl, _fontLabel, bLbl, 10f * sc, y);
+            if (!string.IsNullOrEmpty(peak))
+            {
+                g.DrawString(peak, _fontPeak, bPeak, peakX, y + 1f);
             }
 
             float availW = targetRight - valX;

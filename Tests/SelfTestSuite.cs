@@ -2029,8 +2029,14 @@ namespace MiniFanControl
                     osdMerge.ShowCpu = true;
                     osdMerge.ShowGpu = true;
                     osdMerge.ShowGpuLoad = true;
+                    osdMerge.ShowClocks = false;
+                    osdMerge.SparklinesAsBackground = true;
                     osdMerge.UpdateMetrics(extStatus, "Custom 4", true);
                     osdMerge.UpdateDimensions();
+                    using (Bitmap bmpSpark = new Bitmap(osdMerge.TargetWidth, osdMerge.TargetHeight))
+                    {
+                        osdMerge.DrawToBitmap(bmpSpark, new Rectangle(0, 0, osdMerge.TargetWidth, osdMerge.TargetHeight));
+                    }
                     mergedPeaksOk = osdMerge.TargetWidth > 0 && osdMerge.TargetHeight > 0;
                 }
 
