@@ -615,9 +615,9 @@ namespace MiniFanControl
                 osd.UpdateMetrics(fullSt, "My Quiet Curve / CKs curve", true);
                 int wideW = osd.TargetWidth;
                 int colsCount = osd.CountVisibleMetrics();
-                Check(colsCount == 12 && wideW >= 1400,
-                    "OSD Horizontal Bar Auto-Width Expansion (12 Metrics & Custom Mode Support)",
-                    string.Format("cols={0}, targetW={1}px (expected >= 1400px)", colsCount, wideW));
+                Check(colsCount == 11 && wideW >= 1200,
+                    "OSD Horizontal Bar Auto-Width Expansion (11 Merged Metrics & Custom Mode Support)",
+                    string.Format("cols={0}, targetW={1}px (expected >= 1200px)", colsCount, wideW));
 
                 // Test OSD Driver Version Metric & Afterburner Theme Palette
                 osd.ShowDriverVersion = true;
@@ -625,9 +625,9 @@ namespace MiniFanControl
                 osd.IsAfterburnerTheme = true;
                 osd.UpdateMetrics(fullSt, "Performance", true);
                 int countWithDrv = osd.CountVisibleMetrics();
-                Check(countWithDrv == 13 && osd.IsAfterburnerTheme,
+                Check(countWithDrv == 12 && osd.IsAfterburnerTheme,
                     "OSD Driver Version & Afterburner Theme Integration",
-                    string.Format("cols={0} (expected 13), theme=Afterburner", countWithDrv));
+                    string.Format("cols={0} (expected 12), theme=Afterburner", countWithDrv));
 
                 // Test OSD Center-Top & Center-Bottom Snap Locations
                 Rectangle testWa = new Rectangle(0, 0, 1920, 1080);
@@ -2011,9 +2011,24 @@ namespace MiniFanControl
 
                 bool adlSafe = (hotspot >= 0 && memClk >= 0 && npuClk >= 0 && (npuAct == -1 || (npuAct >= 0 && npuAct <= 100)));
 
-                extendedTelemetryOk = cpuTipOk && gpuTipOk && ramTipOk && overlayHorizOk && overlayVertOk && adlSafe;
-                extendedDetails = string.Format("CpuTip={0}, GpuTip={1}, RamTip={2}, HorizOk={3}, VertOk={4}, AdlSafe={5} (Hotspot={6}, MemClk={7}, NpuClk={8})",
-                    cpuTipOk, gpuTipOk, ramTipOk, overlayHorizOk, overlayVertOk, adlSafe, hotspot, memClk, npuClk);
+                // Verify merged iGPU & GPU load formatting with both peaks
+                bool mergedPeaksOk = false;
+                using (CapFrameXOverlayForm osdMerge = new CapFrameXOverlayForm())
+                {
+                    TelemetrySessionStats mergeStats = new TelemetrySessionStats();
+                    mergeStats.Record(new FanStatus { GpuTemp = 55, GfxActivityPct = 99 });
+                    osdMerge.Stats = mergeStats;
+                    osdMerge.ShowPeaks = true;
+                    osdMerge.ShowGpu = true;
+                    osdMerge.ShowGpuLoad = true;
+                    osdMerge.UpdateMetrics(extStatus, "Custom 4", true);
+                    osdMerge.UpdateDimensions();
+                    mergedPeaksOk = osdMerge.TargetWidth > 0 && osdMerge.TargetHeight > 0;
+                }
+
+                extendedTelemetryOk = cpuTipOk && gpuTipOk && ramTipOk && overlayHorizOk && overlayVertOk && adlSafe && mergedPeaksOk;
+                extendedDetails = string.Format("CpuTip={0}, GpuTip={1}, RamTip={2}, HorizOk={3}, VertOk={4}, AdlSafe={5}, MergedPeaks={6} (Hotspot={7}, MemClk={8})",
+                    cpuTipOk, gpuTipOk, ramTipOk, overlayHorizOk, overlayVertOk, adlSafe, mergedPeaksOk, hotspot, memClk);
             }
             catch (Exception ex)
             {

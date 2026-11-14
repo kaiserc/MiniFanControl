@@ -511,13 +511,12 @@ namespace MiniFanControl
         {
             int c = 0;
             if (ShowCpu) c++;
-            if (ShowGpu) c++;
+            if (ShowGpu || ShowGpuLoad) c++;
             if (ShowNvme && _status.NvmeTemp > 0) c++;
             if (ShowPower) c++;
             if (ShowRam && _status.RamTotalGb > 0) c++;
             if (ShowFps) c++;
             if (ShowLows) c++;
-            if (ShowGpuLoad) c++;
             if (ShowApuFan) c++;
             if (HasDualFans && ShowSysFan) c++;
             if (ShowMode) c++;
@@ -561,9 +560,36 @@ namespace MiniFanControl
             string cpuVal = _status.CpuClockMhz > 0
                 ? string.Format("{0}°C @ {1:0.0}G", _status.CpuTemp, _status.CpuClockMhz / 1000.0)
                 : string.Format("{0}°C", _status.CpuTemp);
-            string gpuVal = _status.GpuTemp > 0
+
+            bool showGpuTemp = ShowGpu;
+            bool showGpuLoad = ShowGpuLoad;
+
+            bool hasGpuTemp = showGpuTemp && _status.GpuTemp > 0;
+            bool hasGpuLoad = showGpuLoad && (_status.GfxActivityPct >= 0);
+            bool hasGpuClock = showGpuLoad && (_status.GfxClockMhz > 0);
+
+            string horizGpuTempPart = hasGpuTemp
                 ? (_status.GpuHotspotTemp > 0 ? string.Format("{0}°C (🔥{1}°)", _status.GpuTemp, _status.GpuHotspotTemp) : string.Format("{0}°C", _status.GpuTemp))
-                : "N/A";
+                : null;
+
+            string horizGpuLoadPart = null;
+            if (hasGpuLoad && hasGpuClock)
+                horizGpuLoadPart = string.Format("{0}% @ {1}M", _status.GfxActivityPct, _status.GfxClockMhz);
+            else if (hasGpuLoad)
+                horizGpuLoadPart = string.Format("{0}%", _status.GfxActivityPct);
+            else if (hasGpuClock)
+                horizGpuLoadPart = string.Format("@ {0}M", _status.GfxClockMhz);
+
+            string gpuVal;
+            if (horizGpuTempPart != null && horizGpuLoadPart != null)
+                gpuVal = string.Format("{0} • {1}", horizGpuTempPart, horizGpuLoadPart);
+            else if (horizGpuTempPart != null)
+                gpuVal = horizGpuTempPart;
+            else if (horizGpuLoadPart != null)
+                gpuVal = horizGpuLoadPart;
+            else
+                gpuVal = "N/A";
+
             string nvmeVal = string.Format("{0}°C", _status.NvmeTemp);
             string pwrVal = _status.ApuPowerWatts > 0
                 ? (_status.ApuPowerLimitWatts > 0 ? string.Format("{0}W/{1}W", _status.ApuPowerWatts, _status.ApuPowerLimitWatts) : string.Format("{0}W", _status.ApuPowerWatts))
@@ -572,7 +598,16 @@ namespace MiniFanControl
             string f2Val  = _status.Fan2Rpm > 0 ? string.Format("{0}r", _status.Fan2Rpm) : "--";
 
             string cpuPeak = (ShowPeaks && Stats != null && Stats.MaxCpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxCpuTemp) : null;
-            string gpuPeak = (ShowPeaks && Stats != null && Stats.MaxGpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxGpuTemp) : null;
+            string gpuTempPeak = (ShowPeaks && showGpuTemp && Stats != null && Stats.MaxGpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxGpuTemp) : null;
+            string gpuLoadPeak = (ShowPeaks && showGpuLoad && Stats != null && Stats.MaxGpuLoad > 0) ? string.Format("▲{0}%", Stats.MaxGpuLoad) : null;
+            string gpuPeak = null;
+            if (gpuTempPeak != null && gpuLoadPeak != null)
+                gpuPeak = string.Format("{0} {1}", gpuTempPeak, gpuLoadPeak);
+            else if (gpuTempPeak != null)
+                gpuPeak = gpuTempPeak;
+            else if (gpuLoadPeak != null)
+                gpuPeak = gpuLoadPeak;
+
             string nvmePeak = (ShowPeaks && Stats != null && Stats.MaxNvmeTemp > 0) ? string.Format("▲{0}°", Stats.MaxNvmeTemp) : null;
             string pwrPeak = (ShowPeaks && Stats != null && Stats.MaxPowerWatts > 0) ? string.Format("▲{0}W", Stats.MaxPowerWatts) : null;
             string ramPeak = (ShowPeaks && Stats != null && Stats.MaxRamPowerWatts > 0) ? string.Format("▲{0:0.0}W", Stats.MaxRamPowerWatts) : null;
@@ -587,12 +622,12 @@ namespace MiniFanControl
                 });
             }
 
-            if (ShowGpu)
+            if (ShowGpu || ShowGpuLoad)
             {
                 list.Add(new HorizColumn {
                     Key = "iGPU", Label = "iGPU", Value = gpuVal, Peak = gpuPeak,
                     LabelBrush = bLabel, ValueBrush = bGpu, PeakBrush = bPeak,
-                    SparkSamples = showSpark ? (Stats != null ? Stats.GpuHistory : null) : null,
+                    SparkSamples = showSpark ? (Stats != null ? (showGpuTemp ? Stats.GpuHistory : Stats.GpuLoadHistory) : null) : null,
                     SparkColor = gpuCol
                 });
             }
@@ -677,19 +712,6 @@ namespace MiniFanControl
                 });
             }
 
-            if (ShowGpuLoad)
-            {
-                string lbl = "LOAD";
-                string val = string.Format("{0}%", _status.GfxActivityPct);
-                string peak = (ShowPeaks && Stats != null && Stats.MaxGpuLoad > 0) ? string.Format("▲{0}%", Stats.MaxGpuLoad) : null;
-
-                list.Add(new HorizColumn {
-                    Key = "LOAD", Label = lbl, Value = val, Peak = peak,
-                    LabelBrush = bLabel, ValueBrush = bLoad, PeakBrush = bPeak,
-                    SparkSamples = showSpark ? (Stats != null ? Stats.GpuLoadHistory : null) : null,
-                    SparkColor = loadCol
-                });
-            }
 
             if (ShowApuFan)
             {
@@ -2079,9 +2101,35 @@ namespace MiniFanControl
             string cpuVal = _status.CpuClockMhz > 0
                 ? string.Format("{0}°C @ {1:0.0}G", _status.CpuTemp, _status.CpuClockMhz / 1000.0)
                 : string.Format("{0}°C", _status.CpuTemp);
-            string gpuVal = _status.GpuTemp > 0
+            bool vertShowGpuTemp = ShowGpu;
+            bool vertShowGpuLoad = ShowGpuLoad;
+
+            bool vertHasGpuTemp = vertShowGpuTemp && _status.GpuTemp > 0;
+            bool vertHasGpuLoad = vertShowGpuLoad && (_status.GfxActivityPct >= 0);
+            bool vertHasGpuClock = vertShowGpuLoad && (_status.GfxClockMhz > 0);
+
+            string vertGpuTempPart = vertHasGpuTemp
                 ? (_status.GpuHotspotTemp > 0 ? string.Format("{0}°C (🔥{1}°)", _status.GpuTemp, _status.GpuHotspotTemp) : string.Format("{0}°C", _status.GpuTemp))
-                : "N/A";
+                : null;
+
+            string vertGpuLoadPart = null;
+            if (vertHasGpuLoad && vertHasGpuClock)
+                vertGpuLoadPart = string.Format("{0}% @ {1}MHz", _status.GfxActivityPct, _status.GfxClockMhz);
+            else if (vertHasGpuLoad)
+                vertGpuLoadPart = string.Format("{0}%", _status.GfxActivityPct);
+            else if (vertHasGpuClock)
+                vertGpuLoadPart = string.Format("@ {0}MHz", _status.GfxClockMhz);
+
+            string gpuVal;
+            if (vertGpuTempPart != null && vertGpuLoadPart != null)
+                gpuVal = string.Format("{0} • {1}", vertGpuTempPart, vertGpuLoadPart);
+            else if (vertGpuTempPart != null)
+                gpuVal = vertGpuTempPart;
+            else if (vertGpuLoadPart != null)
+                gpuVal = vertGpuLoadPart;
+            else
+                gpuVal = "N/A";
+
             string pwrVal = _status.ApuPowerWatts > 0
                 ? (_status.ApuPowerLimitWatts > 0 ? string.Format("{0}W/{1}W", _status.ApuPowerWatts, _status.ApuPowerLimitWatts) : string.Format("{0}W", _status.ApuPowerWatts))
                 : "--W";
@@ -2089,7 +2137,15 @@ namespace MiniFanControl
             string f2Val  = _status.Fan2Rpm > 0 ? string.Format("{0}", _status.Fan2Rpm) : "--";
 
             string cpuPeak = (ShowPeaks && Stats != null && Stats.MaxCpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxCpuTemp) : null;
-            string gpuPeak = (ShowPeaks && Stats != null && Stats.MaxGpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxGpuTemp) : null;
+            string vertGpuTempPeak = (ShowPeaks && vertShowGpuTemp && Stats != null && Stats.MaxGpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxGpuTemp) : null;
+            string vertGpuLoadPeak = (ShowPeaks && vertShowGpuLoad && Stats != null && Stats.MaxGpuLoad > 0) ? string.Format("▲{0}%", Stats.MaxGpuLoad) : null;
+            string gpuPeak = null;
+            if (vertGpuTempPeak != null && vertGpuLoadPeak != null)
+                gpuPeak = string.Format("{0} {1}", vertGpuTempPeak, vertGpuLoadPeak);
+            else if (vertGpuTempPeak != null)
+                gpuPeak = vertGpuTempPeak;
+            else if (vertGpuLoadPeak != null)
+                gpuPeak = vertGpuLoadPeak;
             string nvmePeak = (ShowPeaks && Stats != null && Stats.MaxNvmeTemp > 0) ? string.Format("▲{0}°", Stats.MaxNvmeTemp) : null;
             string pwrPeak = (ShowPeaks && Stats != null && Stats.MaxPowerWatts > 0) ? string.Format("▲{0}W", Stats.MaxPowerWatts) : null;
             string ramPeak = (ShowPeaks && Stats != null && Stats.MaxRamPowerWatts > 0) ? string.Format("▲{0:0.0}W", Stats.MaxRamPowerWatts) : null;
@@ -2240,8 +2296,8 @@ namespace MiniFanControl
                     int rowH = (int)Math.Round((showSpark ? 25 : 21) * sc);
                     if (ShowCpu)
                         DrawVertRow(g, row++, rowH, "CPU", cpuVal, cpuPeak, bLabel, bCpu, bPeak, showSpark ? (Stats != null ? Stats.CpuHistory : null) : null, cpuCol, sc);
-                    if (ShowGpu)
-                        DrawVertRow(g, row++, rowH, "iGPU", gpuVal, gpuPeak, bLabel, bGpu, bPeak, showSpark ? (Stats != null ? Stats.GpuHistory : null) : null, gpuCol, sc);
+                    if (ShowGpu || ShowGpuLoad)
+                        DrawVertRow(g, row++, rowH, "iGPU", gpuVal, gpuPeak, bLabel, bGpu, bPeak, showSpark ? (Stats != null ? (vertShowGpuTemp ? Stats.GpuHistory : Stats.GpuLoadHistory) : null) : null, gpuCol, sc);
                     if (ShowNvme && _status.NvmeTemp > 0)
                         DrawVertRow(g, row++, rowH, "NVMe", _status.NvmeTemp + "°C", nvmePeak, bLabel, bNvme, bPeak, showSpark ? (Stats != null ? Stats.NvmeHistory : null) : null, CfxTeal, sc);
                     if (ShowPower)
@@ -2312,19 +2368,6 @@ namespace MiniFanControl
                         using (Brush bLow = new SolidBrush(lowCol))
                         {
                             DrawVertRow(g, row++, rowH, lbl, val, peak, bLabel, bLow, bPeak, showSpark ? (Stats != null ? Stats.P01LowHistory : null) : null, lowCol, sc);
-                        }
-                    }
-                    if (ShowGpuLoad)
-                    {
-                        string lbl = "GPU Load";
-                        string val = _status.GfxClockMhz > 0
-                            ? string.Format("{0}% @ {1}MHz", _status.GfxActivityPct, _status.GfxClockMhz)
-                            : string.Format("{0}%", _status.GfxActivityPct);
-                        string peak = (ShowPeaks && Stats != null && Stats.MaxGpuLoad > 0) ? string.Format("▲{0}%", Stats.MaxGpuLoad) : null;
-                        Color loadCol = radeon ? CfxCyan : Color.FromArgb(0xC0, 0x84, 0xFC);
-                        using (Brush bLoad = new SolidBrush(loadCol))
-                        {
-                            DrawVertRow(g, row++, rowH, lbl, val, peak, bLabel, bLoad, bPeak, showSpark ? (Stats != null ? Stats.GpuLoadHistory : null) : null, loadCol, sc);
                         }
                     }
                     if (ShowApuFan)
