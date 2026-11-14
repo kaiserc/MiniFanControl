@@ -491,9 +491,8 @@ namespace MiniFanControl
                 osd.Stats = stats;
 
                 osd.OsdScaleTier = 0; // 100%
-
+                osd.GraphHeight = 65;
                 osd.GraphMode = 0; // Text only
-
                 osd.VerticalLayout = false;
 
                 osd.UpdateDimensions();
@@ -559,16 +558,16 @@ namespace MiniFanControl
 
 
                 Check(hSpark > hText && hComb130 > hComb45 && hBoth > hText && hVertBoth > 0 &&
-
                       targetW1 > targetW0 && targetW2 > targetW1 && targetW3 > targetW2 &&
-
                       wTier1 >= wTier0 && wTier2 >= wTier1 && wTier3 >= wTier2 &&
-
                       osd.CountVisibleMetrics() >= 4,
-
                     "CapFrameX OSD Multi-Tier Sizing (100%-185%), Live Graphs & Layout Modes",
-
-                    string.Format("w100={0}, w125={1}, w150={2}, w185={3}, targetW3={4}, h45={5}, h130={6}", wTier0, wTier1, wTier2, wTier3, targetW3, hComb45, hComb130));
+                    string.Format("hSpk={0}>hTxt={1}({2}), h130={3}>h45={4}({5}), hBth={6}>hTxt={7}({8}), hV={9}, tW0={10}, tW1={11}, tW2={12}, tW3={13}, w0={14}, w1={15}, w2={16}, w3={17}, cnt={18}",
+                        hSpark, hText, hSpark > hText,
+                        hComb130, hComb45, hComb130 > hComb45,
+                        hBoth, hText, hBoth > hText,
+                        hVertBoth, targetW0, targetW1, targetW2, targetW3,
+                        wTier0, wTier1, wTier2, wTier3, osd.CountVisibleMetrics()));
 
                 // Test granular metric toggle controls (ShowNvme, ShowRam)
                 FanStatus testSt = new FanStatus { NvmeTemp = 48, RamTotalGb = 16 };
@@ -1692,14 +1691,26 @@ namespace MiniFanControl
                 int ceiling240 = CapFrameXOverlayForm.CalculateDfCeiling(240, new List<int> { 235, 240, 238 });
                 bool cHdrOk = (ceiling144 == 180) && (ceiling240 == 240);
 
-                // Test E: Height geometry & 0 baseline margin
-                int ftH = CapFrameXOverlayForm.GetDfFrametimeHeight(1.0f);
-                int fpsH = CapFrameXOverlayForm.GetDfFramerateHeight(1.0f, 45);
-                bool geomOk = (ftH >= 40) && (fpsH >= 55);
+                // Test E: Height geometry & viability across all 4 tiers (75px Compact, 105px Medium, 140px Large, 180px XL)
+                int ftHCompact = CapFrameXOverlayForm.GetDfFrametimeHeight(1.0f, 75);
+                int fpsHCompact = CapFrameXOverlayForm.GetDfFramerateHeight(1.0f, 75);
+                int ftHMedium = CapFrameXOverlayForm.GetDfFrametimeHeight(1.0f, 105);
+                int fpsHMedium = CapFrameXOverlayForm.GetDfFramerateHeight(1.0f, 105);
+                int ftHLarge = CapFrameXOverlayForm.GetDfFrametimeHeight(1.0f, 140);
+                int fpsHLarge = CapFrameXOverlayForm.GetDfFramerateHeight(1.0f, 140);
+                int ftHXl = CapFrameXOverlayForm.GetDfFrametimeHeight(1.0f, 180);
+                int fpsHXl = CapFrameXOverlayForm.GetDfFramerateHeight(1.0f, 180);
+
+                bool compactViable = (ftHCompact >= 50) && (fpsHCompact >= 80);
+                bool mediumViable = (ftHMedium >= 54) && (fpsHMedium >= 95);
+                bool largeViable = (ftHLarge >= 70) && (fpsHLarge >= 130);
+                bool xlViable = (ftHXl >= 90) && (fpsHXl >= 170);
+                bool geomOk = compactViable && mediumViable && largeViable && xlViable;
 
                 dfValid = c60Ok && cOriOk && cSpikeOk && cHdrOk && geomOk;
-                dfDetails = string.Format("C60={0}({1}), Ori={2}({3}), SpikeRollOff={4}({5}), HighRefresh={6}, GeomOk={7}(ft={8},fps={9})",
-                    c60Ok, ceiling60, cOriOk, ceilingOri, cSpikeOk, ceilingRollOff, cHdrOk, geomOk, ftH, fpsH);
+                dfDetails = string.Format("C60={0}({1}), Ori={2}({3}), SpikeRollOff={4}({5}), HighRefresh={6}, TiersOk={7}(Cmp={8}/{9},Med={10}/{11},Lg={12}/{13},Xl={14}/{15})",
+                    c60Ok, ceiling60, cOriOk, ceilingOri, cSpikeOk, ceilingRollOff, cHdrOk, geomOk,
+                    ftHCompact, fpsHCompact, ftHMedium, fpsHMedium, ftHLarge, fpsHLarge, ftHXl, fpsHXl);
             }
             catch (Exception ex)
             {

@@ -73,7 +73,7 @@ namespace MiniFanControl
 
         // 0 = Text Only, 1 = Mini Sparklines per Metric, 2 = Combined Live Graph, 3 = Both Sparklines + Combined Graph
         public int GraphMode = 3;
-        public int GraphHeight = 65; // 45=Compact, 65=Medium, 95=Large, 130=XL
+        public int GraphHeight = 105; // 75=Compact, 105=Medium, 140=Large, 180=XL
         // 0 = 100% (Standard), 1 = 125% (Large), 2 = 150% (Extra Large), 3 = 185% (Jumbo 4K)
         public int OsdScaleTier = 0;
         public int OpacityPct = 88;
@@ -178,12 +178,19 @@ namespace MiniFanControl
 
         public static int GetDfFrametimeHeight(float sc)
         {
-            return (int)Math.Round(42 * sc);
+            return GetDfFrametimeHeight(sc, (int)Math.Round(105 * sc));
+        }
+
+        public static int GetDfFrametimeHeight(float sc, int scaledGraphH)
+        {
+            // Proportionally scale frametime graph with selected graph height tier so it is never a flat squished box
+            return Math.Max((int)Math.Round(52 * sc), (int)Math.Round(scaledGraphH * 0.52f));
         }
 
         public static int GetDfFramerateHeight(float sc, int scaledGraphH)
         {
-            return Math.Max((int)Math.Round(58 * sc), (int)Math.Round(scaledGraphH * 1.05f));
+            // Generous vertical room across all tiers (75px, 105px, 140px, 180px) ensuring 4-tier DF gridlines fit cleanly
+            return Math.Max((int)Math.Round(80 * sc), (int)Math.Round(scaledGraphH * 0.95f));
         }
 
         public static int CalculateDfCeiling(int curLiveFps, IList<int> fpsHistory)
@@ -338,10 +345,10 @@ namespace MiniFanControl
             graphMenu.DropDownItems.Add("Text Only (No Graphs)", null, (s, e) => SetGraphModeFromMenu(0));
             graphMenu.DropDownItems.Add(new ToolStripSeparator());
             ToolStripMenuItem heightMenu = new ToolStripMenuItem("Graph Height");
-            heightMenu.DropDownItems.Add("45px Compact", null, (s, e) => SetGraphHeightFromMenu(45));
-            heightMenu.DropDownItems.Add("65px Medium", null, (s, e) => SetGraphHeightFromMenu(65));
-            heightMenu.DropDownItems.Add("95px Large", null, (s, e) => SetGraphHeightFromMenu(95));
-            heightMenu.DropDownItems.Add("130px Extra Large", null, (s, e) => SetGraphHeightFromMenu(130));
+            heightMenu.DropDownItems.Add("75px Compact", null, (s, e) => SetGraphHeightFromMenu(75));
+            heightMenu.DropDownItems.Add("105px Medium", null, (s, e) => SetGraphHeightFromMenu(105));
+            heightMenu.DropDownItems.Add("140px Large", null, (s, e) => SetGraphHeightFromMenu(140));
+            heightMenu.DropDownItems.Add("180px Extra Large", null, (s, e) => SetGraphHeightFromMenu(180));
             graphMenu.DropDownItems.Add(heightMenu);
             graphMenu.DropDownItems.Add(new ToolStripSeparator());
             AddMetricToggleMenuItem(graphMenu, "Live Trend Graph (Multi-Sensor)", () => ShowLiveTrend, v => ShowLiveTrend = v);
@@ -793,7 +800,7 @@ namespace MiniFanControl
                 if (hasFpsGraph)
                 {
                     if (DfGraphStyle)
-                        h += GetDfFrametimeHeight(sc) + GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(16 * sc);
+                        h += GetDfFrametimeHeight(sc, scaledGraphH) + GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(16 * sc);
                     else
                         h += scaledGraphH + (int)Math.Round(10 * sc);
                 }
@@ -809,7 +816,7 @@ namespace MiniFanControl
                 if (hasFpsGraph)
                 {
                     if (DfGraphStyle)
-                        h += GetDfFrametimeHeight(sc) + GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(16 * sc);
+                        h += GetDfFrametimeHeight(sc, scaledGraphH) + GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(16 * sc);
                     else
                         h += scaledGraphH + (int)Math.Round(10 * sc);
                 }
@@ -1579,7 +1586,7 @@ namespace MiniFanControl
 
             int topPad = (int)Math.Round(14 * sc);
             int btmPad = (int)Math.Round(8 * sc);
-            int rightPad = (int)Math.Round(26 * sc);
+            int rightPad = (int)Math.Round(32 * sc);
             Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - btmPad));
 
             // Vertical center dividing line inside plot
@@ -1603,9 +1610,9 @@ namespace MiniFanControl
             int y50 = (int)Math.Round(plot.Top + plot.Height / 2f - sz50.Height / 2f);
             int y100 = Math.Min(rect.Bottom - 2 - sz100.Height, (int)Math.Round(plot.Bottom - sz100.Height / 2f));
 
-            TextRenderer.DrawText(g, "0", _fontDfAxis, new Point(plot.Right + (int)Math.Round(3 * sc), y0), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            TextRenderer.DrawText(g, "50", _fontDfAxis, new Point(plot.Right + (int)Math.Round(3 * sc), y50), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            TextRenderer.DrawText(g, "100", _fontDfAxis, new Point(plot.Right + (int)Math.Round(3 * sc), y100), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, "0", _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y0), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, "50", _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y50), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, "100", _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y100), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             if (Stats == null || Stats.FrametimeHistory == null || Stats.FrametimeHistory.Count == 0)
                 return;
@@ -1649,7 +1656,7 @@ namespace MiniFanControl
                 Size ftBadgeSz = TextRenderer.MeasureText(g, ftBadge, _fontDfAxis, new Size(80, 16), TextFormatFlags.NoPadding);
                 int ftBw = ftBadgeSz.Width + (int)Math.Round(6 * sc);
                 int ftBh = (int)Math.Round(12 * sc);
-                int ftBx = (int)Math.Round(last.X - ftBw - 4 * sc);
+                int ftBx = (int)Math.Round(last.X - ftBw - 6 * sc);
                 if (ftBx < plot.Left + 2) ftBx = plot.Left + 2;
                 int ftBy = (int)Math.Round(last.Y - ftBh / 2f);
                 if (ftBy < plot.Top + 1) ftBy = plot.Top + 1;
@@ -1730,7 +1737,7 @@ namespace MiniFanControl
 
             int topPad = (int)Math.Round(14 * sc);
             int btmPad = (int)Math.Round(9 * sc);
-            int rightPad = (int)Math.Round(28 * sc);
+            int rightPad = (int)Math.Round(32 * sc);
             Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - btmPad));
 
             // Grid lines and Axis Labels
@@ -1757,7 +1764,7 @@ namespace MiniFanControl
                     int lblY = (int)Math.Round(y - sz.Height / 2f);
                     if (lblY < rect.Y + 2) lblY = rect.Y + 2;
                     if (lblY + sz.Height > rect.Bottom - 2) lblY = rect.Bottom - 2 - sz.Height;
-                    TextRenderer.DrawText(g, lbl, _fontDfAxis, new Point(plot.Right + (int)Math.Round(3 * sc), lblY), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    TextRenderer.DrawText(g, lbl, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), lblY), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
                 }
 
                 // Vertical boundary line separating the plot from the axis labels
@@ -1841,7 +1848,7 @@ namespace MiniFanControl
                 Size bSz = TextRenderer.MeasureText(g, fpsBadge, _fontDfAxis, new Size(80, 16), TextFormatFlags.NoPadding);
                 int bw = bSz.Width + (int)Math.Round(6 * sc);
                 int bh = (int)Math.Round(12 * sc);
-                int bx = (int)Math.Round(last.X - bw - 4 * sc);
+                int bx = (int)Math.Round(last.X - bw - 6 * sc);
                 if (bx < plot.Left + 2) bx = plot.Left + 2;
                 int by = (int)Math.Round(last.Y - bh / 2f);
                 if (by < plot.Top + 1) by = plot.Top + 1;
@@ -1867,12 +1874,12 @@ namespace MiniFanControl
                 {
                     float normAvg = Math.Max(0f, Math.Min(1f, (float)sessionAvg / fpsCeiling));
                     float avgY = plot.Bottom - normAvg * plot.Height;
-                    if (Math.Abs(avgY - last.Y) > bh + 4)
+                    if (Math.Abs(avgY - last.Y) > bh + 6)
                     {
                         string avgBadge = string.Format("{0} Avg", sessionAvg);
                         Size aSz = TextRenderer.MeasureText(g, avgBadge, _fontDfAxis, new Size(80, 16), TextFormatFlags.NoPadding);
                         int abw = aSz.Width + (int)Math.Round(6 * sc);
-                        int abx = (int)Math.Round(last.X - abw - 4 * sc);
+                        int abx = (int)Math.Round(last.X - abw - 6 * sc);
                         if (abx < plot.Left + 2) abx = plot.Left + 2;
                         int aby = (int)Math.Round(avgY - bh / 2f);
                         if (aby < plot.Top + 1) aby = plot.Top + 1;
@@ -2056,7 +2063,7 @@ namespace MiniFanControl
                         {
                             if (DfGraphStyle)
                             {
-                                int dfFtH = GetDfFrametimeHeight(sc);
+                                int dfFtH = GetDfFrametimeHeight(sc, scaledGraphH);
                                 int dfFpsH = GetDfFramerateHeight(sc, scaledGraphH);
                                 Rectangle ftRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(14 * sc), dfFtH);
                                 _dfFtRect = ftRect;
@@ -2227,7 +2234,7 @@ namespace MiniFanControl
                         {
                             if (DfGraphStyle)
                             {
-                                int dfFtH = GetDfFrametimeHeight(sc);
+                                int dfFtH = GetDfFrametimeHeight(sc, scaledGraphH);
                                 int dfFpsH = GetDfFramerateHeight(sc, scaledGraphH);
                                 Rectangle ftRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(16 * sc), dfFtH);
                                 _dfFtRect = ftRect;

@@ -129,7 +129,7 @@ namespace MiniFanControl
         // CapFrameX OSD Overlay Studio Configuration
         private int _osdScaleTier = 0; // 0 = 100% (Standard), 1 = 125% (Large), 2 = 150% (Extra Large), 3 = 185% (Jumbo 4K)
         private int _osdGraphMode = 3; // 0=None, 1=Sparklines, 2=Combined, 3=Both
-        private int _osdGraphHeight = 65; // 45=Compact, 65=Medium, 95=Large, 130=XL
+        private int _osdGraphHeight = 105; // 75=Compact, 105=Medium, 140=Large, 180=XL
         private int _osdOpacityPct = 88; // 35..100
         private bool _osdMatchTheme = true;
         private bool _osdShowCpu = true;
@@ -1708,10 +1708,10 @@ namespace MiniFanControl
                     else if (k == "OsdGraphMode" && int.TryParse(v, out intVal)) _osdGraphMode = Math.Max(0, Math.Min(3, intVal));
                     else if (k == "OsdGraphHeight" && int.TryParse(v, out intVal))
                     {
-                        if (intVal <= 50) _osdGraphHeight = 45;
-                        else if (intVal <= 75) _osdGraphHeight = 65;
-                        else if (intVal <= 110) _osdGraphHeight = 95;
-                        else _osdGraphHeight = 130;
+                        if (intVal <= 85) _osdGraphHeight = 75;
+                        else if (intVal <= 120) _osdGraphHeight = 105;
+                        else if (intVal <= 160) _osdGraphHeight = 140;
+                        else _osdGraphHeight = 180;
                     }
                     else if (k == "OsdOpacityPct" && int.TryParse(v, out intVal)) _osdOpacityPct = Math.Max(35, Math.Min(100, intVal));
                     else if (k == "OsdMatchTheme") _osdMatchTheme = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
@@ -3729,7 +3729,7 @@ namespace MiniFanControl
             // Right side: Height buttons
             _osdBtnHeightCompact = new Button
             {
-                Text = "45px Compact",
+                Text = "75px Compact",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
                 Location = new Point(476, 56),
@@ -3737,12 +3737,12 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnHeightCompact.FlatAppearance.BorderSize = 0;
-            _osdBtnHeightCompact.Click += (s, e) => { _osdGraphHeight = 45; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnHeightCompact.Click += (s, e) => { _osdGraphHeight = 75; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnHeightCompact);
 
             _osdBtnHeightMedium = new Button
             {
-                Text = "65px Medium",
+                Text = "105px Medium",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
                 Location = new Point(592, 56),
@@ -3750,12 +3750,12 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnHeightMedium.FlatAppearance.BorderSize = 0;
-            _osdBtnHeightMedium.Click += (s, e) => { _osdGraphHeight = 65; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnHeightMedium.Click += (s, e) => { _osdGraphHeight = 105; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnHeightMedium);
 
             _osdBtnHeightLarge = new Button
             {
-                Text = "95px Large",
+                Text = "140px Large",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
                 Location = new Point(708, 56),
@@ -3763,12 +3763,12 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnHeightLarge.FlatAppearance.BorderSize = 0;
-            _osdBtnHeightLarge.Click += (s, e) => { _osdGraphHeight = 95; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnHeightLarge.Click += (s, e) => { _osdGraphHeight = 140; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnHeightLarge);
 
             _osdBtnHeightXl = new Button
             {
-                Text = "130px XL",
+                Text = "180px XL",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
                 Location = new Point(820, 56),
@@ -3776,7 +3776,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnHeightXl.FlatAppearance.BorderSize = 0;
-            _osdBtnHeightXl.Click += (s, e) => { _osdGraphHeight = 130; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnHeightXl.Click += (s, e) => { _osdGraphHeight = 180; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnHeightXl);
 
             // Row 3 (y=88): Section 2 - Scale Tier (Left) & Layout Direction (Right)
@@ -4072,7 +4072,7 @@ namespace MiniFanControl
                 _osdMatchTheme = true;
                 _osdScaleTier = 0;
                 _osdGraphMode = 3;
-                _osdGraphHeight = 65;
+                _osdGraphHeight = 105;
                 _osdOpacityPct = 88;
                 _overlayVertical = false;
                 SyncOsdStudioUiFromOverlay();
@@ -4502,31 +4502,31 @@ namespace MiniFanControl
                 _osdBtnLayoutV.Font = activeV ? TabFontBold : TabFontRegular;
             }
 
-            // Highlight active Height button (45px Compact, 65px Medium, 95px Large, 130px Extra Large)
+            // Highlight active Height button (75px Compact, 105px Medium, 140px Large, 180px XL)
             if (_osdBtnHeightCompact != null)
             {
-                bool active = (_osdGraphHeight <= 50);
+                bool active = (_osdGraphHeight <= 85);
                 _osdBtnHeightCompact.BackColor = active ? accent : surface2;
                 _osdBtnHeightCompact.ForeColor = active ? activeFg : text;
                 _osdBtnHeightCompact.Font = active ? TabFontBold : TabFontRegular;
             }
             if (_osdBtnHeightMedium != null)
             {
-                bool active = (_osdGraphHeight > 50 && _osdGraphHeight <= 75);
+                bool active = (_osdGraphHeight > 85 && _osdGraphHeight <= 120);
                 _osdBtnHeightMedium.BackColor = active ? accent : surface2;
                 _osdBtnHeightMedium.ForeColor = active ? activeFg : text;
                 _osdBtnHeightMedium.Font = active ? TabFontBold : TabFontRegular;
             }
             if (_osdBtnHeightLarge != null)
             {
-                bool active = (_osdGraphHeight > 75 && _osdGraphHeight <= 110);
+                bool active = (_osdGraphHeight > 120 && _osdGraphHeight <= 160);
                 _osdBtnHeightLarge.BackColor = active ? accent : surface2;
                 _osdBtnHeightLarge.ForeColor = active ? activeFg : text;
                 _osdBtnHeightLarge.Font = active ? TabFontBold : TabFontRegular;
             }
             if (_osdBtnHeightXl != null)
             {
-                bool active = (_osdGraphHeight > 110);
+                bool active = (_osdGraphHeight > 160);
                 _osdBtnHeightXl.BackColor = active ? accent : surface2;
                 _osdBtnHeightXl.ForeColor = active ? activeFg : text;
                 _osdBtnHeightXl.Font = active ? TabFontBold : TabFontRegular;
