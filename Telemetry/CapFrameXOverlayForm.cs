@@ -105,6 +105,7 @@ namespace MiniFanControl
         public event EventHandler RequestHideOverlay;
         public event EventHandler RequestToggleLock;
         public event EventHandler RequestOpenOsdConfig;
+        public event EventHandler<int> RequestSnapLocation;
 
         private FanStatus _status;
         private string _modeSummary = "Balanced";
@@ -318,6 +319,15 @@ namespace MiniFanControl
             themeMenu.DropDownItems.Add("AMD Radeon Ruby Red", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = true; IsAfterburnerTheme = false; Invalidate(); });
             themeMenu.DropDownItems.Add("MSI Afterburner Toxic Green", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = true; Invalidate(); });
             menu.Items.Add(themeMenu);
+
+            ToolStripMenuItem snapMenu = new ToolStripMenuItem("Snap Location");
+            snapMenu.DropDownItems.Add("Top-Left", null, (s, e) => { if (RequestSnapLocation != null) RequestSnapLocation(this, 0); });
+            snapMenu.DropDownItems.Add("Center-Top", null, (s, e) => { if (RequestSnapLocation != null) RequestSnapLocation(this, 4); });
+            snapMenu.DropDownItems.Add("Top-Right", null, (s, e) => { if (RequestSnapLocation != null) RequestSnapLocation(this, 1); });
+            snapMenu.DropDownItems.Add("Bottom-Left", null, (s, e) => { if (RequestSnapLocation != null) RequestSnapLocation(this, 2); });
+            snapMenu.DropDownItems.Add("Center-Bottom", null, (s, e) => { if (RequestSnapLocation != null) RequestSnapLocation(this, 5); });
+            snapMenu.DropDownItems.Add("Bottom-Right", null, (s, e) => { if (RequestSnapLocation != null) RequestSnapLocation(this, 3); });
+            menu.Items.Add(snapMenu);
 
             menu.Items.Add("Switch Layout (Horizontal Bar / Vertical Stack)", null, (s, e) =>
             {
@@ -945,7 +955,8 @@ namespace MiniFanControl
                     badges[i].DisplayY = badges[i - 1].DisplayY + minSpacing;
             }
 
-            float maxBottom = plot.Bottom - 2;
+            int bh = (int)Math.Round(10 * sc);
+            float maxBottom = plot.Bottom - (float)Math.Round(bh / 2f) - 1;
             if (badges[badges.Count - 1].DisplayY > maxBottom)
             {
                 badges[badges.Count - 1].DisplayY = maxBottom;
@@ -956,7 +967,7 @@ namespace MiniFanControl
                 }
             }
 
-            float minTop = plot.Top + 2;
+            float minTop = plot.Top + (float)Math.Round(bh / 2f) + 1;
             for (int i = 0; i < badges.Count; i++)
             {
                 if (badges[i].DisplayY < minTop)
@@ -974,7 +985,6 @@ namespace MiniFanControl
                     EndpointBadge b = badges[i];
                     Size sz = TextRenderer.MeasureText(g, b.Text, font, new Size(maxBadgeW, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
                     int bw = Math.Min(maxBadgeW, sz.Width + (int)Math.Round(3 * sc));
-                    int bh = (int)Math.Round(10 * sc);
                     int by = (int)Math.Round(b.DisplayY - bh / 2f);
                     // Anchor badge comfortably inside bounds so it never clips or overflows on the right edge
                     int curX = Math.Min(badgeX, bounds.Right - bw - rightMargin);

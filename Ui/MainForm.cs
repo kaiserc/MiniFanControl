@@ -177,6 +177,15 @@ namespace MiniFanControl
         internal void TestApplyAutoAll() { ApplyAutoAll(); }
         internal FanCurveProfile ApuProfile { get { return _apuProfile; } set { _apuProfile = value; } }
         internal List<FanCurveProfile> CustomProfiles { get { return _customProfiles; } }
+        internal Label TestCpuTempLabel { get { return _cpuTempLabel; } }
+        internal Label TestFan1RpmLabel { get { return _fan1RpmLabel; } }
+        internal Label TestOsdOpacityLabel { get { return _osdOpacityLabel; } }
+        internal Label TestOsdSnapLabel { get { return _osdSnapLabel; } }
+        internal Label TestOsdMetricsHeaderLabel { get { return _osdMetricsHeaderLabel; } }
+        internal Button TestOsdQuickPosBc { get { return _osdQuickPosBc; } }
+        internal Button TestOsdQuickPosBr { get { return _osdQuickPosBr; } }
+        internal CheckBox TestAutostartCb { get { return _autostartCb; } }
+        internal CheckBox TestAlwaysOnTopCb { get { return _alwaysOnTopCb; } }
         private DateTime _lastWorkerSampleUtc = DateTime.UtcNow;
         private bool _watchdogStarted = false;
         private SessionEndingEventHandler _sessionEndingHandler;
@@ -329,8 +338,10 @@ namespace MiniFanControl
         private Button _osdDeselectAllBtn;
         private Button _osdResetDefaultsBtn;
         private Button _osdQuickPosTl;
+        private Button _osdQuickPosTc;
         private Button _osdQuickPosTr;
         private Button _osdQuickPosBl;
+        private Button _osdQuickPosBc;
         private Button _osdQuickPosBr;
         private Button _osdToggleOverlayBtn;
         private Button _osdToggleLockBtn;
@@ -807,6 +818,10 @@ namespace MiniFanControl
             {
                 OpenOsdConfigTab();
             };
+            _overlayForm.RequestSnapLocation += (s, corner) =>
+            {
+                SetOverlayCornerPosition(corner);
+            };
 
             // Pre-seed live telemetry into overlay before first display so dimensions account for all active rows (NVMe, RAM, Mode)
             if (_lastStatus.RamTotalGb <= 0 && _hw != null)
@@ -957,6 +972,14 @@ namespace MiniFanControl
                     break;
                 case 3: // Bottom-Right
                     _overlayX = wa.Right - w - margin;
+                    _overlayY = wa.Bottom - h - margin;
+                    break;
+                case 4: // Center-Top
+                    _overlayX = wa.Left + Math.Max(0, (wa.Width - w) / 2);
+                    _overlayY = wa.Top + margin;
+                    break;
+                case 5: // Center-Bottom
+                    _overlayX = wa.Left + Math.Max(0, (wa.Width - w) / 2);
                     _overlayY = wa.Bottom - h - margin;
                     break;
             }
@@ -1327,14 +1350,22 @@ namespace MiniFanControl
                 {
                     _fan1Box.Location = new Point(672, 8);
                     _fan1Box.Size = new Size(126, 70);
-                    if (_fan1BoxTitle != null) _fan1BoxTitle.Size = new Size(122, 15);
+                    if (_fan1BoxTitle != null) { _fan1BoxTitle.Location = new Point(1, 2); _fan1BoxTitle.Size = new Size(124, 13); }
                     if (_fan1RpmLabel != null)
                     {
-                        _fan1RpmLabel.Size = new Size(122, 28);
-                        _fan1RpmLabel.Font = new Font("Segoe UI", 12.0f, FontStyle.Bold);
+                        _fan1RpmLabel.Location = new Point(1, 15);
+                        _fan1RpmLabel.Size = new Size(124, 33);
+                        _fan1RpmLabel.Font = new Font("Segoe UI", 11.5f, FontStyle.Bold);
                     }
                     _fan2Box.Location = new Point(804, 8);
                     _fan2Box.Size = new Size(126, 70);
+                    if (_fan2BoxTitle != null) { _fan2BoxTitle.Location = new Point(1, 2); _fan2BoxTitle.Size = new Size(124, 13); }
+                    if (_fan2RpmLabel != null)
+                    {
+                        _fan2RpmLabel.Location = new Point(1, 15);
+                        _fan2RpmLabel.Size = new Size(124, 33);
+                        _fan2RpmLabel.Font = new Font("Segoe UI", 11.5f, FontStyle.Bold);
+                    }
                     _fan2Box.Visible = true;
                 }
                 else
@@ -1342,11 +1373,12 @@ namespace MiniFanControl
                     _fan2Box.Visible = false;
                     _fan1Box.Location = new Point(672, 8);
                     _fan1Box.Size = new Size(258, 70);
-                    if (_fan1BoxTitle != null) _fan1BoxTitle.Size = new Size(254, 15);
+                    if (_fan1BoxTitle != null) { _fan1BoxTitle.Location = new Point(1, 2); _fan1BoxTitle.Size = new Size(256, 13); }
                     if (_fan1RpmLabel != null)
                     {
-                        _fan1RpmLabel.Size = new Size(254, 28);
-                        _fan1RpmLabel.Font = new Font("Segoe UI", 14.5f, FontStyle.Bold);
+                        _fan1RpmLabel.Location = new Point(1, 15);
+                        _fan1RpmLabel.Size = new Size(256, 33);
+                        _fan1RpmLabel.Font = new Font("Segoe UI", 14.0f, FontStyle.Bold);
                     }
                 }
             }
@@ -2366,7 +2398,7 @@ namespace MiniFanControl
             }
             if (samples != null && samples.Count > 0)
             {
-                Rectangle sparkRect = new Rectangle(1, 47, box.ClientSize.Width - 2, Math.Max(8, box.ClientSize.Height - 48));
+                Rectangle sparkRect = new Rectangle(1, 49, box.ClientSize.Width - 2, Math.Max(8, box.ClientSize.Height - 51));
                 DrawMiniSparklineChart(g, sparkRect, samples, lineCol, "", false, chartKind == 7);
             }
             if (_showingLiveTelemetry && _highlightedMetric == chartKind)
@@ -2546,17 +2578,17 @@ namespace MiniFanControl
             {
                 Text = "CPU TEMP",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 3),
-                Size = new Size(122, 15),
+                Location = new Point(1, 2),
+                Size = new Size(124, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
             _cpuTempLabel = new Label
             {
                 Text = "--°C",
-                Font = new Font("Segoe UI", 15.75f, FontStyle.Bold),
-                Location = new Point(1, 17),
-                Size = new Size(122, 28),
+                Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
+                Location = new Point(1, 15),
+                Size = new Size(124, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2584,17 +2616,17 @@ namespace MiniFanControl
             {
                 Text = "iGPU TEMP",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 3),
-                Size = new Size(122, 15),
+                Location = new Point(1, 2),
+                Size = new Size(124, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
             _gpuTempLabel = new Label
             {
                 Text = "--°C",
-                Font = new Font("Segoe UI", 15.75f, FontStyle.Bold),
-                Location = new Point(1, 17),
-                Size = new Size(122, 28),
+                Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
+                Location = new Point(1, 15),
+                Size = new Size(124, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2622,17 +2654,17 @@ namespace MiniFanControl
             {
                 Text = "NVMe TEMP",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 3),
-                Size = new Size(122, 15),
+                Location = new Point(1, 2),
+                Size = new Size(124, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
             _nvmeTempLabel = new Label
             {
                 Text = "--°C",
-                Font = new Font("Segoe UI", 15.75f, FontStyle.Bold),
-                Location = new Point(1, 17),
-                Size = new Size(122, 28),
+                Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
+                Location = new Point(1, 15),
+                Size = new Size(124, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2660,17 +2692,17 @@ namespace MiniFanControl
             {
                 Text = "POWER ⓘ",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 3),
-                Size = new Size(122, 15),
+                Location = new Point(1, 2),
+                Size = new Size(124, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
             _pwrLabel = new Label
             {
                 Text = "--W",
-                Font = new Font("Segoe UI", 15.75f, FontStyle.Bold),
-                Location = new Point(1, 17),
-                Size = new Size(122, 28),
+                Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
+                Location = new Point(1, 15),
+                Size = new Size(124, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2693,17 +2725,17 @@ namespace MiniFanControl
             {
                 Text = "RAM POWER",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 3),
-                Size = new Size(122, 15),
+                Location = new Point(1, 2),
+                Size = new Size(124, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
             _ramPowerLabel = new Label
             {
                 Text = "--W",
-                Font = new Font("Segoe UI", 15.75f, FontStyle.Bold),
-                Location = new Point(1, 17),
-                Size = new Size(122, 28),
+                Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
+                Location = new Point(1, 15),
+                Size = new Size(124, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2726,17 +2758,17 @@ namespace MiniFanControl
             {
                 Text = "APU FAN",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 3),
-                Size = new Size(122, 15),
+                Location = new Point(1, 2),
+                Size = new Size(124, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
             _fan1RpmLabel = new Label
             {
                 Text = "-- RPM",
-                Font = new Font("Segoe UI", 12.0f, FontStyle.Bold),
-                Location = new Point(1, 17),
-                Size = new Size(122, 28),
+                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
+                Location = new Point(1, 15),
+                Size = new Size(124, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -2764,17 +2796,17 @@ namespace MiniFanControl
             {
                 Text = "SYS FAN",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 3),
-                Size = new Size(122, 15),
+                Location = new Point(1, 2),
+                Size = new Size(124, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
             _fan2RpmLabel = new Label
             {
                 Text = "-- RPM",
-                Font = new Font("Segoe UI", 12.0f, FontStyle.Bold),
-                Location = new Point(1, 17),
-                Size = new Size(122, 28),
+                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
+                Location = new Point(1, 15),
+                Size = new Size(124, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
@@ -3243,14 +3275,14 @@ namespace MiniFanControl
             _uiToolTip.SetToolTip(_calibBadgeLabel,
                 "Shows when your fans were last calibrated and their minimum anti-stall PWM %.\r\nClick to run the 3-pass real-time Fan Calibration Wizard.");
 
-            AddStaticLabel(fanCard, "APU / CPU Fan:", 10, 14, 110, 22);
+            AddStaticLabel(fanCard, "APU / CPU Fan:", 10, 14, 120, 24);
             _fan1Slider = new TrackBar
             {
                 Minimum = 0,
                 Maximum = 100,
                 TickStyle = TickStyle.None,
-                Location = new Point(126, 10),
-                Size = new Size(650, 32)
+                Location = new Point(134, 10),
+                Size = new Size(642, 32)
             };
             _fan1Slider.Scroll += (s, e) =>
             {
@@ -3285,7 +3317,7 @@ namespace MiniFanControl
                 Text = "Auto",
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 Location = new Point(782, 14),
-                Size = new Size(60, 22),
+                Size = new Size(60, 24),
                 TextAlign = ContentAlignment.MiddleCenter
             };
             fanCard.Controls.Add(_fan1SliderPct);
@@ -3302,14 +3334,14 @@ namespace MiniFanControl
             _fan1AutoBtn.Click += (s, e) => ApplyFan(1, 0);
             fanCard.Controls.Add(_fan1AutoBtn);
 
-            AddStaticLabel(fanCard, "Sys / RAM Fan:", 10, 52, 110, 22);
+            AddStaticLabel(fanCard, "Sys / RAM Fan:", 10, 52, 120, 24);
             _fan2Slider = new TrackBar
             {
                 Minimum = 0,
                 Maximum = 100,
                 TickStyle = TickStyle.None,
-                Location = new Point(126, 48),
-                Size = new Size(650, 32)
+                Location = new Point(134, 48),
+                Size = new Size(642, 32)
             };
             _fan2Slider.Scroll += (s, e) =>
             {
@@ -3344,7 +3376,7 @@ namespace MiniFanControl
                 Text = "Auto",
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 Location = new Point(782, 52),
-                Size = new Size(60, 22),
+                Size = new Size(60, 24),
                 TextAlign = ContentAlignment.MiddleCenter
             };
             fanCard.Controls.Add(_fan2SliderPct);
@@ -3412,7 +3444,7 @@ namespace MiniFanControl
             {
                 Text = "Show CPU temp in taskbar",
                 Location = new Point(12, 8),
-                Size = new Size(420, 22),
+                Size = new Size(310, 24),
                 Checked = _showCpuTray
             };
             _showCpuTrayCb.CheckedChanged += (s, e) =>
@@ -3427,8 +3459,8 @@ namespace MiniFanControl
             _showGpuTrayCb = new CheckBox
             {
                 Text = "Show iGPU temp in taskbar",
-                Location = new Point(476, 8),
-                Size = new Size(420, 22),
+                Location = new Point(340, 8),
+                Size = new Size(300, 24),
                 Checked = _showGpuTray
             };
             _showGpuTrayCb.CheckedChanged += (s, e) =>
@@ -3444,7 +3476,7 @@ namespace MiniFanControl
             {
                 Text = "Show CapFrameX OSD overlay",
                 Location = new Point(12, 32),
-                Size = new Size(250, 22),
+                Size = new Size(216, 24),
                 Checked = _showOverlay
             };
             _showOverlayCb.CheckedChanged += (s, e) =>
@@ -3460,8 +3492,8 @@ namespace MiniFanControl
                 Text = "⚙ Config...",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                Location = new Point(270, 31),
-                Size = new Size(90, 24),
+                Location = new Point(232, 31),
+                Size = new Size(84, 24),
                 Cursor = Cursors.Hand
             };
             _optCardOsdConfigBtn.FlatAppearance.BorderSize = 0;
@@ -3472,8 +3504,8 @@ namespace MiniFanControl
             _lockOverlayCb = new CheckBox
             {
                 Text = "Lock OSD (click-through)",
-                Location = new Point(476, 32),
-                Size = new Size(420, 22),
+                Location = new Point(340, 32),
+                Size = new Size(300, 24),
                 Checked = _lockOverlay
             };
             _lockOverlayCb.CheckedChanged += (s, e) => SetOverlayLocked(_lockOverlayCb.Checked);
@@ -3483,7 +3515,7 @@ namespace MiniFanControl
             {
                 Text = "Start automatically on Windows login",
                 Location = new Point(12, 56),
-                Size = new Size(280, 22),
+                Size = new Size(310, 24),
                 Checked = IsAutostartEnabled()
             };
             _autostartCb.CheckedChanged += (s, e) => ToggleAutostart();
@@ -3492,8 +3524,8 @@ namespace MiniFanControl
             _alwaysOnTopCb = new CheckBox
             {
                 Text = "Keep app on top",
-                Location = new Point(300, 56),
-                Size = new Size(170, 22),
+                Location = new Point(340, 56),
+                Size = new Size(300, 24),
                 Checked = _alwaysOnTop
             };
             _alwaysOnTopCb.CheckedChanged += (s, e) =>
@@ -3511,8 +3543,8 @@ namespace MiniFanControl
             _trayCb = new CheckBox
             {
                 Text = "Hide to system tray",
-                Location = new Point(476, 56),
-                Size = new Size(420, 22)
+                Location = new Point(660, 56),
+                Size = new Size(260, 24)
             };
             _trayCb.CheckedChanged += (s, e) =>
             {
@@ -3847,13 +3879,13 @@ namespace MiniFanControl
             _osdBtnLayoutV.Click += (s, e) => { _overlayVertical = true; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnLayoutV);
 
-            // Row 4 (y=138): Section 3 - Opacity Slider & Quick Snap Corner Buttons
+            // Row 4 (y=136): Section 3 - Opacity Slider & Quick Snap Corner Buttons
             _osdOpacityLabel = new Label
             {
                 Text = "Opacity:",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(8, 142),
-                Size = new Size(54, 20),
+                Location = new Point(8, 140),
+                Size = new Size(62, 20),
                 UseMnemonic = false
             };
             p.Controls.Add(_osdOpacityLabel);
@@ -3864,8 +3896,8 @@ namespace MiniFanControl
                 Maximum = 100,
                 Value = _osdOpacityPct,
                 TickStyle = TickStyle.None,
-                Location = new Point(66, 138),
-                Size = new Size(160, 28)
+                Location = new Point(72, 134),
+                Size = new Size(130, 30)
             };
             _osdOpacitySlider.Scroll += (s, e) =>
             {
@@ -3880,8 +3912,8 @@ namespace MiniFanControl
             {
                 Text = string.Format("{0}%", _osdOpacityPct),
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(230, 142),
-                Size = new Size(46, 20),
+                Location = new Point(206, 138),
+                Size = new Size(42, 20),
                 UseMnemonic = false
             };
             p.Controls.Add(_osdOpacityPctLabel);
@@ -3890,43 +3922,56 @@ namespace MiniFanControl
             {
                 Text = "Quick Snap:",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(376, 142),
-                Size = new Size(90, 20),
+                Location = new Point(252, 138),
+                Size = new Size(88, 20),
                 UseMnemonic = false
             };
             p.Controls.Add(_osdSnapLabel);
 
-            _osdQuickPosTl = new Button { Text = "Top-Left", FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 8f, FontStyle.Bold), Location = new Point(476, 138), Size = new Size(108, 26), Cursor = Cursors.Hand };
+            Font snapBtnFont = new Font("Segoe UI", 7.25f, FontStyle.Bold);
+            _osdQuickPosTl = new Button { Text = "Top-Left", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(344, 136), Size = new Size(94, 26), Cursor = Cursors.Hand };
             _osdQuickPosTl.FlatAppearance.BorderSize = 0;
             _osdQuickPosTl.Click += (s, e) => SetOverlayCornerPosition(0);
             _uiToolTip.SetToolTip(_osdQuickPosTl, "Snap OSD to Top-Left screen corner");
             p.Controls.Add(_osdQuickPosTl);
 
-            _osdQuickPosTr = new Button { Text = "Top-Right", FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 8f, FontStyle.Bold), Location = new Point(592, 138), Size = new Size(108, 26), Cursor = Cursors.Hand };
+            _osdQuickPosTc = new Button { Text = "Center-Top", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(442, 136), Size = new Size(94, 26), Cursor = Cursors.Hand };
+            _osdQuickPosTc.FlatAppearance.BorderSize = 0;
+            _osdQuickPosTc.Click += (s, e) => SetOverlayCornerPosition(4);
+            _uiToolTip.SetToolTip(_osdQuickPosTc, "Snap OSD to Center-Top screen edge");
+            p.Controls.Add(_osdQuickPosTc);
+
+            _osdQuickPosTr = new Button { Text = "Top-Right", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(540, 136), Size = new Size(94, 26), Cursor = Cursors.Hand };
             _osdQuickPosTr.FlatAppearance.BorderSize = 0;
             _osdQuickPosTr.Click += (s, e) => SetOverlayCornerPosition(1);
             _uiToolTip.SetToolTip(_osdQuickPosTr, "Snap OSD to Top-Right screen corner");
             p.Controls.Add(_osdQuickPosTr);
 
-            _osdQuickPosBl = new Button { Text = "Bottom-Left", FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 8f, FontStyle.Bold), Location = new Point(708, 138), Size = new Size(108, 26), Cursor = Cursors.Hand };
+            _osdQuickPosBl = new Button { Text = "Bottom-Left", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(638, 136), Size = new Size(94, 26), Cursor = Cursors.Hand };
             _osdQuickPosBl.FlatAppearance.BorderSize = 0;
             _osdQuickPosBl.Click += (s, e) => SetOverlayCornerPosition(2);
             _uiToolTip.SetToolTip(_osdQuickPosBl, "Snap OSD to Bottom-Left screen corner");
             p.Controls.Add(_osdQuickPosBl);
 
-            _osdQuickPosBr = new Button { Text = "Bottom-Right", FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 8f, FontStyle.Bold), Location = new Point(820, 138), Size = new Size(108, 26), Cursor = Cursors.Hand };
+            _osdQuickPosBc = new Button { Text = "Center-Bottom", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(736, 136), Size = new Size(96, 26), Cursor = Cursors.Hand };
+            _osdQuickPosBc.FlatAppearance.BorderSize = 0;
+            _osdQuickPosBc.Click += (s, e) => SetOverlayCornerPosition(5);
+            _uiToolTip.SetToolTip(_osdQuickPosBc, "Snap OSD to Center-Bottom screen edge");
+            p.Controls.Add(_osdQuickPosBc);
+
+            _osdQuickPosBr = new Button { Text = "Bottom-Right", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(836, 136), Size = new Size(94, 26), Cursor = Cursors.Hand };
             _osdQuickPosBr.FlatAppearance.BorderSize = 0;
             _osdQuickPosBr.Click += (s, e) => SetOverlayCornerPosition(3);
             _uiToolTip.SetToolTip(_osdQuickPosBr, "Snap OSD to Bottom-Right screen corner");
             p.Controls.Add(_osdQuickPosBr);
 
-            // Row 5 (y=176): Section 4 - Telemetry Metrics & Overlay Parts Header + Select All / Defaults Buttons
+            // Row 5 (y=180): Section 4 - Telemetry Metrics & Overlay Parts Header + Select All / Defaults Buttons
             _osdMetricsHeaderLabel = new Label
             {
                 Text = "Visible Telemetry Metrics & Overlay Parts:",
                 Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-                Location = new Point(8, 176),
-                Size = new Size(450, 20),
+                Location = new Point(8, 180),
+                Size = new Size(460, 20),
                 UseMnemonic = false
             };
             p.Controls.Add(_osdMetricsHeaderLabel);
@@ -3936,7 +3981,7 @@ namespace MiniFanControl
                 Text = "Select All",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
-                Location = new Point(592, 172),
+                Location = new Point(592, 176),
                 Size = new Size(104, 25),
                 Cursor = Cursors.Hand
             };
@@ -3969,7 +4014,7 @@ namespace MiniFanControl
                 Text = "Deselect All",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
-                Location = new Point(704, 172),
+                Location = new Point(704, 176),
                 Size = new Size(108, 25),
                 Cursor = Cursors.Hand
             };
@@ -3999,7 +4044,7 @@ namespace MiniFanControl
                 Text = "Defaults",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
-                Location = new Point(820, 172),
+                Location = new Point(820, 176),
                 Size = new Size(108, 25),
                 Cursor = Cursors.Hand
             };
@@ -4035,33 +4080,33 @@ namespace MiniFanControl
             };
             p.Controls.Add(_osdResetDefaultsBtn);
 
-            // Row 6 (y=202): Checkboxes Grid (4 Columns)
+            // Row 6 (y=206): Checkboxes Grid (4 Columns)
             // Column 1: x=8 (w=224), Column 2: x=238 (w=224), Column 3: x=476 (w=224), Column 4: x=706 (w=222)
-            _osdShowCpuCb = new CheckBox { Text = "CPU Temp", Location = new Point(8, 202), Size = new Size(224, 21), Checked = _osdShowCpu, UseMnemonic = false };
+            _osdShowCpuCb = new CheckBox { Text = "CPU Temp", Location = new Point(8, 206), Size = new Size(224, 21), Checked = _osdShowCpu, UseMnemonic = false };
             _osdShowCpuCb.CheckedChanged += (s, e) => { _osdShowCpu = _osdShowCpuCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowCpuCb);
 
-            _osdShowGpuCb = new CheckBox { Text = "iGPU Temp", Location = new Point(238, 202), Size = new Size(224, 21), Checked = _osdShowGpu, UseMnemonic = false };
+            _osdShowGpuCb = new CheckBox { Text = "iGPU Temp", Location = new Point(238, 206), Size = new Size(224, 21), Checked = _osdShowGpu, UseMnemonic = false };
             _osdShowGpuCb.CheckedChanged += (s, e) => { _osdShowGpu = _osdShowGpuCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowGpuCb);
 
-            _osdShowNvmeCb = new CheckBox { Text = "NVMe SSD Temp", Location = new Point(476, 202), Size = new Size(224, 21), Checked = _osdShowNvme, UseMnemonic = false };
+            _osdShowNvmeCb = new CheckBox { Text = "NVMe SSD Temp", Location = new Point(476, 206), Size = new Size(224, 21), Checked = _osdShowNvme, UseMnemonic = false };
             _osdShowNvmeCb.CheckedChanged += (s, e) => { _osdShowNvme = _osdShowNvmeCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowNvmeCb);
 
-            _osdShowRamCb = new CheckBox { Text = "RAM Load & Power", Location = new Point(706, 202), Size = new Size(222, 21), Checked = _osdShowRam, UseMnemonic = false };
+            _osdShowRamCb = new CheckBox { Text = "RAM Load & Power", Location = new Point(706, 206), Size = new Size(222, 21), Checked = _osdShowRam, UseMnemonic = false };
             _osdShowRamCb.CheckedChanged += (s, e) => { _osdShowRam = _osdShowRamCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowRamCb);
 
-            // Row 7 (y=226):
-            _osdShowApuFanCb = new CheckBox { Text = "APU Fan RPM", Location = new Point(8, 226), Size = new Size(224, 21), Checked = _osdShowApuFan, UseMnemonic = false };
+            // Row 7 (y=230):
+            _osdShowApuFanCb = new CheckBox { Text = "APU Fan RPM", Location = new Point(8, 230), Size = new Size(224, 21), Checked = _osdShowApuFan, UseMnemonic = false };
             _osdShowApuFanCb.CheckedChanged += (s, e) => { _osdShowApuFan = _osdShowApuFanCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowApuFanCb);
 
             _osdShowSysFanCb = new CheckBox
             {
                 Text = _hasDualFans ? "Sys Fan RPM" : "Sys Fan RPM (N/A)",
-                Location = new Point(238, 226),
+                Location = new Point(238, 230),
                 Size = new Size(224, 21),
                 Checked = _osdShowSysFan && _hasDualFans,
                 Enabled = _hasDualFans,
@@ -4070,37 +4115,37 @@ namespace MiniFanControl
             _osdShowSysFanCb.CheckedChanged += (s, e) => { _osdShowSysFan = _osdShowSysFanCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowSysFanCb);
 
-            _osdShowPowerCb = new CheckBox { Text = "APU Power (W)", Location = new Point(476, 226), Size = new Size(224, 21), Checked = _osdShowPower, UseMnemonic = false };
+            _osdShowPowerCb = new CheckBox { Text = "APU Power (W)", Location = new Point(476, 230), Size = new Size(224, 21), Checked = _osdShowPower, UseMnemonic = false };
             _osdShowPowerCb.CheckedChanged += (s, e) => { _osdShowPower = _osdShowPowerCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowPowerCb);
 
-            _osdShowGpuLoadCb = new CheckBox { Text = "GPU Load & Clock", Location = new Point(706, 226), Size = new Size(222, 21), Checked = _osdShowGpuLoad, UseMnemonic = false };
+            _osdShowGpuLoadCb = new CheckBox { Text = "GPU Load & Clock", Location = new Point(706, 230), Size = new Size(222, 21), Checked = _osdShowGpuLoad, UseMnemonic = false };
             _osdShowGpuLoadCb.CheckedChanged += (s, e) => { _osdShowGpuLoad = _osdShowGpuLoadCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowGpuLoadCb);
 
-            // Row 8 (y=250):
-            _osdShowFpsCb = new CheckBox { Text = "Live FPS & Frametime", Location = new Point(8, 250), Size = new Size(224, 21), Checked = _osdShowFps, UseMnemonic = false };
+            // Row 8 (y=254):
+            _osdShowFpsCb = new CheckBox { Text = "Live FPS & Frametime", Location = new Point(8, 254), Size = new Size(224, 21), Checked = _osdShowFps, UseMnemonic = false };
             _osdShowFpsCb.CheckedChanged += (s, e) => { _osdShowFps = _osdShowFpsCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowFpsCb);
 
-            _osdShowLowsCb = new CheckBox { Text = "0.1% Low & Avg FPS", Location = new Point(238, 250), Size = new Size(224, 21), Checked = _osdShowLows, UseMnemonic = false };
+            _osdShowLowsCb = new CheckBox { Text = "0.1% Low & Avg FPS", Location = new Point(238, 254), Size = new Size(224, 21), Checked = _osdShowLows, UseMnemonic = false };
             _osdShowLowsCb.CheckedChanged += (s, e) => { _osdShowLows = _osdShowLowsCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowLowsCb);
 
-            _osdShowModeCb = new CheckBox { Text = "Thermal Mode", Location = new Point(476, 250), Size = new Size(224, 21), Checked = _osdShowMode, UseMnemonic = false };
+            _osdShowModeCb = new CheckBox { Text = "Thermal Mode", Location = new Point(476, 254), Size = new Size(224, 21), Checked = _osdShowMode, UseMnemonic = false };
             _osdShowModeCb.CheckedChanged += (s, e) => { _osdShowMode = _osdShowModeCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowModeCb);
 
-            _osdShowPeaksCb = new CheckBox { Text = "Peak Trackers (▲)", Location = new Point(706, 250), Size = new Size(222, 21), Checked = _osdShowPeaks, UseMnemonic = false };
+            _osdShowPeaksCb = new CheckBox { Text = "Peak Trackers (▲)", Location = new Point(706, 254), Size = new Size(222, 21), Checked = _osdShowPeaks, UseMnemonic = false };
             _osdShowPeaksCb.CheckedChanged += (s, e) => { _osdShowPeaks = _osdShowPeaksCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowPeaksCb);
 
-            // Row 9 (y=274): Graph Styles & Toggles
-            _osdMatchThemeCb = new CheckBox { Text = "Match App Theme", Location = new Point(8, 274), Size = new Size(224, 21), Checked = _osdMatchTheme, UseMnemonic = false };
+            // Row 9 (y=278): Graph Styles & Toggles
+            _osdMatchThemeCb = new CheckBox { Text = "Match App Theme", Location = new Point(8, 278), Size = new Size(224, 21), Checked = _osdMatchTheme, UseMnemonic = false };
             _osdMatchThemeCb.CheckedChanged += (s, e) => { _osdMatchTheme = _osdMatchThemeCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdMatchThemeCb);
 
-            _osdShowLiveTrendCb = new CheckBox { Text = "Live Trend Graph", Location = new Point(238, 274), Size = new Size(224, 21), Checked = _osdShowLiveTrend, UseMnemonic = false };
+            _osdShowLiveTrendCb = new CheckBox { Text = "Live Trend Graph", Location = new Point(238, 278), Size = new Size(224, 21), Checked = _osdShowLiveTrend, UseMnemonic = false };
             _osdShowLiveTrendCb.CheckedChanged += (s, e) =>
             {
                 _osdShowLiveTrend = _osdShowLiveTrendCb.Checked;
@@ -4120,42 +4165,42 @@ namespace MiniFanControl
             _uiToolTip.SetToolTip(_osdShowLiveTrendCb, "Display the multi-sensor live history trend chart (CPU, iGPU, NVMe, Power, Fan RPM)");
             p.Controls.Add(_osdShowLiveTrendCb);
 
-            _osdShowFpsGraphCb = new CheckBox { Text = "FPS & Frametime Graph", Location = new Point(476, 274), Size = new Size(224, 21), Checked = _osdShowFpsGraph, UseMnemonic = false };
+            _osdShowFpsGraphCb = new CheckBox { Text = "FPS & Frametime Graph", Location = new Point(476, 278), Size = new Size(224, 21), Checked = _osdShowFpsGraph, UseMnemonic = false };
             _osdShowFpsGraphCb.CheckedChanged += (s, e) => { _osdShowFpsGraph = _osdShowFpsGraphCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdShowFpsGraphCb);
 
-            _osdDfGraphStyleCb = new CheckBox { Text = "DF Twin Graphs", Location = new Point(706, 274), Size = new Size(222, 21), Checked = _osdDfGraphStyle, UseMnemonic = false };
+            _osdDfGraphStyleCb = new CheckBox { Text = "DF Twin Graphs", Location = new Point(706, 278), Size = new Size(222, 21), Checked = _osdDfGraphStyle, UseMnemonic = false };
             _osdDfGraphStyleCb.CheckedChanged += (s, e) => { _osdDfGraphStyle = _osdDfGraphStyleCb.Checked; SyncOverlayFromStudio(); };
             _uiToolTip.SetToolTip(_osdDfGraphStyleCb, "Render Digital Foundry style twin graphs: FRAME-TIME (MS) 0-50-100 and FRAME-RATE (FPS) 0-40-80-120");
             p.Controls.Add(_osdDfGraphStyleCb);
 
-            // Row 10 (y=298): Feature Tags & Ordering
-            _osdShowRadeonCb = new CheckBox { Text = "Radeon Feature Tags", Location = new Point(8, 298), Size = new Size(224, 21), Checked = _osdShowRadeon, UseMnemonic = false };
+            // Row 10 (y=302): Feature Tags & Ordering
+            _osdShowRadeonCb = new CheckBox { Text = "Radeon Feature Tags", Location = new Point(8, 302), Size = new Size(224, 21), Checked = _osdShowRadeon, UseMnemonic = false };
             _osdShowRadeonCb.CheckedChanged += (s, e) => { _osdShowRadeon = _osdShowRadeonCb.Checked; SyncOverlayFromStudio(); };
             _uiToolTip.SetToolTip(_osdShowRadeonCb, "Display compact pill tags for active AMD Radeon features (FreeSync, Anti-Lag, AFMF, Chill, Boost, RSR, RIS)");
             p.Controls.Add(_osdShowRadeonCb);
 
-            _osdShowDriverVerCb = new CheckBox { Text = "Radeon Driver Version", Location = new Point(238, 298), Size = new Size(224, 21), Checked = _osdShowDriverVer, UseMnemonic = false };
+            _osdShowDriverVerCb = new CheckBox { Text = "Radeon Driver Version", Location = new Point(238, 302), Size = new Size(224, 21), Checked = _osdShowDriverVer, UseMnemonic = false };
             _osdShowDriverVerCb.CheckedChanged += (s, e) => { _osdShowDriverVer = _osdShowDriverVerCb.Checked; SyncOverlayFromStudio(); };
             _uiToolTip.SetToolTip(_osdShowDriverVerCb, "Show the installed AMD Radeon Software (Adrenalin) driver version on the OSD");
             p.Controls.Add(_osdShowDriverVerCb);
 
-            _osdPlotFpsOnTrendCb = new CheckBox { Text = "Plot FPS on Live Trend", Location = new Point(476, 298), Size = new Size(224, 21), Checked = _osdPlotFpsOnTrend, UseMnemonic = false };
+            _osdPlotFpsOnTrendCb = new CheckBox { Text = "Plot FPS on Live Trend", Location = new Point(476, 302), Size = new Size(224, 21), Checked = _osdPlotFpsOnTrend, UseMnemonic = false };
             _osdPlotFpsOnTrendCb.CheckedChanged += (s, e) => { _osdPlotFpsOnTrend = _osdPlotFpsOnTrendCb.Checked; SyncOverlayFromStudio(); };
             p.Controls.Add(_osdPlotFpsOnTrendCb);
 
-            _osdDfGraphFirstCb = new CheckBox { Text = "DF Graphs on Top", Location = new Point(706, 298), Size = new Size(222, 21), Checked = _osdDfGraphFirst, UseMnemonic = false };
+            _osdDfGraphFirstCb = new CheckBox { Text = "DF Graphs on Top", Location = new Point(706, 302), Size = new Size(222, 21), Checked = _osdDfGraphFirst, UseMnemonic = false };
             _osdDfGraphFirstCb.CheckedChanged += (s, e) => { _osdDfGraphFirst = _osdDfGraphFirstCb.Checked; SyncOverlayFromStudio(); };
             _uiToolTip.SetToolTip(_osdDfGraphFirstCb, "Render Digital Foundry style twin graphs above the multi-sensor Live Trend graph");
             p.Controls.Add(_osdDfGraphFirstCb);
 
-            // Row 11 (y=326): Guidance Tip Box
+            // Row 11 (y=330): Guidance Tip Box
             _osdTipLabel = new Label
             {
                 Text = "Tip: Drag OSD anywhere across multiple monitors with your mouse. Right-click the OSD anytime for quick scale, graph modes, heights & click-through lock, or press Ctrl+Alt+F9 to toggle overlay.",
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Regular),
-                Location = new Point(8, 326),
-                Size = new Size(920, 34),
+                Location = new Point(8, 330),
+                Size = new Size(920, 32),
                 Padding = new Padding(2, 0, 2, 0),
                 UseMnemonic = false
             };
@@ -4488,7 +4533,7 @@ namespace MiniFanControl
             }
 
             // Style quick snap buttons
-            Button[] snapBtns = new[] { _osdQuickPosTl, _osdQuickPosTr, _osdQuickPosBl, _osdQuickPosBr };
+            Button[] snapBtns = new[] { _osdQuickPosTl, _osdQuickPosTc, _osdQuickPosTr, _osdQuickPosBl, _osdQuickPosBc, _osdQuickPosBr };
             foreach (Button b in snapBtns)
             {
                 if (b != null)

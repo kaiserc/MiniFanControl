@@ -619,6 +619,29 @@ namespace MiniFanControl
                 Check(colsCount == 12 && wideW >= 1400,
                     "OSD Horizontal Bar Auto-Width Expansion (12 Metrics & Custom Mode Support)",
                     string.Format("cols={0}, targetW={1}px (expected >= 1400px)", colsCount, wideW));
+
+                // Test OSD Driver Version Metric & Afterburner Theme Palette
+                osd.ShowDriverVersion = true;
+                fullSt.RadeonSoftwareVer = "26.10.1";
+                osd.IsAfterburnerTheme = true;
+                osd.UpdateMetrics(fullSt, "Performance", true);
+                int countWithDrv = osd.CountVisibleMetrics();
+                Check(countWithDrv == 13 && osd.IsAfterburnerTheme,
+                    "OSD Driver Version & Afterburner Theme Integration",
+                    string.Format("cols={0} (expected 13), theme=Afterburner", countWithDrv));
+
+                // Test OSD Center-Top & Center-Bottom Snap Locations
+                Rectangle testWa = new Rectangle(0, 0, 1920, 1080);
+                int margin = 24;
+                int osdW = 800;
+                int osdH = 80;
+                int ctX = testWa.Left + (testWa.Width - osdW) / 2;
+                int ctY = testWa.Top + margin;
+                int cbX = testWa.Left + (testWa.Width - osdW) / 2;
+                int cbY = testWa.Bottom - osdH - margin;
+                Check(ctX == 560 && ctY == 24 && cbX == 560 && cbY == 976,
+                    "OSD Center-Top and Center-Bottom Snap Location Geometry",
+                    string.Format("CenterTop=({0},{1}), CenterBottom=({2},{3})", ctX, ctY, cbX, cbY));
             }
 
 
@@ -1610,6 +1633,37 @@ namespace MiniFanControl
                 "High-Resolution RTSS Frametime, Lows & AMD Radeon Feature Telemetry",
                 string.Format("LowsMathOk={0}, SessionOk={1}, SparkOk={2}, OsdRender={3}, RadeonOk={4} ('{5}')",
                     lowsMathValid, sessionFpsValid, ftSparkValid, osdRenderValid, radSummaryOk, rad.Summary ?? "None"));
+
+            // 44. UI Layout Anti-Clipping Geometry (Telemetry Boxes, OSD Studio & Options Card)
+            bool uiGeometryValid = false;
+            string uiGeomDetails = "";
+            try
+            {
+                using (MainForm mf = new MainForm(true, true))
+                {
+                    bool metricBoxesValid = (mf.TestCpuTempLabel != null && mf.TestCpuTempLabel.Height >= 32 && mf.TestCpuTempLabel.Font.SizeInPoints <= 15.0f) &&
+                                            (mf.TestFan1RpmLabel != null && mf.TestFan1RpmLabel.Height >= 32 && mf.TestFan1RpmLabel.Font.SizeInPoints <= 12.0f);
+                    bool osdStudioValid = (mf.TestOsdOpacityLabel != null && mf.TestOsdOpacityLabel.Width >= 60) &&
+                                          (mf.TestOsdSnapLabel != null && mf.TestOsdSnapLabel.Width >= 85) &&
+                                          (mf.TestOsdMetricsHeaderLabel != null && mf.TestOsdMetricsHeaderLabel.Location.Y >= 180) &&
+                                          (mf.TestOsdQuickPosBc != null && mf.TestOsdQuickPosBc.Width >= 94) &&
+                                          (mf.TestOsdQuickPosBr != null && mf.TestOsdQuickPosBr.Width >= 92);
+                    bool optionsCardValid = (mf.TestAutostartCb != null && mf.TestAutostartCb.Width >= 300) &&
+                                            (mf.TestAlwaysOnTopCb != null && mf.TestAlwaysOnTopCb.Location.X >= 330);
+
+                    uiGeometryValid = metricBoxesValid && osdStudioValid && optionsCardValid;
+                    uiGeomDetails = string.Format("MetricBoxes={0}, OsdStudio={1}, OptionsCard={2}", metricBoxesValid, osdStudioValid, optionsCardValid);
+                }
+            }
+            catch (Exception ex)
+            {
+                uiGeometryValid = false;
+                uiGeomDetails = ex.Message;
+            }
+
+            Check(uiGeometryValid,
+                "UI Layout Anti-Clipping Geometry (Telemetry Boxes, OSD Studio & Options Card)",
+                uiGeomDetails);
 
             Console.WriteLine("----------------------------------------------------------------------");
 

@@ -17,6 +17,9 @@ for %%f in (*.old.exe) do (
     del /f /q "%%f" >nul 2>&1
 )
 
+rem Safely clean any intermediate obj folders that might have been created by dotnet/VS
+if exist obj rmdir /s /q obj >nul 2>&1
+
 rem Safely free the filenames even if processes are currently running
 if exist MiniFanControl.exe (
     ren MiniFanControl.exe "MiniFanControl.%RANDOM%%RANDOM%.old.exe" >nul 2>&1
