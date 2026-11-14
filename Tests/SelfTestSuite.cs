@@ -1665,6 +1665,52 @@ namespace MiniFanControl
                 "UI Layout Anti-Clipping Geometry (Telemetry Boxes, OSD Studio & Options Card)",
                 uiGeomDetails);
 
+            // 45. Digital Foundry Framerate Dynamic Scale Ladder & Baseline Anti-Clipping Geometry
+            bool dfValid = false;
+            string dfDetails = "";
+            try
+            {
+                // Test A: 60 FPS locked gameplay
+                List<int> fps60History = new List<int> { 60, 60, 59, 60, 60, 60 };
+                int ceiling60 = CapFrameXOverlayForm.CalculateDfCeiling(60, fps60History);
+                bool c60Ok = (ceiling60 == 60);
+
+                // Test B: 55-64 FPS gameplay (Ori and the Will of the Wisps)
+                List<int> oriHistory = new List<int> { 55, 62, 64, 58, 64, 63, 61, 64 };
+                int ceilingOri = CapFrameXOverlayForm.CalculateDfCeiling(64, oriHistory);
+                bool cOriOk = (ceilingOri == 120); // Scale: 120, 80, 40, 0 matching DF reference image
+
+                // Test C: Loading / Splash screen spike rolls off within 20 samples
+                List<int> spikeHistory = new List<int>();
+                for (int i = 0; i < 50; i++) spikeHistory.Add(350); // splash screen
+                for (int i = 0; i < 20; i++) spikeHistory.Add(64);  // active gameplay
+                int ceilingRollOff = CapFrameXOverlayForm.CalculateDfCeiling(64, spikeHistory);
+                bool cSpikeOk = (ceilingRollOff == 120); // Loading spike dropped from active window
+
+                // Test D: High-refresh rate gameplay tiers (144Hz & 240Hz)
+                int ceiling144 = CapFrameXOverlayForm.CalculateDfCeiling(144, new List<int> { 140, 144, 142 });
+                int ceiling240 = CapFrameXOverlayForm.CalculateDfCeiling(240, new List<int> { 235, 240, 238 });
+                bool cHdrOk = (ceiling144 == 180) && (ceiling240 == 240);
+
+                // Test E: Height geometry & 0 baseline margin
+                int ftH = CapFrameXOverlayForm.GetDfFrametimeHeight(1.0f);
+                int fpsH = CapFrameXOverlayForm.GetDfFramerateHeight(1.0f, 45);
+                bool geomOk = (ftH >= 40) && (fpsH >= 55);
+
+                dfValid = c60Ok && cOriOk && cSpikeOk && cHdrOk && geomOk;
+                dfDetails = string.Format("C60={0}({1}), Ori={2}({3}), SpikeRollOff={4}({5}), HighRefresh={6}, GeomOk={7}(ft={8},fps={9})",
+                    c60Ok, ceiling60, cOriOk, ceilingOri, cSpikeOk, ceilingRollOff, cHdrOk, geomOk, ftH, fpsH);
+            }
+            catch (Exception ex)
+            {
+                dfValid = false;
+                dfDetails = ex.Message;
+            }
+
+            Check(dfValid,
+                "Digital Foundry Dual Graphs Dynamic Scale Ladder & Baseline Anti-Clipping",
+                dfDetails);
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));

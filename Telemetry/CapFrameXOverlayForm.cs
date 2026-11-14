@@ -158,8 +158,64 @@ namespace MiniFanControl
             _fontHdr   = new Font("Segoe UI", 7.5f * sc, FontStyle.Bold);
             _fontChart = new Font("Segoe UI", 6.75f * sc, FontStyle.Bold);
             _fontTrace = new Font("Segoe UI", 6.0f * sc, FontStyle.Bold);
-            _fontDfHdr = new Font("Segoe UI", 6.5f * sc, FontStyle.Bold);
-            _fontDfAxis = new Font("Segoe UI", 5.5f * sc, FontStyle.Bold);
+            _fontDfHdr = TryCreateCondensedFont("Bahnschrift", 6.8f * sc, FontStyle.Bold, "Segoe UI");
+            _fontDfAxis = TryCreateCondensedFont("Bahnschrift", 5.8f * sc, FontStyle.Bold, "Segoe UI");
+        }
+
+        private static Font TryCreateCondensedFont(string preferredFamily, float sizePt, FontStyle style, string fallbackFamily)
+        {
+            try
+            {
+                using (FontFamily ff = new FontFamily(preferredFamily))
+                {
+                    if (ff.Name.Equals(preferredFamily, StringComparison.OrdinalIgnoreCase))
+                        return new Font(preferredFamily, sizePt, style);
+                }
+            }
+            catch { }
+            return new Font(fallbackFamily, sizePt, style);
+        }
+
+        public static int GetDfFrametimeHeight(float sc)
+        {
+            return (int)Math.Round(42 * sc);
+        }
+
+        public static int GetDfFramerateHeight(float sc, int scaledGraphH)
+        {
+            return Math.Max((int)Math.Round(58 * sc), (int)Math.Round(scaledGraphH * 1.05f));
+        }
+
+        public static int CalculateDfCeiling(int curLiveFps, IList<int> fpsHistory)
+        {
+            int total = (fpsHistory != null) ? fpsHistory.Count : 0;
+            int lookback = Math.Min(total, 20);
+            int activeMaxFps = curLiveFps > 0 ? curLiveFps : 60;
+            if (lookback > 0)
+            {
+                List<int> recent = new List<int>(lookback);
+                for (int i = 0; i < lookback; i++)
+                {
+                    int f = fpsHistory[total - lookback + i];
+                    if (f > 0) recent.Add(f);
+                }
+                if (recent.Count > 0)
+                {
+                    recent.Sort();
+                    int p90Idx = Math.Min(recent.Count - 1, (int)Math.Ceiling(recent.Count * 0.90) - 1);
+                    activeMaxFps = Math.Max(recent[p90Idx], curLiveFps);
+                }
+            }
+
+            if (activeMaxFps > 260)
+                return (int)(Math.Ceiling(activeMaxFps / 120.0) * 120);
+            if (activeMaxFps > 180)
+                return 240;
+            if (activeMaxFps > 130)
+                return 180;
+            if (activeMaxFps > 60)
+                return 120;
+            return 60;
         }
 
         protected override void Dispose(bool disposing)
@@ -737,7 +793,7 @@ namespace MiniFanControl
                 if (hasFpsGraph)
                 {
                     if (DfGraphStyle)
-                        h += (int)Math.Round(38 * sc) + (int)Math.Round(scaledGraphH * 0.85f) + (int)Math.Round(16 * sc);
+                        h += GetDfFrametimeHeight(sc) + GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(16 * sc);
                     else
                         h += scaledGraphH + (int)Math.Round(10 * sc);
                 }
@@ -753,7 +809,7 @@ namespace MiniFanControl
                 if (hasFpsGraph)
                 {
                     if (DfGraphStyle)
-                        h += (int)Math.Round(38 * sc) + (int)Math.Round(scaledGraphH * 0.85f) + (int)Math.Round(16 * sc);
+                        h += GetDfFrametimeHeight(sc) + GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(16 * sc);
                     else
                         h += scaledGraphH + (int)Math.Round(10 * sc);
                 }
@@ -1500,32 +1556,56 @@ namespace MiniFanControl
         {
             if (rect.Width <= 10 || rect.Height <= 10) return;
 
-            // Digital Foundry Frametime Signature Box
             using (SolidBrush bgBr = new SolidBrush(Color.FromArgb(195, 10, 14, 20)))
             using (Pen borderPen = new Pen(Color.FromArgb(220, 255, 255, 255), 1.2f))
             {
                 g.FillRectangle(bgBr, rect);
                 g.DrawRectangle(borderPen, rect.X, rect.Y, rect.Width - 1, rect.Height - 1);
-
-                // Vertical center dividing line
-                int midX = rect.X + (rect.Width - (int)Math.Round(26 * sc)) / 2;
-                using (Pen divPen = new Pen(Color.FromArgb(160, 255, 255, 255), 1f))
-                {
-                    g.DrawLine(divPen, midX, rect.Y + (int)Math.Round(12 * sc), midX, rect.Bottom - 1);
-                }
             }
 
-            // Bold Header: FRAME-TIME (MS)
-            TextRenderer.DrawText(g, "FRAME-TIME (MS)", _fontDfHdr, new Point(rect.X + (int)Math.Round(3 * sc), rect.Y + (int)Math.Round(1 * sc)), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            double curFt = _status.RtssFrametimeMs > 0
+                ? _status.RtssFrametimeMs
+                : (_status.RtssFps > 0
+                    ? (1000.0 / _status.RtssFps)
+                    : ((Stats != null && Stats.FrametimeHistory != null && Stats.FrametimeHistory.Count > 0)
+                        ? Stats.FrametimeHistory[Stats.FrametimeHistory.Count - 1] / 10.0
+                        : 0));
 
-            int topPad = (int)Math.Round(12 * sc);
-            int rightPad = (int)Math.Round(24 * sc);
-            Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - 2));
+            // Bold Header: FRAME-TIME (MS) with live readout
+            string ftHdr = (curFt > 0)
+                ? string.Format("FRAME-TIME (MS)  •  NOW: {0:0.0} ms", curFt)
+                : "FRAME-TIME (MS)";
+            TextRenderer.DrawText(g, ftHdr, _fontDfHdr, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + (int)Math.Round(1.5f * sc)), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+
+            int topPad = (int)Math.Round(14 * sc);
+            int btmPad = (int)Math.Round(8 * sc);
+            int rightPad = (int)Math.Round(26 * sc);
+            Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - btmPad));
+
+            // Vertical center dividing line inside plot
+            int midX = plot.Left + plot.Width / 2;
+            using (Pen divPen = new Pen(Color.FromArgb(140, 255, 255, 255), 1f))
+            {
+                g.DrawLine(divPen, midX, plot.Top, midX, plot.Bottom);
+            }
+            // Vertical right border line closing the plot area
+            using (Pen boundPen = new Pen(Color.FromArgb(180, 255, 255, 255), 1f))
+            {
+                g.DrawLine(boundPen, plot.Right, plot.Top, plot.Right, plot.Bottom);
+            }
 
             // Right Axis Labels: 0 (top), 50 (middle), 100 (bottom) - Inverted Digital Foundry scale
-            TextRenderer.DrawText(g, "0", _fontDfAxis, new Point(plot.Right + (int)Math.Round(2 * sc), plot.Top - (int)Math.Round(1 * sc)), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            TextRenderer.DrawText(g, "50", _fontDfAxis, new Point(plot.Right + (int)Math.Round(2 * sc), plot.Top + plot.Height / 2 - (int)Math.Round(4 * sc)), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            TextRenderer.DrawText(g, "100", _fontDfAxis, new Point(plot.Right + (int)Math.Round(2 * sc), plot.Bottom - (int)Math.Round(7 * sc)), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            Size sz0 = TextRenderer.MeasureText(g, "0", _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            Size sz50 = TextRenderer.MeasureText(g, "50", _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            Size sz100 = TextRenderer.MeasureText(g, "100", _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+
+            int y0 = Math.Max(rect.Y + 2, (int)Math.Round(plot.Top - sz0.Height / 2f));
+            int y50 = (int)Math.Round(plot.Top + plot.Height / 2f - sz50.Height / 2f);
+            int y100 = Math.Min(rect.Bottom - 2 - sz100.Height, (int)Math.Round(plot.Bottom - sz100.Height / 2f));
+
+            TextRenderer.DrawText(g, "0", _fontDfAxis, new Point(plot.Right + (int)Math.Round(3 * sc), y0), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, "50", _fontDfAxis, new Point(plot.Right + (int)Math.Round(3 * sc), y50), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, "100", _fontDfAxis, new Point(plot.Right + (int)Math.Round(3 * sc), y100), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             if (Stats == null || Stats.FrametimeHistory == null || Stats.FrametimeHistory.Count == 0)
                 return;
@@ -1556,13 +1636,39 @@ namespace MiniFanControl
                 g.DrawLines(ftPen, pts);
             }
 
-            if (pts.Length > 0)
+            if (pts.Length > 0 && curFt > 0)
             {
                 PointF last = pts[pts.Length - 1];
                 using (SolidBrush dotBr = new SolidBrush(ftCol))
                 {
-                    g.FillEllipse(dotBr, last.X - 2.5f, last.Y - 2.5f, 5f, 5f);
+                    g.FillEllipse(dotBr, last.X - 2.5f * sc, last.Y - 2.5f * sc, 5f * sc, 5f * sc);
                 }
+
+                // High-visibility live endpoint badge on the frametime line
+                string ftBadge = string.Format("{0:0.0} ms", curFt);
+                Size ftBadgeSz = TextRenderer.MeasureText(g, ftBadge, _fontDfAxis, new Size(80, 16), TextFormatFlags.NoPadding);
+                int ftBw = ftBadgeSz.Width + (int)Math.Round(6 * sc);
+                int ftBh = (int)Math.Round(12 * sc);
+                int ftBx = (int)Math.Round(last.X - ftBw - 4 * sc);
+                if (ftBx < plot.Left + 2) ftBx = plot.Left + 2;
+                int ftBy = (int)Math.Round(last.Y - ftBh / 2f);
+                if (ftBy < plot.Top + 1) ftBy = plot.Top + 1;
+                if (ftBy + ftBh > plot.Bottom - 1) ftBy = plot.Bottom - 1 - ftBh;
+                Rectangle ftBadgeRect = new Rectangle(ftBx, ftBy, ftBw, ftBh);
+
+                using (Pen tickPen = new Pen(Color.FromArgb(180, ftCol), 1f))
+                {
+                    g.DrawLine(tickPen, last.X, last.Y, ftBx + ftBw, ftBy + ftBh / 2f);
+                }
+                using (SolidBrush bgPill = new SolidBrush(Color.FromArgb(225, 10, 14, 20)))
+                {
+                    g.FillRectangle(bgPill, ftBadgeRect);
+                }
+                using (Pen borderPill = new Pen(ftCol, 1.2f))
+                {
+                    g.DrawRectangle(borderPill, ftBadgeRect);
+                }
+                TextRenderer.DrawText(g, ftBadge, _fontDfAxis, new Point(ftBx + (int)Math.Round(3 * sc), ftBy + (int)Math.Round(1.5f * sc)), ftCol, TextFormatFlags.NoPadding);
             }
 
             // Hover scrubbing tooltip
@@ -1590,21 +1696,21 @@ namespace MiniFanControl
         {
             if (rect.Width <= 10 || rect.Height <= 10) return;
 
-            int curMaxFps = (Stats != null && Stats.MaxFps > 0) ? Stats.MaxFps : (_status.RtssFps > 0 ? _status.RtssFps : 60);
-            int fpsCeiling = 120;
-            if (curMaxFps > 500)
-                fpsCeiling = (int)(Math.Ceiling(curMaxFps / 120.0) * 120);
-            else if (curMaxFps > 300)
-                fpsCeiling = 480;
-            else if (curMaxFps > 200)
-                fpsCeiling = 300;
-            else if (curMaxFps > 130)
-                fpsCeiling = 240;
-            else if (curMaxFps > 65)
-                fpsCeiling = 120;
-            else
-                fpsCeiling = 60;
+            int total = (Stats != null && Stats.FpsHistory != null) ? Stats.FpsHistory.Count : 0;
+            int take = Math.Min(total, 60);
+            int start = total - take;
 
+            int curLiveFps = _status.RtssFps > 0
+                ? _status.RtssFps
+                : ((total > 0 && Stats.FpsHistory[total - 1] > 0)
+                    ? Stats.FpsHistory[total - 1]
+                    : 0);
+
+            int sessionAvg = (Stats != null && Stats.AvgFps > 0)
+                ? (int)Math.Round(Stats.AvgFps)
+                : (_status.RtssAvgFps > 0 ? _status.RtssAvgFps : curLiveFps);
+
+            int fpsCeiling = CalculateDfCeiling(curLiveFps, (Stats != null) ? Stats.FpsHistory : null);
             int step1 = fpsCeiling / 3;
             int step2 = (fpsCeiling * 2) / 3;
             int step3 = fpsCeiling;
@@ -1616,16 +1722,29 @@ namespace MiniFanControl
                 g.DrawRectangle(borderPen, rect.X, rect.Y, rect.Width - 1, rect.Height - 1);
             }
 
-            // Bold Header: FRAME-RATE (FPS)
-            TextRenderer.DrawText(g, "FRAME-RATE (FPS)", _fontDfHdr, new Point(rect.X + (int)Math.Round(3 * sc), rect.Y + (int)Math.Round(1 * sc)), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            // Bold Header: FRAME-RATE (FPS) with live readout and average
+            string fpsHdr = (curLiveFps > 0)
+                ? string.Format("FRAME-RATE (FPS)  •  NOW: {0} FPS{1}", curLiveFps, sessionAvg > 0 ? string.Format("  •  AVG: {0}", sessionAvg) : "")
+                : "FRAME-RATE (FPS)";
+            TextRenderer.DrawText(g, fpsHdr, _fontDfHdr, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + (int)Math.Round(1.5f * sc)), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
-            int topPad = (int)Math.Round(12 * sc);
-            int rightPad = (int)Math.Round(24 * sc);
-            Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - 2));
+            int topPad = (int)Math.Round(14 * sc);
+            int btmPad = (int)Math.Round(9 * sc);
+            int rightPad = (int)Math.Round(28 * sc);
+            Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - btmPad));
 
-            // Full horizontal grid lines at step3, step2, step1, 0 (Digital Foundry standard)
-            using (Pen gridPen = new Pen(Color.FromArgb(100, 255, 255, 255), 1f))
+            // Grid lines and Axis Labels
+            using (Pen gridPen = new Pen(Color.FromArgb(90, 255, 255, 255), 1f))
+            using (Pen boundPen = new Pen(Color.FromArgb(180, 255, 255, 255), 1f))
+            using (Pen tickPen = new Pen(Color.FromArgb(35, 255, 255, 255), 1f))
             {
+                // Vertical division ticks
+                for (int t = 1; t <= 4; t++)
+                {
+                    float tx = plot.Left + (plot.Width * t) / 5f;
+                    g.DrawLine(tickPen, tx, plot.Top, tx, plot.Bottom);
+                }
+
                 int[] levels = new int[] { step3, step2, step1, 0 };
                 for (int i = 0; i < levels.Length; i++)
                 {
@@ -1634,20 +1753,22 @@ namespace MiniFanControl
                     g.DrawLine(gridPen, plot.Left, y, plot.Right, y);
 
                     string lbl = levels[i].ToString();
-                    int lblY = (i == 0) ? (int)y - 1 : (i == levels.Length - 1 ? (int)y - (int)Math.Round(7 * sc) : (int)y - (int)Math.Round(4 * sc));
-                    TextRenderer.DrawText(g, lbl, _fontDfAxis, new Point(plot.Right + (int)Math.Round(2 * sc), lblY), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    Size sz = TextRenderer.MeasureText(g, lbl, _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    int lblY = (int)Math.Round(y - sz.Height / 2f);
+                    if (lblY < rect.Y + 2) lblY = rect.Y + 2;
+                    if (lblY + sz.Height > rect.Bottom - 2) lblY = rect.Bottom - 2 - sz.Height;
+                    TextRenderer.DrawText(g, lbl, _fontDfAxis, new Point(plot.Right + (int)Math.Round(3 * sc), lblY), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
                 }
+
+                // Vertical boundary line separating the plot from the axis labels
+                g.DrawLine(boundPen, plot.Right, plot.Top, plot.Right, plot.Bottom);
             }
 
-            if (Stats == null || Stats.FpsHistory == null || Stats.FpsHistory.Count == 0)
+            if (total == 0)
                 return;
 
-            int total = Stats.FpsHistory.Count;
-            int take = Math.Min(total, 60);
-            int start = total - take;
-
             // Session Avg line (Smooth Blue / Cyan)
-            if (Stats.AvgFpsHistory.Count > 0)
+            if (Stats.AvgFpsHistory != null && Stats.AvgFpsHistory.Count > 0)
             {
                 PointF[] avgPts = new PointF[take];
                 for (int i = 0; i < take; i++)
@@ -1685,7 +1806,7 @@ namespace MiniFanControl
                 else if (i == take - 1)
                 {
                     // Keep leading edge exact to latest live sample
-                    f = (idx < Stats.FpsHistory.Count) ? Stats.FpsHistory[idx] : 0;
+                    f = (curLiveFps > 0) ? curLiveFps : ((idx < Stats.FpsHistory.Count) ? Stats.FpsHistory[idx] : 0);
                 }
                 else
                 {
@@ -1707,12 +1828,68 @@ namespace MiniFanControl
                 g.DrawLines(fpsPen, fpsPts);
             }
 
-            if (fpsPts.Length > 0 && Stats.FpsHistory.Count > 0)
+            if (fpsPts.Length > 0 && curLiveFps > 0)
             {
                 PointF last = fpsPts[fpsPts.Length - 1];
                 using (SolidBrush dotBr = new SolidBrush(neonGreen))
                 {
-                    g.FillEllipse(dotBr, last.X - 2.5f, last.Y - 2.5f, 5f, 5f);
+                    g.FillEllipse(dotBr, last.X - 2.5f * sc, last.Y - 2.5f * sc, 5f * sc, 5f * sc);
+                }
+
+                // High-visibility live endpoint badge on the FPS curve
+                string fpsBadge = string.Format("{0} FPS", curLiveFps);
+                Size bSz = TextRenderer.MeasureText(g, fpsBadge, _fontDfAxis, new Size(80, 16), TextFormatFlags.NoPadding);
+                int bw = bSz.Width + (int)Math.Round(6 * sc);
+                int bh = (int)Math.Round(12 * sc);
+                int bx = (int)Math.Round(last.X - bw - 4 * sc);
+                if (bx < plot.Left + 2) bx = plot.Left + 2;
+                int by = (int)Math.Round(last.Y - bh / 2f);
+                if (by < plot.Top + 1) by = plot.Top + 1;
+                if (by + bh > plot.Bottom - 1) by = plot.Bottom - 1 - bh;
+                Rectangle badgeRect = new Rectangle(bx, by, bw, bh);
+
+                using (Pen tickPen = new Pen(Color.FromArgb(180, neonGreen), 1f))
+                {
+                    g.DrawLine(tickPen, last.X, last.Y, bx + bw, by + bh / 2f);
+                }
+                using (SolidBrush bgPill = new SolidBrush(Color.FromArgb(225, 10, 14, 20)))
+                {
+                    g.FillRectangle(bgPill, badgeRect);
+                }
+                using (Pen borderPill = new Pen(neonGreen, 1.2f))
+                {
+                    g.DrawRectangle(borderPill, badgeRect);
+                }
+                TextRenderer.DrawText(g, fpsBadge, _fontDfAxis, new Point(bx + (int)Math.Round(3 * sc), by + (int)Math.Round(1.5f * sc)), neonGreen, TextFormatFlags.NoPadding);
+
+                // Show companion Session Avg badge if separated from live badge
+                if (Stats.AvgFpsHistory != null && Stats.AvgFpsHistory.Count > 0 && sessionAvg > 0)
+                {
+                    float normAvg = Math.Max(0f, Math.Min(1f, (float)sessionAvg / fpsCeiling));
+                    float avgY = plot.Bottom - normAvg * plot.Height;
+                    if (Math.Abs(avgY - last.Y) > bh + 4)
+                    {
+                        string avgBadge = string.Format("{0} Avg", sessionAvg);
+                        Size aSz = TextRenderer.MeasureText(g, avgBadge, _fontDfAxis, new Size(80, 16), TextFormatFlags.NoPadding);
+                        int abw = aSz.Width + (int)Math.Round(6 * sc);
+                        int abx = (int)Math.Round(last.X - abw - 4 * sc);
+                        if (abx < plot.Left + 2) abx = plot.Left + 2;
+                        int aby = (int)Math.Round(avgY - bh / 2f);
+                        if (aby < plot.Top + 1) aby = plot.Top + 1;
+                        if (aby + bh > plot.Bottom - 1) aby = plot.Bottom - 1 - bh;
+                        Rectangle aRect = new Rectangle(abx, aby, abw, bh);
+
+                        Color avgCol = Color.FromArgb(0x38, 0xBD, 0xF8);
+                        using (SolidBrush bgPill = new SolidBrush(Color.FromArgb(225, 10, 14, 20)))
+                        {
+                            g.FillRectangle(bgPill, aRect);
+                        }
+                        using (Pen borderPill = new Pen(avgCol, 1f) { DashStyle = DashStyle.Dash })
+                        {
+                            g.DrawRectangle(borderPill, aRect);
+                        }
+                        TextRenderer.DrawText(g, avgBadge, _fontDfAxis, new Point(abx + (int)Math.Round(3 * sc), aby + (int)Math.Round(1.5f * sc)), avgCol, TextFormatFlags.NoPadding);
+                    }
                 }
             }
 
@@ -1879,8 +2056,8 @@ namespace MiniFanControl
                         {
                             if (DfGraphStyle)
                             {
-                                int dfFtH = (int)Math.Round(38 * sc);
-                                int dfFpsH = (int)Math.Round(scaledGraphH * 0.85f);
+                                int dfFtH = GetDfFrametimeHeight(sc);
+                                int dfFpsH = GetDfFramerateHeight(sc, scaledGraphH);
                                 Rectangle ftRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(14 * sc), dfFtH);
                                 _dfFtRect = ftRect;
                                 DrawDfFrametimeGraph(g, ftRect, sc);
@@ -2050,8 +2227,8 @@ namespace MiniFanControl
                         {
                             if (DfGraphStyle)
                             {
-                                int dfFtH = (int)Math.Round(38 * sc);
-                                int dfFpsH = (int)Math.Round(scaledGraphH * 0.85f);
+                                int dfFtH = GetDfFrametimeHeight(sc);
+                                int dfFpsH = GetDfFramerateHeight(sc, scaledGraphH);
                                 Rectangle ftRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(16 * sc), dfFtH);
                                 _dfFtRect = ftRect;
                                 DrawDfFrametimeGraph(g, ftRect, sc);

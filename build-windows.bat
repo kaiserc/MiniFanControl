@@ -18,7 +18,10 @@ for %%f in (*.old.exe) do (
 )
 
 rem Safely clean any intermediate obj folders that might have been created by dotnet/VS
-if exist obj rmdir /s /q obj >nul 2>&1
+if exist obj (
+    del /f /s /q obj\*.cs >nul 2>&1
+    rmdir /s /q obj >nul 2>&1
+)
 
 rem Safely free the filenames even if processes are currently running
 if exist MiniFanControl.exe (
@@ -47,6 +50,11 @@ if errorlevel 1 (
 
 set "MANIFEST_FLAG="
 if exist app.manifest set "MANIFEST_FLAG=/win32manifest:app.manifest"
+
+if exist obj (
+    del /f /s /q obj\*.cs >nul 2>&1
+    rmdir /s /q obj >nul 2>&1
+)
 
 if exist app.ico (
     "%CSC%" /nologo /platform:x64 /target:winexe /win32icon:app.ico %MANIFEST_FLAG% /out:MiniFanControl.exe /recurse:*.cs > "%TEMP%\csc_gui.log" 2>&1
