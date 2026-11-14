@@ -120,6 +120,11 @@ namespace MiniFanControl
         private int _hoverMouseX = -1;
         private int _hoverMouseY = -1;
 
+        private int _currentFpsCeiling = 80;
+        private int _fpsCeilingHoldCounter = 0;
+        private int _currentFtCeiling = 50;
+        private int _ftCeilingHoldCounter = 0;
+
         private Font _fontLabel;
         private Font _fontVal;
         private Font _fontPeak;
@@ -214,15 +219,47 @@ namespace MiniFanControl
                 }
             }
 
-            if (activeMaxFps > 260)
-                return (int)(Math.Ceiling(activeMaxFps / 120.0) * 120);
-            if (activeMaxFps > 180)
+            if (activeMaxFps > 235)
+                return (int)(Math.Ceiling(activeMaxFps / 60.0) * 60);
+            if (activeMaxFps > 170)
                 return 240;
-            if (activeMaxFps > 130)
+            if (activeMaxFps > 115)
                 return 180;
-            if (activeMaxFps > 60)
+            if (activeMaxFps > 75)
                 return 120;
+            if (activeMaxFps > 38)
+                return 80; // 58-62 FPS stays rock solid at 80 ceiling with 20 FPS headroom above 60 line
             return 60;
+        }
+
+        public static int CalculateDfFrametimeCeiling(double curFtMs, IList<int> ftHistory)
+        {
+            double activeMaxFt = curFtMs > 0 ? curFtMs : 16.6;
+            if (ftHistory != null && ftHistory.Count > 0)
+            {
+                int total = ftHistory.Count;
+                int lookback = Math.Min(total, 30);
+                List<double> recent = new List<double>(lookback);
+                for (int i = 0; i < lookback; i++)
+                {
+                    int raw = ftHistory[total - lookback + i];
+                    if (raw > 0) recent.Add(raw / 10.0);
+                }
+                if (recent.Count > 0)
+                {
+                    recent.Sort();
+                    int p90 = Math.Min(recent.Count - 1, (int)Math.Ceiling(recent.Count * 0.90) - 1);
+                    activeMaxFt = Math.Max(recent[p90], curFtMs);
+                }
+            }
+
+            if (activeMaxFt > 95.0)
+                return (int)(Math.Ceiling(activeMaxFt / 50.0) * 50);
+            if (activeMaxFt > 65.0)
+                return 100;
+            if (activeMaxFt > 38.0)
+                return 75;
+            return 50; // Zoomed in default for clean pacing (16.6ms / 19.3ms gameplay)
         }
 
         protected override void Dispose(bool disposing)
@@ -1596,6 +1633,29 @@ namespace MiniFanControl
             int rightPad = (int)Math.Round(32 * sc);
             Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - btmPad));
 
+            int targetFtCeiling = CalculateDfFrametimeCeiling(curFt, (Stats != null) ? Stats.FrametimeHistory : null);
+            if (targetFtCeiling > _currentFtCeiling)
+            {
+                // Immediate scale-out on stutter/spike so it is never clipped
+                _currentFtCeiling = targetFtCeiling;
+                _ftCeilingHoldCounter = 0;
+            }
+            else if (targetFtCeiling < _currentFtCeiling)
+            {
+                // Hold scaled-out view for 12 updates before zooming back in
+                _ftCeilingHoldCounter++;
+                if (_ftCeilingHoldCounter >= 12)
+                {
+                    _currentFtCeiling = targetFtCeiling;
+                    _ftCeilingHoldCounter = 0;
+                }
+            }
+            else
+            {
+                _ftCeilingHoldCounter = 0;
+            }
+            int ftCeiling = _currentFtCeiling;
+
             // Vertical center dividing line inside plot
             int midX = plot.Left + plot.Width / 2;
             using (Pen divPen = new Pen(Color.FromArgb(140, 255, 255, 255), 1f))
@@ -1608,18 +1668,29 @@ namespace MiniFanControl
                 g.DrawLine(boundPen, plot.Right, plot.Top, plot.Right, plot.Bottom);
             }
 
-            // Right Axis Labels: 0 (top), 50 (middle), 100 (bottom) - Inverted Digital Foundry scale
-            Size sz0 = TextRenderer.MeasureText(g, "0", _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            Size sz50 = TextRenderer.MeasureText(g, "50", _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            Size sz100 = TextRenderer.MeasureText(g, "100", _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            // Subtle dashed midpoint horizontal reference line
+            using (Pen midGridPen = new Pen(Color.FromArgb(45, 255, 255, 255), 1f) { DashStyle = DashStyle.Dash })
+            {
+                float midY = plot.Top + plot.Height / 2f;
+                g.DrawLine(midGridPen, plot.Left, midY, plot.Right, midY);
+            }
+
+            // Right Axis Labels: 0 (top), mid (middle), ftCeiling (bottom) - Dynamic Zoom (50ms / 75ms / 100ms)
+            string lbl0 = "0";
+            string lblMid = (ftCeiling / 2).ToString();
+            string lblMax = ftCeiling.ToString();
+
+            Size sz0 = TextRenderer.MeasureText(g, lbl0, _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            Size szMid = TextRenderer.MeasureText(g, lblMid, _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            Size sz100 = TextRenderer.MeasureText(g, lblMax, _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             int y0 = Math.Max(rect.Y + 2, (int)Math.Round(plot.Top - sz0.Height / 2f));
-            int y50 = (int)Math.Round(plot.Top + plot.Height / 2f - sz50.Height / 2f);
+            int y50 = (int)Math.Round(plot.Top + plot.Height / 2f - szMid.Height / 2f);
             int y100 = Math.Min(rect.Bottom - 2 - sz100.Height, (int)Math.Round(plot.Bottom - sz100.Height / 2f));
 
-            TextRenderer.DrawText(g, "0", _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y0), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            TextRenderer.DrawText(g, "50", _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y50), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            TextRenderer.DrawText(g, "100", _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y100), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, lbl0, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y0), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, lblMid, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y50), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, lblMax, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y100), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             if (Stats == null || Stats.FrametimeHistory == null || Stats.FrametimeHistory.Count == 0)
                 return;
@@ -1635,8 +1706,8 @@ namespace MiniFanControl
                 float ftMs = (idx < Stats.FrametimeHistory.Count && Stats.FrametimeHistory[idx] > 0)
                     ? Stats.FrametimeHistory[idx] / 10.0f
                     : 16.6f;
-                // Inverted: 0ms is at plot.Top, 100ms is at plot.Bottom (stutter drops downward)
-                float norm = Math.Max(0f, Math.Min(1f, ftMs / 100.0f));
+                // Inverted: 0ms is at plot.Top, ftCeiling ms is at plot.Bottom (stutter drops downward)
+                float norm = Math.Max(0f, Math.Min(1f, ftMs / (float)ftCeiling));
                 float x = (take == 1) ? plot.Left : (plot.Left + (plot.Width * i) / (float)(take - 1));
                 float y = plot.Top + norm * plot.Height;
                 pts[i] = new PointF(x, y);
@@ -1724,10 +1795,47 @@ namespace MiniFanControl
                 ? (int)Math.Round(Stats.AvgFps)
                 : (_status.RtssAvgFps > 0 ? _status.RtssAvgFps : curLiveFps);
 
-            int fpsCeiling = CalculateDfCeiling(curLiveFps, (Stats != null) ? Stats.FpsHistory : null);
-            int step1 = fpsCeiling / 3;
-            int step2 = (fpsCeiling * 2) / 3;
-            int step3 = fpsCeiling;
+            int targetFpsCeiling = CalculateDfCeiling(curLiveFps, (Stats != null) ? Stats.FpsHistory : null);
+            if (targetFpsCeiling > _currentFpsCeiling)
+            {
+                // Immediate scale-up when framerate rises so frames are never clipped
+                _currentFpsCeiling = targetFpsCeiling;
+                _fpsCeilingHoldCounter = 0;
+            }
+            else if (targetFpsCeiling < _currentFpsCeiling)
+            {
+                // Smooth down-scale hold window: wait for 12 updates (~3-5 seconds) before stepping down
+                _fpsCeilingHoldCounter++;
+                if (_fpsCeilingHoldCounter >= 12)
+                {
+                    _currentFpsCeiling = targetFpsCeiling;
+                    _fpsCeilingHoldCounter = 0;
+                }
+            }
+            else
+            {
+                _fpsCeilingHoldCounter = 0;
+            }
+            int fpsCeiling = _currentFpsCeiling;
+
+            int[] levels;
+            if (fpsCeiling == 60)
+                levels = new int[] { 60, 40, 20, 0 };
+            else if (fpsCeiling == 80)
+                levels = new int[] { 80, 60, 40, 20, 0 };
+            else if (fpsCeiling == 90)
+                levels = new int[] { 90, 60, 30, 0 };
+            else if (fpsCeiling == 120)
+                levels = new int[] { 120, 80, 40, 0 };
+            else if (fpsCeiling == 180)
+                levels = new int[] { 180, 120, 60, 0 };
+            else if (fpsCeiling == 240)
+                levels = new int[] { 240, 160, 80, 0 };
+            else
+            {
+                int step = fpsCeiling / 3;
+                levels = new int[] { fpsCeiling, step * 2, step, 0 };
+            }
 
             using (SolidBrush bgBr = new SolidBrush(Color.FromArgb(195, 10, 14, 20)))
             using (Pen borderPen = new Pen(Color.FromArgb(220, 255, 255, 255), 1.2f))
@@ -1759,7 +1867,6 @@ namespace MiniFanControl
                     g.DrawLine(tickPen, tx, plot.Top, tx, plot.Bottom);
                 }
 
-                int[] levels = new int[] { step3, step2, step1, 0 };
                 for (int i = 0; i < levels.Length; i++)
                 {
                     float norm = (float)levels[i] / fpsCeiling;

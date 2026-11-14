@@ -1669,22 +1669,22 @@ namespace MiniFanControl
             string dfDetails = "";
             try
             {
-                // Test A: 60 FPS locked gameplay
+                // Test A: 60 FPS locked gameplay (80 ceiling provides 20 FPS headroom above 60 line, preventing clipping)
                 List<int> fps60History = new List<int> { 60, 60, 59, 60, 60, 60 };
                 int ceiling60 = CapFrameXOverlayForm.CalculateDfCeiling(60, fps60History);
-                bool c60Ok = (ceiling60 == 60);
+                bool c60Ok = (ceiling60 == 80);
 
-                // Test B: 55-64 FPS gameplay (Ori and the Will of the Wisps)
+                // Test B: 55-64 FPS gameplay (Ori and the Will of the Wisps - stays solid at 80, no oscillation)
                 List<int> oriHistory = new List<int> { 55, 62, 64, 58, 64, 63, 61, 64 };
                 int ceilingOri = CapFrameXOverlayForm.CalculateDfCeiling(64, oriHistory);
-                bool cOriOk = (ceilingOri == 120); // Scale: 120, 80, 40, 0 matching DF reference image
+                bool cOriOk = (ceilingOri == 80);
 
                 // Test C: Loading / Splash screen spike rolls off within 20 samples
                 List<int> spikeHistory = new List<int>();
                 for (int i = 0; i < 50; i++) spikeHistory.Add(350); // splash screen
                 for (int i = 0; i < 20; i++) spikeHistory.Add(64);  // active gameplay
                 int ceilingRollOff = CapFrameXOverlayForm.CalculateDfCeiling(64, spikeHistory);
-                bool cSpikeOk = (ceilingRollOff == 120); // Loading spike dropped from active window
+                bool cSpikeOk = (ceilingRollOff == 80); // Loading spike dropped from active window
 
                 // Test D: High-refresh rate gameplay tiers (144Hz & 240Hz)
                 int ceiling144 = CapFrameXOverlayForm.CalculateDfCeiling(144, new List<int> { 140, 144, 142 });
@@ -1707,9 +1707,15 @@ namespace MiniFanControl
                 bool xlViable = (ftHXl >= 90) && (fpsHXl >= 170);
                 bool geomOk = compactViable && mediumViable && largeViable && xlViable;
 
-                dfValid = c60Ok && cOriOk && cSpikeOk && cHdrOk && geomOk;
-                dfDetails = string.Format("C60={0}({1}), Ori={2}({3}), SpikeRollOff={4}({5}), HighRefresh={6}, TiersOk={7}(Cmp={8}/{9},Med={10}/{11},Lg={12}/{13},Xl={14}/{15})",
-                    c60Ok, ceiling60, cOriOk, ceilingOri, cSpikeOk, ceilingRollOff, cHdrOk, geomOk,
+                // Test F: Frametime ceiling zoom-in & scale-out (50ms zoom default, scaling out on stutters)
+                int ftCeil50 = CapFrameXOverlayForm.CalculateDfFrametimeCeiling(19.3, new List<int> { 166, 193, 168 });
+                int ftCeil75 = CapFrameXOverlayForm.CalculateDfFrametimeCeiling(55.0, new List<int> { 550, 520 });
+                int ftCeil100 = CapFrameXOverlayForm.CalculateDfFrametimeCeiling(85.0, new List<int> { 850, 780 });
+                bool ftCeilOk = (ftCeil50 == 50) && (ftCeil75 == 75) && (ftCeil100 == 100);
+
+                dfValid = c60Ok && cOriOk && cSpikeOk && cHdrOk && geomOk && ftCeilOk;
+                dfDetails = string.Format("C60={0}({1}), Ori={2}({3}), SpikeRollOff={4}({5}), HighRefresh={6}, FtCeil={7}({8}/{9}/{10}), TiersOk={11}(Cmp={12}/{13},Med={14}/{15},Lg={16}/{17},Xl={18}/{19})",
+                    c60Ok, ceiling60, cOriOk, ceilingOri, cSpikeOk, ceilingRollOff, cHdrOk, ftCeilOk, ftCeil50, ftCeil75, ftCeil100, geomOk,
                     ftHCompact, fpsHCompact, ftHMedium, fpsHMedium, ftHLarge, fpsHLarge, ftHXl, fpsHXl);
             }
             catch (Exception ex)
