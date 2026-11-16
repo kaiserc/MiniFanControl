@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Filter: Ambient Drop Shadow -->
+    <filter id="chassisShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#000000" flood-opacity="0.65" />
+    </filter>
+
+    <!-- Filter: Turbine Center Glow -->
+    <filter id="hubGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <!-- Gradients -->
+    <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" />
+      <stop offset="50%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#070A10" />
+    </linearGradient>
+
+    <linearGradient id="lidGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2D3A4F" />
+      <stop offset="40%" stop-color="#161F30" />
+      <stop offset="100%" stop-color="#0B0F19" />
+    </linearGradient>
+
+    <linearGradient id="recessGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#030712" />
+      <stop offset="100%" stop-color="#111827" />
+    </linearGradient>
+
+    <linearGradient id="bladeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="60%" stop-color="#0284C7" />
+      <stop offset="100%" stop-color="#0369A1" />
+    </linearGradient>
+
+    <linearGradient id="bladeSpecular" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E0F2FE" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.1" />
+    </linearGradient>
+
+    <linearGradient id="gaugeGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="35%" stop-color="#34D399" />
+      <stop offset="70%" stop-color="#FBBF24" />
+      <stop offset="100%" stop-color="#F43F5E" />
+    </linearGradient>
+
+    <linearGradient id="amdGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EF4444" />
+      <stop offset="100%" stop-color="#991B1B" />
+    </linearGradient>
+
+    <radialGradient id="hubCenterGrad" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#64748B" />
+      <stop offset="40%" stop-color="#334155" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </radialGradient>
+  </defs>
+
+  <!-- 1. Ambient Drop Shadow -->
+  <rect x="42" y="390" width="428" height="96" rx="42" fill="#000000" opacity="0.45" />
+
+  <!-- 2. 3D Lower Chassis Body / Front Face -->
+  <g filter="url(#chassisShadow)">
+    <rect x="30" y="280" width="452" height="186" rx="80" fill="url(#bodyGrad)" stroke="#475569" stroke-width="5" />
+  </g>
+
+  <!-- 3. Front I/O Panel Details -->
+  <!-- Power Button (Left) -->
+  <circle cx="112" cy="422" r="22" fill="#EF4444" opacity="0.3" filter="url(#hubGlow)" />
+  <circle cx="112" cy="422" r="14" fill="#F97316" stroke="#FFFFFF" stroke-width="2.5" />
+  <path d="M 112 414 L 112 422 M 106 418 A 8 8 0 1 0 118 418" stroke="#FFFFFF" stroke-width="2" fill="none" stroke-linecap="round" />
+
+  <!-- USB 3.2 Type-A Ports -->
+  <rect x="175" y="413" width="46" height="18" rx="4" fill="#0284C7" stroke="#64748B" stroke-width="2" />
+  <rect x="178" y="416" width="40" height="7" fill="#0F172A" />
+
+  <rect x="238" y="413" width="46" height="18" rx="4" fill="#0284C7" stroke="#64748B" stroke-width="2" />
+  <rect x="241" y="416" width="40" height="7" fill="#0F172A" />
+
+  <!-- USB Type-C 40Gbps Port -->
+  <rect x="304" y="415" width="34" height="14" rx="7" fill="#0B0F19" stroke="#94A3B8" stroke-width="2" />
+  <rect x="311" y="420" width="20" height="4" rx="2" fill="#38BDF8" />
+
+  <!-- 3.5mm Audio & Status LED -->
+  <circle cx="360" cy="422" r="7" fill="#0F172A" stroke="#64748B" stroke-width="1.8" />
+  <circle cx="385" cy="422" r="3.5" fill="#34D399" />
+  <circle cx="385" cy="422" r="8" fill="#34D399" opacity="0.35" />
+
+  <!-- 4. Top Deck Lid (Mini PC Top Cover) -->
+  <rect x="30" y="34" width="452" height="365" rx="76" fill="url(#lidGrad)" stroke="#64748B" stroke-width="5" />
+  <rect x="38" y="42" width="436" height="349" rx="68" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-opacity="0.3" />
+
+  <!-- 5. Recessed Fan Bay Deck -->
+  <circle cx="256" cy="208" r="148" fill="url(#recessGrad)" stroke="#1E293B" stroke-width="6" />
+  <circle cx="256" cy="208" r="147" fill="none" stroke="#000000" stroke-width="3" stroke-opacity="0.7" />
+
+  <!-- 6. 270-Degree Thermal Gauge Arc -->
+  <!-- Background Gauge Track -->
+  <circle cx="256" cy="208" r="132" fill="none" stroke="#1E293B" stroke-width="12" stroke-linecap="round"
+          stroke-dasharray="622" stroke-dashoffset="155" transform="rotate(135 256 208)" />
+
+  <!-- Live Colored Thermal Arc -->
+  <circle cx="256" cy="208" r="132" fill="none" stroke="url(#gaugeGrad)" stroke-width="12" stroke-linecap="round"
+          stroke-dasharray="622" stroke-dashoffset="240" transform="rotate(135 256 208)" filter="url(#hubGlow)" />
+
+  <!-- Gauge Arc Tick Indicators -->
+  <g stroke="#94A3B8" stroke-width="2" stroke-opacity="0.6">
+    <line x1="256" y1="62" x2="256" y2="70" />
+    <line x1="152" y1="104" x2="158" y2="110" />
+    <line x1="360" y1="104" x2="354" y2="110" />
+  </g>
+
+  <!-- 7. 6-Blade Aerodynamic Turbine Fan -->
+  <g id="fanBlades">
+    <!-- Blade 1 (0 deg) -->
+    <path d="M 256 208 Q 236 120 256 94 Q 284 100 274 196 Z" fill="url(#bladeGrad)" stroke="#0284C7" stroke-width="1.5" />
+    <path d="M 256 208 Q 242 135 256 100" fill="none" stroke="url(#bladeSpecular)" stroke-width="3" stroke-linecap="round" />
+
+    <!-- Blade 2 (60 deg) -->
+    <g transform="rotate(60 256 208)">
+      <path d="M 256 208 Q 236 120 256 94 Q 284 100 274 196 Z" fill="url(#bladeGrad)" stroke="#0284C7" stroke-width="1.5" />
+      <path d="M 256 208 Q 242 135 256 100" fill="none" stroke="url(#bladeSpecular)" stroke-width="3" stroke-linecap="round" />
+    </g>
+
+    <!-- Blade 3 (120 deg) -->
+    <g transform="rotate(120 256 208)">
+      <path d="M 256 208 Q 236 120 256 94 Q 284 100 274 196 Z" fill="url(#bladeGrad)" stroke="#0284C7" stroke-width="1.5" />
+      <path d="M 256 208 Q 242 135 256 100" fill="none" stroke="url(#bladeSpecular)" stroke-width="3" stroke-linecap="round" />
+    </g>
+
+    <!-- Blade 4 (180 deg) -->
+    <g transform="rotate(180 256 208)">
+      <path d="M 256 208 Q 236 120 256 94 Q 284 100 274 196 Z" fill="url(#bladeGrad)" stroke="#0284C7" stroke-width="1.5" />
+      <path d="M 256 208 Q 242 135 256 100" fill="none" stroke="url(#bladeSpecular)" stroke-width="3" stroke-linecap="round" />
+    </g>
+
+    <!-- Blade 5 (240 deg) -->
+    <g transform="rotate(240 256 208)">
+      <path d="M 256 208 Q 236 120 256 94 Q 284 100 274 196 Z" fill="url(#bladeGrad)" stroke="#0284C7" stroke-width="1.5" />
+      <path d="M 256 208 Q 242 135 256 100" fill="none" stroke="url(#bladeSpecular)" stroke-width="3" stroke-linecap="round" />
+    </g>
+
+    <!-- Blade 6 (300 deg) -->
+    <g transform="rotate(300 256 208)">
+      <path d="M 256 208 Q 236 120 256 94 Q 284 100 274 196 Z" fill="url(#bladeGrad)" stroke="#0284C7" stroke-width="1.5" />
+      <path d="M 256 208 Q 242 135 256 100" fill="none" stroke="url(#bladeSpecular)" stroke-width="3" stroke-linecap="round" />
+    </g>
+  </g>
+
+  <!-- 8. Center Fan Hub -->
+  <circle cx="256" cy="208" r="42" fill="url(#hubCenterGrad)" stroke="#64748B" stroke-width="4" filter="url(#hubGlow)" />
+  <circle cx="256" cy="208" r="32" fill="#0B0F19" stroke="#38BDF8" stroke-width="2" />
+  <!-- Center Rotor Pin -->
+  <circle cx="256" cy="208" r="12" fill="#38BDF8" opacity="0.8" />
+  <circle cx="252" cy="204" r="4" fill="#FFFFFF" opacity="0.8" />
+
+  <!-- 9. Metallic AMD Badge Underneath the Fan -->
+  <g transform="translate(196, 335)">
+    <rect x="0" y="0" width="120" height="34" rx="8" fill="url(#amdGrad)" stroke="#F87171" stroke-width="2" />
+    <!-- AMD Arrow Logo Mark -->
+    <path d="M 16 11 L 28 11 L 28 23 L 23 23 L 23 16 L 16 16 Z" fill="#FFFFFF" />
+    <path d="M 12 15 L 18 15 L 18 21 L 12 21 Z" fill="#FFFFFF" />
+    <!-- AMD Typography -->
+    <text x="36" y="24" font-family="'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16" font-weight="900" fill="#FFFFFF" letter-spacing="2">AMD</text>
+  </g>
+</svg>

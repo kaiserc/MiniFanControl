@@ -1,0 +1,474 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.RegularExpressions;
+using Microsoft.Win32;
+
+namespace MiniFanControl
+{
+    public struct RadeonSettingsTelemetry
+    {
+        public bool IsAvailable;
+        public string GpuDesc;             // e.g. "AMD Radeon 780M Graphics"
+        public string SoftwareEdition;     // e.g. "AMD Software: Adrenalin Edition"
+        public string SoftwareVersion;     // e.g. "26.10.1"
+        public bool FreeSync;              // FreeSync / VRR active on display
+        public bool AntiLag;               // KMD_DeLagEnabled = 1 or Adrenalin Delag: On
+        public bool Afmf;                  // DrvFrameGenAlgorithm/Enabled != 0 or Adrenalin FrameGen: On
+        public bool RadeonBoost;           // KMD_RadeonBoostEnabled = 1
+        public bool Chill;                 // KMD_ChillEnabled = 1
+        public bool EnhancedSync;          // TurboSync = 1
+        public bool Rsr;                   // Gmx_RSREnabled = 1 (Radeon Super Resolution)
+        public bool Ris;                   // KMD_ImageSharpeningEnabled = 1 (Radeon Image Sharpening)
+        public bool Frtc;                  // KMD_FRTEnabled = 1
+        public int FrtcFps;                // KMD_MaxFrameRateRequested
+        public bool SmartAccessMemory;     // KMD_RebarControlMode != 0
+        public bool Fsr;                   // FeatureID 58 / KMD_FSREnabled (AMD FSR Upscaling)
+        public string Summary;             // e.g. "Anti-Lag • AFMF 2 • FSR • Boost"
+
+        public static string BuildSummary(bool freeSync, bool antiLag, bool afmf, bool boost, bool chill, bool rsr, bool ris, bool fsr, bool enhSync, bool sam, bool frtc, int frtcFps)
+        {
+            List<string> active = new List<string>(11);
+            if (freeSync) active.Add("FreeSync");
+            if (antiLag) active.Add("Anti-Lag");
+            if (afmf) active.Add("AFMF 2");
+            if (fsr) active.Add("FSR");
+            if (boost) active.Add("Boost");
+            if (chill) active.Add("Chill");
+            if (rsr) active.Add("RSR");
+            if (ris) active.Add("RIS");
+            if (enhSync) active.Add("EnhSync");
+            if (sam) active.Add("SAM");
+            if (frtc && frtcFps > 0) active.Add(string.Format("FRTC({0})", frtcFps));
+
+            if (active.Count == 0) return "Default";
+            return string.Join(" • ", active.ToArray());
+        }
+
+        public static string BuildSummary(bool freeSync, bool antiLag, bool afmf, bool boost, bool chill, bool rsr, bool ris, bool enhSync, bool sam, bool frtc, int frtcFps)
+        {
+            return BuildSummary(freeSync, antiLag, afmf, boost, chill, rsr, ris, false, enhSync, sam, frtc, frtcFps);
+        }
+
+        public static string BuildSummary(bool freeSync, bool antiLag, bool afmf, bool boost, bool chill, bool rsr, bool enhSync, bool sam, bool frtc, int frtcFps)
+        {
+            return BuildSummary(freeSync, antiLag, afmf, boost, chill, rsr, false, false, enhSync, sam, frtc, frtcFps);
+        }
+
+        public static string BuildSummary(bool antiLag, bool afmf, bool boost, bool chill, bool rsr, bool enhSync, bool sam, bool frtc, int frtcFps)
+        {
+            return BuildSummary(false, antiLag, afmf, boost, chill, rsr, false, false, enhSync, sam, frtc, frtcFps);
+        }
+
+        public List<string> GetActiveTags()
+        {
+            List<string> tags = new List<string>(8);
+            if (FreeSync) tags.Add("FreeSync");
+            if (AntiLag) tags.Add("Anti-Lag");
+            if (Afmf) tags.Add("AFMF");
+            if (Fsr) tags.Add("FSR");
+            if (Chill) tags.Add("Chill");
+            if (RadeonBoost) tags.Add("Boost");
+            if (Rsr) tags.Add("RSR");
+            if (Ris) tags.Add("RIS");
+            return tags;
+        }
+    }
+
+    /// <summary>
+    /// Reads active AMD Radeon Adrenalin Driver 3D settings and gaming features.
+    /// Safely inspects the display driver registry interfaces (KMD & UMD) and live Adrenalin UI state
+    /// without external DLL dependencies or game process hooking.
+    /// </summary>
+    public static class RadeonSettingsSensor
+    {
+        private static RadeonSettingsTelemetry _cached;
+        private static DateTime _lastSampleTime = DateTime.MinValue;
+        private static readonly object _lock = new object();
+        private static string _discoveredAdapterKey = null;
+
+        public static RadeonSettingsTelemetry Sample()
+        {
+            lock (_lock)
+            {
+                DateTime now = DateTime.UtcNow;
+                if ((now - _lastSampleTime).TotalMilliseconds < 2000 && _cached.IsAvailable)
+                {
+                    return _cached;
+                }
+                _lastSampleTime = now;
+
+                RadeonSettingsTelemetry t = new RadeonSettingsTelemetry();
+                try
+                {
+                    if (_discoveredAdapterKey == null)
+                    {
+                        _discoveredAdapterKey = FindAmdDisplayAdapterKey();
+                    }
+
+                    if (string.IsNullOrEmpty(_discoveredAdapterKey))
+                    {
+                        _cached = t;
+                        return t;
+                    }
+
+                    using (RegistryKey kmdKey = Registry.LocalMachine.OpenSubKey(_discoveredAdapterKey, false))
+                    {
+                        if (kmdKey != null)
+                        {
+                            t.IsAvailable = true;
+                            t.GpuDesc = kmdKey.GetValue("DriverDesc") as string;
+                            t.SoftwareEdition = kmdKey.GetValue("RadeonSoftwareEdition") as string;
+                            t.SoftwareVersion = kmdKey.GetValue("RadeonSoftwareVersion") as string;
+                            if (string.IsNullOrEmpty(t.SoftwareVersion))
+                                t.SoftwareVersion = kmdKey.GetValue("Catalyst_Version") as string;
+                            if (string.IsNullOrEmpty(t.SoftwareVersion))
+                                t.SoftwareVersion = kmdKey.GetValue("DriverVersion") as string;
+                            if (string.IsNullOrEmpty(t.SoftwareVersion))
+                                t.SoftwareVersion = kmdKey.GetValue("ReleaseVersion") as string;
+
+                            int deLag = GetDword(kmdKey, "KMD_DeLagEnabled");
+                            int chill = GetDword(kmdKey, "KMD_ChillEnabled");
+                            int boost = GetDword(kmdKey, "KMD_RadeonBoostEnabled");
+                            int boostVrs = GetDword(kmdKey, "KMD_BoostAdaptiveVrsEnabled");
+                            int frt = GetDword(kmdKey, "KMD_FRTEnabled");
+                            int maxFps = GetDword(kmdKey, "KMD_MaxFrameRateRequested");
+                            int rebar = GetDword(kmdKey, "KMD_RebarControlMode");
+                            int fsEnable = GetDword(kmdKey, "KMD_FreeSyncEnabled");
+                            int rsrEnable = GetDword(kmdKey, "Gmx_RSREnabled");
+                            int risEnable = GetDword(kmdKey, "KMD_ImageSharpeningEnabled");
+                            int gmxRis = GetDword(kmdKey, "Gmx_ImageSharpeningEnabled");
+                            int fsrEnable = GetDword(kmdKey, "KMD_FSREnabled");
+                            if (fsrEnable == 0) fsrEnable = GetDword(kmdKey, "Gmx_FSREnabled");
+                            if (fsrEnable == 0) fsrEnable = GetDword(kmdKey, "KMD_FsrOverride");
+                            if (fsrEnable == 0) fsrEnable = GetDword(kmdKey, "FsrEnabled");
+
+                            t.AntiLag = (deLag != 0);
+                            t.Chill = (chill != 0);
+                            t.RadeonBoost = (boost != 0 || boostVrs != 0);
+                            t.Frtc = (frt != 0);
+                            t.FrtcFps = maxFps;
+                            t.SmartAccessMemory = (rebar != 0);
+                            t.Rsr = (rsrEnable != 0);
+                            t.Ris = (risEnable != 0 || gmxRis != 0);
+                            if (fsrEnable != 0) t.Fsr = true;
+                            if (fsEnable != 0) t.FreeSync = true;
+
+                            // Inspect UMD (User-Mode Driver) for AFMF, EnhancedSync, and Sharpening
+                            using (RegistryKey umdKey = kmdKey.OpenSubKey("UMD", false))
+                            {
+                                if (umdKey != null)
+                                {
+                                    int turboSync = GetDword(umdKey, "TurboSync");
+                                    if (turboSync != 0) t.EnhancedSync = true;
+
+                                    if (IsStringFlagEnabled(umdKey.GetValue("DrvFrameGenEnabled")) ||
+                                        IsStringFlagEnabled(umdKey.GetValue("DrvFrameGenAlgorithm")))
+                                    {
+                                        t.Afmf = true;
+                                    }
+
+                                    int cas = GetDword(umdKey, "CAS_Enable");
+                                    int sharp = GetDword(umdKey, "Sharpness_Enable");
+                                    if (cas != 0 || sharp != 0) t.Ris = true;
+
+                                    int fsrOverride = GetDword(umdKey, "FsrOverride");
+                                    if (fsrOverride == 0) fsrOverride = GetDword(umdKey, "FsrEnabled");
+                                    if (fsrOverride == 0) fsrOverride = GetDword(umdKey, "ML_FSR_Enable");
+                                    if (fsrOverride == 0) fsrOverride = GetDword(umdKey, "FsrUpgrade");
+                                    if (fsrOverride != 0) t.Fsr = true;
+                                }
+                            }
+
+                            // Inspect user-level Adrenalin DVR / CN settings in HKCU if accessible
+                            try
+                            {
+                                using (RegistryKey hkcuAmd = Registry.CurrentUser.OpenSubKey(@"Software\AMD", false))
+                                {
+                                    if (hkcuAmd != null)
+                                    {
+                                        using (RegistryKey fsKey = hkcuAmd.OpenSubKey(@"CN\FreeSync", false))
+                                        {
+                                            if (fsKey != null)
+                                            {
+                                                int en = GetDword(fsKey, "FreeSyncEnabled");
+                                                if (en != 0) t.FreeSync = true;
+                                            }
+                                        }
+                                        using (RegistryKey fsrKey = hkcuAmd.OpenSubKey(@"CN\FSR", false))
+                                        {
+                                            if (fsrKey != null)
+                                            {
+                                                int en = GetDword(fsrKey, "FSREnabled");
+                                                if (en == 0) en = GetDword(fsrKey, "Enabled");
+                                                if (en != 0) t.Fsr = true;
+                                            }
+                                        }
+                                        using (RegistryKey dvrKey = hkcuAmd.OpenSubKey("DVR", false))
+                                        {
+                                            if (dvrKey != null)
+                                            {
+                                                int fg = GetDword(dvrKey, "ToggleFrameGenEnabled");
+                                                if (fg != 0) t.Afmf = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            catch { }
+
+                            // Corroborate with live Adrenalin profile & gaming experience databases if accessible
+                            TryCorroborateWithAdrenalinDatabase(ref t);
+
+                            // Authoritative: the driver's per-display VRR switch (Radeon Software > Display > VRR)
+                            // lives in DAL3_DATA\freesync_v1\EDID_*\userenable (0 = off, non-zero = on).
+                            // When present it overrides every heuristic above so toggling VRR is reflected live,
+                            // and monitor capability (EDID) is never mistaken for "FreeSync enabled".
+                            bool? vrrUser = ReadDriverVrrUserEnable(kmdKey);
+                            if (vrrUser.HasValue) t.FreeSync = vrrUser.Value;
+
+                            t.Summary = RadeonSettingsTelemetry.BuildSummary(
+                                t.FreeSync, t.AntiLag, t.Afmf, t.RadeonBoost, t.Chill, t.Rsr, t.Ris, t.Fsr, t.EnhancedSync, t.SmartAccessMemory, t.Frtc, t.FrtcFps);
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    // Fail-safe: Non-Radeon platforms or restricted registry access
+                }
+
+                _cached = t;
+                return t;
+            }
+        }
+
+        private static bool IsStringFlagEnabled(object val)
+        {
+            if (val == null) return false;
+            if (val is int) return ((int)val) != 0;
+            string s = val.ToString().Trim();
+            if (s.Length == 0) return false;
+            char c = s[0];
+            return (c >= '1' && c <= '9');
+        }
+
+        private static string SafeReadAllText(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return null;
+                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (StreamReader sr = new StreamReader(fs, System.Text.Encoding.UTF8))
+                {
+                    return sr.ReadToEnd();
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static void TryCorroborateWithAdrenalinDatabase(ref RadeonSettingsTelemetry t)
+        {
+            try
+            {
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                if (string.IsNullOrEmpty(localAppData)) return;
+
+                // 1. Inspect AMD Game Manager Database (gmdb.blb) for AFMF (Fluid Motion Frames) & RSR/FSR Upscaling
+                string gmPath = Path.Combine(localAppData, @"AMD\CN\gmdb.blb");
+                string gm = SafeReadAllText(gmPath);
+                if (!string.IsNullOrEmpty(gm))
+                {
+                    if (Regex.IsMatch(gm, @"""framegen_enabled"":\s*[1-9]"))
+                    {
+                        t.Afmf = true;
+                    }
+                    if (Regex.IsMatch(gm, @"""upscaling_enabled"":\s*(?:""TRUE""|1)", RegexOptions.IgnoreCase))
+                    {
+                        t.Rsr = true;
+                    }
+                    if (Regex.IsMatch(gm, @"""sharpening_enabled"":\s*(?:""TRUE""|1)", RegexOptions.IgnoreCase))
+                    {
+                        t.Ris = true;
+                    }
+                    if (Regex.IsMatch(gm, @"""(?:fsr_enabled|fsr|FSRUpgradeAvailable|fsr_upgrade|has_upscaling_profile|ml_fsr|amd_fsr)""\s*:\s*""?(?:TRUE|1|on)""?", RegexOptions.IgnoreCase))
+                    {
+                        t.Fsr = true;
+                    }
+                }
+
+                // 2. Inspect AMD Gaming Experience Database (GExDb.blb) for active feature toggles
+                string gexPath = Path.Combine(localAppData, @"AMD\CN\GExDb.blb");
+                string gex = SafeReadAllText(gexPath);
+                if (!string.IsNullOrEmpty(gex))
+                {
+                    bool? gexChill = null;
+                    bool? gexAntiLag = null;
+                    bool? gexBoost = null;
+                    bool? gexRsr = null;
+                    bool? gexRis = null;
+                    bool? gexFsr = null;
+                    bool? gexVrr = null;
+
+                    MatchCollection mc = Regex.Matches(gex, @"""FeatureID""\s*:\s*(\d+)\s*,\s*""FeatureValue""\s*:\s*""?([^"",}]+)""?");
+                    foreach (Match m in mc)
+                    {
+                        int fid;
+                        if (int.TryParse(m.Groups[1].Value, out fid))
+                        {
+                            string val = m.Groups[2].Value.Trim().Trim('"');
+                            bool isEnabled = (val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase) || val.Equals("on", StringComparison.OrdinalIgnoreCase));
+
+                            if (fid == 35) gexChill = (gexChill == true) ? true : isEnabled;        // Radeon Chill
+                            if (fid == 33) gexAntiLag = (gexAntiLag == true) ? true : isEnabled;    // Radeon Anti-Lag
+                            if (fid == 30) gexBoost = (gexBoost == true) ? true : isEnabled;        // Radeon Boost
+                            if (fid == 13) gexRsr = (gexRsr == true) ? true : isEnabled;            // Radeon Super Resolution
+                            if (fid == 15) gexRis = (gexRis == true) ? true : isEnabled;            // Radeon Image Sharpening
+                            if (fid == 58 || fid == 66) gexFsr = (gexFsr == true) ? true : isEnabled; // AMD FSR Upscaling (ML-based FSR Upgrade)
+                            if (fid == 27) gexVrr = (gexVrr == true) ? true : isEnabled;            // Variable Refresh Rate (VRR / FreeSync)
+                        }
+                    }
+
+                    if (gexChill.HasValue) t.Chill = gexChill.Value;
+                    if (gexAntiLag.HasValue) t.AntiLag = gexAntiLag.Value;
+                    if (gexBoost.HasValue) t.RadeonBoost = gexBoost.Value;
+                    if (gexRsr.HasValue && gexRsr.Value) t.Rsr = true;
+                    if (gexRis.HasValue && gexRis.Value) t.Ris = true;
+                    if (gexFsr.HasValue) t.Fsr = gexFsr.Value;
+                    if (gexVrr.HasValue) t.FreeSync = gexVrr.Value;
+                }
+            }
+            catch
+            {
+                // File access restrictions or fallback to driver registry values
+            }
+        }
+
+        /// <summary>
+        /// Reads the Adrenalin per-display VRR toggle. Returns null when the driver exposes no such key
+        /// (older drivers), true when any display has VRR enabled, false when all are disabled.
+        /// </summary>
+        private static bool? ReadDriverVrrUserEnable(RegistryKey adapterKey)
+        {
+            try
+            {
+                using (RegistryKey fs = adapterKey.OpenSubKey(@"DAL3_DATA\freesync_v1", false))
+                {
+                    if (fs == null) return null;
+                    bool any = false;
+                    bool found = false;
+                    foreach (string name in fs.GetSubKeyNames())
+                    {
+                        using (RegistryKey disp = fs.OpenSubKey(name, false))
+                        {
+                            if (disp == null) continue;
+                            object v = disp.GetValue("userenable");
+                            if (v == null) continue;
+                            found = true;
+                            byte[] b = v as byte[];
+                            if (b != null)
+                            {
+                                foreach (byte x in b) { if (x != 0) { any = true; break; } }
+                            }
+                            else if (GetDword(disp, "userenable") != 0)
+                            {
+                                any = true;
+                            }
+                        }
+                    }
+                    return found ? (bool?)any : null;
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        private static bool CheckDisplayFreeSyncSupport()
+        {
+            try
+            {
+                using (RegistryKey displayKey = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Enum\DISPLAY"))
+                {
+                    if (displayKey == null) return false;
+                    foreach (string monName in displayKey.GetSubKeyNames())
+                    {
+                        using (RegistryKey mon = displayKey.OpenSubKey(monName))
+                        {
+                            if (mon == null) continue;
+                            foreach (string instName in mon.GetSubKeyNames())
+                            {
+                                using (RegistryKey devParams = mon.OpenSubKey(instName + @"\Device Parameters"))
+                                {
+                                    if (devParams == null) continue;
+                                    byte[] edid = devParams.GetValue("EDID") as byte[];
+                                    if (edid != null && edid.Length >= 128)
+                                    {
+                                        // Check for AMD FreeSync Vendor-Specific Data Block (IEEE OUI 00-00-1A)
+                                        for (int i = 0; i < edid.Length - 3; i++)
+                                        {
+                                            if (edid[i] == 0x1A && edid[i + 1] == 0x00 && edid[i + 2] == 0x00)
+                                            {
+                                                return true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private static int GetDword(RegistryKey key, string name)
+        {
+            try
+            {
+                object v = key.GetValue(name);
+                if (v is int) return (int)v;
+                int parsed;
+                if (v != null && int.TryParse(v.ToString(), out parsed)) return parsed;
+            }
+            catch { }
+            return 0;
+        }
+
+        private static string FindAmdDisplayAdapterKey()
+        {
+            try
+            {
+                const string classRoot = @"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
+                using (RegistryKey root = Registry.LocalMachine.OpenSubKey(classRoot, false))
+                {
+                    if (root == null) return null;
+                    string[] subKeys = root.GetSubKeyNames();
+                    foreach (string sub in subKeys)
+                    {
+                        if (sub.Length == 4 && char.IsDigit(sub[0]))
+                        {
+                            using (RegistryKey adapter = root.OpenSubKey(sub, false))
+                            {
+                                if (adapter != null)
+                                {
+                                    string provider = adapter.GetValue("ProviderName") as string;
+                                    string desc = adapter.GetValue("DriverDesc") as string;
+                                    if ((provider != null && provider.IndexOf("Advanced Micro Devices", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                        (desc != null && (desc.IndexOf("Radeon", StringComparison.OrdinalIgnoreCase) >= 0 || desc.IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0)))
+                                    {
+                                        return classRoot + @"\" + sub;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+    }
+}
