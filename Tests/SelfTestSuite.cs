@@ -3813,7 +3813,7 @@ namespace MiniFanControl
                 byte r17 = sioHw.ReadSuperIoHwReg(0x17);
                 byte r63 = sioHw.ReadSuperIoHwReg(0x63);
                 bool sioInvertedSafe = fallbackApplied && (r15 == 0x00) && (r16 == 0x00) && (r17 == 0x00) &&
-                                      ((r16 & 0x80) == 0) && (r63 == 166);
+                                      ((r16 & 0x80) == 0) && (r63 == 89);
 
                 // C. Disconnected Bus Float & Sensor Drop-off Tripwire Protection
                 bool emergActive = false;

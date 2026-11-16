@@ -1903,9 +1903,9 @@ namespace MiniFanControl
                             bool f1Auto = (reg16 & 0x80) != 0;
                             bool f2Auto = (reg17 & 0x80) != 0;
 
-                            // Inverted hardware duty: 255 (0xFF) = 0% speed (stopped/quiet), 0 (0x00) = 100% full speed
-                            int f1Duty = Math.Max(0, Math.Min(100, (int)Math.Round((255 - ext1) * 100.0 / 255.0)));
-                            int f2Duty = Math.Max(0, Math.Min(100, (int)Math.Round((255 - ext2) * 100.0 / 255.0)));
+                            // Direct hardware duty: 0 (0x00) = 0% speed (stopped/quiet), 255 (0xFF) = 100% full speed
+                            int f1Duty = Math.Max(0, Math.Min(100, (int)Math.Round(ext1 * 100.0 / 255.0)));
+                            int f2Duty = Math.Max(0, Math.Min(100, (int)Math.Round(ext2 * 100.0 / 255.0)));
                             f1Ctrl = (byte)(f1Auto ? 0x00 : (0x80 | (f1Duty & 0x7F)));
                             f2Ctrl = (byte)(f2Auto ? 0x00 : (0x80 | (f2Duty & 0x7F)));
                         }
@@ -2329,18 +2329,18 @@ namespace MiniFanControl
                         WritePortByte(dataPort, (byte)(modeReg | 0x3F));
                     }
 
-                    // Inverted Super I/O IT8613 blower duty cycle (Hardware PWM polarity is inverted on TS-12C / KTHIN PRO):
-                    // 255 (0xFF) = 0% (Rotors stopped / Zero-RPM quiet idle)
-                    // 0   (0x00) = 100% (Full throttle maximum blower speed)
-                    byte duty = (pct <= 0) ? (byte)255 : (byte)Math.Max(0, Math.Min(255, 255 - ((pct * 255) / 100)));
-                    byte duty7 = (byte)((duty * 127) / 255); // 7-bit duty (0 = 100% full speed, 127 = 0% quiet stop)
+                    // Direct Super I/O IT8613 blower duty cycle:
+                    // 0   (0x00) = 0% (Rotors stopped / Zero-RPM quiet idle)
+                    // 255 (0xFF) = 100% (Full throttle maximum blower speed)
+                    byte duty = (pct <= 0) ? (byte)0 : (byte)Math.Max(1, Math.Min(255, (pct * 255) / 100));
+                    byte duty7 = (byte)((duty * 127) / 255); // 7-bit duty (0 = 0% stop, 127 = 100% full speed)
                     if (fanId == 1)
                     {
-                        // Set manual mode on Channel 1 (0x15) and Channel 2 (0x16)
+                        // Set manual mode (Bit 7 = 0) and 7-bit duty (Bits 6:0) on Channel 1 (0x15) and Channel 2 (0x16)
                         WritePortByte(addrPort, 0x15);
-                        WritePortByte(dataPort, 0x7F);
+                        WritePortByte(dataPort, duty7);
                         WritePortByte(addrPort, 0x16);
-                        WritePortByte(dataPort, 0x7F);
+                        WritePortByte(dataPort, duty7);
 
                         // Primary 8-bit extended PWM duty registers (0x63 = Fan 1, sync 0x6B)
                         bool w63 = WriteSuperIoHwReg(0x63, duty);
@@ -2349,9 +2349,9 @@ namespace MiniFanControl
                     }
                     else
                     {
-                        // Set manual mode on Channel 3 (0x17)
+                        // Set manual mode (Bit 7 = 0) and 7-bit duty (Bits 6:0) on Channel 3 (0x17)
                         WritePortByte(addrPort, 0x17);
-                        WritePortByte(dataPort, 0x7F);
+                        WritePortByte(dataPort, duty7);
 
                         // Primary 8-bit extended PWM duty register (0x73 = Fan 3 / Power)
                         if (!WriteSuperIoHwReg(0x73, duty))
@@ -2441,9 +2441,9 @@ namespace MiniFanControl
                 _simulatedSioRegs[0x17] = autoModeVal;
             }
 
-            // Safe baseline PWM floor duty (166 inverted -> ~35% / ~1100 RPM quiet cooling safety net)
+            // Safe baseline PWM floor duty (~35% / ~1100 RPM quiet cooling safety net: 89/255 = 35%)
             // matching factory quiet operation
-            byte safeDuty = 166;
+            byte safeDuty = 89;
             if (!WriteSuperIoHwReg(0x63, safeDuty)) allOk = false;
             if (!WriteSuperIoHwReg(0x6B, safeDuty)) allOk = false;
             if (Profile == null || Profile.HasDualFans)
