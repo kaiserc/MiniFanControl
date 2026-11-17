@@ -19,6 +19,7 @@
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
 [![Automated Tests: 69 Passed](https://img.shields.io/badge/Automated%20Tests-69%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-6969-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
+[![Ko-fi: Support](https://img.shields.io/badge/Ko--fi-Support%20Project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/kaiser76)
 
 **MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **KTHIN Ryzen AI 9 HX 370 PRO**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
 
@@ -491,6 +492,20 @@ Accessible directly inside the app via **`Tools & Drivers ▾`**:
 - **AMD Software: Adrenalin Edition & Chipset Drivers (Ryzen 7 H 255 / 780M & HX 370 / 890M)**:  
   https://www.amd.com/en/support/download/drivers.html  
   *(Installing the official AMD Adrenalin driver enables native Radeon iGPU temperature & APU power telemetry via `atiadlxx.dll`.)*
+
+---
+
+## ☕ Support & Donations
+
+If MiniFanControl has improved your Ryzen Mini PC experience with whisper-quiet acoustics and custom cooling, consider supporting ongoing development, hardware testing, and future device profiles:
+
+<p align="left">
+  <a href="https://ko-fi.com/kaiser76">
+    <img src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Buy Me a Coffee at ko-fi.com" height="40" />
+  </a>
+</p>
+
+- **Ko-fi**: [ko-fi.com/kaiser76](https://ko-fi.com/kaiser76) *(Supports Apple Pay, Google Pay, Credit/Debit Cards, and PayPal in GBP/USD/EUR)*
 
 ---
 
