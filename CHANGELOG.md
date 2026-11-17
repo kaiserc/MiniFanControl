@@ -4,6 +4,13 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.0.1] - 2026-11-17
+
+### 🔧 Fan Calibration & Tachometer Stability
+- **Extended 0 RPM Coast-Down Window (35s)**: Increased `FanCalibrationResult.RunCalibration` baseline `1% PWM` spin-down timeout from `10.0s` to `35.0s` (with `2s` keep-alive re-assertion), allowing high-inertia blowers coming off `100% PWM` or BIOS Auto to fully coast down before measuring Pass 1, Pass 2, and Pass 3. Added a settled-floor early-exit guard (`>= 15s`, `<= 15 RPM` delta across 8 samples) for hardware with non-zero minimum fan floors.
+- **Adaptive Step Stabilization & Anti-Coasting Spin-Up Guard**: Added up to `+2.5s` adaptive dwell when RPM is still changing by `> 30 RPM` between ticks, trimmed-mean outlier rejection (`ComputeRobustStepRpm`), and a deceleration guard (`f1CoastingDown` / `f2CoastingDown`) so fans still coasting down at `20% PWM` are not falsely flagged as spinning up.
+- **16-Bit EC Tachometer Latching & Rollover Spike Filter**: Added atomic MSB/LSB double-read latching in `HardwareBackend.GetStatus()` and updated `DecodeTachometerRpm()` to reject `<= 0` and `>= 7500` RPM rollover glitches (Test #5).
+
 ## [1.0.0] - 2026-11-16
 
 ### 🎨 UI Polish, Geometry Anti-Clipping & Documentation Visuals

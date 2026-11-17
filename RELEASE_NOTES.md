@@ -1,3 +1,14 @@
+# Release Notes: MiniFanControl v1.0.1 (Calibration & Tachometer Stability Patch)
+
+**MiniFanControl v1.0.1** is a targeted maintenance release fixing multi-pass fan calibration coast-down timing and 16-bit EC tachometer rollover spikes observed on real GMKtec K12 hardware.
+
+## 🔧 What's Fixed in v1.0.1
+- **Full 0 RPM Coast-Down Window (`35.0s`)**: Extended the `1% PWM` baseline spin-down timeout from `10.0s` to `35.0s` with `2s` keep-alive commands and settled-floor detection (`>= 15s`, `<= 15 RPM` delta over 8 samples), ensuring Passes 1, 2, and 3 start from a true settled baseline rather than mid-deceleration from `100% PWM`.
+- **Adaptive Step Stabilization & Trimmed-Mean Filtering**: Calibration steps now extend up to `+2.5s` when rotors are still accelerating/decelerating (`> 30 RPM` delta), discard single-sample outliers via `ComputeRobustStepRpm`, and guard against false spin-up detection while a fan is still coasting down.
+- **Atomic Tachometer Latching & Rollover Spike Rejection**: Added MSB/LSB double-read latching on EC tachometer registers in `HardwareBackend.GetStatus()` and rejected `>= 7500 RPM` rollover spikes in `DecodeTachometerRpm()` (verified by 69/69 passing automated tests).
+
+---
+
 # Release Notes: MiniFanControl v1.0.0 (Production Release & Architectural Milestone)
 
 **MiniFanControl v1.0.0** is the production milestone release delivering native EC & Super I/O fan curve control, out-of-process watchdog crash supervision, Windows 11 Modern Standby (S0ix) silent sleep protection, CapFrameX-style in-game HUD overlay with Digital Foundry twin graphs, deep silicon telemetry (Zen 5 SMN junction Tctl/Tdie, ADL2 PMLOG, SMU/FCLK, dual stacked SODIMM DDR5 thermals), fail-closed multi-tool coexistence (`Global\Access_EC`), comprehensive UI layout polish, and 69 passing automated hardware safety & regression tests.
