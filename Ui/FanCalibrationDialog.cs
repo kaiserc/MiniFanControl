@@ -76,7 +76,7 @@ namespace MiniFanControl
 
             Label introLbl = new Label
             {
-                Text = lastCalInfo + "\r\nWaits for full 0 RPM spin-down and 3.5s stabilization per step (+2% anti-stall safety margin).",
+                Text = lastCalInfo + "\r\nWaits for full 0 RPM coast-down (up to 35s from 100%) and 5.0s+ stabilization per step (+2% margin).",
                 Location = new Point(14, 10),
                 Size = new Size(512, 34),
                 ForeColor = dimFg
@@ -148,9 +148,9 @@ namespace MiniFanControl
                 Location = new Point(14, 154),
                 Size = new Size(512, 214),
                 Text = "Click 'Start Calibration' below.\r\n" +
-                       "• Phase 1: Commands 1% PWM and waits until rotors coast to a verified 0 RPM stop.\r\n" +
+                       "• Phase 1: Commands 1% PWM and waits up to 35s until rotors coast to a verified 0 RPM stop.\r\n" +
                        "• Phase 2: Full curve sweep through 20%..35% (2% steps) and 40%..100% (5-10% steps).\r\n" +
-                       "• Holds each step on hardware so fan inertia settles and tachometer locks in.\r\n"
+                       "• Holds each step for 5.0s+ (adaptive settle) and filters out tachometer rollover spikes.\r\n"
             };
             Controls.Add(_logBox);
 

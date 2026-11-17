@@ -196,9 +196,11 @@ namespace MiniFanControl
 
 
 
-            // 5. Tachometer Glitch & Motor Stop Filter (8000 raw -> 0 RPM)
+            // 5. Tachometer Glitch & Motor Stop Filter (8000 raw -> 0 RPM, >= 7500 rollover spike -> 0 RPM)
 
             int rpmStall8000 = HardwareBackend.DecodeTachometerRpm(0x1F, 0x40); // 8000
+
+            int rpmSpike9489 = HardwareBackend.DecodeTachometerRpm(0x25, 0x11); // 9489 rollover spike
 
             int rpmGlitchFFFF = HardwareBackend.DecodeTachometerRpm(0xFF, 0xFF); // 65535
 
@@ -206,11 +208,14 @@ namespace MiniFanControl
 
             int rpmValid3150 = HardwareBackend.DecodeTachometerRpm(0x0C, 0x4E); // 3150
 
-            Check(rpmStall8000 == 0 && rpmGlitchFFFF == 0 && rpmValid592 == 592 && rpmValid3150 == 3150,
+            int robustTrimmed = FanCalibrationResult.ComputeRobustStepRpm(new List<int> { 1520, 1522, 9489, 1525, 57300, 1521 });
 
-                "Tachometer Stall Filter (8000 -> 0 RPM, 65535 -> 0 RPM, 592 & 3150 preserved)",
+            Check(rpmStall8000 == 0 && rpmSpike9489 == 0 && rpmGlitchFFFF == 0 && rpmValid592 == 592 && rpmValid3150 == 3150 &&
+                  robustTrimmed >= 1520 && robustTrimmed <= 1525,
 
-                string.Format("8000->{0}, FFFF->{1}, 592->{2}, 3150->{3}", rpmStall8000, rpmGlitchFFFF, rpmValid592, rpmValid3150));
+                "Tachometer Stall & Rollover Spike Filter (8000/9489/65535 -> 0 RPM, trimmed step mean preserved)",
+
+                string.Format("8000->{0}, 9489->{1}, FFFF->{2}, 592->{3}, 3150->{4}, robust={5}", rpmStall8000, rpmSpike9489, rpmGlitchFFFF, rpmValid592, rpmValid3150, robustTrimmed));
 
 
 

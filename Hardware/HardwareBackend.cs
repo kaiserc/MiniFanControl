@@ -1911,10 +1911,19 @@ namespace MiniFanControl
                         }
                         else
                         {
-                            f1h = ReadRegInternal(p.RegFan1Hi);
-                            f1l = ReadRegInternal(p.RegFan1Lo);
-                            f2h = ReadRegInternal(p.RegFan2Hi);
-                            f2l = ReadRegInternal(p.RegFan2Lo);
+                            // Atomic double-read latching on 16-bit EC tachometer registers to prevent MSB/LSB rollover tearing
+                            byte f1h1 = ReadRegInternal(p.RegFan1Hi);
+                            byte f1l1 = ReadRegInternal(p.RegFan1Lo);
+                            byte f1h2 = ReadRegInternal(p.RegFan1Hi);
+                            f1h = f1h2;
+                            f1l = (f1h1 == f1h2) ? f1l1 : ReadRegInternal(p.RegFan1Lo);
+
+                            byte f2h1 = ReadRegInternal(p.RegFan2Hi);
+                            byte f2l1 = ReadRegInternal(p.RegFan2Lo);
+                            byte f2h2 = ReadRegInternal(p.RegFan2Hi);
+                            f2h = f2h2;
+                            f2l = (f2h1 == f2h2) ? f2l1 : ReadRegInternal(p.RegFan2Lo);
+
                             ecCpuTemp = ReadRegInternal(p.RegCpuTemp);
                             ecGpuTemp = ReadRegInternal(p.RegGpuTemp);
                             modeVal = ReadRegInternal(p.RegModeStatus);
@@ -2224,7 +2233,8 @@ namespace MiniFanControl
 
             int rpm = (hi << 8) | lo;
 
-            if (rpm == 8000 || rpm == 65535 || rpm < 0) return 0;
+            // Reject motor-stop sentinel (8000 / 0x1F40), bus float (65535 / 0xFFFF), and counter rollover spikes (>= 7500 RPM)
+            if (rpm <= 0 || rpm >= 7500) return 0;
 
             return rpm;
 

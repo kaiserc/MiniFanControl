@@ -72,6 +72,8 @@ namespace MiniFanControl
             int worstSysBare = 0;
             int maxApu = 0;
             int maxSys = 0;
+            bool apuCanStopToZero = false;
+            bool sysCanStopToZero = false;
 
             if (!demoMode && stepDelayMs > 0 && stepDelayMs < 5000)
             {
@@ -97,15 +99,21 @@ namespace MiniFanControl
                         string.Format("Pass {0}/{1} • Stopping fans (waiting for 0 RPM coast-down)...", pass, numPasses),
                         passHeader, new FanStatus());
 
-                    // 1. Command 1% manual (0x81 = manual stop) and wait until rotors coast to 0 RPM
+                    // 1. Command 1% manual (0x81 = manual stop) and wait until rotors coast to 0 RPM.
+                    // Coming off 100% PWM (~3350 RPM) or BIOS Auto, the K12 EC slews down slowly (~80-140 RPM/s),
+                    // requiring up to ~30-35 seconds to reach 0 RPM.
                     if (demoMode) { demo.SetFan(1, 1); demo.SetFan(2, 1); }
                     else { hw.SetFan(1, 1); hw.SetFan(2, 1); }
 
-                    int maxSpinDownMs = stepDelayMs > 0 ? Math.Max(stepDelayMs * 2, 5500) : 0;
-                    if (demoMode && stepDelayMs < 500) maxSpinDownMs = stepDelayMs * 2;
+                    int maxSpinDownMs = stepDelayMs > 0
+                        ? (demoMode && stepDelayMs < 500 ? stepDelayMs * 2 : Math.Max(stepDelayMs * 7, 35000))
+                        : 0;
 
                     int elapsedSpinDown = 0;
                     int zeroConsecutive = 0;
+                    int lastKeepAliveMs = 0;
+                    List<int> recentF1 = new List<int>();
+                    List<int> recentF2 = new List<int>();
                     FanStatus lastSt = demoMode ? demo.GetStatus() : hw.GetStatus();
 
                     while (elapsedSpinDown < maxSpinDownMs)
@@ -113,17 +121,46 @@ namespace MiniFanControl
                         if (checkCanceled != null && checkCanceled()) { res.WasCanceled = true; break; }
                         Thread.Sleep(tickMs);
                         elapsedSpinDown += tickMs;
+
+                        // Re-assert 1% manual stop every 2s so EC slew/watchdog never reverts during long coast-down
+                        if (!demoMode && elapsedSpinDown - lastKeepAliveMs >= 2000)
+                        {
+                            hw.SetFan(1, 1);
+                            hw.SetFan(2, 1);
+                            lastKeepAliveMs = elapsedSpinDown;
+                        }
+
                         lastSt = demoMode ? demo.GetStatus() : hw.GetStatus();
+                        if (lastSt.Fan1Rpm == 0) apuCanStopToZero = true;
+                        if (lastSt.Fan2Rpm == 0) sysCanStopToZero = true;
+
+                        recentF1.Add(lastSt.Fan1Rpm);
+                        recentF2.Add(lastSt.Fan2Rpm);
+                        if (recentF1.Count > 8) recentF1.RemoveAt(0);
+                        if (recentF2.Count > 8) recentF2.RemoveAt(0);
 
                         if (lastSt.Fan1Rpm == 0 && lastSt.Fan2Rpm == 0)
                         {
                             zeroConsecutive++;
-                            if (zeroConsecutive >= 4) // Confirmed 0 RPM for ~1 second
+                            if (zeroConsecutive >= 4) // Confirmed 0 RPM on both fans for ~1 second
                                 break;
                         }
                         else
                         {
                             zeroConsecutive = 0;
+
+                            // If hardware has a non-zero minimum floor at 1% PWM, only stop waiting after >= 15s
+                            // if neither fan is still decelerating over a full 2-second (8-sample) window
+                            // and any fan known to support 0 RPM has already reached 0 RPM.
+                            if (!demoMode && elapsedSpinDown >= 15000 && recentF1.Count >= 8)
+                            {
+                                int dropF1 = recentF1[0] - lastSt.Fan1Rpm;
+                                int dropF2 = recentF2[0] - lastSt.Fan2Rpm;
+                                bool f1Settled = (lastSt.Fan1Rpm == 0) || (!apuCanStopToZero && Math.Abs(dropF1) <= 15);
+                                bool f2Settled = (lastSt.Fan2Rpm == 0) || (!sysCanStopToZero && Math.Abs(dropF2) <= 15);
+                                if (f1Settled && f2Settled)
+                                    break;
+                            }
                         }
 
                         EmitProgress(onProgress, pass, numPasses, 0, CalcPct(completedUnits + 1, totalUnits),
@@ -144,6 +181,8 @@ namespace MiniFanControl
 
                     int passApuMin = 0;
                     int passSysMin = 0;
+                    int prevStepApuRpm = lastSt.Fan1Rpm;
+                    int prevStepSysRpm = lastSt.Fan2Rpm;
 
                     // 2. Step through CalibrationSteps (20%..100%) with stabilization polling
                     for (int sIdx = 0; sIdx < CalibrationSteps.Length; sIdx++)
@@ -155,35 +194,55 @@ namespace MiniFanControl
                         else { hw.SetFan(1, pct); hw.SetFan(2, pct); }
 
                         int elapsedStep = 0;
-                        int sumF1 = 0, sumF2 = 0, sampleCount = 0;
+                        List<int> f1Samples = new List<int>();
+                        List<int> f2Samples = new List<int>();
 
                         if (stepDelayMs <= 0)
                         {
                             lastSt = demoMode ? demo.GetStatus() : hw.GetStatus();
-                            sumF1 = lastSt.Fan1Rpm;
-                            sumF2 = lastSt.Fan2Rpm;
-                            sampleCount = 1;
+                            f1Samples.Add(lastSt.Fan1Rpm);
+                            f2Samples.Add(lastSt.Fan2Rpm);
                         }
                         else
                         {
-                            while (elapsedStep < stepDelayMs)
+                            int targetStepMs = stepDelayMs;
+                            int maxExtraSettleMs = (!demoMode && stepDelayMs >= 1000) ? 2500 : 0;
+                            int prevTickF1 = lastSt.Fan1Rpm;
+                            int prevTickF2 = lastSt.Fan2Rpm;
+
+                            while (elapsedStep < targetStepMs)
                             {
                                 if (checkCanceled != null && checkCanceled()) { res.WasCanceled = true; break; }
-                                int sleepChunk = Math.Min(tickMs, stepDelayMs - elapsedStep);
+                                int sleepChunk = Math.Min(tickMs, targetStepMs - elapsedStep);
                                 Thread.Sleep(sleepChunk);
                                 elapsedStep += sleepChunk;
 
                                 lastSt = demoMode ? demo.GetStatus() : hw.GetStatus();
 
-                                // Average readings during the final 35% of the step window after rotor stabilizes
-                                if (elapsedStep >= (stepDelayMs * 65) / 100 || elapsedStep >= stepDelayMs)
+                                // If at the end of the nominal step window the rotor is still actively accelerating or decelerating,
+                                // extend stabilization up to +2.5s so the reading reflects true steady-state RPM.
+                                if (maxExtraSettleMs > 0 && elapsedStep >= targetStepMs && targetStepMs < stepDelayMs + maxExtraSettleMs)
                                 {
-                                    sumF1 += lastSt.Fan1Rpm;
-                                    sumF2 += lastSt.Fan2Rpm;
-                                    sampleCount++;
+                                    bool f1Moving = Math.Abs(lastSt.Fan1Rpm - prevTickF1) > 30;
+                                    bool f2Moving = Math.Abs(lastSt.Fan2Rpm - prevTickF2) > 30;
+                                    if (f1Moving || f2Moving)
+                                    {
+                                        targetStepMs += tickMs * 2;
+                                        f1Samples.Clear();
+                                        f2Samples.Clear();
+                                    }
+                                }
+                                prevTickF1 = lastSt.Fan1Rpm;
+                                prevTickF2 = lastSt.Fan2Rpm;
+
+                                // Collect readings during the final 35% of the step window after rotor stabilizes
+                                if (elapsedStep >= (targetStepMs * 65) / 100 || elapsedStep >= targetStepMs)
+                                {
+                                    f1Samples.Add(lastSt.Fan1Rpm);
+                                    f2Samples.Add(lastSt.Fan2Rpm);
                                 }
 
-                                double remSec = Math.Max(0.0, (stepDelayMs - elapsedStep) / 1000.0);
+                                double remSec = Math.Max(0.0, (targetStepMs - elapsedStep) / 1000.0);
                                 EmitProgress(onProgress, pass, numPasses, pct, CalcPct(completedUnits, totalUnits),
                                     string.Format("Pass {0}/{1} • Testing {2}% PWM (stabilizing {3:0.0}s left — APU: {4} RPM)",
                                         pass, numPasses, pct, remSec, lastSt.Fan1Rpm),
@@ -194,11 +253,18 @@ namespace MiniFanControl
                         if (res.WasCanceled) break;
                         completedUnits++;
 
-                        int avgF1 = sampleCount > 0 ? (sumF1 / sampleCount) : lastSt.Fan1Rpm;
-                        int avgF2 = sampleCount > 0 ? (sumF2 / sampleCount) : lastSt.Fan2Rpm;
+                        int avgF1 = ComputeRobustStepRpm(f1Samples, lastSt.Fan1Rpm);
+                        int avgF2 = ComputeRobustStepRpm(f2Samples, lastSt.Fan2Rpm);
 
-                        bool apuJustSpun = (avgF1 >= 250 && passApuMin == 0);
-                        bool sysJustSpun = (avgF2 >= 250 && passSysMin == 0);
+                        // Do not falsely mark a fan as "Spin-Up" if it never stopped at baseline AND is still decelerating
+                        bool f1CoastingDown = (prevStepApuRpm >= 250 && avgF1 < prevStepApuRpm - 50);
+                        bool f2CoastingDown = (prevStepSysRpm >= 250 && avgF2 < prevStepSysRpm - 50);
+
+                        bool apuJustSpun = (avgF1 >= 250 && passApuMin == 0 && !f1CoastingDown);
+                        bool sysJustSpun = (avgF2 >= 250 && passSysMin == 0 && !f2CoastingDown);
+
+                        prevStepApuRpm = avgF1;
+                        prevStepSysRpm = avgF2;
 
                         if (apuJustSpun) passApuMin = pct;
                         if (sysJustSpun) passSysMin = pct;
@@ -279,6 +345,36 @@ namespace MiniFanControl
 
             res.SummaryReport = sb.ToString();
             return res;
+        }
+
+        public static int ComputeRobustStepRpm(List<int> samples, int fallbackRpm = 0)
+        {
+            if (samples == null || samples.Count == 0)
+                return (fallbackRpm > 0 && fallbackRpm < 7500) ? fallbackRpm : 0;
+
+            List<int> valid = new List<int>(samples.Count);
+            for (int i = 0; i < samples.Count; i++)
+            {
+                int v = samples[i];
+                if (v >= 0 && v < 7500)
+                    valid.Add(v);
+            }
+            if (valid.Count == 0)
+                return 0;
+
+            valid.Sort();
+
+            // When 4+ samples exist, discard the min and max extremes (trimmed mean) to reject single-sample tach spikes
+            int start = valid.Count >= 4 ? 1 : 0;
+            int end = valid.Count >= 4 ? valid.Count - 1 : valid.Count;
+            int sum = 0;
+            int count = 0;
+            for (int i = start; i < end; i++)
+            {
+                sum += valid[i];
+                count++;
+            }
+            return count > 0 ? (sum / count) : valid[valid.Count / 2];
         }
 
         private static int CalcPct(int done, int total)
