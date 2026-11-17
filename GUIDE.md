@@ -552,4 +552,4 @@ MiniFanControl includes a complete synthetic hardware simulation engine:
 
 ---
 
-*MiniFanControl is open source and community-supported. If this tool helped tune your Mini PC, you can support development on [Ko-fi (ko-fi.com/kaiser76)](https://ko-fi.com/kaiser76).*
+*MiniFanControl is open source and community-supported. If this tool helped tune your Mini PC, you can support development on [Ko-fi](https://ko-fi.com/kaiser76).*

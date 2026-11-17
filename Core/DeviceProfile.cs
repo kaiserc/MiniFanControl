@@ -159,6 +159,12 @@ namespace MiniFanControl
             return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "").Replace("\n", " ");
         }
 
+        private static string UnescapeJson(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return s.Replace("\\\"", "\"").Replace("\\\\", "\\");
+        }
+
         public static DeviceProfile FromJson(string json)
         {
             if (string.IsNullOrEmpty(json)) return null;
@@ -177,9 +183,9 @@ namespace MiniFanControl
                 string key = line.Substring(0, colonIdx).Trim(' ', '"', '\t');
                 string val = line.Substring(colonIdx + 1).Trim(' ', ',', '"', '\t');
 
-                if (key.Equals("id", StringComparison.OrdinalIgnoreCase)) p.Id = val;
-                else if (key.Equals("displayName", StringComparison.OrdinalIgnoreCase)) p.DisplayName = val;
-                else if (key.Equals("chipsetNotes", StringComparison.OrdinalIgnoreCase)) p.ChipsetNotes = val;
+                if (key.Equals("id", StringComparison.OrdinalIgnoreCase)) p.Id = UnescapeJson(val);
+                else if (key.Equals("displayName", StringComparison.OrdinalIgnoreCase)) p.DisplayName = UnescapeJson(val);
+                else if (key.Equals("chipsetNotes", StringComparison.OrdinalIgnoreCase)) p.ChipsetNotes = UnescapeJson(val);
                 else if (key.Equals("ecBaseAddress", StringComparison.OrdinalIgnoreCase)) p.EcBaseAddress = ParseUlong(val, 0xFE0B0400UL);
                 else if (key.Equals("ecSize", StringComparison.OrdinalIgnoreCase)) p.EcSize = (uint)ParseUlong(val, 0x100);
                 else if (key.Equals("regModeStatus", StringComparison.OrdinalIgnoreCase)) p.RegModeStatus = ParseByte(val, 0x31);

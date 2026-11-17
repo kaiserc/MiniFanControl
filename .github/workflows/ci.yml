@@ -1,5 +1,8 @@
 name: CI Build, Test Verification & Release Pipeline
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [ main, "phase*" ]
@@ -34,6 +37,8 @@ jobs:
   standalone-build-and-test:
     name: Standalone .NET 4.8 CSC Build & 69 Automated Self-Tests
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
