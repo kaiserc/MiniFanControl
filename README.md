@@ -487,8 +487,6 @@ Accessible directly inside the app via **`Tools & Drivers ▾`**:
 
 - **GMKtec Official Drivers & Manuals (K12 & NucBox Series)**:  
   https://www.gmktec.com/pages/drivers-and-software
-- **GMKtec BIOS & Firmware Updates**:  
-  https://www.gmktec.com/pages/firmware-update
 - **AMD Software: Adrenalin Edition & Chipset Drivers (Ryzen 7 H 255 / 780M & HX 370 / 890M)**:  
   https://www.amd.com/en/support/download/drivers.html  
   *(Installing the official AMD Adrenalin driver enables native Radeon iGPU temperature & APU power telemetry via `atiadlxx.dll`.)*

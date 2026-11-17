@@ -74,7 +74,6 @@ namespace MiniFanControl
         public const string APP_VERSION         = "1.0.0";
         public const string SCHTASK_NAME        = "MiniFanControl_Autostart";
         public const string URL_GMKTEC_DRIVERS  = "https://www.gmktec.com/pages/drivers-and-software";
-        public const string URL_GMKTEC_FIRMWARE = "https://www.gmktec.com/pages/firmware-update";
         public const string URL_AMD_DRIVERS     = "https://www.amd.com/en/support/download/drivers.html";
 
         private const int DEFAULT_REFRESH_MS = 1000;
@@ -2213,7 +2212,6 @@ namespace MiniFanControl
             menu.MenuItems.Add("Detected Hardware & Multi-Model Info...", (s, e) => ShowHardwareCompatibilityDialog());
             menu.MenuItems.Add("-");
             menu.MenuItems.Add("GMKtec Official Drivers & Manuals (K12 / Mini PCs)...", (s, e) => OpenUrlSafe(URL_GMKTEC_DRIVERS));
-            menu.MenuItems.Add("GMKtec BIOS & Firmware Downloads...", (s, e) => OpenUrlSafe(URL_GMKTEC_FIRMWARE));
             menu.MenuItems.Add("AMD Software: Adrenalin & Chipset Drivers...", (s, e) => OpenUrlSafe(URL_AMD_DRIVERS));
             menu.MenuItems.Add("-");
             menu.MenuItems.Add("🛡️ Kernel Driver & HVCI Security Status...", (s, e) => ShowKernelDriverSecurityDialog());
@@ -2826,7 +2824,6 @@ namespace MiniFanControl
             linksItem.DropDownItems.Add("Detected Hardware && Multi-Model Info...", null, (s, e) => ShowHardwareCompatibilityDialog());
             linksItem.DropDownItems.Add(new ToolStripSeparator());
             linksItem.DropDownItems.Add("GMKtec Official Drivers && Manuals...", null, (s, e) => OpenUrlSafe(URL_GMKTEC_DRIVERS));
-            linksItem.DropDownItems.Add("GMKtec BIOS && Firmware Updates...", null, (s, e) => OpenUrlSafe(URL_GMKTEC_FIRMWARE));
             linksItem.DropDownItems.Add("AMD Software: Adrenalin && Chipset Drivers...", null, (s, e) => OpenUrlSafe(URL_AMD_DRIVERS));
             linksItem.DropDownItems.Add(new ToolStripSeparator());
             linksItem.DropDownItems.Add("About MiniFanControl v" + APP_VERSION + "...", null, (s, e) => ShowAboutDialog());
