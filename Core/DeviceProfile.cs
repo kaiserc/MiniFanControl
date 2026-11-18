@@ -153,6 +153,74 @@ namespace MiniFanControl
             return sb.ToString();
         }
 
+        public static string ExportKnownProfilesJson(string appVersion)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("{");
+            sb.AppendLine("  \"source\": \"kaiserc/MiniFanControl\",");
+            sb.AppendLine(string.Format("  \"appVersion\": \"{0}\",", EscapeJson(appVersion ?? "")));
+            sb.AppendLine("  \"profiles\": [");
+
+            List<DeviceProfile> profiles = GetAllProfiles();
+            for (int i = 0; i < profiles.Count; i++)
+            {
+                DeviceProfile p = profiles[i];
+                sb.AppendLine("    {");
+                sb.AppendLine(string.Format("      \"id\": \"{0}\",", EscapeJson(p.Id)));
+                sb.AppendLine(string.Format("      \"displayName\": \"{0}\",", EscapeJson(p.DisplayName)));
+                sb.AppendLine(string.Format("      \"chipsetNotes\": \"{0}\",", EscapeJson(p.ChipsetNotes)));
+                sb.AppendLine(string.Format("      \"ecBaseAddress\": \"0x{0:X8}\",", p.EcBaseAddress));
+                sb.AppendLine(string.Format("      \"hasDualFans\": {0},", p.HasDualFans ? "true" : "false"));
+                sb.AppendLine(string.Format("      \"isReadOnly\": {0},", p.IsReadOnly ? "true" : "false"));
+                sb.AppendLine(string.Format("      \"isVerified\": {0},", p.IsVerified ? "true" : "false"));
+                sb.AppendLine("      \"registers\": {");
+                sb.AppendLine(string.Format("        \"modeStatus\": \"0x{0:X2}\",", p.RegModeStatus));
+                sb.AppendLine(string.Format("        \"modeCmd\": \"0x{0:X2}\",", p.RegModeCmd));
+                sb.AppendLine(string.Format("        \"fan1Ctrl\": \"0x{0:X2}\",", p.RegFan1Ctrl));
+                sb.AppendLine(string.Format("        \"fan2Ctrl\": \"0x{0:X2}\",", p.RegFan2Ctrl));
+                sb.AppendLine(string.Format("        \"fan1Hi\": \"0x{0:X2}\",", p.RegFan1Hi));
+                sb.AppendLine(string.Format("        \"fan1Lo\": \"0x{0:X2}\",", p.RegFan1Lo));
+                sb.AppendLine(string.Format("        \"fan2Hi\": \"0x{0:X2}\",", p.RegFan2Hi));
+                sb.AppendLine(string.Format("        \"fan2Lo\": \"0x{0:X2}\",", p.RegFan2Lo));
+                sb.AppendLine(string.Format("        \"cpuTemp\": \"0x{0:X2}\",", p.RegCpuTemp));
+                sb.AppendLine(string.Format("        \"gpuTemp\": \"0x{0:X2}\"", p.RegGpuTemp));
+                sb.AppendLine("      }");
+                sb.AppendLine(i < profiles.Count - 1 ? "    }," : "    }");
+            }
+
+            sb.AppendLine("  ],");
+            sb.AppendLine("  \"probedSuperIoFamilies\": {");
+            sb.AppendLine("    \"iteIdPrefixes\": [\"0x86xx\", \"0x87xx\", \"0x55xx\"],");
+            sb.AppendLine("    \"nuvotonIdPrefixes\": [\"0xC3xx\", \"0xC5xx\", \"0xC8xx\", \"0xD4xx\", \"0xD8xx\", \"0xB473\", \"0xB571\"]");
+            sb.AppendLine("  }");
+            sb.AppendLine("}");
+            return sb.ToString();
+        }
+
+        public static string ExportKnownProfilesTable()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("MiniFanControl Hardware Profile Registry:");
+            sb.AppendLine("----------------------------------------------------------------------");
+            foreach (DeviceProfile p in GetAllProfiles())
+            {
+                sb.AppendLine(string.Format("  {0,-22} | {1} | Dual={2} | {3}",
+                    p.Id,
+                    p.IsVerified ? "Verified" : "ReadOnly",
+                    p.HasDualFans ? "Yes" : "No ",
+                    p.DisplayName));
+                if (!string.IsNullOrEmpty(p.ChipsetNotes))
+                {
+                    sb.AppendLine(string.Format("    Notes: {0}", p.ChipsetNotes));
+                }
+            }
+            sb.AppendLine("----------------------------------------------------------------------");
+            sb.AppendLine("Probed Super I/O Chip ID Prefixes (LPC 0x2E / 0x4E):");
+            sb.AppendLine("  ITE     : 0x86xx, 0x87xx, 0x55xx");
+            sb.AppendLine("  Nuvoton : 0xC3xx, 0xC5xx, 0xC8xx, 0xD4xx, 0xD8xx, 0xB473, 0xB571");
+            return sb.ToString();
+        }
+
         private static string EscapeJson(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";

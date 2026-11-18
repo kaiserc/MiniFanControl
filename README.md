@@ -346,7 +346,10 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Validate 6 hardware profiles, register layouts, and inverted polarity matrix
 .\minifan-helper.exe hw-matrix
 
-# Execute the 74-point automated hardware safety & curve test suite
+# Export supported hardware profiles & probed Super I/O chip ID prefixes as JSON
+.\minifan-helper.exe export-profiles --json
+
+# Execute the 75-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
@@ -430,6 +433,7 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 72. **`OsdOverlayConfig` Defaults & Settings Round-Trip**: Verifies OSD visibility presets (`SelectAllMetrics` / `DeselectAllMetrics` / `ResetDefaults`) and `AppendSettings`/`TryParseSetting` persistence parity.
 73. **Custom Controls Accessibility**: Confirms keyboard `TabStop` and UIA `AccessibleRole` (`PushButton` / `Chart`) metadata across interactive telemetry boxes and curve canvases.
 74. **`FanControllerService` Decoupled Control & Tripwire**: Verifies decoupled curve evaluation, manual override, BIOS Auto reset transitions, and emergency thermal tripwire clamping.
+75. **`DeviceProfile` CLI Export**: Verifies `export-profiles` JSON and summary table outputs include verified profiles and probed Super I/O chip-ID families.
 
 ---
 

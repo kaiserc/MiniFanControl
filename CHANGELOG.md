@@ -4,6 +4,9 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [Unreleased]
+- **CLI Profile Registry Export (`export-profiles`)**: Added `minifan-helper.exe export-profiles [--json]` (backed by `DeviceProfile.ExportKnownProfilesJson` and `ExportKnownProfilesTable`) so contributors and hardware databases can export verified device profiles, EC/Super I/O register layouts, and probed Super I/O chip ID prefixes directly from the CLI.
+
 ## [1.0.4] - 2026-11-18
 
 ### 🌀 Fan Curve & Hysteresis

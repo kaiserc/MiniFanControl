@@ -4339,17 +4339,29 @@ namespace MiniFanControl
             UpdateWideLayout();
         }
 
+        private int _testClientWidthOverride = 0;
+        private int _testClientHeightOverride = 0;
+
+        internal void TestApplyWideLayoutSize(int width, int height)
+        {
+            _testClientWidthOverride = width;
+            _testClientHeightOverride = height;
+            UpdateWideLayout();
+        }
+
         private void UpdateWideLayout()
         {
             if (_wideRightPanel == null || _modeCardPanel == null || _liveCanvas == null || _perfCanvas == null)
                 return;
 
-            bool wide = ClientSize.Width >= 1450;
+            int clientW = _testClientWidthOverride > 0 ? _testClientWidthOverride : ClientSize.Width;
+            int clientH = _testClientHeightOverride > 0 ? _testClientHeightOverride : ClientSize.Height;
+            bool wide = clientW >= 1450;
             if (wide)
             {
                 int rx = 1096;
-                int rw = Math.Max(340, ClientSize.Width - rx - 12);
-                int rh = Math.Max(520, ClientSize.Height - 24);
+                int rw = Math.Max(340, clientW - rx - 12);
+                int rh = Math.Max(520, clientH - 24);
                 _wideRightPanel.Location = new Point(rx, 10);
                 _wideRightPanel.Size = new Size(rw, rh);
                 if (_widePerfBtn != null) _widePerfBtn.Location = new Point(rw - 114, 7);

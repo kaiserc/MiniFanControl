@@ -2856,19 +2856,19 @@ namespace MiniFanControl
                                               (mf.TestAutoTuneCustomBtn != null && mf.TestAutoTuneCustomBtn.Text.IndexOf("Auto-Tune", StringComparison.OrdinalIgnoreCase) >= 0);
 
                     // Wide 2-Column Mode (>= 1450px): Live Trend docks in right panel alongside Fan Curve on left, then restores when narrowed
-                    mf.ClientSize = new Size(1900, 1000);
+                    mf.TestApplyWideLayoutSize(1900, 1000);
                     bool wideOnOk = (mf.TestWideRightPanel != null) &&
                                     (mf.TestLiveCanvas != null && mf.TestLiveCanvas.Parent == mf.TestWideRightPanel && mf.TestLiveCanvas.Width >= 700);
-                    mf.ClientSize = new Size(1090, 900);
+                    mf.TestApplyWideLayoutSize(1090, 900);
                     bool wideOffOk = (mf.TestWideRightPanel != null) &&
                                      (mf.TestLiveCanvas != null && mf.TestLiveCanvas.Parent == mf.TestModeCardPanel);
 
                     examplesAndAutoTuneOk = fourExamplesOk && monotonicOk && kneeScalingOk && hasProtectedInForm && btnShowsReset && notDeletedOk && autoTuneSelectedOk && wideOnOk && wideOffOk;
-                    examplesAndAutoTuneDetails = string.Format("Examples4={0}, Monotonic={1}, KneeScale={2} (35W={3}%@{4}°C vs 65W={5}%@{6}°C), ResetBtn={7}, ResetRestored={8}, AutoTuneUI={9}",
+                    examplesAndAutoTuneDetails = string.Format("Examples4={0}, Monotonic={1}, KneeScale={2} (35W={3}%@{4}°C vs 65W={5}%@{6}°C), ResetBtn={7}, ResetRestored={8}, AutoTuneUI={9}, WideOn={10}, WideOff={11}",
                         fourExamplesOk, monotonicOk, kneeScalingOk,
                         ecoTuned.ApuPoints[2].Pct, ecoTuned.ApuPoints[2].Temp,
                         perfTuned.ApuPoints[2].Pct, perfTuned.ApuPoints[2].Temp,
-                        btnShowsReset, notDeletedOk, autoTuneSelectedOk);
+                        btnShowsReset, notDeletedOk, autoTuneSelectedOk, wideOnOk, wideOffOk);
                 }
             }
             catch (Exception ex)
@@ -4051,6 +4051,25 @@ namespace MiniFanControl
             Check(ctrlSvcOk,
                 "FanControllerService Decoupled Evaluation, Manual/Auto Transitions & Thermal Tripwire",
                 ctrlSvcDetail);
+
+            bool exportProfOk = false;
+            string exportProfDetail = "";
+            try
+            {
+                string jsonOut = DeviceProfile.ExportKnownProfilesJson("1.0.3");
+                string tblOut = DeviceProfile.ExportKnownProfilesTable();
+                exportProfOk = !string.IsNullOrEmpty(jsonOut)
+                    && jsonOut.Contains("\"gmktec-k12\"")
+                    && jsonOut.Contains("\"ryzen-hx370-ec\"")
+                    && jsonOut.Contains("\"probedSuperIoFamilies\"")
+                    && tblOut.Contains("gmktec-k12")
+                    && tblOut.Contains("0x86xx");
+                exportProfDetail = string.Format("jsonLen={0}, tblLen={1}", jsonOut.Length, tblOut.Length);
+            }
+            catch (Exception ex) { exportProfDetail = ex.Message; }
+            Check(exportProfOk,
+                "DeviceProfile CLI Export (JSON & Summary Table Formats)",
+                exportProfDetail);
 
             Console.WriteLine("----------------------------------------------------------------------");
 

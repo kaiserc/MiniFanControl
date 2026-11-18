@@ -154,8 +154,9 @@ namespace MiniFanControl
                     Console.WriteLine("  diff-scan / ec-scan [--demo]          Run EC differential sensor scanner (Tier 2 discovery)");
                     Console.WriteLine("  calibrate [passes] [--demo]           Execute multi-pass fan calibration curve analysis");
 
-                    Console.WriteLine("  test                                  Run 69-point automated safety & regression suite");
+                    Console.WriteLine("  test                                  Run 74-point automated safety & regression suite");
                     Console.WriteLine("  hw-matrix                             Run multi-profile hardware validation matrix");
+                    Console.WriteLine("  export-profiles [--json]              Export supported hardware profiles & Super I/O IDs");
 
                     Console.WriteLine("  watchdog --pid <pid> [--timeout <ms>] Out-of-process safety watchdog supervisor");
 
@@ -179,6 +180,20 @@ namespace MiniFanControl
 
                     return SelfTestSuite.RunHardwareMatrix();
 
+                }
+
+                if (cmd == "export-profiles" || cmd == "--export-profiles")
+                {
+                    bool asJson = false;
+                    for (int i = 0; i < args.Length; i++)
+                    {
+                        if (args[i].Equals("--json", StringComparison.OrdinalIgnoreCase))
+                            asJson = true;
+                    }
+                    Console.Write(asJson
+                        ? DeviceProfile.ExportKnownProfilesJson(MainForm.APP_VERSION)
+                        : DeviceProfile.ExportKnownProfilesTable());
+                    return 0;
                 }
 
                 if (cmd == "watchdog")

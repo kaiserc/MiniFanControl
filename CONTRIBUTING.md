@@ -83,7 +83,9 @@ If you add new hardware features or curve math, please add corresponding unit te
 Verify that all 6 existing device profiles and inverted polarity configurations remain valid:
 
 ```powershell
+# Validate hardware profiles and export supported EC/Super I/O IDs
 .\minifan-helper.exe hw-matrix
+.\minifan-helper.exe export-profiles --json
 ```
 
 ---
