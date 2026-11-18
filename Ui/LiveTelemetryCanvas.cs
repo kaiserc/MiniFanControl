@@ -47,6 +47,7 @@ namespace MiniFanControl
         public bool ShowApuRpm = true;
         public bool ShowSysRpm = true;
         public bool AutoScale = true;
+        public bool UseFahrenheit = false;
         public bool ShowRamPower { get { return ShowRam; } set { ShowRam = value; } }
 
         public event EventHandler ResetPeaksRequested;
@@ -526,9 +527,10 @@ namespace MiniFanControl
             int lastF1  = (Stats != null && Stats.Fan1RpmHistory.Count > 0) ? Stats.Fan1RpmHistory[Stats.Fan1RpmHistory.Count - 1] : 0;
             int lastF2  = (Stats != null && Stats.Fan2RpmHistory.Count > 0) ? Stats.Fan2RpmHistory[Stats.Fan2RpmHistory.Count - 1] : 0;
             int memClock = Status.RamSpeedMhz > 0 ? Status.RamSpeedMhz : (Status.MemClockMhz * 2);
+            string tUnit = TelemetrySessionStats.TempUnit(UseFahrenheit);
             string ramTempPart = (Status.DdrStickCount == 2 && Status.DdrTemp1 > 0 && Status.DdrTemp2 > 0 && Status.DdrTemp1 != Status.DdrTemp2)
-                ? string.Format("{0}/{1}°C", Status.DdrTemp1, Status.DdrTemp2)
-                : (lastRamTemp > 0 ? string.Format("{0}°C", lastRamTemp) : "");
+                ? string.Format("{0}/{1}{2}", TelemetrySessionStats.ToDisplayTemp(Status.DdrTemp1, UseFahrenheit), TelemetrySessionStats.ToDisplayTemp(Status.DdrTemp2, UseFahrenheit), tUnit)
+                : (lastRamTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(lastRamTemp, UseFahrenheit), tUnit) : "");
 
             string ramPillText;
             if (!string.IsNullOrEmpty(ramTempPart))
@@ -560,18 +562,18 @@ namespace MiniFanControl
             // 2. Metric Pills (0..8) - flow left-to-right, wrapping cleanly to row 2 before actionLimit
             int curX = 6;
             int curY = 5;
-            DrawFlowPill(g, 0, ref curX, ref curY, actionLimit, string.Format("● CPU {0}°C", lastCpu), cpuColor, ShowCpu, HighlightMetric == 1);
-            DrawFlowPill(g, 1, ref curX, ref curY, actionLimit, string.Format("● iGPU {0}°C", lastGpu), gpuColor, ShowGpu, HighlightMetric == 2);
+            DrawFlowPill(g, 0, ref curX, ref curY, actionLimit, string.Format("● CPU {0}{1}", TelemetrySessionStats.ToDisplayTemp(lastCpu, UseFahrenheit), tUnit), cpuColor, ShowCpu, HighlightMetric == 1);
+            DrawFlowPill(g, 1, ref curX, ref curY, actionLimit, string.Format("● iGPU {0}{1}", TelemetrySessionStats.ToDisplayTemp(lastGpu, UseFahrenheit), tUnit), gpuColor, ShowGpu, HighlightMetric == 2);
             DrawFlowPill(g, 2, ref curX, ref curY, actionLimit, ramPillText, ramColor, ShowRam, HighlightMetric == 7);
             if (lastFclk > 0)
             {
                 DrawFlowPill(g, 3, ref curX, ref curY, actionLimit, string.Format("● FCLK {0}M", lastFclk), fclkColor, ShowFabricClock, HighlightMetric == 8);
             }
-            DrawFlowPill(g, 4, ref curX, ref curY, actionLimit, string.Format("● NVMe {0}°C", lastNvme), nvmeColor, ShowNvme, HighlightMetric == 6);
+            DrawFlowPill(g, 4, ref curX, ref curY, actionLimit, string.Format("● NVMe {0}{1}", TelemetrySessionStats.ToDisplayTemp(lastNvme, UseFahrenheit), tUnit), nvmeColor, ShowNvme, HighlightMetric == 6);
             DrawFlowPill(g, 5, ref curX, ref curY, actionLimit, string.Format("● Pwr {0}W", lastPwr), pwrColor, ShowPower, HighlightMetric == 3);
             if (lastAmb > 0)
             {
-                DrawFlowPill(g, 6, ref curX, ref curY, actionLimit, string.Format("● Chas {0}°C", lastAmb), ambColor, ShowAmbient, HighlightMetric == 9);
+                DrawFlowPill(g, 6, ref curX, ref curY, actionLimit, string.Format("● Chas {0}{1}", TelemetrySessionStats.ToDisplayTemp(lastAmb, UseFahrenheit), tUnit), ambColor, ShowAmbient, HighlightMetric == 9);
             }
             DrawFlowPill(g, 7, ref curX, ref curY, actionLimit, string.Format("● APU {0}", lastF1), apuRpmColor, ShowApuRpm, HighlightMetric == 4);
             if (HasDualFans)
@@ -827,8 +829,10 @@ namespace MiniFanControl
 
                     int leftVal = (int)Math.Round(leftMin + frac * (leftMax - leftMin));
                     int hlTag = HighlightMetric == 0 ? 1 : HighlightMetric;
-                    string lUnit = (hlTag == 3) ? "W" : ((hlTag == 1 || hlTag == 2 || hlTag == 6 || hlTag == 9) ? "°C" : "°/W");
-                    string lStr = leftVal + lUnit;
+                    bool isTempAxis = (hlTag == 1 || hlTag == 2 || hlTag == 6 || hlTag == 9);
+                    int dispLeftVal = (UseFahrenheit && isTempAxis) ? TelemetrySessionStats.ToDisplayTemp(leftVal, true) : leftVal;
+                    string lUnit = (hlTag == 3) ? "W" : (isTempAxis ? tUnit : (UseFahrenheit ? "°F/W" : "°/W"));
+                    string lStr = dispLeftVal + lUnit;
                     SizeF lSz = g.MeasureString(lStr, AxisFont);
                     g.DrawString(lStr, AxisFont, lblBrush, plot.Left - lSz.Width - 2, y - lSz.Height / 2);
 
@@ -908,7 +912,7 @@ namespace MiniFanControl
                 if (ambPts != null && Stats.AmbientHistory.Count > 0)
                 {
                     int v = Stats.AmbientHistory[count - 1];
-                    if (v > 0) badges.Add(new CanvasEndpointBadge { TargetY = ambPts[ambPts.Length - 1].Y, Text = v + "°C", Color = ambColor, Highlighted = (hl == 9) });
+                    if (v > 0) badges.Add(new CanvasEndpointBadge { TargetY = ambPts[ambPts.Length - 1].Y, Text = TelemetrySessionStats.ToDisplayTemp(v, UseFahrenheit) + tUnit, Color = ambColor, Highlighted = (hl == 9) });
                 }
                 if (pwrPts != null && Stats.PowerHistory.Count > 0)
                 {
@@ -918,7 +922,7 @@ namespace MiniFanControl
                 if (nvmePts != null && Stats.NvmeHistory.Count > 0)
                 {
                     int v = Stats.NvmeHistory[count - 1];
-                    if (v > 0) badges.Add(new CanvasEndpointBadge { TargetY = nvmePts[nvmePts.Length - 1].Y, Text = v + "°C", Color = nvmeColor, Highlighted = (hl == 6) });
+                    if (v > 0) badges.Add(new CanvasEndpointBadge { TargetY = nvmePts[nvmePts.Length - 1].Y, Text = TelemetrySessionStats.ToDisplayTemp(v, UseFahrenheit) + tUnit, Color = nvmeColor, Highlighted = (hl == 6) });
                 }
                 if (fclkPts != null && Stats.FabricClockHistory.Count > 0)
                 {
@@ -930,7 +934,7 @@ namespace MiniFanControl
                     if (Stats.RamTempHistory.Count > 0 && Stats.RamTempHistory[count - 1] > 0)
                     {
                         int v = Stats.RamTempHistory[count - 1];
-                        badges.Add(new CanvasEndpointBadge { TargetY = ramPts[ramPts.Length - 1].Y, Text = v + "°C", Color = ramColor, Highlighted = (hl == 7) });
+                        badges.Add(new CanvasEndpointBadge { TargetY = ramPts[ramPts.Length - 1].Y, Text = TelemetrySessionStats.ToDisplayTemp(v, UseFahrenheit) + tUnit, Color = ramColor, Highlighted = (hl == 7) });
                     }
                     else if (Stats.RamPowerHistory.Count > 0)
                     {
@@ -941,12 +945,12 @@ namespace MiniFanControl
                 if (gpuPts != null && Stats.GpuHistory.Count > 0 && Stats.GpuHistory[count - 1] > 0)
                 {
                     int v = Stats.GpuHistory[count - 1];
-                    badges.Add(new CanvasEndpointBadge { TargetY = gpuPts[gpuPts.Length - 1].Y, Text = v + "°C", Color = gpuColor, Highlighted = (hl == 2) });
+                    badges.Add(new CanvasEndpointBadge { TargetY = gpuPts[gpuPts.Length - 1].Y, Text = TelemetrySessionStats.ToDisplayTemp(v, UseFahrenheit) + tUnit, Color = gpuColor, Highlighted = (hl == 2) });
                 }
                 if (cpuPts != null && Stats.CpuHistory.Count > 0)
                 {
                     int v = Stats.CpuHistory[count - 1];
-                    badges.Add(new CanvasEndpointBadge { TargetY = cpuPts[cpuPts.Length - 1].Y, Text = v + "°C", Color = cpuColor, Highlighted = (hl == 1) });
+                    badges.Add(new CanvasEndpointBadge { TargetY = cpuPts[cpuPts.Length - 1].Y, Text = TelemetrySessionStats.ToDisplayTemp(v, UseFahrenheit) + tUnit, Color = cpuColor, Highlighted = (hl == 1) });
                 }
 
                 DrawCanvasBadges(g, plot, badges, IsDarkMode);
@@ -974,8 +978,8 @@ namespace MiniFanControl
                     int hF2  = _hoverSampleIdx < Stats.Fan2RpmHistory.Count ? Stats.Fan2RpmHistory[_hoverSampleIdx] : 0;
 
                     string hTempPart = (Status.DdrStickCount == 2 && Status.DdrTemp1 > 0 && Status.DdrTemp2 > 0 && Status.DdrTemp1 != Status.DdrTemp2)
-                        ? string.Format("{0}/{1}°C", Status.DdrTemp1, Status.DdrTemp2)
-                        : (hRamTemp > 0 ? string.Format("{0}°C", hRamTemp) : "");
+                        ? string.Format("{0}/{1}{2}", TelemetrySessionStats.ToDisplayTemp(Status.DdrTemp1, UseFahrenheit), TelemetrySessionStats.ToDisplayTemp(Status.DdrTemp2, UseFahrenheit), tUnit)
+                        : (hRamTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(hRamTemp, UseFahrenheit), tUnit) : "");
 
                     string hPwrPart = Status.RamPowerWatts > 0 ? string.Format(" ~{0:0.0}W", Status.RamPowerWatts) : "";
                     string hNvmePwrPart = Status.NvmePowerWatts > 0 ? string.Format(" (~{0:0.0}W)", Status.NvmePowerWatts) : "";
@@ -984,11 +988,16 @@ namespace MiniFanControl
                         : (memClock > 0 ? string.Format("RAM {0}% @ {1}MHz{2}", hRamLoad, memClock, hPwrPart) : string.Format("RAM {0}%{1}", hRamLoad, hPwrPart));
 
                     string fclkPart = hFclk > 0 ? string.Format(" • FCLK {0}MHz", hFclk) : "";
-                    string ambPart = hAmb > 0 ? string.Format(" • Chas {0}°C", hAmb) : "";
+                    string ambPart = hAmb > 0 ? string.Format(" • Chas {0}{1}", TelemetrySessionStats.ToDisplayTemp(hAmb, UseFahrenheit), tUnit) : "";
                     string sysPart = (HasDualFans && hF2 > 0) ? string.Format(" • Sys {0} RPM", hF2) : "";
 
-                    string hud = string.Format("{0}  |  CPU {1}°C • iGPU {2}°C • {3}{4} • NVMe {5}°C{6} • Pwr {7}W{8} • APU {9} RPM{10}",
-                        secAgo == 0 ? "Now" : "-" + secAgo + "s", hCpu, hGpu, hRamStr, fclkPart, hNvme, hNvmePwrPart, hPwr, ambPart, hF1, sysPart);
+                    string hud = string.Format("{0}  |  CPU {1}{11} • iGPU {2}{11} • {3}{4} • NVMe {5}{11}{6} • Pwr {7}W{8} • APU {9} RPM{10}",
+                        secAgo == 0 ? "Now" : "-" + secAgo + "s",
+                        TelemetrySessionStats.ToDisplayTemp(hCpu, UseFahrenheit),
+                        TelemetrySessionStats.ToDisplayTemp(hGpu, UseFahrenheit),
+                        hRamStr, fclkPart,
+                        TelemetrySessionStats.ToDisplayTemp(hNvme, UseFahrenheit),
+                        hNvmePwrPart, hPwr, ambPart, hF1, sysPart, tUnit);
 
                     Size hudSz = TextRenderer.MeasureText(g, hud, HudFont, new Size(520, 24), TextFormatFlags.NoPadding);
                     int boxW = hudSz.Width + 12;

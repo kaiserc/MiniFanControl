@@ -62,7 +62,7 @@ namespace MiniFanControl
 
         public List<string> GetActiveTags()
         {
-            List<string> tags = new List<string>(8);
+            List<string> tags = new List<string>(11);
             if (FreeSync) tags.Add("FreeSync");
             if (AntiLag) tags.Add("Anti-Lag");
             if (Afmf) tags.Add("AFMF");
@@ -71,6 +71,9 @@ namespace MiniFanControl
             if (RadeonBoost) tags.Add("Boost");
             if (Rsr) tags.Add("RSR");
             if (Ris) tags.Add("RIS");
+            if (EnhancedSync) tags.Add("EnhSync");
+            if (SmartAccessMemory) tags.Add("SAM");
+            if (Frtc) tags.Add(FrtcFps > 0 ? string.Format("FRTC {0}", FrtcFps) : "FRTC");
             return tags;
         }
     }
@@ -86,6 +89,90 @@ namespace MiniFanControl
         private static DateTime _lastSampleTime = DateTime.MinValue;
         private static readonly object _lock = new object();
         private static string _discoveredAdapterKey = null;
+
+        public static void InvalidateCache()
+        {
+            lock (_lock)
+            {
+                _lastSampleTime = DateTime.MinValue;
+            }
+        }
+
+        public static bool SetKmdFeatureEnabled(string featureKey, bool enabled, out string error)
+        {
+            error = null;
+            lock (_lock)
+            {
+                try
+                {
+                    if (string.IsNullOrEmpty(_discoveredAdapterKey))
+                    {
+                        Sample();
+                    }
+                    if (string.IsNullOrEmpty(_discoveredAdapterKey))
+                    {
+                        error = "No AMD Radeon display adapter registry key found.";
+                        return false;
+                    }
+
+                    int val = enabled ? 1 : 0;
+                    if (string.Equals(featureKey, "EnhSync", StringComparison.OrdinalIgnoreCase))
+                    {
+                        using (RegistryKey umdKey = Registry.LocalMachine.OpenSubKey(_discoveredAdapterKey + @"\UMD", true))
+                        {
+                            if (umdKey == null) { error = "Radeon UMD registry subkey not found."; return false; }
+                            umdKey.SetValue("TurboSync", val, RegistryValueKind.DWord);
+                        }
+                    }
+                    else
+                    {
+                        using (RegistryKey kmdKey = Registry.LocalMachine.OpenSubKey(_discoveredAdapterKey, true))
+                        {
+                            if (kmdKey == null) { error = "Radeon KMD registry key not writable."; return false; }
+                            switch (featureKey)
+                            {
+                                case "AntiLag":
+                                    kmdKey.SetValue("KMD_DeLagEnabled", val, RegistryValueKind.DWord);
+                                    break;
+                                case "Chill":
+                                    kmdKey.SetValue("KMD_ChillEnabled", val, RegistryValueKind.DWord);
+                                    break;
+                                case "Boost":
+                                    kmdKey.SetValue("KMD_RadeonBoostEnabled", val, RegistryValueKind.DWord);
+                                    break;
+                                case "RIS":
+                                    kmdKey.SetValue("KMD_ImageSharpeningEnabled", val, RegistryValueKind.DWord);
+                                    break;
+                                case "RSR":
+                                    kmdKey.SetValue("Gmx_RSREnabled", val, RegistryValueKind.DWord);
+                                    break;
+                                case "FRTC":
+                                    kmdKey.SetValue("KMD_FRTEnabled", val, RegistryValueKind.DWord);
+                                    if (enabled && GetDword(kmdKey, "KMD_MaxFrameRateRequested") <= 0)
+                                        kmdKey.SetValue("KMD_MaxFrameRateRequested", 120, RegistryValueKind.DWord);
+                                    break;
+                                default:
+                                    error = "Unsupported Radeon feature key: " + featureKey;
+                                    return false;
+                            }
+                        }
+                    }
+
+                    _lastSampleTime = DateTime.MinValue;
+                    return true;
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    error = "Administrator privileges required to modify AMD driver settings.";
+                    return false;
+                }
+                catch (Exception ex)
+                {
+                    error = ex.Message;
+                    return false;
+                }
+            }
+        }
 
         public static RadeonSettingsTelemetry Sample()
         {

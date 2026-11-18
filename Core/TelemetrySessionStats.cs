@@ -114,6 +114,20 @@ namespace MiniFanControl
         private int _fpsSampleCount;
         private double _sumFrametimeMs;
         private int _frametimeSampleCount;
+        private long _sumCpuLoad;
+        private int _cpuLoadSampleCount;
+        private long _sumGpuLoad;
+        private int _gpuLoadSampleCount;
+        private long _sumDdrTemp;
+        private int _ddrTempSampleCount;
+        private long _sumRamLoad;
+        private int _ramLoadSampleCount;
+        private long _sumAmbientTemp;
+        private int _ambientSampleCount;
+        private long _sumVrmTemp;
+        private int _vrmTempSampleCount;
+        private long _sumNpuActivityPct;
+        private int _npuSampleCount;
 
         private readonly List<int> _cpuHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _gpuHist = new List<int>(HISTORY_LEN);
@@ -145,6 +159,13 @@ namespace MiniFanControl
         public double AvgRamPowerWatts { get { return _ramPowerSampleCount > 0 ? _sumRamPowerWatts / _ramPowerSampleCount : 0.0; } }
         public double AvgFan1Rpm { get { return _fan1SampleCount > 0 ? (double)_sumFan1Rpm / _fan1SampleCount : 0.0; } }
         public double AvgFan2Rpm { get { return _fan2SampleCount > 0 ? (double)_sumFan2Rpm / _fan2SampleCount : 0.0; } }
+        public double AvgCpuLoad { get { return _cpuLoadSampleCount > 0 ? (double)_sumCpuLoad / _cpuLoadSampleCount : 0.0; } }
+        public double AvgGpuLoad { get { return _gpuLoadSampleCount > 0 ? (double)_sumGpuLoad / _gpuLoadSampleCount : 0.0; } }
+        public double AvgDdrTemp { get { return _ddrTempSampleCount > 0 ? (double)_sumDdrTemp / _ddrTempSampleCount : 0.0; } }
+        public double AvgRamLoad { get { return _ramLoadSampleCount > 0 ? (double)_sumRamLoad / _ramLoadSampleCount : 0.0; } }
+        public double AvgAmbientTemp { get { return _ambientSampleCount > 0 ? (double)_sumAmbientTemp / _ambientSampleCount : 0.0; } }
+        public double AvgVrmTemp { get { return _vrmTempSampleCount > 0 ? (double)_sumVrmTemp / _vrmTempSampleCount : 0.0; } }
+        public double AvgNpuActivityPct { get { return _npuSampleCount > 0 ? (double)_sumNpuActivityPct / _npuSampleCount : 0.0; } }
 
         public List<int> CpuHistory { get { return _cpuHist; } }
         public List<int> GpuHistory { get { return _gpuHist; } }
@@ -170,6 +191,26 @@ namespace MiniFanControl
         public string GetVrmSparkline() { return FormatSparkline(_vrmHist, 0); }
         public string GetFabricClockSparkline() { return FormatSparkline(_fclkHist, 2); }
         public string GetNpuSparkline() { return FormatSparkline(_npuHist, 0); }
+
+        public static int ToDisplayTemp(int celsius, bool useFahrenheit)
+        {
+            return useFahrenheit ? (int)Math.Round(celsius * 9.0 / 5.0 + 32.0) : celsius;
+        }
+
+        public static double ToDisplayTemp(double celsius, bool useFahrenheit)
+        {
+            return useFahrenheit ? (celsius * 9.0 / 5.0 + 32.0) : celsius;
+        }
+
+        public static int ToDisplayTempDelta(int deltaCelsius, bool useFahrenheit)
+        {
+            return useFahrenheit ? (int)Math.Round(deltaCelsius * 9.0 / 5.0) : deltaCelsius;
+        }
+
+        public static string TempUnit(bool useFahrenheit)
+        {
+            return useFahrenheit ? "°F" : "°C";
+        }
 
         public TelemetrySessionStats()
         {
@@ -238,6 +279,20 @@ namespace MiniFanControl
             _fpsSampleCount = 0;
             _sumFrametimeMs = 0.0;
             _frametimeSampleCount = 0;
+            _sumCpuLoad = 0;
+            _cpuLoadSampleCount = 0;
+            _sumGpuLoad = 0;
+            _gpuLoadSampleCount = 0;
+            _sumDdrTemp = 0;
+            _ddrTempSampleCount = 0;
+            _sumRamLoad = 0;
+            _ramLoadSampleCount = 0;
+            _sumAmbientTemp = 0;
+            _ambientSampleCount = 0;
+            _sumVrmTemp = 0;
+            _vrmTempSampleCount = 0;
+            _sumNpuActivityPct = 0;
+            _npuSampleCount = 0;
             _cpuHist.Clear();
             _gpuHist.Clear();
             _nvmeHist.Clear();
@@ -306,6 +361,8 @@ namespace MiniFanControl
             if (st.CpuTemp > MaxCpuTemp) MaxCpuTemp = st.CpuTemp;
             if (st.CpuLoadPct >= 0)
             {
+                _cpuLoadSampleCount++;
+                _sumCpuLoad += st.CpuLoadPct;
                 if (st.CpuLoadPct < MinCpuLoad) MinCpuLoad = st.CpuLoadPct;
                 if (st.CpuLoadPct > MaxCpuLoad) MaxCpuLoad = st.CpuLoadPct;
             }
@@ -358,8 +415,10 @@ namespace MiniFanControl
 
             int loadSample = st.RtssFps > 0 ? st.RtssFps : Math.Max(0, st.GfxActivityPct);
             PushSample(_gpuLoadHist, loadSample);
-            if (st.GfxActivityPct > 0)
+            if (st.GfxActivityPct >= 0)
             {
+                _gpuLoadSampleCount++;
+                _sumGpuLoad += st.GfxActivityPct;
                 if (st.GfxActivityPct < MinGpuLoad) MinGpuLoad = st.GfxActivityPct;
                 if (st.GfxActivityPct > MaxGpuLoad) MaxGpuLoad = st.GfxActivityPct;
             }
@@ -477,6 +536,8 @@ namespace MiniFanControl
 
             if (st.VrmTemp > 0)
             {
+                _vrmTempSampleCount++;
+                _sumVrmTemp += st.VrmTemp;
                 if (st.VrmTemp < MinVrmTemp) MinVrmTemp = st.VrmTemp;
                 if (st.VrmTemp > MaxVrmTemp) MaxVrmTemp = st.VrmTemp;
             }
@@ -490,6 +551,8 @@ namespace MiniFanControl
 
             if (st.NpuActivityPct >= 0)
             {
+                _npuSampleCount++;
+                _sumNpuActivityPct += st.NpuActivityPct;
                 if (st.NpuActivityPct < MinNpuActivityPct) MinNpuActivityPct = st.NpuActivityPct;
                 if (st.NpuActivityPct > MaxNpuActivityPct) MaxNpuActivityPct = st.NpuActivityPct;
                 PushSample(_npuHist, st.NpuActivityPct);
@@ -499,6 +562,8 @@ namespace MiniFanControl
             PushSample(_ambientHist, ambVal);
             if (st.AmbientTemp > 0)
             {
+                _ambientSampleCount++;
+                _sumAmbientTemp += st.AmbientTemp;
                 if (st.AmbientTemp < MinAmbientTemp) MinAmbientTemp = st.AmbientTemp;
                 if (st.AmbientTemp > MaxAmbientTemp) MaxAmbientTemp = st.AmbientTemp;
             }
@@ -507,6 +572,8 @@ namespace MiniFanControl
             PushSample(_ramTempHist, ramTempVal);
             if (st.DdrTemp > 0)
             {
+                _ddrTempSampleCount++;
+                _sumDdrTemp += st.DdrTemp;
                 if (st.DdrTemp < MinDdrTemp) MinDdrTemp = st.DdrTemp;
                 if (st.DdrTemp > MaxDdrTemp) MaxDdrTemp = st.DdrTemp;
             }
@@ -525,6 +592,8 @@ namespace MiniFanControl
             PushSample(_ramLoadHist, ramLoadVal);
             if (st.RamLoadPct >= 0)
             {
+                _ramLoadSampleCount++;
+                _sumRamLoad += st.RamLoadPct;
                 if (st.RamLoadPct < MinRamLoad) MinRamLoad = st.RamLoadPct;
                 if (st.RamLoadPct > MaxRamLoad) MaxRamLoad = st.RamLoadPct;
             }

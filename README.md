@@ -233,7 +233,7 @@ To ensure zero driver conflicts and maximum stability, MiniFanControl strictly i
 | **DDR5 SPD Hub Temps (Dual)**| AMD FCH SMBus Controller | JEDEC SPD5118 I2C `0x50` & `0x51` | Synchronized via `Global\Access_SMBUS.HTP.Method` |
 | **Chassis Ambient Temp** | ITE IT8613E Super I/O | Channel 6 Register `0x2E` | Continuous motherboard ambient thermistor |
 | **In-Game FPS & Frametimes**| RTSS / CapFrameX | Win32 Named Shared Memory | Read-only passive memory mapping (no DLL injection) |
-| **Radeon Feature Suite** | AMD Radeon Software | Registry / Runtime Enumeration | FreeSync, Anti-Lag, AFMF 2, FSR, Boost, Chill |
+| **Radeon Feature Suite** | AMD Radeon Software | Registry / Runtime Enumeration | FreeSync, Anti-Lag, AFMF 2, FSR, Boost, Chill, RSR, RIS, EnhSync, SAM, FRTC (with KMD toggles in Tools & Drivers) |
 
 ---
 
@@ -464,7 +464,10 @@ MiniFanControl automatically persists user preferences and calibrated fan thresh
 | `OsdGraphMode` | Integer | `3` | Live graphs: `0` = Text Only, `1` = Sparklines, `2` = Combined Graph, `3` = Both |
 | `OsdGraphHeight` | Integer | `65` | Base graph height in pixels (`45`, `65`, `95`, `130`) |
 | `OsdOpacityPct` | Integer | `95` | Overlay background opacity percentage (`20%` to `100%`) |
-| `OsdShowPeaks` | Integer | `1` | `1` = Show peak trackers (`▲`) and session averages, `0` = Hide |
+| `OsdShowPeaks` | Integer | `1` | `1` = Show tracker column (`▲` / `▼` / `▼▲` / `~`), `0` = Hide |
+| `OsdPeakTrackerMode` | Integer | `0` | `0` = Peaks (`▲`), `1` = Lows (`▼`), `2` = Min/Max (`▼▲`), `3` = Session Avg (`~`) |
+| `OsdShowRadeonExtTags` | Integer | `1` | `1` = Include `SAM`, `EnhSync`, and `FRTC` pills in OSD Radeon tags, `0` = Hide |
+| `UseFahrenheit` | Integer | `0` | `1` = Display all temperatures in Fahrenheit (`°F`), `0` = Celsius (`°C`) |
 | `OsdShowFpsGraph` | Integer | `1` | `1` = Render dedicated FPS & Frametime (ms) chart at bottom of HUD |
 | `OsdPlotFpsOnTrend`| Integer | `1` | `1` = Plot live framerate series inside the upper combined trend graph |
 | `OsdShowCpu` / `Gpu` / `Nvme` / `Power` / `Ram` / `Fps` / `Lows` / `GpuLoad` / `ApuFan` / `SysFan` | Integer | `1` | Granular visibility toggles for individual telemetry rows (`1` = visible, `0` = hidden) |

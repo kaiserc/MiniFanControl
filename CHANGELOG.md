@@ -4,6 +4,23 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.0.2] - 2026-11-18
+
+### 🎨 UI Clarity, Per-Metric OSD Studio & Expanded Fan Curve Layout
+- **Wider & Taller Main Window (`1100 × 1160`)**: Expanded the main form width and height so all 8 top telemetry boxes (`CPU`, `iGPU`, `RAM`, `NVMe`, `PWR`, `Chassis`, `APU`, `SYS`) sit cleanly side-by-side without overlap, and all OSD Studio sections fit without a scrollbar or clipped checkbox text at 125% DPI.
+- **Per-Metric OSD Studio Sections**: Reorganized OSD Studio toggles into dedicated sections (**CPU**, **Power & VRM**, **iGPU & Radeon**, **RAM (DDR5)**, **NVMe Storage**, **Chassis & Silicon**, **FPS & Frametime**, **Fans**, and **Graphs, Theme & Global Overlay**).
+- **Expanded Fan Curve Editor & Badge Alignment**: Increased `_curveCanvas` to `1056 × 496` (`modeCard` height `632px`) on the **APU Fan** and **Sys Fan** tabs to fill the space above `Manual Fan Control`, and aligned `_calibBadgeLabel` cleanly on the `Manual Fan Control` header row.
+- **Chassis Naming & Live Trend Click Alignment**: Renamed the motherboard ambient box to `Chassis`, fixed `_fan1Box` placement in `ApplyFanCapabilities()`, and aligned `_ambientBox` click/hover selection to `LiveTelemetryCanvas` metric ID `9`.
+
+### 🌡️ Fahrenheit (°F) Mode, Tracker Modes & Overlay Polish
+- **Global Fahrenheit (`°F`) Option**: Added **Use Fahrenheit (°F)** in the `Options` card (`UseFahrenheit`), converting temperatures across telemetry boxes, status strip, tray tooltips, `LiveTelemetryCanvas`, `FanCurveCanvas`, and `CapFrameXOverlayForm`.
+- **Tracker Modes & Granular Sub-Field Toggles**: Added `PeakTrackerMode` (`Peaks (▲)`, `Lows (▼)`, `Min/Max (▼▲)`, `Avg (~)`) and per-field OSD toggles (`CPU Load`, `iGPU Hotspot`, `APU Power Limit`, `NVMe I/O`, `NVMe Dual-Drive`, `FCLK Sync Badge`, `FPS Frametime`, `FPS Session Avg`, and RAM sub-fields).
+- **Clean Inline Sparklines**: Removed the unwanted background-sparkline fallback on wide `RAM` and `NVMe` rows in `CapFrameXOverlayForm.DrawVertRow` when `Background Sparklines` is unchecked.
+
+### 🎮 Extended Radeon OSD Tags & Driver Feature Toggles
+- **SAM, EnhSync & FRTC OSD Pills**: Added `SAM`, `EnhSync`, and `FRTC` pills to `GetActiveRadeonTags()`, controllable via the **SAM, EnhSync & FRTC Tags** toggle in OSD Studio and the overlay context menu.
+- **Radeon Driver Features (KMD) Menu**: Added a **🎮 Radeon Driver Features (KMD)** submenu under **Tools & Drivers** to toggle `Anti-Lag`, `Radeon Chill`, `Radeon Boost`, `RIS`, `RSR`, `Enhanced Sync`, and `FRTC` directly in the AMD driver registry.
+
 ## [1.0.1] - 2026-11-17
 
 ### 🔧 Fan Calibration & Tachometer Stability

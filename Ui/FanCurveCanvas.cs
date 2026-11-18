@@ -31,6 +31,7 @@ namespace MiniFanControl
         public bool IsDarkMode = true;
         public bool IsRadeonTheme = false;
         public bool IsAfterburnerTheme = false;
+        public bool UseFahrenheit = false;
 
         public event EventHandler CurveModified;
         public event EventHandler BuiltInCurveDragStarted;
@@ -245,7 +246,7 @@ namespace MiniFanControl
                 {
                     float x = plot.Left + ((float)(t - MIN_TEMP) / (MAX_TEMP - MIN_TEMP)) * plot.Width;
                     g.DrawLine(gridPen, x, plot.Top, x, plot.Bottom);
-                    string xStr = t + "°C";
+                    string xStr = TelemetrySessionStats.ToDisplayTemp(t, UseFahrenheit) + TelemetrySessionStats.TempUnit(UseFahrenheit);
                     SizeF sz = g.MeasureString(xStr, AxisFont);
                     g.DrawString(xStr, AxisFont, lblBrush, x - sz.Width / 2, plot.Bottom + 3);
                 }
@@ -320,7 +321,7 @@ namespace MiniFanControl
                     if (activePt)
                     {
                         string fanTag = EditSysFan ? "Sys" : "APU";
-                        string tip = string.Format("{0}: {1}°C → {2}%", fanTag, activePts[i].Temp, activePts[i].Pct);
+                        string tip = string.Format("{0}: {1}{2} → {3}%", fanTag, TelemetrySessionStats.ToDisplayTemp(activePts[i].Temp, UseFahrenheit), TelemetrySessionStats.TempUnit(UseFahrenheit), activePts[i].Pct);
                         using (Brush bBg = new SolidBrush(IsDarkMode ? Color.Black : Color.White))
                         using (Brush bFg = new SolidBrush(IsDarkMode ? Color.White : Color.Black))
                         {

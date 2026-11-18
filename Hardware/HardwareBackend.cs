@@ -2216,7 +2216,9 @@ namespace MiniFanControl
                 RadeonRis = rad.Ris,
                 RadeonEnhancedSync = rad.EnhancedSync,
                 RadeonSam = rad.SmartAccessMemory,
-                RadeonFsr = rad.Fsr
+                RadeonFsr = rad.Fsr,
+                RadeonFrtc = rad.Frtc,
+                RadeonFrtcFps = rad.FrtcFps
             };
 
             _lastStatusCache = st;

@@ -68,16 +68,16 @@ namespace MiniFanControl
         private static readonly Color CfxWhite   = Color.FromArgb(0xF8, 0xFA, 0xFC);
 
         public TelemetrySessionStats Stats;
-        public bool VerticalLayout = false;
+        public bool VerticalLayout = true;
         public bool ClickThrough = false;
         public bool HasDualFans = true;
 
         // 0 = Text Only, 1 = Mini Sparklines per Metric, 2 = Combined Live Graph, 3 = Both Sparklines + Combined Graph
         public int GraphMode = 3;
-        public int GraphHeight = 105; // 75=Compact, 105=Medium, 140=Large, 180=XL
+        public int GraphHeight = 140; // 75=Compact, 105=Medium, 140=Large, 180=XL
         // 0 = 100% (Standard), 1 = 125% (Large), 2 = 150% (Extra Large), 3 = 185% (Jumbo 4K)
-        public int OsdScaleTier = 0;
-        public int OpacityPct = 88;
+        public int OsdScaleTier = 1;
+        public int OpacityPct = 80;
         public bool MatchAppTheme = true;
         public bool IsRadeonTheme = false;
         public bool IsAfterburnerTheme = false;
@@ -92,34 +92,46 @@ namespace MiniFanControl
         public bool ShowSysFan = true;
         public bool ShowMode = true;
         public bool ShowPeaks = true;
+        // 0 = Peaks (▲), 1 = Lows (▼), 2 = Min/Max (▼▲), 3 = Avg (~)
+        public int PeakTrackerMode = 0;
         public bool ShowNvme = true;
         public bool ShowRam = true;
         public bool ShowVrmCurrent = false;
-        public bool ShowFabricClock = false;
-        public bool ShowNpu = false;
+        public bool ShowFabricClock = true;
+        public bool ShowNpu = true;
         public bool ShowAmbient = true;
-        public bool ShowDriverVersion = false;
-        public bool ShowClocks = false;
+        public bool ShowDriverVersion = true;
+        public bool ShowClocks = true;
         public bool ShowGameName = true;
-        public bool SparklinesAsBackground = false;
+        public bool SparklinesAsBackground = true;
         private string _lastGameTitle = null;
         public bool ShowRadeonSettings = true;
         public bool ShowLiveTrend = true;
         public bool PlotFpsOnTrend = true;
         public bool ShowFpsGraph = true;
-        public bool DfGraphStyle = false;
-        public bool DfGraphFirst = false;
+        public bool DfGraphStyle = true;
+        public bool DfGraphFirst = true;
         public bool ClampToScreen = true;
         public string ProcessorBadgeText = null;
 
-        // Granular Sub-Field Toggles for RAM & NVMe Overlay Rows
+        // Granular Sub-Field Toggles for Overlay Rows
         public bool ShowRamTemp = true;
-        public bool ShowRamDualSticks = true;
-        public bool ShowRamSpread = false; // Default false on OSD so '(Δ6°)' doesn't crowd the overlay row
+        public bool ShowRamDualSticks = false;
+        public bool ShowRamSpread = true;
         public bool ShowRamLoad = true;
         public bool ShowRamPower = true;
-        public bool ShowRamClock = false;  // Independent of CPU/iGPU ShowClocks so RAM row stays clean
+        public bool ShowRamClock = false;
         public bool ShowNvmePower = true;
+        public bool ShowNvmeIo = true;
+        public bool ShowNvmeDual = true;
+        public bool ShowCpuLoad = true;
+        public bool ShowGpuHotspot = true;
+        public bool ShowPowerLimit = true;
+        public bool ShowFclkSync = true;
+        public bool ShowFrametimeMs = true;
+        public bool ShowFpsAvg = true;
+        public bool ShowRadeonExtendedTags = true;
+        public bool UseFahrenheit = false;
 
         // Diagnostics for Hook-Free Zero-Impact Invalidation (CapFrameX dirty-check model)
         public long SkippedRepaintCount { get; private set; }
@@ -553,9 +565,22 @@ namespace MiniFanControl
             if (HasDualFans)
                 AddMetricToggleMenuItem(metricsMenu, "System Fan Speed", () => ShowSysFan, v => ShowSysFan = v);
             AddMetricToggleMenuItem(metricsMenu, "Thermal Mode", () => ShowMode, v => ShowMode = v);
-            AddMetricToggleMenuItem(metricsMenu, "Peak Values (▲)", () => ShowPeaks, v => ShowPeaks = v);
+            AddMetricToggleMenuItem(metricsMenu, "Peak / Low Trackers", () => ShowPeaks, v => ShowPeaks = v);
+            ToolStripMenuItem trackerModeMenu = new ToolStripMenuItem("Tracker Mode (Peaks / Lows / Avg)");
+            Action<int> setTrackerMode = m => { PeakTrackerMode = m; UpdateDimensions(); Invalidate(); if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty); };
+            ToolStripMenuItem tmPeaks = new ToolStripMenuItem("Peaks (▲)") { Checked = (PeakTrackerMode == 0) };
+            tmPeaks.Click += (s, e) => setTrackerMode(0);
+            ToolStripMenuItem tmLows = new ToolStripMenuItem("Lows (▼)") { Checked = (PeakTrackerMode == 1) };
+            tmLows.Click += (s, e) => setTrackerMode(1);
+            ToolStripMenuItem tmMinMax = new ToolStripMenuItem("Min/Max (▼▲)") { Checked = (PeakTrackerMode == 2) };
+            tmMinMax.Click += (s, e) => setTrackerMode(2);
+            ToolStripMenuItem tmAvg = new ToolStripMenuItem("Session Avg (~)") { Checked = (PeakTrackerMode == 3) };
+            tmAvg.Click += (s, e) => setTrackerMode(3);
+            trackerModeMenu.DropDownItems.AddRange(new ToolStripItem[] { tmPeaks, tmLows, tmMinMax, tmAvg });
+            metricsMenu.DropDownItems.Add(trackerModeMenu);
             AddMetricToggleMenuItem(metricsMenu, "Radeon Driver Version", () => ShowDriverVersion, v => ShowDriverVersion = v);
             AddMetricToggleMenuItem(metricsMenu, "Radeon Features (Tags: FreeSync, Anti-Lag, AFMF, Chill, Boost, RSR, RIS)", () => ShowRadeonSettings, v => ShowRadeonSettings = v);
+            AddMetricToggleMenuItem(metricsMenu, "Extended Radeon Tags (SAM, EnhSync, FRTC)", () => ShowRadeonExtendedTags, v => ShowRadeonExtendedTags = v);
             menu.Items.Add(metricsMenu);
 
             ToolStripMenuItem subFieldsMenu = new ToolStripMenuItem("RAM & Sensor Sub-Fields");
@@ -596,6 +621,15 @@ namespace MiniFanControl
             AddMetricToggleMenuItem(subFieldsMenu, "RAM Clock Speed (@ MHz)", () => ShowRamClock, v => ShowRamClock = v);
             subFieldsMenu.DropDownItems.Add(new ToolStripSeparator());
             AddMetricToggleMenuItem(subFieldsMenu, "NVMe Power Draw (~W)", () => ShowNvmePower, v => ShowNvmePower = v);
+            AddMetricToggleMenuItem(subFieldsMenu, "NVMe I/O Throughput (MB/s)", () => ShowNvmeIo, v => ShowNvmeIo = v);
+            AddMetricToggleMenuItem(subFieldsMenu, "NVMe Dual-Drive Split (°C/°C)", () => ShowNvmeDual, v => ShowNvmeDual = v);
+            subFieldsMenu.DropDownItems.Add(new ToolStripSeparator());
+            AddMetricToggleMenuItem(subFieldsMenu, "CPU Load (%)", () => ShowCpuLoad, v => ShowCpuLoad = v);
+            AddMetricToggleMenuItem(subFieldsMenu, "iGPU Hotspot (🔥°C)", () => ShowGpuHotspot, v => ShowGpuHotspot = v);
+            AddMetricToggleMenuItem(subFieldsMenu, "APU Power Limit (/W)", () => ShowPowerLimit, v => ShowPowerLimit = v);
+            AddMetricToggleMenuItem(subFieldsMenu, "FCLK Sync Status (1:1)", () => ShowFclkSync, v => ShowFclkSync = v);
+            AddMetricToggleMenuItem(subFieldsMenu, "FPS Frametime (ms)", () => ShowFrametimeMs, v => ShowFrametimeMs = v);
+            AddMetricToggleMenuItem(subFieldsMenu, "FPS Session Avg", () => ShowFpsAvg, v => ShowFpsAvg = v);
             menu.Items.Add(subFieldsMenu);
 
             ToolStripMenuItem themeMenu = new ToolStripMenuItem("OSD Theme Palette");
@@ -713,7 +747,7 @@ namespace MiniFanControl
             if (ShowDriverVersion && !string.IsNullOrEmpty(_status.RadeonSoftwareVer)) c++;
             if (ShowRadeonSettings)
             {
-                List<string> tags = (_status.RadeonFeaturesAvailable && _status.GetActiveRadeonTags() != null) ? _status.GetActiveRadeonTags() : null;
+                List<string> tags = (_status.RadeonFeaturesAvailable && _status.GetActiveRadeonTags(ShowRadeonExtendedTags) != null) ? _status.GetActiveRadeonTags(ShowRadeonExtendedTags) : null;
                 if ((tags != null && tags.Count > 0) || !string.IsNullOrEmpty(ProcessorBadgeText)) c++;
             }
             return c;
@@ -745,21 +779,27 @@ namespace MiniFanControl
 
             if (ShowRamTemp)
             {
+                string tUnit = TelemetrySessionStats.TempUnit(UseFahrenheit);
                 if (ShowRamDualSticks && _status.DdrStickCount == 2 && _status.DdrTemp1 > 0 && _status.DdrTemp2 > 0)
                 {
+                    int t1 = TelemetrySessionStats.ToDisplayTemp(_status.DdrTemp1, UseFahrenheit);
+                    int t2 = TelemetrySessionStats.ToDisplayTemp(_status.DdrTemp2, UseFahrenheit);
+                    int spr = TelemetrySessionStats.ToDisplayTempDelta(_status.DdrTempSpread, UseFahrenheit);
                     if (ShowRamSpread && _status.DdrTempSpread >= 1)
-                        parts.Add(string.Format("{0}°/{1}°C (Δ{2}°)", _status.DdrTemp1, _status.DdrTemp2, _status.DdrTempSpread));
+                        parts.Add(string.Format("{0}°/{1}{2} (Δ{3}°)", t1, t2, tUnit, spr));
                     else if (ShowRamSpread)
-                        parts.Add(string.Format("{0}°/{1}°C (Δ0°)", _status.DdrTemp1, _status.DdrTemp2));
+                        parts.Add(string.Format("{0}°/{1}{2} (Δ0°)", t1, t2, tUnit));
                     else
-                        parts.Add(string.Format("{0}/{1}°C", _status.DdrTemp1, _status.DdrTemp2));
+                        parts.Add(string.Format("{0}/{1}{2}", t1, t2, tUnit));
                 }
                 else if (_status.DdrTemp > 0)
                 {
+                    int t = TelemetrySessionStats.ToDisplayTemp(_status.DdrTemp, UseFahrenheit);
+                    int spr = TelemetrySessionStats.ToDisplayTempDelta(_status.DdrTempSpread, UseFahrenheit);
                     if (ShowRamSpread && _status.DdrStickCount == 2 && _status.DdrTempSpread >= 1)
-                        parts.Add(string.Format("{0}°C (Δ{1}°)", _status.DdrTemp, _status.DdrTempSpread));
+                        parts.Add(string.Format("{0}{1} (Δ{2}°)", t, tUnit, spr));
                     else
-                        parts.Add(string.Format("{0}°C", _status.DdrTemp));
+                        parts.Add(string.Format("{0}{1}", t, tUnit));
                 }
             }
 
@@ -787,19 +827,144 @@ namespace MiniFanControl
             return string.Join(" ", parts.ToArray());
         }
 
+        private string FormatSingleTracker(int minVal, int maxVal, double avgVal, string unit, bool allowZero = false)
+        {
+            if (!ShowPeaks || Stats == null) return null;
+            bool hasMax = allowZero ? maxVal >= 0 : maxVal > 0;
+            bool hasMin = minVal < int.MaxValue && (allowZero ? minVal >= 0 : minVal > 0);
+            bool isTemp = (unit == "°");
+            int dispMin = (isTemp && hasMin) ? TelemetrySessionStats.ToDisplayTemp(minVal, UseFahrenheit) : minVal;
+            int dispMax = (isTemp && hasMax) ? TelemetrySessionStats.ToDisplayTemp(maxVal, UseFahrenheit) : maxVal;
+            double dispAvg = (isTemp && avgVal > 0) ? TelemetrySessionStats.ToDisplayTemp(avgVal, UseFahrenheit) : avgVal;
+            if (PeakTrackerMode == 1)
+                return hasMin ? string.Format("▼{0}{1}", dispMin, unit) : null;
+            if (PeakTrackerMode == 2)
+            {
+                if (hasMin && hasMax) return string.Format("▼{0}▲{1}{2}", dispMin, dispMax, unit);
+                if (hasMax) return string.Format("▲{0}{1}", dispMax, unit);
+                if (hasMin) return string.Format("▼{0}{1}", dispMin, unit);
+                return null;
+            }
+            if (PeakTrackerMode == 3)
+                return dispAvg > 0 ? string.Format("~{0}{1}", (int)Math.Round(dispAvg), unit) : null;
+            return hasMax ? string.Format("▲{0}{1}", dispMax, unit) : null;
+        }
+
+        private string FormatPairTracker(
+            bool showFirst, int min1, int max1, double avg1, string unit1,
+            bool showSecond, int min2, int max2, double avg2, string unit2,
+            bool allowZeroSecond = true)
+        {
+            if (!ShowPeaks || Stats == null) return null;
+            if (PeakTrackerMode == 2)
+            {
+                string t1 = showFirst ? FormatSingleTracker(min1, max1, avg1, unit1) : null;
+                if (t1 != null) return t1;
+                return showSecond ? FormatSingleTracker(min2, max2, avg2, unit2, allowZeroSecond) : null;
+            }
+            string p1 = showFirst ? FormatSingleTracker(min1, max1, avg1, unit1) : null;
+            string p2 = showSecond ? FormatSingleTracker(min2, max2, avg2, unit2, allowZeroSecond) : null;
+            if (p1 != null && p2 != null) return string.Format("{0} {1}", p1, p2);
+            return p1 ?? p2;
+        }
+
+        private string FormatDoubleTracker(double minVal, double maxVal, double avgVal, string unit)
+        {
+            if (!ShowPeaks || Stats == null) return null;
+            bool hasMax = maxVal > 0;
+            bool hasMin = minVal < double.MaxValue && minVal > 0;
+            if (PeakTrackerMode == 1)
+                return hasMin ? string.Format("▼{0:0.0}{1}", minVal, unit) : null;
+            if (PeakTrackerMode == 2)
+            {
+                if (hasMin && hasMax) return string.Format("▼{0:0.0}▲{1:0.0}{2}", minVal, maxVal, unit);
+                if (hasMax) return string.Format("▲{0:0.0}{1}", maxVal, unit);
+                if (hasMin) return string.Format("▼{0:0.0}{1}", minVal, unit);
+                return null;
+            }
+            if (PeakTrackerMode == 3)
+                return avgVal > 0 ? string.Format("~{0:0.0}{1}", avgVal, unit) : null;
+            return hasMax ? string.Format("▲{0:0.0}{1}", maxVal, unit) : null;
+        }
+
+        private string FormatCpuOverlayValue()
+        {
+            int cpuT = TelemetrySessionStats.ToDisplayTemp(_status.CpuTemp, UseFahrenheit);
+            string tUnit = TelemetrySessionStats.TempUnit(UseFahrenheit);
+            bool hasLoad = ShowCpuLoad && _status.CpuLoadPct >= 0;
+            bool hasClock = ShowClocks && _status.CpuClockMhz > 0;
+            if (hasClock)
+            {
+                return hasLoad
+                    ? string.Format("{0}{1} {2}% @ {3}MHz", cpuT, tUnit, _status.CpuLoadPct, _status.CpuClockMhz)
+                    : string.Format("{0}{1} @ {2}MHz", cpuT, tUnit, _status.CpuClockMhz);
+            }
+            return hasLoad
+                ? string.Format("{0}{1} {2}%", cpuT, tUnit, _status.CpuLoadPct)
+                : string.Format("{0}{1}", cpuT, tUnit);
+        }
+
+        private string FormatGpuOverlayValue()
+        {
+            bool hasGpuTemp = ShowGpu && _status.GpuTemp > 0;
+            bool hasGpuLoad = ShowGpuLoad && (_status.GfxActivityPct >= 0);
+            bool hasGpuClock = ShowGpuLoad && (_status.GfxClockMhz > 0);
+            string tUnit = TelemetrySessionStats.TempUnit(UseFahrenheit);
+            int gpuT = TelemetrySessionStats.ToDisplayTemp(_status.GpuTemp, UseFahrenheit);
+            int hotT = TelemetrySessionStats.ToDisplayTemp(_status.GpuHotspotTemp, UseFahrenheit);
+
+            string gpuTempPart = hasGpuTemp
+                ? ((ShowGpuHotspot && _status.GpuHotspotTemp > 0) ? string.Format("{0}{1} (🔥{2}°)", gpuT, tUnit, hotT) : string.Format("{0}{1}", gpuT, tUnit))
+                : null;
+
+            string gpuLoadPart = null;
+            if (hasGpuLoad && ShowClocks && hasGpuClock)
+                gpuLoadPart = string.Format("{0}% @ {1}MHz", _status.GfxActivityPct, _status.GfxClockMhz);
+            else if (hasGpuLoad)
+                gpuLoadPart = string.Format("{0}%", _status.GfxActivityPct);
+            else if (ShowClocks && hasGpuClock)
+                gpuLoadPart = string.Format("@ {0}MHz", _status.GfxClockMhz);
+
+            if (gpuTempPart != null && gpuLoadPart != null)
+                return string.Format("{0} {1}", gpuTempPart, gpuLoadPart);
+            if (gpuTempPart != null)
+                return gpuTempPart;
+            if (gpuLoadPart != null)
+                return gpuLoadPart;
+            return "N/A";
+        }
+
+        private string FormatPowerOverlayValue()
+        {
+            if (_status.ApuPowerWatts <= 0) return "--W";
+            return (ShowPowerLimit && _status.ApuPowerLimitWatts > 0)
+                ? string.Format("{0}W/{1}W", _status.ApuPowerWatts, _status.ApuPowerLimitWatts)
+                : string.Format("{0}W", _status.ApuPowerWatts);
+        }
+
+        private string FormatCpuOverlayPeak()
+        {
+            return FormatPairTracker(
+                true, Stats != null ? Stats.MinCpuTemp : int.MaxValue, Stats != null ? Stats.MaxCpuTemp : 0, Stats != null ? Stats.AvgCpuTemp : 0.0, "°",
+                ShowCpuLoad, Stats != null ? Stats.MinCpuLoad : int.MaxValue, Stats != null ? Stats.MaxCpuLoad : 0, Stats != null ? Stats.AvgCpuLoad : 0.0, "%", true);
+        }
+
+        private string FormatGpuOverlayPeak()
+        {
+            return FormatPairTracker(
+                ShowGpu, Stats != null ? Stats.MinGpuTemp : int.MaxValue, Stats != null ? Stats.MaxGpuTemp : 0, Stats != null ? Stats.AvgGpuTemp : 0.0, "°",
+                ShowGpuLoad, Stats != null ? Stats.MinGpuLoad : int.MaxValue, Stats != null ? Stats.MaxGpuLoad : 0, Stats != null ? Stats.AvgGpuLoad : 0.0, "%", true);
+        }
+
         public string FormatRamOverlayPeak()
         {
             if (!ShowPeaks || Stats == null) return null;
-            string ramTempPeak = (ShowRamTemp && Stats.MaxDdrTemp > 0) ? string.Format("▲{0}°", Stats.MaxDdrTemp) : null;
-            string ramLoadPeak = (ShowRamLoad && Stats.MaxRamLoad > 0) ? string.Format("▲{0}%", Stats.MaxRamLoad) : null;
-            if (ramTempPeak != null && ramLoadPeak != null)
-                return string.Format("{0} {1}", ramTempPeak, ramLoadPeak);
-            if (ramTempPeak != null)
-                return ramTempPeak;
-            if (ramLoadPeak != null)
-                return ramLoadPeak;
-            if (ShowRamPower && Stats.MaxRamPowerWatts > 0)
-                return string.Format("▲{0:0.0}W", Stats.MaxRamPowerWatts);
+            string pair = FormatPairTracker(
+                ShowRamTemp, Stats.MinDdrTemp, Stats.MaxDdrTemp, Stats.AvgDdrTemp, "°",
+                ShowRamLoad, Stats.MinRamLoad, Stats.MaxRamLoad, Stats.AvgRamLoad, "%", true);
+            if (pair != null) return pair;
+            if (ShowRamPower)
+                return FormatDoubleTracker(Stats.MinRamPowerWatts, Stats.MaxRamPowerWatts, Stats.AvgRamPowerWatts, "W");
             return null;
         }
 
@@ -811,91 +976,36 @@ namespace MiniFanControl
         {
             List<HorizColumn> list = new List<HorizColumn>();
 
-            string cpuVal;
-            if (ShowClocks && _status.CpuClockMhz > 0)
-            {
-                cpuVal = _status.CpuLoadPct >= 0
-                    ? string.Format("{0}°C {1}% @ {2}MHz", _status.CpuTemp, _status.CpuLoadPct, _status.CpuClockMhz)
-                    : string.Format("{0}°C @ {1}MHz", _status.CpuTemp, _status.CpuClockMhz);
-            }
-            else
-            {
-                cpuVal = _status.CpuLoadPct >= 0
-                    ? string.Format("{0}°C {1}%", _status.CpuTemp, _status.CpuLoadPct)
-                    : string.Format("{0}°C", _status.CpuTemp);
-            }
-
+            string cpuVal = FormatCpuOverlayValue();
             bool showGpuTemp = ShowGpu;
-            bool showGpuLoad = ShowGpuLoad;
+            string gpuVal = FormatGpuOverlayValue();
 
-            bool hasGpuTemp = showGpuTemp && _status.GpuTemp > 0;
-            bool hasGpuLoad = showGpuLoad && (_status.GfxActivityPct >= 0);
-            bool hasGpuClock = showGpuLoad && (_status.GfxClockMhz > 0);
-
-            string horizGpuTempPart = hasGpuTemp
-                ? (_status.GpuHotspotTemp > 0 ? string.Format("{0}°C (🔥{1}°)", _status.GpuTemp, _status.GpuHotspotTemp) : string.Format("{0}°C", _status.GpuTemp))
-                : null;
-
-            string horizGpuLoadPart = null;
-            if (hasGpuLoad && ShowClocks && hasGpuClock)
-                horizGpuLoadPart = string.Format("{0}% @ {1}MHz", _status.GfxActivityPct, _status.GfxClockMhz);
-            else if (hasGpuLoad)
-                horizGpuLoadPart = string.Format("{0}%", _status.GfxActivityPct);
-            else if (ShowClocks && hasGpuClock)
-                horizGpuLoadPart = string.Format("@ {0}MHz", _status.GfxClockMhz);
-
-            string gpuVal;
-            if (horizGpuTempPart != null && horizGpuLoadPart != null)
-                gpuVal = string.Format("{0} {1}", horizGpuTempPart, horizGpuLoadPart);
-            else if (horizGpuTempPart != null)
-                gpuVal = horizGpuTempPart;
-            else if (horizGpuLoadPart != null)
-                gpuVal = horizGpuLoadPart;
-            else
-                gpuVal = "N/A";
-
+            string tUnit = TelemetrySessionStats.TempUnit(UseFahrenheit);
+            int nvmeT = TelemetrySessionStats.ToDisplayTemp(_status.NvmeTemp, UseFahrenheit);
             string nvmePwrPart = (ShowNvmePower && _status.NvmePowerWatts > 0) ? string.Format(" ~{0:0.0}W", _status.NvmePowerWatts) : "";
-            string nvmeVal = string.Format("{0}°C{1}", _status.NvmeTemp, nvmePwrPart);
-            if (_status.NvmeReadMBs > 0.1 || _status.NvmeWriteMBs > 0.1)
+            string nvmeVal = string.Format("{0}{1}{2}", nvmeT, tUnit, nvmePwrPart);
+            if (ShowNvmeIo && (_status.NvmeReadMBs > 0.1 || _status.NvmeWriteMBs > 0.1))
             {
                 if (_status.NvmeReadMBs > 0.1 && _status.NvmeWriteMBs > 0.1)
-                    nvmeVal = string.Format("{0}°C{1} {2:0.0}R/{3:0.0}W", _status.NvmeTemp, nvmePwrPart, _status.NvmeReadMBs, _status.NvmeWriteMBs);
+                    nvmeVal = string.Format("{0}{1}{2} {3:0.0}R/{4:0.0}W", nvmeT, tUnit, nvmePwrPart, _status.NvmeReadMBs, _status.NvmeWriteMBs);
                 else if (_status.NvmeReadMBs > 0.1)
-                    nvmeVal = string.Format("{0}°C{1} {2:0.0}R", _status.NvmeTemp, nvmePwrPart, _status.NvmeReadMBs);
+                    nvmeVal = string.Format("{0}{1}{2} {3:0.0}R", nvmeT, tUnit, nvmePwrPart, _status.NvmeReadMBs);
                 else
-                    nvmeVal = string.Format("{0}°C{1} {2:0.0}W", _status.NvmeTemp, nvmePwrPart, _status.NvmeWriteMBs);
+                    nvmeVal = string.Format("{0}{1}{2} {3:0.0}W", nvmeT, tUnit, nvmePwrPart, _status.NvmeWriteMBs);
             }
-            else if (_status.Nvme2Temp > 0)
+            else if (ShowNvmeDual && _status.Nvme2Temp > 0)
             {
-                nvmeVal = string.Format("{0}°C / {1}°C{2}", _status.NvmeTemp, _status.Nvme2Temp, nvmePwrPart);
+                int nvme2T = TelemetrySessionStats.ToDisplayTemp(_status.Nvme2Temp, UseFahrenheit);
+                nvmeVal = string.Format("{0}{1} / {2}{1}{3}", nvmeT, tUnit, nvme2T, nvmePwrPart);
             }
-            string pwrVal = _status.ApuPowerWatts > 0
-                ? (_status.ApuPowerLimitWatts > 0 ? string.Format("{0}W/{1}W", _status.ApuPowerWatts, _status.ApuPowerLimitWatts) : string.Format("{0}W", _status.ApuPowerWatts))
-                : "--W";
+            string pwrVal = FormatPowerOverlayValue();
             string f1Val  = string.Format("{0}r", _status.Fan1Rpm);
             string f2Val  = _status.Fan2Rpm > 0 ? string.Format("{0}r", _status.Fan2Rpm) : "--";
 
-            string cpuTempPeak = (ShowPeaks && Stats != null && Stats.MaxCpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxCpuTemp) : null;
-            string cpuLoadPeak = (ShowPeaks && Stats != null && Stats.MaxCpuLoad > 0) ? string.Format("▲{0}%", Stats.MaxCpuLoad) : null;
-            string cpuPeak = null;
-            if (cpuTempPeak != null && cpuLoadPeak != null)
-                cpuPeak = string.Format("{0} {1}", cpuTempPeak, cpuLoadPeak);
-            else if (cpuTempPeak != null)
-                cpuPeak = cpuTempPeak;
-            else if (cpuLoadPeak != null)
-                cpuPeak = cpuLoadPeak;
-            string gpuTempPeak = (ShowPeaks && showGpuTemp && Stats != null && Stats.MaxGpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxGpuTemp) : null;
-            string gpuLoadPeak = (ShowPeaks && showGpuLoad && Stats != null && Stats.MaxGpuLoad > 0) ? string.Format("▲{0}%", Stats.MaxGpuLoad) : null;
-            string gpuPeak = null;
-            if (gpuTempPeak != null && gpuLoadPeak != null)
-                gpuPeak = string.Format("{0} {1}", gpuTempPeak, gpuLoadPeak);
-            else if (gpuTempPeak != null)
-                gpuPeak = gpuTempPeak;
-            else if (gpuLoadPeak != null)
-                gpuPeak = gpuLoadPeak;
-
-            string nvmePeak = (ShowPeaks && Stats != null && Stats.MaxNvmeTemp > 0) ? string.Format("▲{0}°", Stats.MaxNvmeTemp) : null;
-            string pwrPeak = (ShowPeaks && Stats != null && Stats.MaxPowerWatts > 0) ? string.Format("▲{0}W", Stats.MaxPowerWatts) : null;
+            string cpuPeak = FormatCpuOverlayPeak();
+            string gpuPeak = FormatGpuOverlayPeak();
+            string nvmePeak = FormatSingleTracker(Stats != null ? Stats.MinNvmeTemp : int.MaxValue, Stats != null ? Stats.MaxNvmeTemp : 0, Stats != null ? Stats.AvgNvmeTemp : 0.0, "°");
+            string pwrPeak = FormatSingleTracker(Stats != null ? Stats.MinPowerWatts : int.MaxValue, Stats != null ? Stats.MaxPowerWatts : 0, Stats != null ? Stats.AvgPowerWatts : 0.0, "W");
             string ramPeak = FormatRamOverlayPeak();
 
             if (ShowGameName)
@@ -945,7 +1055,7 @@ namespace MiniFanControl
             if (ShowFabricClock && _status.FabricClockMhz > 0)
             {
                 string fclkVal = string.Format("{0} MHz", _status.FabricClockMhz);
-                string fclkPeak = _status.IsFabricSynced ? "1:1 Sync" : "Async";
+                string fclkPeak = ShowFclkSync ? (_status.IsFabricSynced ? "1:1 Sync" : "Async") : null;
                 Color fclkCol = Color.FromArgb(0x10, 0xB9, 0x81);
                 Brush bFclk = new SolidBrush(fclkCol);
                 list.Add(new HorizColumn {
@@ -979,17 +1089,17 @@ namespace MiniFanControl
             if (ShowVrmCurrent && (_status.VddTdcCurrentAmps > 0 || _status.VrmTemp > 0))
             {
                 string vrmEst = _status.IsVrmEstimated ? " [Est]" : "";
-                string vrmTempPart = _status.VrmTemp > 0 ? string.Format(" ({0}°C{1})", _status.VrmTemp, vrmEst) : "";
+                string vrmTempPart = _status.VrmTemp > 0 ? string.Format(" ({0}{1}{2})", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit), tUnit, vrmEst) : "";
                 string vrmVal = _status.VddTdcCurrentAmps > 0
                     ? string.Format("{0:0}A{1}", _status.VddTdcCurrentAmps, vrmTempPart)
-                    : string.Format("{0}°C{1}", _status.VrmTemp, vrmEst);
+                    : string.Format("{0}{1}{2}", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit), tUnit, vrmEst);
                 string vrmPeak = null;
                 if (ShowPeaks)
                 {
                     if (Stats != null && Stats.MaxVrmTemp > 0)
-                        vrmPeak = string.Format("▲{0}°", Stats.MaxVrmTemp);
+                        vrmPeak = string.Format("▲{0}°", TelemetrySessionStats.ToDisplayTemp(Stats.MaxVrmTemp, UseFahrenheit));
                     else if (_status.VrmTemp > 0)
-                        vrmPeak = string.Format("▲{0}°", _status.VrmTemp);
+                        vrmPeak = string.Format("▲{0}°", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit));
                     else if (_status.VddEdcCurrentAmps > 0)
                         vrmPeak = string.Format("▲{0:0}A", _status.VddEdcCurrentAmps);
                 }
@@ -1005,9 +1115,9 @@ namespace MiniFanControl
 
             if (ShowAmbient && _status.AmbientTemp > 0)
             {
-                string ambPeak = (ShowPeaks && Stats != null && Stats.MaxAmbientTemp > 0) ? string.Format("▲{0}°", Stats.MaxAmbientTemp) : null;
+                string ambPeak = FormatSingleTracker(Stats != null ? Stats.MinAmbientTemp : int.MaxValue, Stats != null ? Stats.MaxAmbientTemp : 0, Stats != null ? Stats.AvgAmbientTemp : 0.0, "°");
                 list.Add(new HorizColumn {
-                    Key = "AMB", Label = "CHAS", Value = string.Format("{0}°C", _status.AmbientTemp), Peak = ambPeak,
+                    Key = "AMB", Label = "CHAS", Value = string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(_status.AmbientTemp, UseFahrenheit), TelemetrySessionStats.TempUnit(UseFahrenheit)), Peak = ambPeak,
                     LabelBrush = bLabel, ValueBrush = bWhite, PeakBrush = bPeak,
                     SparkSamples = showSpark ? (Stats != null ? Stats.AmbientHistory : null) : null,
                     SparkColor = Color.FromArgb(0xE2, 0xE8, 0xF0)
@@ -1019,9 +1129,7 @@ namespace MiniFanControl
                 string npuVal = (ShowClocks && _status.NpuClockMhz > 0)
                     ? string.Format("{0}% @ {1}M", _status.NpuActivityPct, _status.NpuClockMhz)
                     : string.Format("{0}%", _status.NpuActivityPct);
-                string npuPeak = (ShowPeaks && Stats != null && Stats.MaxNpuActivityPct > 0)
-                    ? string.Format("▲{0}%", Stats.MaxNpuActivityPct)
-                    : null;
+                string npuPeak = FormatSingleTracker(Stats != null ? Stats.MinNpuActivityPct : int.MaxValue, Stats != null ? Stats.MaxNpuActivityPct : 0, Stats != null ? Stats.AvgNpuActivityPct : 0.0, "%", true);
                 Color npuCol = Color.FromArgb(0x38, 0xBD, 0xF8);
                 Brush bNpu = new SolidBrush(npuCol);
                 list.Add(new HorizColumn {
@@ -1044,7 +1152,7 @@ namespace MiniFanControl
                     sessionAvg = Stats.MaxFps;
 
                 string peak = hasFps
-                    ? (sessionAvg > 0 ? string.Format("Avg:{0}", sessionAvg) : (ShowPeaks && Stats != null && Stats.MaxFps > 0 ? string.Format("▲{0}", Stats.MaxFps) : null))
+                    ? (ShowFpsAvg && sessionAvg > 0 ? string.Format("Avg:{0}", sessionAvg) : (ShowPeaks && Stats != null && Stats.MaxFps > 0 ? string.Format("▲{0}", Stats.MaxFps) : null))
                     : (_status.RtssRunning ? "RTSS Idle" : (ShowPeaks ? "Standby" : null));
                 Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8);
 
@@ -1121,8 +1229,8 @@ namespace MiniFanControl
 
             if (ShowRadeonSettings)
             {
-                List<string> radTags = (_status.RadeonFeaturesAvailable && _status.GetActiveRadeonTags() != null)
-                    ? new List<string>(_status.GetActiveRadeonTags())
+                List<string> radTags = (_status.RadeonFeaturesAvailable && _status.GetActiveRadeonTags(ShowRadeonExtendedTags) != null)
+                    ? new List<string>(_status.GetActiveRadeonTags(ShowRadeonExtendedTags))
                     : new List<string>();
 
                 if (!string.IsNullOrEmpty(ProcessorBadgeText) && !radTags.Contains(ProcessorBadgeText))
@@ -1217,8 +1325,8 @@ namespace MiniFanControl
             bool hasFpsGraph = ShowFpsGraph;
             int cols = CountVisibleMetrics();
 
-            List<string> tags = (ShowRadeonSettings && _status.RadeonFeaturesAvailable && _status.GetActiveRadeonTags() != null)
-                ? new List<string>(_status.GetActiveRadeonTags())
+            List<string> tags = (ShowRadeonSettings && _status.RadeonFeaturesAvailable && _status.GetActiveRadeonTags(ShowRadeonExtendedTags) != null)
+                ? new List<string>(_status.GetActiveRadeonTags(ShowRadeonExtendedTags))
                 : new List<string>();
             if (ShowRadeonSettings && !string.IsNullOrEmpty(ProcessorBadgeText) && !tags.Contains(ProcessorBadgeText))
                 tags.Insert(0, ProcessorBadgeText);
@@ -1446,6 +1554,17 @@ namespace MiniFanControl
                 hash = hash * 31 + (ShowRamPower ? 1 : 0);
                 hash = hash * 31 + (ShowRamClock ? 1 : 0);
                 hash = hash * 31 + (ShowNvmePower ? 1 : 0);
+                hash = hash * 31 + (ShowNvmeIo ? 1 : 0);
+                hash = hash * 31 + (ShowNvmeDual ? 1 : 0);
+                hash = hash * 31 + (ShowCpuLoad ? 1 : 0);
+                hash = hash * 31 + (ShowGpuHotspot ? 1 : 0);
+                hash = hash * 31 + (ShowPowerLimit ? 1 : 0);
+                hash = hash * 31 + (ShowFclkSync ? 1 : 0);
+                hash = hash * 31 + (ShowFrametimeMs ? 1 : 0);
+                hash = hash * 31 + (ShowFpsAvg ? 1 : 0);
+                hash = hash * 31 + (ShowRadeonExtendedTags ? 1 : 0);
+                hash = hash * 31 + (UseFahrenheit ? 1 : 0);
+                hash = hash * 31 + PeakTrackerMode;
                 hash = hash * 31 + (int)Math.Round(st.VddTdcCurrentAmps * 10);
                 hash = hash * 31 + st.Fps;
                 hash = hash * 31 + (int)Math.Round((double)st.RtssFrametimeMs * 10);
@@ -1962,14 +2081,14 @@ namespace MiniFanControl
             {
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.AmbientHistory, start, take, leftLo, leftHi, Color.FromArgb(0xE2, 0xE8, 0xF0), false, false, sc);
                 if (pt.HasValue && Stats.AmbientHistory.Count > 0 && Stats.AmbientHistory[Stats.AmbientHistory.Count - 1] > 0)
-                    badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = Stats.AmbientHistory[Stats.AmbientHistory.Count - 1] + "°", Color = Color.FromArgb(0xE2, 0xE8, 0xF0) });
+                    badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.AmbientHistory[Stats.AmbientHistory.Count - 1], UseFahrenheit) + "°", Color = Color.FromArgb(0xE2, 0xE8, 0xF0) });
             }
             if (ShowRam && _status.RamTotalGb > 0)
             {
                 if (Stats.RamTempHistory != null && Stats.RamTempHistory.Count > 0 && Stats.RamTempHistory[Stats.RamTempHistory.Count - 1] > 0)
                 {
                     PointF? pt = DrawCombinedSubSeries(g, plot, Stats.RamTempHistory, start, take, leftLo, leftHi, Color.FromArgb(0x81, 0x8C, 0xF8), false, false, sc);
-                    if (pt.HasValue) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = Stats.RamTempHistory[Stats.RamTempHistory.Count - 1] + "°", Color = Color.FromArgb(0x81, 0x8C, 0xF8) });
+                    if (pt.HasValue) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.RamTempHistory[Stats.RamTempHistory.Count - 1], UseFahrenheit) + "°", Color = Color.FromArgb(0x81, 0x8C, 0xF8) });
                 }
                 else if (_status.RamPowerWatts > 0)
                 {
@@ -1985,25 +2104,26 @@ namespace MiniFanControl
             if (ShowNvme && _status.NvmeTemp > 0)
             {
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.NvmeHistory, start, take, leftLo, leftHi, CfxTeal, false, false, sc);
-                if (pt.HasValue && Stats.NvmeHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = Stats.NvmeHistory[Stats.NvmeHistory.Count - 1] + "°", Color = CfxTeal });
+                if (pt.HasValue && Stats.NvmeHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.NvmeHistory[Stats.NvmeHistory.Count - 1], UseFahrenheit) + "°", Color = CfxTeal });
             }
             if (ShowGpu)
             {
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.GpuHistory, start, take, leftLo, leftHi, gpuCol, false, false, sc);
-                if (pt.HasValue && Stats.GpuHistory.Count > 0 && Stats.GpuHistory[Stats.GpuHistory.Count - 1] > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = Stats.GpuHistory[Stats.GpuHistory.Count - 1] + "°", Color = gpuCol });
+                if (pt.HasValue && Stats.GpuHistory.Count > 0 && Stats.GpuHistory[Stats.GpuHistory.Count - 1] > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.GpuHistory[Stats.GpuHistory.Count - 1], UseFahrenheit) + "°", Color = gpuCol });
             }
             if (ShowCpu)
             {
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.CpuHistory, start, take, leftLo, leftHi, cpuCol, true, false, sc);
-                if (pt.HasValue && Stats.CpuHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = Stats.CpuHistory[Stats.CpuHistory.Count - 1] + "°", Color = cpuCol });
+                if (pt.HasValue && Stats.CpuHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.CpuHistory[Stats.CpuHistory.Count - 1], UseFahrenheit) + "°", Color = cpuCol });
             }
 
             DrawEndpointBadges(g, plot, rect, badges, _fontTrace, sc);
 
             // Compact Legend & Scale Header inside the top of the Combined OSD Graph
-            string unitSuffix = (plotFpsHere && (ShowFps || ShowLows) && Stats.FpsHistory.Count > 0 && Stats.FpsHistory[Stats.FpsHistory.Count - 1] > 0) ? "°C/W/FPS" : "°C/W";
+            string tUnitHdr = TelemetrySessionStats.TempUnit(UseFahrenheit);
+            string unitSuffix = (plotFpsHere && (ShowFps || ShowLows) && Stats.FpsHistory.Count > 0 && Stats.FpsHistory[Stats.FpsHistory.Count - 1] > 0) ? (tUnitHdr + "/W/FPS") : (tUnitHdr + "/W");
             string hdr = (tMin <= tMax)
-                ? string.Format("LIVE TREND ({0}–{1}{2})", tMin, tMax, unitSuffix)
+                ? string.Format("LIVE TREND ({0}–{1}{2})", TelemetrySessionStats.ToDisplayTemp(tMin, UseFahrenheit), TelemetrySessionStats.ToDisplayTemp(tMax, UseFahrenheit), unitSuffix)
                 : "LIVE TREND";
             TextRenderer.DrawText(g, hdr, _fontChart, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + 1), Color.FromArgb(200, 226, 232, 240), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
@@ -2043,16 +2163,20 @@ namespace MiniFanControl
                 int amb = (Stats.AmbientHistory != null && sampleIdx < Stats.AmbientHistory.Count) ? Stats.AmbientHistory[sampleIdx] : 0;
 
                 string rTempStr = (_status.DdrStickCount == 2 && _status.DdrTemp1 > 0 && _status.DdrTemp2 > 0)
-                    ? string.Format("{0}/{1}°", _status.DdrTemp1, _status.DdrTemp2)
-                    : (rTemp > 0 ? string.Format("{0}°", rTemp) : "");
+                    ? string.Format("{0}/{1}°", TelemetrySessionStats.ToDisplayTemp(_status.DdrTemp1, UseFahrenheit), TelemetrySessionStats.ToDisplayTemp(_status.DdrTemp2, UseFahrenheit))
+                    : (rTemp > 0 ? string.Format("{0}°", TelemetrySessionStats.ToDisplayTemp(rTemp, UseFahrenheit)) : "");
                 int ddrSpd = _status.RamSpeedMhz;
                 string rStr = !string.IsNullOrEmpty(rTempStr)
                     ? (ddrSpd > 0 ? string.Format("{0} {1}%@{2}M", rTempStr, rLoad, ddrSpd) : string.Format("{0} {1}%", rTempStr, rLoad))
                     : (ddrSpd > 0 ? string.Format("{0}%@{1}M", rLoad, ddrSpd) : string.Format("{0}%", rLoad));
 
                 string hud = string.Format("{0} | CPU {1}° • iGPU {2}° • RAM {3} • FCLK {4}M • NVMe {5}° • PWR {6}W",
-                    secAgo == 0 ? "Now" : "-" + secAgo + "s", c, g_, rStr, fclk, n, p);
-                if (ShowAmbient && amb > 0) hud += string.Format(" • CHAS {0}°", amb);
+                    secAgo == 0 ? "Now" : "-" + secAgo + "s",
+                    TelemetrySessionStats.ToDisplayTemp(c, UseFahrenheit),
+                    TelemetrySessionStats.ToDisplayTemp(g_, UseFahrenheit),
+                    rStr, fclk,
+                    TelemetrySessionStats.ToDisplayTemp(n, UseFahrenheit), p);
+                if (ShowAmbient && amb > 0) hud += string.Format(" • CHAS {0}°", TelemetrySessionStats.ToDisplayTemp(amb, UseFahrenheit));
                 if (f1 > 0) hud += string.Format(" • APU {0}", f1);
                 if (HasDualFans && ShowSysFan && f2 > 0) hud += string.Format(" • SYS {0}", f2);
 
@@ -2805,74 +2929,18 @@ namespace MiniFanControl
 
             bool showCombined = ShowLiveTrend;
 
-            string cpuVal;
-            if (ShowClocks && _status.CpuClockMhz > 0)
-            {
-                cpuVal = _status.CpuLoadPct >= 0
-                    ? string.Format("{0}°C {1}% @ {2}MHz", _status.CpuTemp, _status.CpuLoadPct, _status.CpuClockMhz)
-                    : string.Format("{0}°C @ {1}MHz", _status.CpuTemp, _status.CpuClockMhz);
-            }
-            else
-            {
-                cpuVal = _status.CpuLoadPct >= 0
-                    ? string.Format("{0}°C {1}%", _status.CpuTemp, _status.CpuLoadPct)
-                    : string.Format("{0}°C", _status.CpuTemp);
-            }
+            string cpuVal = FormatCpuOverlayValue();
             bool vertShowGpuTemp = ShowGpu;
-            bool vertShowGpuLoad = ShowGpuLoad;
+            string gpuVal = FormatGpuOverlayValue();
 
-            bool vertHasGpuTemp = vertShowGpuTemp && _status.GpuTemp > 0;
-            bool vertHasGpuLoad = vertShowGpuLoad && (_status.GfxActivityPct >= 0);
-            bool vertHasGpuClock = vertShowGpuLoad && (_status.GfxClockMhz > 0);
-
-            string vertGpuTempPart = vertHasGpuTemp
-                ? (_status.GpuHotspotTemp > 0 ? string.Format("{0}°C (🔥{1}°)", _status.GpuTemp, _status.GpuHotspotTemp) : string.Format("{0}°C", _status.GpuTemp))
-                : null;
-
-            string vertGpuLoadPart = null;
-            if (vertHasGpuLoad && ShowClocks && vertHasGpuClock)
-                vertGpuLoadPart = string.Format("{0}% @ {1}MHz", _status.GfxActivityPct, _status.GfxClockMhz);
-            else if (vertHasGpuLoad)
-                vertGpuLoadPart = string.Format("{0}%", _status.GfxActivityPct);
-            else if (ShowClocks && vertHasGpuClock)
-                vertGpuLoadPart = string.Format("@ {0}MHz", _status.GfxClockMhz);
-
-            string gpuVal;
-            if (vertGpuTempPart != null && vertGpuLoadPart != null)
-                gpuVal = string.Format("{0} {1}", vertGpuTempPart, vertGpuLoadPart);
-            else if (vertGpuTempPart != null)
-                gpuVal = vertGpuTempPart;
-            else if (vertGpuLoadPart != null)
-                gpuVal = vertGpuLoadPart;
-            else
-                gpuVal = "N/A";
-
-            string pwrVal = _status.ApuPowerWatts > 0
-                ? (_status.ApuPowerLimitWatts > 0 ? string.Format("{0}W/{1}W", _status.ApuPowerWatts, _status.ApuPowerLimitWatts) : string.Format("{0}W", _status.ApuPowerWatts))
-                : "--W";
+            string pwrVal = FormatPowerOverlayValue();
             string f1Val  = string.Format("{0}", _status.Fan1Rpm);
             string f2Val  = _status.Fan2Rpm > 0 ? string.Format("{0}", _status.Fan2Rpm) : "--";
 
-            string cpuTempPeak = (ShowPeaks && Stats != null && Stats.MaxCpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxCpuTemp) : null;
-            string cpuLoadPeak = (ShowPeaks && Stats != null && Stats.MaxCpuLoad > 0) ? string.Format("▲{0}%", Stats.MaxCpuLoad) : null;
-            string cpuPeak = null;
-            if (cpuTempPeak != null && cpuLoadPeak != null)
-                cpuPeak = string.Format("{0} {1}", cpuTempPeak, cpuLoadPeak);
-            else if (cpuTempPeak != null)
-                cpuPeak = cpuTempPeak;
-            else if (cpuLoadPeak != null)
-                cpuPeak = cpuLoadPeak;
-            string vertGpuTempPeak = (ShowPeaks && vertShowGpuTemp && Stats != null && Stats.MaxGpuTemp > 0) ? string.Format("▲{0}°", Stats.MaxGpuTemp) : null;
-            string vertGpuLoadPeak = (ShowPeaks && vertShowGpuLoad && Stats != null && Stats.MaxGpuLoad > 0) ? string.Format("▲{0}%", Stats.MaxGpuLoad) : null;
-            string gpuPeak = null;
-            if (vertGpuTempPeak != null && vertGpuLoadPeak != null)
-                gpuPeak = string.Format("{0} {1}", vertGpuTempPeak, vertGpuLoadPeak);
-            else if (vertGpuTempPeak != null)
-                gpuPeak = vertGpuTempPeak;
-            else if (vertGpuLoadPeak != null)
-                gpuPeak = vertGpuLoadPeak;
-            string nvmePeak = (ShowPeaks && Stats != null && Stats.MaxNvmeTemp > 0) ? string.Format("▲{0}°", Stats.MaxNvmeTemp) : null;
-            string pwrPeak = (ShowPeaks && Stats != null && Stats.MaxPowerWatts > 0) ? string.Format("▲{0}W", Stats.MaxPowerWatts) : null;
+            string cpuPeak = FormatCpuOverlayPeak();
+            string gpuPeak = FormatGpuOverlayPeak();
+            string nvmePeak = FormatSingleTracker(Stats != null ? Stats.MinNvmeTemp : int.MaxValue, Stats != null ? Stats.MaxNvmeTemp : 0, Stats != null ? Stats.AvgNvmeTemp : 0.0, "°");
+            string pwrPeak = FormatSingleTracker(Stats != null ? Stats.MinPowerWatts : int.MaxValue, Stats != null ? Stats.MaxPowerWatts : 0, Stats != null ? Stats.AvgPowerWatts : 0.0, "W");
             string ramPeak = FormatRamOverlayPeak();
 
             using (Brush bLabel  = new SolidBrush(accentCol))
@@ -3034,7 +3102,7 @@ namespace MiniFanControl
                     if (ShowFabricClock && _status.FabricClockMhz > 0)
                     {
                         string fclkVal = string.Format("{0} MHz", _status.FabricClockMhz);
-                        string fclkPeak = _status.IsFabricSynced ? "1:1 Sync" : "Async";
+                        string fclkPeak = ShowFclkSync ? (_status.IsFabricSynced ? "1:1 Sync" : "Async") : null;
                         Color fclkCol = Color.FromArgb(0x10, 0xB9, 0x81);
                         using (Brush bFclk = new SolidBrush(fclkCol))
                         {
@@ -3043,20 +3111,23 @@ namespace MiniFanControl
                     }
                     if (ShowNvme && _status.NvmeTemp > 0)
                     {
+                        string tUnit = TelemetrySessionStats.TempUnit(UseFahrenheit);
+                        int nvmeT = TelemetrySessionStats.ToDisplayTemp(_status.NvmeTemp, UseFahrenheit);
                         string nvmePwrPart = (ShowNvmePower && _status.NvmePowerWatts > 0) ? string.Format(" ~{0:0.0}W", _status.NvmePowerWatts) : "";
-                        string vertNvmeVal = string.Format("{0}°C{1}", _status.NvmeTemp, nvmePwrPart);
-                        if (_status.NvmeReadMBs > 0.1 || _status.NvmeWriteMBs > 0.1)
+                        string vertNvmeVal = string.Format("{0}{1}{2}", nvmeT, tUnit, nvmePwrPart);
+                        if (ShowNvmeIo && (_status.NvmeReadMBs > 0.1 || _status.NvmeWriteMBs > 0.1))
                         {
                             if (_status.NvmeReadMBs > 0.1 && _status.NvmeWriteMBs > 0.1)
-                                vertNvmeVal = string.Format("{0}°C{1} ({2:0.0}R / {3:0.0}W MB/s)", _status.NvmeTemp, nvmePwrPart, _status.NvmeReadMBs, _status.NvmeWriteMBs);
+                                vertNvmeVal = string.Format("{0}{1}{2} ({3:0.0}R / {4:0.0}W MB/s)", nvmeT, tUnit, nvmePwrPart, _status.NvmeReadMBs, _status.NvmeWriteMBs);
                             else if (_status.NvmeReadMBs > 0.1)
-                                vertNvmeVal = string.Format("{0}°C{1} ({2:0.0} MB/s R)", _status.NvmeTemp, nvmePwrPart, _status.NvmeReadMBs);
+                                vertNvmeVal = string.Format("{0}{1}{2} ({3:0.0} MB/s R)", nvmeT, tUnit, nvmePwrPart, _status.NvmeReadMBs);
                             else
-                                vertNvmeVal = string.Format("{0}°C{1} ({2:0.0} MB/s W)", _status.NvmeTemp, nvmePwrPart, _status.NvmeWriteMBs);
+                                vertNvmeVal = string.Format("{0}{1}{2} ({3:0.0} MB/s W)", nvmeT, tUnit, nvmePwrPart, _status.NvmeWriteMBs);
                         }
-                        else if (_status.Nvme2Temp > 0)
+                        else if (ShowNvmeDual && _status.Nvme2Temp > 0)
                         {
-                            vertNvmeVal = string.Format("{0}°C / {1}°C{2}", _status.NvmeTemp, _status.Nvme2Temp, nvmePwrPart);
+                            int nvme2T = TelemetrySessionStats.ToDisplayTemp(_status.Nvme2Temp, UseFahrenheit);
+                            vertNvmeVal = string.Format("{0}{1} / {2}{1}{3}", nvmeT, tUnit, nvme2T, nvmePwrPart);
                         }
                         DrawVertRow(g, row++, rowH, "NVMe", vertNvmeVal, nvmePeak, bLabel, bNvme, bPeak, showSpark ? (Stats != null ? Stats.NvmeHistory : null) : null, CfxTeal, sc);
                     }
@@ -3064,18 +3135,19 @@ namespace MiniFanControl
                         DrawVertRow(g, row++, rowH, "Power", pwrVal, pwrPeak, bLabel, bPwr, bPeak, showSpark ? (Stats != null ? Stats.PowerHistory : null) : null, pwrCol, sc);
                     if (ShowVrmCurrent && (_status.VddTdcCurrentAmps > 0 || _status.VrmTemp > 0))
                     {
+                        string tUnit = TelemetrySessionStats.TempUnit(UseFahrenheit);
                         string vrmEst = _status.IsVrmEstimated ? " [Est]" : "";
-                        string vrmTempPart = _status.VrmTemp > 0 ? string.Format(" ({0}°C{1})", _status.VrmTemp, vrmEst) : "";
+                        string vrmTempPart = _status.VrmTemp > 0 ? string.Format(" ({0}{1}{2})", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit), tUnit, vrmEst) : "";
                         string vrmVal = _status.VddTdcCurrentAmps > 0
                             ? string.Format("{0:0.0}A{1}", _status.VddTdcCurrentAmps, vrmTempPart)
-                            : string.Format("{0}°C{1}", _status.VrmTemp, vrmEst);
+                            : string.Format("{0}{1}{2}", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit), tUnit, vrmEst);
                         string vrmPeak = null;
                         if (ShowPeaks)
                         {
                             if (Stats != null && Stats.MaxVrmTemp > 0)
-                                vrmPeak = string.Format("▲{0}°", Stats.MaxVrmTemp);
+                                vrmPeak = string.Format("▲{0}°", TelemetrySessionStats.ToDisplayTemp(Stats.MaxVrmTemp, UseFahrenheit));
                             else if (_status.VrmTemp > 0)
-                                vrmPeak = string.Format("▲{0}°", _status.VrmTemp);
+                                vrmPeak = string.Format("▲{0}°", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit));
                             else if (_status.VddEdcCurrentAmps > 0)
                                 vrmPeak = string.Format("▲{0:0}A", _status.VddEdcCurrentAmps);
                         }
@@ -3087,17 +3159,15 @@ namespace MiniFanControl
                     }
                     if (ShowAmbient && _status.AmbientTemp > 0)
                     {
-                        string ambPeak = (ShowPeaks && Stats != null && Stats.MaxAmbientTemp > 0) ? string.Format("▲{0}°", Stats.MaxAmbientTemp) : null;
-                        DrawVertRow(g, row++, rowH, "Chassis", string.Format("{0}°C", _status.AmbientTemp), ambPeak, bLabel, bWhite, bPeak, showSpark ? (Stats != null ? Stats.AmbientHistory : null) : null, Color.FromArgb(0xE2, 0xE8, 0xF0), sc);
+                        string ambPeak = FormatSingleTracker(Stats != null ? Stats.MinAmbientTemp : int.MaxValue, Stats != null ? Stats.MaxAmbientTemp : 0, Stats != null ? Stats.AvgAmbientTemp : 0.0, "°");
+                        DrawVertRow(g, row++, rowH, "Chassis", string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(_status.AmbientTemp, UseFahrenheit), TelemetrySessionStats.TempUnit(UseFahrenheit)), ambPeak, bLabel, bWhite, bPeak, showSpark ? (Stats != null ? Stats.AmbientHistory : null) : null, Color.FromArgb(0xE2, 0xE8, 0xF0), sc);
                     }
                     if (ShowNpu && _status.NpuActivityPct >= 0)
                     {
                         string npuVal = (ShowClocks && _status.NpuClockMhz > 0)
                             ? string.Format("{0}% @ {1} MHz", _status.NpuActivityPct, _status.NpuClockMhz)
                             : string.Format("{0}%", _status.NpuActivityPct);
-                        string npuPeak = (ShowPeaks && Stats != null && Stats.MaxNpuActivityPct > 0)
-                            ? string.Format("▲{0}%", Stats.MaxNpuActivityPct)
-                            : null;
+                        string npuPeak = FormatSingleTracker(Stats != null ? Stats.MinNpuActivityPct : int.MaxValue, Stats != null ? Stats.MaxNpuActivityPct : 0, Stats != null ? Stats.AvgNpuActivityPct : 0.0, "%", true);
                         Color npuCol = Color.FromArgb(0x38, 0xBD, 0xF8);
                         using (Brush bNpu = new SolidBrush(npuCol))
                         {
@@ -3112,7 +3182,7 @@ namespace MiniFanControl
                         string val;
                         if (hasFps)
                         {
-                            val = ft > 0 ? string.Format("{0} ({1:0.0}ms)", _status.RtssFps, ft) : string.Format("{0} FPS", _status.RtssFps);
+                            val = (ShowFrametimeMs && ft > 0) ? string.Format("{0} ({1:0.0}ms)", _status.RtssFps, ft) : string.Format("{0} FPS", _status.RtssFps);
                         }
                         else
                         {
@@ -3128,7 +3198,7 @@ namespace MiniFanControl
                             sessionAvg = Stats.MinFps;
 
                         string peak = hasFps
-                            ? (sessionAvg > 0 ? string.Format("Avg: {0}", sessionAvg) : (ShowPeaks && Stats != null && Stats.MaxFps > 0 ? string.Format("▲{0}", Stats.MaxFps) : null))
+                            ? (ShowFpsAvg && sessionAvg > 0 ? string.Format("Avg: {0}", sessionAvg) : (ShowPeaks && Stats != null && Stats.MaxFps > 0 ? string.Format("▲{0}", Stats.MaxFps) : null))
                             : (_status.RtssRunning ? "RTSS Idle" : (ShowPeaks ? "Standby" : null));
 
                         Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8);
@@ -3175,8 +3245,8 @@ namespace MiniFanControl
                         DrawVertRow(g, row++, rowH, "Driver", _status.RadeonSoftwareVer, null, bLabel, bWhite, bPeak, null, CfxWhite, sc);
                     if (ShowRadeonSettings)
                     {
-                        List<string> radTags = (_status.RadeonFeaturesAvailable && _status.GetActiveRadeonTags() != null)
-                            ? new List<string>(_status.GetActiveRadeonTags())
+                        List<string> radTags = (_status.RadeonFeaturesAvailable && _status.GetActiveRadeonTags(ShowRadeonExtendedTags) != null)
+                            ? new List<string>(_status.GetActiveRadeonTags(ShowRadeonExtendedTags))
                             : new List<string>();
                         if (!string.IsNullOrEmpty(ProcessorBadgeText) && !radTags.Contains(ProcessorBadgeText))
                         {
@@ -3384,7 +3454,7 @@ namespace MiniFanControl
             float lblW = g.MeasureString(lbl, _fontLabel).Width;
             float minValX = (10f * sc) + lblW + (6f * sc);
 
-            float fixedPeakColW = ShowPeaks ? (72f * sc) : 0f;
+            float fixedPeakColW = ShowPeaks ? ((PeakTrackerMode == 2 ? 84f : 72f) * sc) : 0f;
             float peakLeft = Width - rightMargin - fixedPeakColW;
             float valRight = ShowPeaks ? (peakLeft - (4f * sc)) : (Width - rightMargin);
 
@@ -3421,17 +3491,6 @@ namespace MiniFanControl
                 {
                     Rectangle sparkRect = new Rectangle(sparkLeft, (int)y + 1, sparkW, (int)Math.Round(18f * sc));
                     DrawInlineSparkline(g, sparkRect, sparkSamples, sparkCol, sc);
-                }
-                else
-                {
-                    int bgLeft = sparkLeft;
-                    int bgRight = Width - (int)Math.Round(rightMargin);
-                    int bgW = Math.Max(0, bgRight - bgLeft);
-                    if (bgW >= (int)Math.Round(16 * sc))
-                    {
-                        Rectangle bgRect = new Rectangle(bgLeft, (int)y, bgW, Math.Max(4, rowH - 4));
-                        DrawBackgroundSparkline(g, bgRect, sparkSamples, sparkCol, sc);
-                    }
                 }
             }
 

@@ -619,6 +619,9 @@ namespace MiniFanControl
                 osd.ShowRadeonSettings = true;
                 osd.ShowFpsGraph = true;
                 osd.DfGraphStyle = true;
+                osd.ShowNpu = false;
+                osd.ShowFabricClock = false;
+                osd.ShowDriverVersion = false;
                 FanStatus fullSt = new FanStatus {
                     CpuTemp = 45, GpuTemp = 44, NvmeTemp = 49,
                     ApuPowerWatts = 8, RamLoadPct = 86, RamTotalGb = 16.0,
@@ -1633,6 +1636,11 @@ namespace MiniFanControl
                     osdTest.ShowApuFan = false;
                     osdTest.ShowSysFan = false;
                     osdTest.ShowMode = false;
+                    osdTest.ShowNpu = false;
+                    osdTest.ShowFabricClock = false;
+                    osdTest.ShowAmbient = false;
+                    osdTest.ShowVrmCurrent = false;
+                    osdTest.ShowDriverVersion = false;
                     osdTest.ShowRadeonSettings = false;
                     osdTest.ShowLiveTrend = true;
                     osdTest.ShowFpsGraph = true;
@@ -2676,32 +2684,32 @@ namespace MiniFanControl
                 {
                     // 1. Verify Tab Order: Live Trend (1st) -> Live Perf (2nd) -> APU Fan (3rd) -> Sys Fan (4th) -> OSD Studio (5th)
                     bool orderOk = (mf.TestTabLiveGraphBtn != null && mf.TestTabLiveGraphBtn.Location.X == 8) &&
-                                   (mf.TestTabPerfGraphBtn != null && mf.TestTabPerfGraphBtn.Location.X == 196) &&
-                                   (mf.TestTabApuCurveBtn != null && mf.TestTabApuCurveBtn.Location.X == 384) &&
-                                   (mf.TestTabSysCurveBtn != null && mf.TestTabSysCurveBtn.Location.X == 572) &&
-                                   (mf.TestTabOsdConfigBtn != null && mf.TestTabOsdConfigBtn.Location.X == 760);
+                                   (mf.TestTabPerfGraphBtn != null && mf.TestTabPerfGraphBtn.Location.X == 220) &&
+                                   (mf.TestTabApuCurveBtn != null && mf.TestTabApuCurveBtn.Location.X == 432) &&
+                                   (mf.TestTabSysCurveBtn != null && mf.TestTabSysCurveBtn.Location.X == 644) &&
+                                   (mf.TestTabOsdConfigBtn != null && mf.TestTabOsdConfigBtn.Location.X == 856);
 
                     // 2. Verify Tab Naming includes "Fan"
                     bool namesOk = (mf.TestTabApuCurveBtn.Text.IndexOf("Fan", StringComparison.OrdinalIgnoreCase) >= 0) &&
                                    (mf.TestTabSysCurveBtn.Text.IndexOf("Fan", StringComparison.OrdinalIgnoreCase) >= 0);
 
                     // 3. Verify Dynamic Manual Fan Control Visibility & Canvas Expansion
-                    // On Live Trend: Manual Fan Control hidden, canvas expanded to 490px
+                    // On Live Trend: Manual Fan Control hidden, canvas expanded to 690px
                     mf.TestSetGraphViewMode(true, false, 1);
                     bool liveHiddenOk = (!mf.TestManualFanControlVisible) &&
-                                        (mf.TestModeCardPanel != null && mf.TestModeCardPanel.Height == 562) &&
-                                        (mf.TestLiveCanvas != null && mf.TestLiveCanvas.Height == 490);
+                                        (mf.TestModeCardPanel != null && mf.TestModeCardPanel.Height == 762) &&
+                                        (mf.TestLiveCanvas != null && mf.TestLiveCanvas.Height == 690);
 
-                    // On Live Perf: Manual Fan Control hidden, perf canvas expanded to 490px
+                    // On Live Perf: Manual Fan Control hidden, perf canvas expanded to 690px
                     mf.TestSetGraphViewMode(false, true, 0);
                     bool perfHiddenOk = (!mf.TestManualFanControlVisible) &&
-                                        (mf.TestModeCardPanel != null && mf.TestModeCardPanel.Height == 562) &&
-                                        (mf.TestPerfCanvas != null && mf.TestPerfCanvas.Height == 490);
+                                        (mf.TestModeCardPanel != null && mf.TestModeCardPanel.Height == 762) &&
+                                        (mf.TestPerfCanvas != null && mf.TestPerfCanvas.Height == 690);
 
-                    // On APU Fan: Manual Fan Control visible, card height contracted to 440px
+                    // On APU Fan: Manual Fan Control visible, card height fills space above Manual Fan Control (632px)
                     mf.TestSetGraphViewMode(false, false, 0);
                     int curCardH = mf.TestModeCardPanel != null ? mf.TestModeCardPanel.Height : 0;
-                    bool fanShownOk = mf.TestManualFanControlVisible && (curCardH == 440);
+                    bool fanShownOk = mf.TestManualFanControlVisible && (curCardH == 632);
 
                     // 4. Verify CapFrameX Overlay 1440p / High-DPI Auto-Fit Scaling & Taskbar Clamping
                     using (CapFrameXOverlayForm ov = new CapFrameXOverlayForm())
@@ -3647,10 +3655,11 @@ namespace MiniFanControl
                     };
                     osdSub.UpdateMetrics(subSt, "AutoTune", true);
 
-                    // Default: Dual-stick without '(Δ6°)' or '@ 3438MHz' overflow
+                    // Default: Single-stick + spread delta without dual-stick or '@ 3438MHz' overflow
                     string fmtDefault = osdSub.FormatRamOverlayValue();
-                    // Compact single-stick temp
+                    // Compact single-stick temp without delta
                     osdSub.ShowRamDualSticks = false;
+                    osdSub.ShowRamSpread = false;
                     string fmtSingle = osdSub.FormatRamOverlayValue();
                     // Full detailed
                     osdSub.ShowRamDualSticks = true;
@@ -3658,12 +3667,41 @@ namespace MiniFanControl
                     osdSub.ShowRamClock = true;
                     string fmtFull = osdSub.FormatRamOverlayValue();
 
-                    if (fmtDefault != "35/41°C 22% ~3.6W" ||
+                    if (fmtDefault != "41°C (Δ6°) 22% ~3.6W" ||
                         fmtSingle != "41°C 22% ~3.6W" ||
                         fmtFull != "35°/41°C (Δ6°) 22% @ 3438MHz ~3.6W")
                     {
                         autoZoomAndSiliconOk = false;
                         autoZoomDetails = string.Format("RAM Sub-Field formatting mismatch: default='{0}', single='{1}', full='{2}'", fmtDefault, fmtSingle, fmtFull);
+                    }
+
+                    // Verify new default OSD settings & Peak/Low/Avg tracker modes
+                    using (CapFrameXOverlayForm defOsd = new CapFrameXOverlayForm())
+                    {
+                        bool defaultsOk = defOsd.VerticalLayout && defOsd.OsdScaleTier == 1 && defOsd.GraphHeight == 140 &&
+                                          defOsd.OpacityPct == 80 && defOsd.ShowFabricClock && defOsd.ShowNpu &&
+                                          defOsd.ShowDriverVersion && defOsd.ShowClocks && defOsd.SparklinesAsBackground &&
+                                          defOsd.DfGraphStyle && defOsd.DfGraphFirst && !defOsd.ShowRamDualSticks &&
+                                          defOsd.ShowRamSpread && !defOsd.ShowVrmCurrent;
+                        TelemetrySessionStats tStats = new TelemetrySessionStats();
+                        tStats.Record(new FanStatus { CpuTemp = 40, CpuLoadPct = 10, ApuPowerWatts = 8, DdrTemp = 36, RamLoadPct = 50, AmbientTemp = 30 });
+                        tStats.Record(new FanStatus { CpuTemp = 70, CpuLoadPct = 80, ApuPowerWatts = 36, DdrTemp = 44, RamLoadPct = 90, AmbientTemp = 38 });
+                        defOsd.Stats = tStats;
+                        defOsd.ShowPeaks = true;
+                        defOsd.PeakTrackerMode = 0; // Peaks
+                        string pk0 = defOsd.FormatRamOverlayPeak();
+                        defOsd.PeakTrackerMode = 1; // Lows
+                        string pk1 = defOsd.FormatRamOverlayPeak();
+                        defOsd.PeakTrackerMode = 2; // Min/Max
+                        string pk2 = defOsd.FormatRamOverlayPeak();
+                        defOsd.PeakTrackerMode = 3; // Avg
+                        string pk3 = defOsd.FormatRamOverlayPeak();
+                        if (!defaultsOk || pk0 != "▲44° ▲90%" || pk1 != "▼36° ▼50%" || pk2 != "▼36▲44°" || pk3 != "~40° ~70%")
+                        {
+                            autoZoomAndSiliconOk = false;
+                            autoZoomDetails = string.Format("Defaults/Trackers mismatch: defaults={0}, pk0='{1}', pk1='{2}', pk2='{3}', pk3='{4}'",
+                                defaultsOk, pk0, pk1, pk2, pk3);
+                        }
                     }
                 }
 

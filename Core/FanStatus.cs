@@ -155,10 +155,12 @@ namespace MiniFanControl
         public bool RadeonEnhancedSync;
         public bool RadeonSam;
         public bool RadeonFsr;
+        public bool RadeonFrtc;
+        public int RadeonFrtcFps;
 
-        public List<string> GetActiveRadeonTags()
+        public List<string> GetActiveRadeonTags(bool includeExtended = true)
         {
-            List<string> tags = new List<string>(8);
+            List<string> tags = new List<string>(11);
             if (RadeonFreeSync) tags.Add("FreeSync");
             if (RadeonAntiLag) tags.Add("Anti-Lag");
             if (RadeonAfmf) tags.Add("AFMF");
@@ -167,6 +169,12 @@ namespace MiniFanControl
             if (RadeonBoost) tags.Add("Boost");
             if (RadeonRsr) tags.Add("RSR");
             if (RadeonRis) tags.Add("RIS");
+            if (includeExtended)
+            {
+                if (RadeonEnhancedSync) tags.Add("EnhSync");
+                if (RadeonSam) tags.Add("SAM");
+                if (RadeonFrtc) tags.Add(RadeonFrtcFps > 0 ? string.Format("FRTC {0}", RadeonFrtcFps) : "FRTC");
+            }
             return tags;
         }
 

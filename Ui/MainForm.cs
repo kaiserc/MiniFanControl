@@ -141,11 +141,12 @@ namespace MiniFanControl
         private bool _showGpuTray = true;
         private bool _showOverlay = false;
         private bool _lockOverlay = false;
-        private bool _overlayVertical = false;
+        private bool _overlayVertical = true;
         private int _overlayX = 24;
         private int _overlayY = 24;
         private bool _restoreAutoOnExit = true;
         private bool _closeToTray = false;
+        private bool _useFahrenheit = false;
         private bool _silentSleepStandby = true;
         private bool _forceFullExit = false;
         private bool _isUnitTest = false;
@@ -158,10 +159,10 @@ namespace MiniFanControl
         private CapFrameXOverlayForm _overlayForm;
 
         // CapFrameX OSD Overlay Studio Configuration
-        private int _osdScaleTier = 0; // 0 = 100% (Standard), 1 = 125% (Large), 2 = 150% (Extra Large), 3 = 185% (Jumbo 4K)
+        private int _osdScaleTier = 1; // 0 = 100% (Standard), 1 = 125% (Large), 2 = 150% (Extra Large), 3 = 185% (Jumbo 4K)
         private int _osdGraphMode = 3; // 0=None, 1=Sparklines, 2=Combined, 3=Both
-        private int _osdGraphHeight = 105; // 75=Compact, 105=Medium, 140=Large, 180=XL
-        private int _osdOpacityPct = 88; // 35..100
+        private int _osdGraphHeight = 140; // 75=Compact, 105=Medium, 140=Large, 180=XL
+        private int _osdOpacityPct = 80; // 35..100
         private bool _osdMatchTheme = true;
         private bool _osdShowCpu = true;
         private bool _osdShowGpu = true;
@@ -170,8 +171,8 @@ namespace MiniFanControl
         private bool _osdShowRam = true;
         private bool _osdShowVrmCurrent = false;
         private bool _osdShowAmbient = true;
-        private bool _osdShowFabricClock = false;
-        private bool _osdShowNpu = false;
+        private bool _osdShowFabricClock = true;
+        private bool _osdShowNpu = true;
         private bool _osdShowFps = true;
         private bool _osdShowLows = true;
         private bool _osdShowGpuLoad = true;
@@ -179,23 +180,33 @@ namespace MiniFanControl
         private bool _osdShowSysFan = true;
         private bool _osdShowMode = true;
         private bool _osdShowPeaks = true;
+        private int _osdPeakTrackerMode = 0; // 0=Peaks(▲), 1=Lows(▼), 2=Min/Max(▼▲), 3=Avg(~)
         private bool _osdShowRadeon = true;
-        private bool _osdShowDriverVer = false;
-        private bool _osdShowClocks = false;
+        private bool _osdShowRadeonExtTags = true;
+        private bool _osdShowDriverVer = true;
+        private bool _osdShowClocks = true;
         private bool _osdShowGameName = true;
-        private bool _osdSparklineBg = false;
+        private bool _osdSparklineBg = true;
         private bool _osdShowLiveTrend = true;
         private bool _osdShowFpsGraph = true;
         private bool _osdPlotFpsOnTrend = true;
-        private bool _osdDfGraphStyle = false;
-        private bool _osdDfGraphFirst = false;
+        private bool _osdDfGraphStyle = true;
+        private bool _osdDfGraphFirst = true;
         private bool _osdShowRamTemp = true;
-        private bool _osdShowRamDualSticks = true;
-        private bool _osdShowRamSpread = false;
+        private bool _osdShowRamDualSticks = false;
+        private bool _osdShowRamSpread = true;
         private bool _osdShowRamLoad = true;
         private bool _osdShowRamPower = true;
         private bool _osdShowRamClock = false;
         private bool _osdShowNvmePower = true;
+        private bool _osdShowNvmeIo = true;
+        private bool _osdShowNvmeDual = true;
+        private bool _osdShowCpuLoad = true;
+        private bool _osdShowGpuHotspot = true;
+        private bool _osdShowPowerLimit = true;
+        private bool _osdShowFclkSync = true;
+        private bool _osdShowFrametimeMs = true;
+        private bool _osdShowFpsAvg = true;
 
         private IntPtr _cpuIconHandle = IntPtr.Zero;
         private IntPtr _gpuIconHandle = IntPtr.Zero;
@@ -319,6 +330,7 @@ namespace MiniFanControl
         private DoubleBufferedPanel _nvmeTempBox;
         private DoubleBufferedPanel _pwrBox;
         private DoubleBufferedPanel _ramPowerBox;
+        private DoubleBufferedPanel _ambientBox;
         private DoubleBufferedPanel _fan1Box;
         private DoubleBufferedPanel _fan2Box;
         private DoubleBufferedPanel _ramCard;
@@ -333,6 +345,7 @@ namespace MiniFanControl
         private Label _nvmeBoxTitle;
         private Label _pwrBoxTitle;
         private Label _ramBoxTitle;
+        private Label _ambientBoxTitle;
         private Label _fan1BoxTitle;
         private Label _fan2BoxTitle;
         private Label _cpuTempLabel;
@@ -340,6 +353,7 @@ namespace MiniFanControl
         private Label _nvmeTempLabel;
         private Label _pwrLabel;
         private Label _ramPowerLabel;
+        private Label _ambientLabel;
         private Label _fan1RpmLabel;
         private Label _fan2RpmLabel;
         private Label _modeLabel;
@@ -429,7 +443,19 @@ namespace MiniFanControl
         private CheckBox _osdShowRamLoadCb;
         private CheckBox _osdShowRamPowerCb;
         private CheckBox _osdShowRamClockCb;
+        private ComboBox _osdTrackerModeCombo;
         private CheckBox _osdShowNvmePowerCb;
+        private CheckBox _osdShowNvmeIoCb;
+        private CheckBox _osdShowNvmeDualCb;
+        private CheckBox _osdShowCpuLoadCb;
+        private CheckBox _osdShowGpuHotspotCb;
+        private CheckBox _osdShowPowerLimitCb;
+        private CheckBox _osdShowFclkSyncCb;
+        private CheckBox _osdShowFrametimeMsCb;
+        private CheckBox _osdShowFpsAvgCb;
+        private CheckBox _osdShowRadeonExtTagsCb;
+        private Panel _osdMetricsScrollPanel;
+        private readonly List<Label> _osdSectionHeaders = new List<Label>();
         private Button _osdSelectAllBtn;
         private Button _osdDeselectAllBtn;
         private Button _osdResetDefaultsBtn;
@@ -465,6 +491,7 @@ namespace MiniFanControl
         private CheckBox _autostartCb;
         private CheckBox _alwaysOnTopCb;
         private CheckBox _trayCb;
+        private CheckBox _useFahrenheitCb;
         private Label _statusBarLabel;
 
         private System.Windows.Forms.Timer _refreshTimer;
@@ -517,7 +544,7 @@ namespace MiniFanControl
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(980, 960);
+            ClientSize = new Size(1100, 1160);
             try
             {
                 Icon assoc = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -1117,7 +1144,8 @@ namespace MiniFanControl
             if (_gpuBoxTitle != null) _gpuBoxTitle.Text = "iGPU TEMP";
             if (_nvmeBoxTitle != null) _nvmeBoxTitle.Text = "NVMe TEMP";
             if (_pwrBoxTitle != null) _pwrBoxTitle.Text = "POWER ⓘ";
-            if (_ramBoxTitle != null) _ramBoxTitle.Text = "RAM POWER";
+            if (_ramBoxTitle != null) _ramBoxTitle.Text = "RAM TEMP";
+            if (_ambientBoxTitle != null) _ambientBoxTitle.Text = "Chassis";
             if (_fan1BoxTitle != null) _fan1BoxTitle.Text = "APU FAN";
             if (_fan2BoxTitle != null) _fan2BoxTitle.Text = "SYS FAN";
             if (_statusBarLabel != null)
@@ -1198,6 +1226,7 @@ namespace MiniFanControl
                 ShowSysFan = _osdShowSysFan,
                 ShowMode = _osdShowMode,
                 ShowPeaks = _osdShowPeaks,
+                PeakTrackerMode = _osdPeakTrackerMode,
                 ShowRadeonSettings = _osdShowRadeon,
                 ShowLiveTrend = _osdShowLiveTrend,
                 ShowFpsGraph = _osdShowFpsGraph,
@@ -1211,6 +1240,16 @@ namespace MiniFanControl
                 ShowRamPower = _osdShowRamPower,
                 ShowRamClock = _osdShowRamClock,
                 ShowNvmePower = _osdShowNvmePower,
+                ShowNvmeIo = _osdShowNvmeIo,
+                ShowNvmeDual = _osdShowNvmeDual,
+                ShowCpuLoad = _osdShowCpuLoad,
+                ShowGpuHotspot = _osdShowGpuHotspot,
+                ShowPowerLimit = _osdShowPowerLimit,
+                ShowFclkSync = _osdShowFclkSync,
+                ShowFrametimeMs = _osdShowFrametimeMs,
+                ShowFpsAvg = _osdShowFpsAvg,
+                ShowRadeonExtendedTags = _osdShowRadeonExtTags,
+                UseFahrenheit = _useFahrenheit,
                 ProcessorBadgeText = GetRyzenTierBadge()
             };
             _overlayForm.ApplyOpacity(_osdOpacityPct);
@@ -1297,6 +1336,7 @@ namespace MiniFanControl
             _overlayForm.ShowSysFan = _osdShowSysFan;
             _overlayForm.ShowMode = _osdShowMode;
             _overlayForm.ShowPeaks = _osdShowPeaks;
+            _overlayForm.PeakTrackerMode = _osdPeakTrackerMode;
             _overlayForm.ShowRadeonSettings = _osdShowRadeon;
             _overlayForm.ShowLiveTrend = _osdShowLiveTrend;
             _overlayForm.ShowFpsGraph = _osdShowFpsGraph;
@@ -1310,6 +1350,16 @@ namespace MiniFanControl
             _overlayForm.ShowRamPower = _osdShowRamPower;
             _overlayForm.ShowRamClock = _osdShowRamClock;
             _overlayForm.ShowNvmePower = _osdShowNvmePower;
+            _overlayForm.ShowNvmeIo = _osdShowNvmeIo;
+            _overlayForm.ShowNvmeDual = _osdShowNvmeDual;
+            _overlayForm.ShowCpuLoad = _osdShowCpuLoad;
+            _overlayForm.ShowGpuHotspot = _osdShowGpuHotspot;
+            _overlayForm.ShowPowerLimit = _osdShowPowerLimit;
+            _overlayForm.ShowFclkSync = _osdShowFclkSync;
+            _overlayForm.ShowFrametimeMs = _osdShowFrametimeMs;
+            _overlayForm.ShowFpsAvg = _osdShowFpsAvg;
+            _overlayForm.ShowRadeonExtendedTags = _osdShowRadeonExtTags;
+            _overlayForm.UseFahrenheit = _useFahrenheit;
             _overlayForm.ApplyOpacity(_osdOpacityPct);
             _overlayForm.UpdateDimensions();
             _overlayForm.Invalidate();
@@ -1341,7 +1391,8 @@ namespace MiniFanControl
                 _osdShowSysFan = _overlayForm.ShowSysFan;
                 _osdShowMode = _overlayForm.ShowMode;
                 _osdShowPeaks = _overlayForm.ShowPeaks;
-                _osdShowRadeon = _overlayForm.ShowRadeonSettings; _osdShowDriverVer = _overlayForm.ShowDriverVersion;
+                _osdPeakTrackerMode = _overlayForm.PeakTrackerMode;
+                _osdShowRadeon = _overlayForm.ShowRadeonSettings; _osdShowRadeonExtTags = _overlayForm.ShowRadeonExtendedTags; _osdShowDriverVer = _overlayForm.ShowDriverVersion;
                 _osdShowClocks = _overlayForm.ShowClocks;
                 _osdShowGameName = _overlayForm.ShowGameName;
                 _osdSparklineBg = _overlayForm.SparklinesAsBackground;
@@ -1357,6 +1408,14 @@ namespace MiniFanControl
                 _osdShowRamPower = _overlayForm.ShowRamPower;
                 _osdShowRamClock = _overlayForm.ShowRamClock;
                 _osdShowNvmePower = _overlayForm.ShowNvmePower;
+                _osdShowNvmeIo = _overlayForm.ShowNvmeIo;
+                _osdShowNvmeDual = _overlayForm.ShowNvmeDual;
+                _osdShowCpuLoad = _overlayForm.ShowCpuLoad;
+                _osdShowGpuHotspot = _overlayForm.ShowGpuHotspot;
+                _osdShowPowerLimit = _overlayForm.ShowPowerLimit;
+                _osdShowFclkSync = _overlayForm.ShowFclkSync;
+                _osdShowFrametimeMs = _overlayForm.ShowFrametimeMs;
+                _osdShowFpsAvg = _overlayForm.ShowFpsAvg;
             }
 
             if (_osdOpacitySlider != null && _osdOpacitySlider.Value != _osdOpacityPct)
@@ -1385,7 +1444,14 @@ namespace MiniFanControl
             }
             if (_osdShowModeCb != null) _osdShowModeCb.Checked = _osdShowMode;
             if (_osdShowPeaksCb != null) _osdShowPeaksCb.Checked = _osdShowPeaks;
+            if (_osdTrackerModeCombo != null)
+            {
+                int tmIdx = Math.Max(0, Math.Min(3, _osdPeakTrackerMode));
+                if (_osdTrackerModeCombo.SelectedIndex != tmIdx) _osdTrackerModeCombo.SelectedIndex = tmIdx;
+                _osdTrackerModeCombo.Enabled = _osdShowPeaks;
+            }
             if (_osdShowRadeonCb != null) _osdShowRadeonCb.Checked = _osdShowRadeon;
+            if (_osdShowRadeonExtTagsCb != null) _osdShowRadeonExtTagsCb.Checked = _osdShowRadeonExtTags;
             if (_osdShowDriverVerCb != null) _osdShowDriverVerCb.Checked = _osdShowDriverVer;
             if (_osdShowClocksCb != null) _osdShowClocksCb.Checked = _osdShowClocks;
             if (_osdShowGameNameCb != null) _osdShowGameNameCb.Checked = _osdShowGameName;
@@ -1402,6 +1468,14 @@ namespace MiniFanControl
             if (_osdShowRamPowerCb != null) _osdShowRamPowerCb.Checked = _osdShowRamPower;
             if (_osdShowRamClockCb != null) _osdShowRamClockCb.Checked = _osdShowRamClock;
             if (_osdShowNvmePowerCb != null) _osdShowNvmePowerCb.Checked = _osdShowNvmePower;
+            if (_osdShowNvmeIoCb != null) _osdShowNvmeIoCb.Checked = _osdShowNvmeIo;
+            if (_osdShowNvmeDualCb != null) _osdShowNvmeDualCb.Checked = _osdShowNvmeDual;
+            if (_osdShowCpuLoadCb != null) _osdShowCpuLoadCb.Checked = _osdShowCpuLoad;
+            if (_osdShowGpuHotspotCb != null) _osdShowGpuHotspotCb.Checked = _osdShowGpuHotspot;
+            if (_osdShowPowerLimitCb != null) _osdShowPowerLimitCb.Checked = _osdShowPowerLimit;
+            if (_osdShowFclkSyncCb != null) _osdShowFclkSyncCb.Checked = _osdShowFclkSync;
+            if (_osdShowFrametimeMsCb != null) _osdShowFrametimeMsCb.Checked = _osdShowFrametimeMs;
+            if (_osdShowFpsAvgCb != null) _osdShowFpsAvgCb.Checked = _osdShowFpsAvg;
             if (_osdMatchThemeCb != null) _osdMatchThemeCb.Checked = _osdMatchTheme;
 
             if (_osdToggleOverlayBtn != null)
@@ -1498,9 +1572,9 @@ namespace MiniFanControl
             if (_calibBadgeLabel != null) _calibBadgeLabel.Visible = visible;
             if (_fanCardPanel != null) _fanCardPanel.Visible = visible;
 
-            int cardHeight = visible ? 440 : 562;
-            int canvasHeight = visible ? 368 : 490;
-            int hintY = visible ? 416 : 538;
+            int cardHeight = visible ? 632 : 762;
+            int canvasHeight = visible ? 560 : 690;
+            int hintY = visible ? 608 : 738;
 
             if (_modeCardPanel != null && _modeCardPanel.Height != cardHeight)
             {
@@ -1515,17 +1589,17 @@ namespace MiniFanControl
             if (_liveCanvas != null)
             {
                 _liveCanvas.Location = new Point(8, 42);
-                _liveCanvas.Size = new Size(936, canvasHeight);
+                _liveCanvas.Size = new Size(1056, canvasHeight);
             }
             if (_perfCanvas != null)
             {
                 _perfCanvas.Location = new Point(8, 42);
-                _perfCanvas.Size = new Size(936, canvasHeight);
+                _perfCanvas.Size = new Size(1056, canvasHeight);
             }
             if (_osdConfigPanel != null)
             {
                 _osdConfigPanel.Location = new Point(8, 41);
-                _osdConfigPanel.Size = new Size(936, canvasHeight);
+                _osdConfigPanel.Size = new Size(1056, canvasHeight);
             }
         }
 
@@ -1583,7 +1657,7 @@ namespace MiniFanControl
                     if (_curveCanvas != null)
                     {
                         _curveCanvas.Location = new Point(8, 108);
-                        _curveCanvas.Size = new Size(936, 302);
+                        _curveCanvas.Size = new Size(1056, 496);
                         _curveCanvas.Visible = true;
                         _curveCanvas.Invalidate();
                     }
@@ -1598,6 +1672,7 @@ namespace MiniFanControl
             if (_nvmeTempBox != null) _nvmeTempBox.Invalidate();
             if (_pwrBox != null) _pwrBox.Invalidate();
             if (_ramPowerBox != null) _ramPowerBox.Invalidate();
+            if (_ambientBox != null) _ambientBox.Invalidate();
             if (_fan1Box != null) _fan1Box.Invalidate();
             if (_fan2Box != null) _fan2Box.Invalidate();
         }
@@ -2004,30 +2079,30 @@ namespace MiniFanControl
                 if (_hasDualFans)
                 {
                     _tabLiveGraphBtn.Location = new Point(8, 8);
-                    _tabLiveGraphBtn.Size = new Size(184, 28);
-                    _tabPerfGraphBtn.Location = new Point(196, 8);
-                    _tabPerfGraphBtn.Size = new Size(184, 28);
+                    _tabLiveGraphBtn.Size = new Size(208, 28);
+                    _tabPerfGraphBtn.Location = new Point(220, 8);
+                    _tabPerfGraphBtn.Size = new Size(208, 28);
                     _tabPerfGraphBtn.Visible = true;
-                    _tabApuCurveBtn.Location = new Point(384, 8);
-                    _tabApuCurveBtn.Size = new Size(184, 28);
-                    _tabSysCurveBtn.Location = new Point(572, 8);
-                    _tabSysCurveBtn.Size = new Size(184, 28);
+                    _tabApuCurveBtn.Location = new Point(432, 8);
+                    _tabApuCurveBtn.Size = new Size(208, 28);
+                    _tabSysCurveBtn.Location = new Point(644, 8);
+                    _tabSysCurveBtn.Size = new Size(208, 28);
                     _tabSysCurveBtn.Visible = true;
-                    _tabOsdConfigBtn.Location = new Point(760, 8);
-                    _tabOsdConfigBtn.Size = new Size(184, 28);
+                    _tabOsdConfigBtn.Location = new Point(856, 8);
+                    _tabOsdConfigBtn.Size = new Size(208, 28);
                 }
                 else
                 {
                     _tabLiveGraphBtn.Location = new Point(8, 8);
-                    _tabLiveGraphBtn.Size = new Size(228, 28);
-                    _tabPerfGraphBtn.Location = new Point(244, 8);
-                    _tabPerfGraphBtn.Size = new Size(228, 28);
+                    _tabLiveGraphBtn.Size = new Size(258, 28);
+                    _tabPerfGraphBtn.Location = new Point(274, 8);
+                    _tabPerfGraphBtn.Size = new Size(258, 28);
                     _tabPerfGraphBtn.Visible = true;
-                    _tabApuCurveBtn.Location = new Point(480, 8);
-                    _tabApuCurveBtn.Size = new Size(228, 28);
+                    _tabApuCurveBtn.Location = new Point(540, 8);
+                    _tabApuCurveBtn.Size = new Size(258, 28);
                     _tabSysCurveBtn.Visible = false;
-                    _tabOsdConfigBtn.Location = new Point(716, 8);
-                    _tabOsdConfigBtn.Size = new Size(228, 28);
+                    _tabOsdConfigBtn.Location = new Point(806, 8);
+                    _tabOsdConfigBtn.Size = new Size(258, 28);
                 }
             }
 
@@ -2035,22 +2110,22 @@ namespace MiniFanControl
             {
                 if (_hasDualFans)
                 {
-                    _fan1Box.Location = new Point(672, 8);
-                    _fan1Box.Size = new Size(126, 70);
-                    if (_fan1BoxTitle != null) { _fan1BoxTitle.Location = new Point(1, 2); _fan1BoxTitle.Size = new Size(124, 13); }
+                    _fan1Box.Location = new Point(798, 8);
+                    _fan1Box.Size = new Size(125, 70);
+                    if (_fan1BoxTitle != null) { _fan1BoxTitle.Location = new Point(1, 2); _fan1BoxTitle.Size = new Size(123, 13); }
                     if (_fan1RpmLabel != null)
                     {
                         _fan1RpmLabel.Location = new Point(1, 15);
-                        _fan1RpmLabel.Size = new Size(124, 33);
+                        _fan1RpmLabel.Size = new Size(123, 33);
                         _fan1RpmLabel.Font = new Font("Segoe UI", 11.5f, FontStyle.Bold);
                     }
-                    _fan2Box.Location = new Point(804, 8);
-                    _fan2Box.Size = new Size(126, 70);
-                    if (_fan2BoxTitle != null) { _fan2BoxTitle.Location = new Point(1, 2); _fan2BoxTitle.Size = new Size(124, 13); }
+                    _fan2Box.Location = new Point(929, 8);
+                    _fan2Box.Size = new Size(125, 70);
+                    if (_fan2BoxTitle != null) { _fan2BoxTitle.Location = new Point(1, 2); _fan2BoxTitle.Size = new Size(123, 13); }
                     if (_fan2RpmLabel != null)
                     {
                         _fan2RpmLabel.Location = new Point(1, 15);
-                        _fan2RpmLabel.Size = new Size(124, 33);
+                        _fan2RpmLabel.Size = new Size(123, 33);
                         _fan2RpmLabel.Font = new Font("Segoe UI", 11.5f, FontStyle.Bold);
                     }
                     _fan2Box.Visible = true;
@@ -2058,13 +2133,13 @@ namespace MiniFanControl
                 else
                 {
                     _fan2Box.Visible = false;
-                    _fan1Box.Location = new Point(672, 8);
-                    _fan1Box.Size = new Size(258, 70);
-                    if (_fan1BoxTitle != null) { _fan1BoxTitle.Location = new Point(1, 2); _fan1BoxTitle.Size = new Size(256, 13); }
+                    _fan1Box.Location = new Point(798, 8);
+                    _fan1Box.Size = new Size(256, 70);
+                    if (_fan1BoxTitle != null) { _fan1BoxTitle.Location = new Point(1, 2); _fan1BoxTitle.Size = new Size(254, 13); }
                     if (_fan1RpmLabel != null)
                     {
                         _fan1RpmLabel.Location = new Point(1, 15);
-                        _fan1RpmLabel.Size = new Size(256, 33);
+                        _fan1RpmLabel.Size = new Size(254, 33);
                         _fan1RpmLabel.Font = new Font("Segoe UI", 14.0f, FontStyle.Bold);
                     }
                 }
@@ -2213,6 +2288,22 @@ namespace MiniFanControl
             menu.MenuItems.Add("-");
             menu.MenuItems.Add("GMKtec Official Drivers & Manuals (K12 / Mini PCs)...", (s, e) => OpenUrlSafe(URL_GMKTEC_DRIVERS));
             menu.MenuItems.Add("AMD Software: Adrenalin & Chipset Drivers...", (s, e) => OpenUrlSafe(URL_AMD_DRIVERS));
+            if (_lastStatus.RadeonFeaturesAvailable || !_demoMode)
+            {
+                RadeonSettingsTelemetry radNow = RadeonSettingsSensor.Sample();
+                if (radNow.IsAvailable)
+                {
+                    MenuItem radeonToggleMenu = new MenuItem("🎮 Radeon Driver Features (KMD)");
+                    AddRadeonDriverToggleItem(radeonToggleMenu, "Radeon Anti-Lag", "AntiLag", radNow.AntiLag);
+                    AddRadeonDriverToggleItem(radeonToggleMenu, "Radeon Chill", "Chill", radNow.Chill);
+                    AddRadeonDriverToggleItem(radeonToggleMenu, "Radeon Boost", "Boost", radNow.RadeonBoost);
+                    AddRadeonDriverToggleItem(radeonToggleMenu, "Radeon Image Sharpening (RIS)", "RIS", radNow.Ris);
+                    AddRadeonDriverToggleItem(radeonToggleMenu, "Radeon Super Resolution (RSR)", "RSR", radNow.Rsr);
+                    AddRadeonDriverToggleItem(radeonToggleMenu, "Enhanced Sync", "EnhSync", radNow.EnhancedSync);
+                    AddRadeonDriverToggleItem(radeonToggleMenu, "FRTC (Frame Rate Target Control)", "FRTC", radNow.Frtc);
+                    menu.MenuItems.Add(radeonToggleMenu);
+                }
+            }
             menu.MenuItems.Add("-");
             menu.MenuItems.Add("🛡️ Kernel Driver & HVCI Security Status...", (s, e) => ShowKernelDriverSecurityDialog());
             MenuItem langMenu = new MenuItem("🌐 Language / 语言 / Sprache");
@@ -2227,6 +2318,29 @@ namespace MiniFanControl
             menu.MenuItems.Add("-");
             menu.MenuItems.Add("About MiniFanControl v" + APP_VERSION + "...", (s, e) => ShowAboutDialog());
             return menu;
+        }
+
+        private void AddRadeonDriverToggleItem(MenuItem parent, string title, string featureKey, bool isChecked)
+        {
+            MenuItem item = new MenuItem(title, (s, e) =>
+            {
+                bool targetState = !isChecked;
+                string err;
+                if (RadeonSettingsSensor.SetKmdFeatureEnabled(featureKey, targetState, out err))
+                {
+                    _driversMenu = CreateDriversAndToolsMenu();
+                    if (_statusBarLabel != null)
+                        _statusBarLabel.Text = string.Format("✓ Radeon {0}: {1} (driver registry updated)", title, targetState ? "Enabled" : "Disabled");
+                    RefreshStatus();
+                }
+                else
+                {
+                    if (_statusBarLabel != null)
+                        _statusBarLabel.Text = string.Format("⚠ Could not toggle {0}: {1}", title, err ?? "Unknown error");
+                }
+            });
+            if (isChecked) item.Checked = true;
+            parent.MenuItems.Add(item);
         }
 
         private void AddLanguageMenuItem(MenuItem parent, string title, AppLanguage lang)
@@ -2540,6 +2654,7 @@ namespace MiniFanControl
                     else if (k == "OsdShowSysFan") _osdShowSysFan = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowMode") _osdShowMode = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowPeaks") _osdShowPeaks = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdPeakTrackerMode" && int.TryParse(v, out intVal)) _osdPeakTrackerMode = Math.Max(0, Math.Min(3, intVal));
                     else if (k == "OsdShowRadeon") _osdShowRadeon = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowDriverVer") _osdShowDriverVer = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowClocks") _osdShowClocks = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
@@ -2557,8 +2672,18 @@ namespace MiniFanControl
                     else if (k == "OsdShowRamPower") _osdShowRamPower = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowRamClock") _osdShowRamClock = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "OsdShowNvmePower") _osdShowNvmePower = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowNvmeIo") _osdShowNvmeIo = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowNvmeDual") _osdShowNvmeDual = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowCpuLoad") _osdShowCpuLoad = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowGpuHotspot") _osdShowGpuHotspot = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowPowerLimit") _osdShowPowerLimit = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowFclkSync") _osdShowFclkSync = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowFrametimeMs") _osdShowFrametimeMs = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowFpsAvg") _osdShowFpsAvg = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "OsdShowRadeonExtTags") _osdShowRadeonExtTags = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "RestoreAutoOnExit") _restoreAutoOnExit = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "CloseToTray") _closeToTray = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    else if (k == "UseFahrenheit") _useFahrenheit = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "SilentSleepStandby") _silentSleepStandby = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "AlwaysOnTop") _alwaysOnTop = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
                     else if (k == "EnableHotkeys") _enableGlobalHotkeys = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
@@ -2655,6 +2780,7 @@ namespace MiniFanControl
                 lines.Add("OsdShowSysFan=" + (_osdShowSysFan ? "1" : "0"));
                 lines.Add("OsdShowMode=" + (_osdShowMode ? "1" : "0"));
                 lines.Add("OsdShowPeaks=" + (_osdShowPeaks ? "1" : "0"));
+                lines.Add("OsdPeakTrackerMode=" + _osdPeakTrackerMode);
                 lines.Add("OsdShowRadeon=" + (_osdShowRadeon ? "1" : "0"));
                 lines.Add("OsdShowDriverVer=" + (_osdShowDriverVer ? "1" : "0"));
                 lines.Add("OsdShowClocks=" + (_osdShowClocks ? "1" : "0"));
@@ -2672,8 +2798,18 @@ namespace MiniFanControl
                 lines.Add("OsdShowRamPower=" + (_osdShowRamPower ? "1" : "0"));
                 lines.Add("OsdShowRamClock=" + (_osdShowRamClock ? "1" : "0"));
                 lines.Add("OsdShowNvmePower=" + (_osdShowNvmePower ? "1" : "0"));
+                lines.Add("OsdShowNvmeIo=" + (_osdShowNvmeIo ? "1" : "0"));
+                lines.Add("OsdShowNvmeDual=" + (_osdShowNvmeDual ? "1" : "0"));
+                lines.Add("OsdShowCpuLoad=" + (_osdShowCpuLoad ? "1" : "0"));
+                lines.Add("OsdShowGpuHotspot=" + (_osdShowGpuHotspot ? "1" : "0"));
+                lines.Add("OsdShowPowerLimit=" + (_osdShowPowerLimit ? "1" : "0"));
+                lines.Add("OsdShowFclkSync=" + (_osdShowFclkSync ? "1" : "0"));
+                lines.Add("OsdShowFrametimeMs=" + (_osdShowFrametimeMs ? "1" : "0"));
+                lines.Add("OsdShowFpsAvg=" + (_osdShowFpsAvg ? "1" : "0"));
+                lines.Add("OsdShowRadeonExtTags=" + (_osdShowRadeonExtTags ? "1" : "0"));
                 lines.Add("RestoreAutoOnExit=" + (_restoreAutoOnExit ? "1" : "0"));
                 lines.Add("CloseToTray=" + (_closeToTray ? "1" : "0"));
+                lines.Add("UseFahrenheit=" + (_useFahrenheit ? "1" : "0"));
                 lines.Add("ShowSetupAssistant=" + (_showSetupAssistant ? "1" : "0"));
                 lines.Add("SilentSleepStandby=" + (_silentSleepStandby ? "1" : "0"));
                 lines.Add("AlwaysOnTop=" + (_alwaysOnTop ? "1" : "0"));
@@ -3016,6 +3152,7 @@ namespace MiniFanControl
             if (c == _nvmeTempBox || c == _nvmeBoxTitle || c == _nvmeTempLabel) return 6;
             if (c == _pwrBox || c == _pwrBoxTitle || c == _pwrLabel) return 3;
             if (c == _ramPowerBox || c == _ramBoxTitle || c == _ramPowerLabel) return 7;
+            if (c == _ambientBox || c == _ambientBoxTitle || c == _ambientLabel) return 9;
             if (c == _fan1Box || c == _fan1BoxTitle || c == _fan1RpmLabel) return 4;
             if (c == _fan2Box || c == _fan2BoxTitle || c == _fan2RpmLabel) return 5;
             return 0;
@@ -3043,6 +3180,19 @@ namespace MiniFanControl
                 return _lastStatus.FormatNvmeTooltip(_sessionStats);
             if ((c == _ramPowerBox || c == _ramBoxTitle || c == _ramPowerLabel || c == _ramCard || c == _ramLabel) && _lastStatus.RamTotalGb > 0)
                 return _lastStatus.FormatRamTooltip(_sessionStats);
+            if ((c == _ambientBox || c == _ambientBoxTitle || c == _ambientLabel) && _lastStatus.AmbientTemp > 0)
+            {
+                string tUnit = TelemetrySessionStats.TempUnit(_useFahrenheit);
+                string ambMinMax = (_sessionStats != null && _sessionStats.MaxAmbientTemp > 0)
+                    ? string.Format("\r\nSession Min/Max: {0}{3} / {1}{3} (Avg {2:0.0}{3})",
+                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinAmbientTemp < int.MaxValue ? _sessionStats.MinAmbientTemp : _lastStatus.AmbientTemp, _useFahrenheit),
+                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxAmbientTemp, _useFahrenheit),
+                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.AvgAmbientTemp, _useFahrenheit),
+                        tUnit)
+                    : "";
+                return string.Format("Chassis Ambient Temperature (IT8613 Sensor 4): {0}{1}{2}\r\nLeft-click to toggle Live Trend • Right-click to reset peaks.",
+                    TelemetrySessionStats.ToDisplayTemp(_lastStatus.AmbientTemp, _useFahrenheit), tUnit, ambMinMax);
+            }
 
             return _uiToolTip != null ? _uiToolTip.GetToolTip(c) : "";
         }
@@ -3093,13 +3243,15 @@ namespace MiniFanControl
             if (chartKind > 0)
             {
                 Rectangle chartRect = new Rectangle(bounds.X + 10, bounds.Bottom - 54, bounds.Width - 20, 46);
+                bool ramHasTemp = (_sessionStats.RamTempHistory.Count > 0);
                 List<int> samples = chartKind == 1 ? _sessionStats.CpuHistory
                     : (chartKind == 2 ? _sessionStats.GpuHistory
                     : (chartKind == 6 ? _sessionStats.NvmeHistory
                     : (chartKind == 3 ? _sessionStats.PowerHistory
-                    : (chartKind == 7 ? _sessionStats.RamPowerHistory
-                    : (chartKind == 4 ? _sessionStats.Fan1RpmHistory : _sessionStats.Fan2RpmHistory)))));
-                string unit = (chartKind == 3 || chartKind == 7) ? "W" : (chartKind >= 4 && chartKind != 6 ? " RPM" : "°C");
+                    : (chartKind == 7 ? (ramHasTemp ? _sessionStats.RamTempHistory : _sessionStats.RamPowerHistory)
+                    : (chartKind == 9 ? _sessionStats.AmbientHistory
+                    : (chartKind == 4 ? _sessionStats.Fan1RpmHistory : _sessionStats.Fan2RpmHistory))))));
+                string unit = (chartKind == 3 || (chartKind == 7 && !ramHasTemp)) ? "W" : ((chartKind == 4 || chartKind == 5) ? " RPM" : TelemetrySessionStats.TempUnit(_useFahrenheit));
                 Color lineCol;
                 switch (chartKind)
                 {
@@ -3118,6 +3270,9 @@ namespace MiniFanControl
                     case 7:
                         lineCol = Color.FromArgb(0x81, 0x8C, 0xF8);
                         break;
+                    case 9:
+                        lineCol = _isDarkMode ? Color.FromArgb(0xE2, 0xE8, 0xF0) : Color.FromArgb(0x47, 0x55, 0x69);
+                        break;
                     case 4:
                         lineCol = Color.FromArgb(0xC0, 0x84, 0xFC);
                         break;
@@ -3128,7 +3283,7 @@ namespace MiniFanControl
                         lineCol = isRadeon ? RadeonAccent : DarkAccent;
                         break;
                 }
-                DrawMiniSparklineChart(g, chartRect, samples, lineCol, unit, true, chartKind == 7);
+                DrawMiniSparklineChart(g, chartRect, samples, lineCol, unit, true, chartKind == 7 && !ramHasTemp);
             }
         }
 
@@ -3281,6 +3436,9 @@ namespace MiniFanControl
                 case 7:
                     lineCol = Color.FromArgb(0x81, 0x8C, 0xF8);
                     break;
+                case 9:
+                    lineCol = _isDarkMode ? Color.FromArgb(0xE2, 0xE8, 0xF0) : Color.FromArgb(0x47, 0x55, 0x69);
+                    break;
                 case 4:
                     lineCol = Color.FromArgb(0xC0, 0x84, 0xFC);
                     break;
@@ -3294,7 +3452,8 @@ namespace MiniFanControl
             if (samples != null && samples.Count > 0)
             {
                 Rectangle sparkRect = new Rectangle(1, 49, box.ClientSize.Width - 2, Math.Max(8, box.ClientSize.Height - 51));
-                DrawMiniSparklineChart(g, sparkRect, samples, lineCol, "", false, chartKind == 7);
+                bool isDeciWatts = (samples == _sessionStats.RamPowerHistory);
+                DrawMiniSparklineChart(g, sparkRect, samples, lineCol, "", false, isDeciWatts);
             }
             if (_showingLiveTelemetry && _highlightedMetric == chartKind)
             {
@@ -3337,7 +3496,7 @@ namespace MiniFanControl
                 if (_perfCanvas != null)
                 {
                     _perfCanvas.Location = new Point(8, 42);
-                    _perfCanvas.Size = new Size(936, 490);
+                    _perfCanvas.Size = new Size(1056, 690);
                     _perfCanvas.Visible = true;
                     _perfCanvas.Invalidate();
                 }
@@ -3349,7 +3508,7 @@ namespace MiniFanControl
                 if (_liveCanvas != null)
                 {
                     _liveCanvas.Location = new Point(8, 42);
-                    _liveCanvas.Size = new Size(936, 490);
+                    _liveCanvas.Size = new Size(1056, 690);
                     _liveCanvas.HighlightMetric = _highlightedMetric;
                     _liveCanvas.Visible = true;
                     _liveCanvas.Invalidate();
@@ -3362,7 +3521,7 @@ namespace MiniFanControl
                 if (_curveCanvas != null)
                 {
                     _curveCanvas.Location = new Point(8, 108);
-                    _curveCanvas.Size = new Size(936, 302);
+                    _curveCanvas.Size = new Size(1056, 496);
                     _curveCanvas.Visible = true;
                     _curveCanvas.Invalidate();
                 }
@@ -3377,6 +3536,7 @@ namespace MiniFanControl
             if (_nvmeTempBox != null) _nvmeTempBox.Invalidate();
             if (_pwrBox != null) _pwrBox.Invalidate();
             if (_ramPowerBox != null) _ramPowerBox.Invalidate();
+            if (_ambientBox != null) _ambientBox.Invalidate();
             if (_fan1Box != null) _fan1Box.Invalidate();
             if (_fan2Box != null) _fan2Box.Invalidate();
         }
@@ -3469,7 +3629,7 @@ namespace MiniFanControl
                 Text = "Tools && Drivers ▾",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(668, 14),
+                Location = new Point(788, 14),
                 Size = new Size(136, 28),
                 Cursor = Cursors.Hand
             };
@@ -3486,7 +3646,7 @@ namespace MiniFanControl
                 Text = GetThemeButtonLabel(),
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
-                Location = new Point(810, 14),
+                Location = new Point(930, 14),
                 Size = new Size(156, 28),
                 Cursor = Cursors.Hand
             };
@@ -3501,7 +3661,7 @@ namespace MiniFanControl
             _cpuTempBox = new DoubleBufferedPanel
             {
                 Location = new Point(12, 8),
-                Size = new Size(126, 70),
+                Size = new Size(125, 70),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
@@ -3510,7 +3670,7 @@ namespace MiniFanControl
                 Text = "CPU TEMP",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
                 Location = new Point(1, 2),
-                Size = new Size(124, 13),
+                Size = new Size(123, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
@@ -3519,7 +3679,7 @@ namespace MiniFanControl
                 Text = "--°C",
                 Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
                 Location = new Point(1, 15),
-                Size = new Size(124, 33),
+                Size = new Size(123, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
@@ -3532,8 +3692,8 @@ namespace MiniFanControl
 
             _gpuTempBox = new DoubleBufferedPanel
             {
-                Location = new Point(144, 8),
-                Size = new Size(126, 70),
+                Location = new Point(143, 8),
+                Size = new Size(125, 70),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
@@ -3542,7 +3702,7 @@ namespace MiniFanControl
                 Text = "iGPU TEMP",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
                 Location = new Point(1, 2),
-                Size = new Size(124, 13),
+                Size = new Size(123, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
@@ -3551,7 +3711,7 @@ namespace MiniFanControl
                 Text = "--°C",
                 Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
                 Location = new Point(1, 15),
-                Size = new Size(124, 33),
+                Size = new Size(123, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
@@ -3562,10 +3722,43 @@ namespace MiniFanControl
             string gpuTip = "Integrated Radeon Graphics Temperature (AMD ADL2 PMLog GFX/SoC Sensor)\r\nLeft-click to highlight iGPU Trend on the big graph • Right-click to reset peaks.";
             _uiToolTip.SetToolTip(_gpuTempBox, gpuTip);
 
+            _ramPowerBox = new DoubleBufferedPanel
+            {
+                Location = new Point(274, 8),
+                Size = new Size(125, 70),
+                BorderStyle = BorderStyle.FixedSingle,
+                Cursor = Cursors.Hand
+            };
+            _ramBoxTitle = new Label
+            {
+                Text = "RAM TEMP",
+                Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
+                Location = new Point(1, 2),
+                Size = new Size(123, 13),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Visible = false
+            };
+            _ramPowerLabel = new Label
+            {
+                Text = "--°C",
+                Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
+                Location = new Point(1, 15),
+                Size = new Size(123, 33),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Visible = false
+            };
+            _ramPowerBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _ramPowerBox, _ramBoxTitle, _ramPowerLabel,
+                (_sessionStats.RamTempHistory.Count > 0 ? _sessionStats.RamTempHistory : _sessionStats.RamPowerHistory), 7);
+            _ramPowerBox.MouseUp += (s, e) => OnMetricBoxMouseUp(7, e);
+            statusCard.Controls.Add(_ramPowerBox);
+
+            string ramPwrTip = "DDR5 Memory Temperature, Dual-Stick Delta & Utilization\r\nLeft-click to highlight RAM Trend on the big graph • Right-click to reset peaks.";
+            _uiToolTip.SetToolTip(_ramPowerBox, ramPwrTip);
+
             _nvmeTempBox = new DoubleBufferedPanel
             {
-                Location = new Point(276, 8),
-                Size = new Size(126, 70),
+                Location = new Point(405, 8),
+                Size = new Size(125, 70),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
@@ -3574,7 +3767,7 @@ namespace MiniFanControl
                 Text = "NVMe TEMP",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
                 Location = new Point(1, 2),
-                Size = new Size(124, 13),
+                Size = new Size(123, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
@@ -3583,7 +3776,7 @@ namespace MiniFanControl
                 Text = "--°C",
                 Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
                 Location = new Point(1, 15),
-                Size = new Size(124, 33),
+                Size = new Size(123, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
@@ -3596,8 +3789,8 @@ namespace MiniFanControl
 
             _pwrBox = new DoubleBufferedPanel
             {
-                Location = new Point(408, 8),
-                Size = new Size(126, 70),
+                Location = new Point(536, 8),
+                Size = new Size(125, 70),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
@@ -3606,7 +3799,7 @@ namespace MiniFanControl
                 Text = "POWER ⓘ",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
                 Location = new Point(1, 2),
-                Size = new Size(124, 13),
+                Size = new Size(123, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
@@ -3615,7 +3808,7 @@ namespace MiniFanControl
                 Text = "--W",
                 Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
                 Location = new Point(1, 15),
-                Size = new Size(124, 33),
+                Size = new Size(123, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
@@ -3626,42 +3819,42 @@ namespace MiniFanControl
             string pwrTip = "APU Package Power (CPU + iGPU + SoC Telemetry)\r\nLeft-click to highlight Power Trend on the big graph • Right-click to reset peaks.";
             _uiToolTip.SetToolTip(_pwrBox, pwrTip);
 
-            _ramPowerBox = new DoubleBufferedPanel
+            _ambientBox = new DoubleBufferedPanel
             {
-                Location = new Point(540, 8),
-                Size = new Size(126, 70),
+                Location = new Point(667, 8),
+                Size = new Size(125, 70),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
-            _ramBoxTitle = new Label
+            _ambientBoxTitle = new Label
             {
-                Text = "RAM POWER",
+                Text = "Chassis",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
                 Location = new Point(1, 2),
-                Size = new Size(124, 13),
+                Size = new Size(123, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
-            _ramPowerLabel = new Label
+            _ambientLabel = new Label
             {
-                Text = "--W",
+                Text = "--°C",
                 Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
                 Location = new Point(1, 15),
-                Size = new Size(124, 33),
+                Size = new Size(123, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
-            _ramPowerBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _ramPowerBox, _ramBoxTitle, _ramPowerLabel, _sessionStats.RamPowerHistory, 7);
-            _ramPowerBox.MouseUp += (s, e) => OnMetricBoxMouseUp(7, e);
-            statusCard.Controls.Add(_ramPowerBox);
+            _ambientBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _ambientBox, _ambientBoxTitle, _ambientLabel, _sessionStats.AmbientHistory, 9);
+            _ambientBox.MouseUp += (s, e) => OnMetricBoxMouseUp(9, e);
+            statusCard.Controls.Add(_ambientBox);
 
-            string ramPwrTip = "DDR5 Memory Power & Utilization\r\nLeft-click to highlight RAM Power Trend on the big graph • Right-click to reset peaks.";
-            _uiToolTip.SetToolTip(_ramPowerBox, ramPwrTip);
+            string ambTip = "Motherboard Chassis Ambient Temperature (IT8613 Sensor 4)\r\nLeft-click to toggle Live Trend • Right-click to reset peaks.";
+            _uiToolTip.SetToolTip(_ambientBox, ambTip);
 
             _fan1Box = new DoubleBufferedPanel
             {
-                Location = new Point(672, 8),
-                Size = new Size(126, 70),
+                Location = new Point(798, 8),
+                Size = new Size(125, 70),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
@@ -3670,7 +3863,7 @@ namespace MiniFanControl
                 Text = "APU FAN",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
                 Location = new Point(1, 2),
-                Size = new Size(124, 13),
+                Size = new Size(123, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
@@ -3679,7 +3872,7 @@ namespace MiniFanControl
                 Text = "-- RPM",
                 Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
                 Location = new Point(1, 15),
-                Size = new Size(124, 33),
+                Size = new Size(123, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
@@ -3692,8 +3885,8 @@ namespace MiniFanControl
 
             _fan2Box = new DoubleBufferedPanel
             {
-                Location = new Point(804, 8),
-                Size = new Size(126, 70),
+                Location = new Point(929, 8),
+                Size = new Size(125, 70),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
@@ -3702,7 +3895,7 @@ namespace MiniFanControl
                 Text = "SYS FAN",
                 Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
                 Location = new Point(1, 2),
-                Size = new Size(124, 13),
+                Size = new Size(123, 13),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
@@ -3711,7 +3904,7 @@ namespace MiniFanControl
                 Text = "-- RPM",
                 Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
                 Location = new Point(1, 15),
-                Size = new Size(124, 33),
+                Size = new Size(123, 33),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Visible = false
             };
@@ -3726,7 +3919,7 @@ namespace MiniFanControl
             _ramCard = new DoubleBufferedPanel
             {
                 Location = new Point(12, 84),
-                Size = new Size(926, 25),
+                Size = new Size(1046, 25),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
@@ -3735,7 +3928,7 @@ namespace MiniFanControl
                 Text = "🧠 RAM: Initializing...",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
                 Location = new Point(6, 3),
-                Size = new Size(914, 18),
+                Size = new Size(1034, 18),
                 TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
@@ -3977,11 +4170,11 @@ namespace MiniFanControl
             _deleteCustomBtn.Click += (s, e) => DeleteSelectedCustomMode();
             modeCard.Controls.Add(_deleteCustomBtn);
 
-            // Row 4 (y=108): Large Interactive Fan Curve Graph + Combined Live Telemetry Graph (936 x 302)
+            // Row 4 (y=108): Large Interactive Fan Curve Graph + Combined Live Telemetry Graph (1056 x 496)
             _curveCanvas = new FanCurveCanvas
             {
                 Location = new Point(8, 108),
-                Size = new Size(936, 302),
+                Size = new Size(1056, 496),
                 ApuProfile = _apuProfile,
                 SysProfile = _sysProfile
             };
@@ -4044,7 +4237,7 @@ namespace MiniFanControl
             _liveCanvas = new LiveTelemetryCanvas
             {
                 Location = new Point(8, 42),
-                Size = new Size(936, 490),
+                Size = new Size(1056, 690),
                 Stats = _sessionStats,
                 HasDualFans = _hasDualFans,
                 Visible = false
@@ -4059,6 +4252,7 @@ namespace MiniFanControl
                 if (_nvmeTempBox != null) _nvmeTempBox.Invalidate();
                 if (_pwrBox != null) _pwrBox.Invalidate();
                 if (_ramPowerBox != null) _ramPowerBox.Invalidate();
+                if (_ambientBox != null) _ambientBox.Invalidate();
                 if (_fan1Box != null) _fan1Box.Invalidate();
                 if (_fan2Box != null) _fan2Box.Invalidate();
             };
@@ -4067,7 +4261,7 @@ namespace MiniFanControl
             _perfCanvas = new LivePerformanceCanvas
             {
                 Location = new Point(8, 42),
-                Size = new Size(936, 490),
+                Size = new Size(1056, 690),
                 Stats = _sessionStats,
                 Status = _lastStatus,
                 Visible = false
@@ -4079,7 +4273,7 @@ namespace MiniFanControl
             _osdConfigPanel = new Panel
             {
                 Location = new Point(8, 41),
-                Size = new Size(936, 490),
+                Size = new Size(1056, 690),
                 Visible = false
             };
             BuildOsdStudioPanel(_osdConfigPanel);
@@ -4090,13 +4284,13 @@ namespace MiniFanControl
                 Text = "",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
                 Location = new Point(8, 416),
-                Size = new Size(936, 18),
+                Size = new Size(1056, 18),
                 TextAlign = ContentAlignment.MiddleCenter
             };
             modeCard.Controls.Add(_curveHintLabel);
 
-            // 3. Manual Fan Control Section (top = 694, card = 714..808, height = 94)
-            Panel fanCard = CreateSectionCard("Manual Fan Control", 694, 94);
+            // 3. Manual Fan Control Section (top = 894, card = 914..1008, height = 94)
+            Panel fanCard = CreateSectionCard("Manual Fan Control", 894, 94);
             _fanCardPanel = fanCard;
             _manualFanHeaderLabel = _sectionHeaders.Count > 0 ? _sectionHeaders[_sectionHeaders.Count - 1] : null;
 
@@ -4104,7 +4298,7 @@ namespace MiniFanControl
             {
                 Text = "",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(400, 695),
+                Location = new Point(544, 892),
                 Size = new Size(540, 18),
                 TextAlign = ContentAlignment.MiddleRight,
                 Cursor = Cursors.Hand
@@ -4233,14 +4427,14 @@ namespace MiniFanControl
             _fan2AutoBtn.Click += (s, e) => ApplyFan(2, 0);
             fanCard.Controls.Add(_fan2AutoBtn);
 
-            // 4. Options Section (top = 814, card = 834..920, height = 86)
-            Panel optCard = CreateSectionCard("Options", 814, 86);
+            // 4. Options Section (top = 854, card = 874..960, height = 86)
+            Panel optCard = CreateSectionCard("Options", 1014, 86);
 
             _samplingLabel = new Label
             {
                 Text = "Sampling:",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(660, 11),
+                Location = new Point(766, 11),
                 AutoSize = true,
                 Cursor = Cursors.Default
             };
@@ -4250,8 +4444,8 @@ namespace MiniFanControl
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
-                Location = new Point(728, 7),
-                Size = new Size(210, 22),
+                Location = new Point(854, 7),
+                Size = new Size(204, 22),
                 Cursor = Cursors.Hand
             };
             int[] sampleIntervals = new int[] { 100, 250, 500, 1000, 1500, 2000, 3000 };
@@ -4379,6 +4573,27 @@ namespace MiniFanControl
             _uiToolTip.SetToolTip(_autostartCb,
                 "Registers an elevated Windows Scheduled Task (MiniFanControl_Autostart)\r\nso MiniFanControl starts on Windows login without a UAC prompt.");
 
+            _useFahrenheitCb = new CheckBox
+            {
+                Text = "Use Fahrenheit (°F)",
+                Location = new Point(660, 32),
+                Size = new Size(260, 24),
+                Checked = _useFahrenheit
+            };
+            _useFahrenheitCb.CheckedChanged += (s, e) =>
+            {
+                _useFahrenheit = _useFahrenheitCb.Checked;
+                if (_curveCanvas != null) { _curveCanvas.UseFahrenheit = _useFahrenheit; _curveCanvas.Invalidate(); }
+                if (_liveCanvas != null) { _liveCanvas.UseFahrenheit = _useFahrenheit; _liveCanvas.Invalidate(); }
+                if (_overlayForm != null)
+                    SyncOverlayFromStudio();
+                else
+                    SaveSettings();
+                RefreshStatus();
+            };
+            optCard.Controls.Add(_useFahrenheitCb);
+            _uiToolTip.SetToolTip(_useFahrenheitCb, "Display all temperatures in Fahrenheit (°F) across telemetry cards, graphs, tray icons, and the OSD overlay.");
+
             _trayCb = new CheckBox
             {
                 Text = "Close button minimizes to tray",
@@ -4398,21 +4613,21 @@ namespace MiniFanControl
             _errorBanner = new Label
             {
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
-                Location = new Point(14, 834),
-                Size = new Size(952, 82),
+                Location = new Point(14, 1034),
+                Size = new Size(1072, 82),
                 Padding = new Padding(8),
                 Visible = false
             };
             Controls.Add(_errorBanner);
             _errorBanner.BringToFront();
 
-            // 5. Status Bar (y = 920..950)
+            // 5. Status Bar (y = 1120..1150)
             _statusBarLabel = new Label
             {
                 Text = "⏳ Initializing…",
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Regular),
-                Location = new Point(14, 925),
-                Size = new Size(700, 22)
+                Location = new Point(14, 1125),
+                Size = new Size(820, 22)
             };
             Controls.Add(_statusBarLabel);
 
@@ -4420,7 +4635,7 @@ namespace MiniFanControl
             {
                 Text = "Reset Auto",
                 FlatStyle = FlatStyle.Flat,
-                Location = new Point(730, 922),
+                Location = new Point(850, 1122),
                 Size = new Size(106, 28),
                 Cursor = Cursors.Hand
             };
@@ -4432,7 +4647,7 @@ namespace MiniFanControl
             {
                 Text = "Close",
                 FlatStyle = FlatStyle.Flat,
-                Location = new Point(846, 922),
+                Location = new Point(966, 1122),
                 Size = new Size(106, 28),
                 Cursor = Cursors.Hand
             };
@@ -4459,7 +4674,7 @@ namespace MiniFanControl
                 Text = _showOverlay ? "● OSD Active" : "○ OSD Hidden",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(626, 5),
+                Location = new Point(746, 5),
                 Size = new Size(140, 26),
                 Cursor = Cursors.Hand
             };
@@ -4477,7 +4692,7 @@ namespace MiniFanControl
                 Text = _lockOverlay ? "Locked (Click-Thru)" : "Unlocked (Drag)",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(774, 5),
+                Location = new Point(894, 5),
                 Size = new Size(154, 26),
                 Cursor = Cursors.Hand
             };
@@ -4771,37 +4986,37 @@ namespace MiniFanControl
             p.Controls.Add(_osdSnapLabel);
 
             Font snapBtnFont = new Font("Segoe UI", 7.25f, FontStyle.Bold);
-            _osdQuickPosTl = new Button { Text = "Top-Left", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(334, 136), Size = new Size(96, 26), Cursor = Cursors.Hand };
+            _osdQuickPosTl = new Button { Text = "Top-Left", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(334, 136), Size = new Size(112, 26), Cursor = Cursors.Hand };
             _osdQuickPosTl.FlatAppearance.BorderSize = 0;
             _osdQuickPosTl.Click += (s, e) => SetOverlayCornerPosition(0);
             _uiToolTip.SetToolTip(_osdQuickPosTl, "Snap OSD to Top-Left screen corner");
             p.Controls.Add(_osdQuickPosTl);
 
-            _osdQuickPosTc = new Button { Text = "Center-Top", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(432, 136), Size = new Size(98, 26), Cursor = Cursors.Hand };
+            _osdQuickPosTc = new Button { Text = "Center-Top", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(450, 136), Size = new Size(116, 26), Cursor = Cursors.Hand };
             _osdQuickPosTc.FlatAppearance.BorderSize = 0;
             _osdQuickPosTc.Click += (s, e) => SetOverlayCornerPosition(4);
             _uiToolTip.SetToolTip(_osdQuickPosTc, "Snap OSD to Center-Top screen edge");
             p.Controls.Add(_osdQuickPosTc);
 
-            _osdQuickPosTr = new Button { Text = "Top-Right", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(532, 136), Size = new Size(96, 26), Cursor = Cursors.Hand };
+            _osdQuickPosTr = new Button { Text = "Top-Right", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(570, 136), Size = new Size(112, 26), Cursor = Cursors.Hand };
             _osdQuickPosTr.FlatAppearance.BorderSize = 0;
             _osdQuickPosTr.Click += (s, e) => SetOverlayCornerPosition(1);
             _uiToolTip.SetToolTip(_osdQuickPosTr, "Snap OSD to Top-Right screen corner");
             p.Controls.Add(_osdQuickPosTr);
 
-            _osdQuickPosBl = new Button { Text = "Bottom-Left", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(630, 136), Size = new Size(98, 26), Cursor = Cursors.Hand };
+            _osdQuickPosBl = new Button { Text = "Bottom-Left", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(686, 136), Size = new Size(116, 26), Cursor = Cursors.Hand };
             _osdQuickPosBl.FlatAppearance.BorderSize = 0;
             _osdQuickPosBl.Click += (s, e) => SetOverlayCornerPosition(2);
             _uiToolTip.SetToolTip(_osdQuickPosBl, "Snap OSD to Bottom-Left screen corner");
             p.Controls.Add(_osdQuickPosBl);
 
-            _osdQuickPosBc = new Button { Text = "Center-Bottom", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(730, 136), Size = new Size(104, 26), Cursor = Cursors.Hand };
+            _osdQuickPosBc = new Button { Text = "Center-Bottom", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(806, 136), Size = new Size(122, 26), Cursor = Cursors.Hand };
             _osdQuickPosBc.FlatAppearance.BorderSize = 0;
             _osdQuickPosBc.Click += (s, e) => SetOverlayCornerPosition(5);
             _uiToolTip.SetToolTip(_osdQuickPosBc, "Snap OSD to Center-Bottom screen edge");
             p.Controls.Add(_osdQuickPosBc);
 
-            _osdQuickPosBr = new Button { Text = "Bottom-Right", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(836, 136), Size = new Size(98, 26), Cursor = Cursors.Hand };
+            _osdQuickPosBr = new Button { Text = "Bottom-Right", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(932, 136), Size = new Size(116, 26), Cursor = Cursors.Hand };
             _osdQuickPosBr.FlatAppearance.BorderSize = 0;
             _osdQuickPosBr.Click += (s, e) => SetOverlayCornerPosition(3);
             _uiToolTip.SetToolTip(_osdQuickPosBr, "Snap OSD to Bottom-Right screen corner");
@@ -4823,7 +5038,7 @@ namespace MiniFanControl
                 Text = "Select All",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
-                Location = new Point(592, 184),
+                Location = new Point(712, 184),
                 Size = new Size(104, 25),
                 Cursor = Cursors.Hand
             };
@@ -4863,7 +5078,7 @@ namespace MiniFanControl
                 Text = "Deselect All",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
-                Location = new Point(704, 184),
+                Location = new Point(824, 184),
                 Size = new Size(108, 25),
                 Cursor = Cursors.Hand
             };
@@ -4898,7 +5113,7 @@ namespace MiniFanControl
                 Text = "Defaults",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
-                Location = new Point(820, 184),
+                Location = new Point(940, 184),
                 Size = new Size(108, 25),
                 Cursor = Cursors.Hand
             };
@@ -4911,9 +5126,9 @@ namespace MiniFanControl
                 _osdShowPower = true;
                 _osdShowRam = true;
                 _osdShowVrmCurrent = false;
-                _osdShowAmbient = false;
-                _osdShowFabricClock = false;
-                _osdShowNpu = false;
+                _osdShowAmbient = true;
+                _osdShowFabricClock = true;
+                _osdShowNpu = true;
                 _osdShowFps = true;
                 _osdShowLows = true;
                 _osdShowGpuLoad = true;
@@ -4921,102 +5136,153 @@ namespace MiniFanControl
                 _osdShowSysFan = _hasDualFans;
                 _osdShowMode = true;
                 _osdShowPeaks = true;
+                _osdPeakTrackerMode = 0;
                 _osdShowRadeon = true;
-                _osdShowClocks = false;
+                _osdShowDriverVer = true;
+                _osdShowClocks = true;
                 _osdShowGameName = true;
-                _osdSparklineBg = false;
+                _osdSparklineBg = true;
                 _osdShowLiveTrend = true;
                 _osdShowFpsGraph = true;
                 _osdPlotFpsOnTrend = true;
-                _osdDfGraphStyle = false;
-                _osdDfGraphFirst = false;
+                _osdDfGraphStyle = true;
+                _osdDfGraphFirst = true;
                 _osdShowRamTemp = true;
-                _osdShowRamDualSticks = true;
-                _osdShowRamSpread = false;
+                _osdShowRamDualSticks = false;
+                _osdShowRamSpread = true;
                 _osdShowRamLoad = true;
                 _osdShowRamPower = true;
                 _osdShowRamClock = false;
                 _osdShowNvmePower = true;
+                _osdShowNvmeIo = true;
+                _osdShowNvmeDual = true;
+                _osdShowCpuLoad = true;
+                _osdShowGpuHotspot = true;
+                _osdShowPowerLimit = true;
+                _osdShowFclkSync = true;
+                _osdShowFrametimeMs = true;
+                _osdShowFpsAvg = true;
                 _osdMatchTheme = true;
-                _osdScaleTier = 0;
+                _osdScaleTier = 1;
                 _osdGraphMode = 3;
-                _osdGraphHeight = 105;
-                _osdOpacityPct = 88;
-                _overlayVertical = false;
+                _osdGraphHeight = 140;
+                _osdOpacityPct = 80;
+                _overlayVertical = true;
                 SyncOsdStudioUiFromOverlay();
                 SyncOverlayFromStudio();
             };
             p.Controls.Add(_osdResetDefaultsBtn);
 
-            // Row 6 (y=214): Checkboxes Grid (4 Columns)
-            // Column 1: x=8 (w=224), Column 2: x=238 (w=224), Column 3: x=476 (w=224), Column 4: x=706 (w=222)
-            _osdShowCpuCb = new CheckBox { Text = "CPU Temp", Location = new Point(8, 214), Size = new Size(224, 21), Checked = _osdShowCpu, UseMnemonic = false };
-            _osdShowCpuCb.CheckedChanged += (s, e) => { _osdShowCpu = _osdShowCpuCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdShowCpuCb);
-
-            _osdShowGpuCb = new CheckBox { Text = "iGPU Temp", Location = new Point(238, 214), Size = new Size(224, 21), Checked = _osdShowGpu, UseMnemonic = false };
-            _osdShowGpuCb.CheckedChanged += (s, e) => { _osdShowGpu = _osdShowGpuCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdShowGpuCb);
-
-            _osdShowNvmeCb = new CheckBox { Text = "NVMe SSD Temp", Location = new Point(476, 214), Size = new Size(224, 21), Checked = _osdShowNvme, UseMnemonic = false };
-            _osdShowNvmeCb.CheckedChanged += (s, e) => { _osdShowNvme = _osdShowNvmeCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdShowNvmeCb);
-
-            _osdShowRamCb = new CheckBox { Text = "RAM Load & Power", Location = new Point(706, 214), Size = new Size(222, 21), Checked = _osdShowRam, UseMnemonic = false };
-            _osdShowRamCb.CheckedChanged += (s, e) => { _osdShowRam = _osdShowRamCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdShowRamCb);
-
-            // Row 7 (y=238):
-            _osdShowApuFanCb = new CheckBox { Text = "APU Fan RPM", Location = new Point(8, 238), Size = new Size(224, 21), Checked = _osdShowApuFan, UseMnemonic = false };
-            _osdShowApuFanCb.CheckedChanged += (s, e) => { _osdShowApuFan = _osdShowApuFanCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdShowApuFanCb);
-
-            _osdShowSysFanCb = new CheckBox
+            // Row 6+ (y=214..686): Per-Metric Configuration Sections (no scrollbar)
+            _osdMetricsScrollPanel = new Panel
             {
-                Text = _hasDualFans ? "Sys Fan RPM" : "Sys Fan RPM (N/A)",
-                Location = new Point(238, 238),
-                Size = new Size(224, 21),
-                Checked = _osdShowSysFan && _hasDualFans,
-                Enabled = _hasDualFans,
-                UseMnemonic = false
+                Location = new Point(4, 214),
+                Size = new Size(1048, 472),
+                AutoScroll = false
             };
-            _osdShowSysFanCb.CheckedChanged += (s, e) => { _osdShowSysFan = _osdShowSysFanCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdShowSysFanCb);
+            p.Controls.Add(_osdMetricsScrollPanel);
+            _osdSectionHeaders.Clear();
 
-            _osdShowPowerCb = new CheckBox { Text = "APU Power (W)", Location = new Point(476, 238), Size = new Size(224, 21), Checked = _osdShowPower, UseMnemonic = false };
-            _osdShowPowerCb.CheckedChanged += (s, e) => { _osdShowPower = _osdShowPowerCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdShowPowerCb);
+            int[] colX = new[] { 8, 260, 512, 764 };
+            const int colW = 246;
+            const int cbH = 24;
+            const int rowStep = 23;
+            int curY = 0;
 
-            _osdShowGpuLoadCb = new CheckBox { Text = "GPU Load & Clock", Location = new Point(706, 238), Size = new Size(222, 21), Checked = _osdShowGpuLoad, UseMnemonic = false };
-            _osdShowGpuLoadCb.CheckedChanged += (s, e) => { _osdShowGpuLoad = _osdShowGpuLoadCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdShowGpuLoadCb);
+            // 1. CPU (left) & Power & VRM (right)
+            int pairY = curY;
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "CPU", ref curY, 8, 490);
+            _osdShowCpuCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY, 242, cbH, "CPU Temp", _osdShowCpu, v => { _osdShowCpu = v; SyncOverlayFromStudio(); }, null);
+            _osdShowCpuLoadCb = AddOsdCheckBox(_osdMetricsScrollPanel, 258, curY, 242, cbH, "CPU Load (%)", _osdShowCpuLoad, v => { _osdShowCpuLoad = v; SyncOverlayFromStudio(); },
+                "Show CPU utilization percentage on the CPU overlay row");
+            _osdShowClocksCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY + rowStep, 242, cbH, "Clock Speeds (@ GHz/MHz)", _osdShowClocks, v => { _osdShowClocks = v; SyncOverlayFromStudio(); },
+                "Display effective CPU, iGPU, and RAM clock frequencies (@ 4.1G / @ 800MHz). Uncheck to maximize space for sparklines.");
 
-            // Row 8 (y=262):
-            _osdShowFpsCb = new CheckBox { Text = "Live FPS & Frametime", Location = new Point(8, 262), Size = new Size(224, 21), Checked = _osdShowFps, UseMnemonic = false };
-            _osdShowFpsCb.CheckedChanged += (s, e) => { _osdShowFps = _osdShowFpsCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdShowFpsCb);
+            int rightY = pairY;
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "Power & VRM", ref rightY, 518, 490);
+            _osdShowPowerCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY, 242, cbH, "APU Power (W)", _osdShowPower, v => { _osdShowPower = v; SyncOverlayFromStudio(); }, null);
+            _osdShowPowerLimitCb = AddOsdCheckBox(_osdMetricsScrollPanel, 768, rightY, 242, cbH, "APU Power Limit (/W)", _osdShowPowerLimit, v => { _osdShowPowerLimit = v; SyncOverlayFromStudio(); },
+                "Show active PPT/STAPM power limit (/65W) next to APU Power");
+            _osdShowVrmCurrentCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY + rowStep, 242, cbH, "VRM Current (TDC/EDC)", _osdShowVrmCurrent, v => { _osdShowVrmCurrent = v; SyncOverlayFromStudio(); },
+                "Display deep silicon VRM amperage draw (continuous TDC and peak EDC amps for VDD & SOC rails)");
+            curY += rowStep * 2;
 
-            _osdShowLowsCb = new CheckBox { Text = "0.1% Low & Avg FPS", Location = new Point(238, 262), Size = new Size(224, 21), Checked = _osdShowLows, UseMnemonic = false };
-            _osdShowLowsCb.CheckedChanged += (s, e) => { _osdShowLows = _osdShowLowsCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdShowLowsCb);
+            // 2. iGPU & Radeon
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "iGPU & Radeon", ref curY);
+            _osdShowGpuCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "iGPU Temp", _osdShowGpu, v => { _osdShowGpu = v; SyncOverlayFromStudio(); }, null);
+            _osdShowGpuHotspotCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "iGPU Hotspot (🔥°C)", _osdShowGpuHotspot, v => { _osdShowGpuHotspot = v; SyncOverlayFromStudio(); },
+                "Show iGPU junction hotspot temperature (🔥°C) when available");
+            _osdShowGpuLoadCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "GPU Load & Clock", _osdShowGpuLoad, v => { _osdShowGpuLoad = v; SyncOverlayFromStudio(); }, null);
+            _osdShowRadeonCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "Radeon Feature Tags", _osdShowRadeon, v => { _osdShowRadeon = v; SyncOverlayFromStudio(); },
+                "Display compact pill tags for active AMD Radeon features (FreeSync, Anti-Lag, AFMF, Chill, Boost, RSR, RIS)");
+            _osdShowDriverVerCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep, colW, cbH, "Radeon Driver Version", _osdShowDriverVer, v => { _osdShowDriverVer = v; SyncOverlayFromStudio(); },
+                "Show the installed AMD Radeon Software (Adrenalin) driver version on the OSD");
+            _osdShowRadeonExtTagsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep, colW, cbH, "SAM, EnhSync & FRTC Tags", _osdShowRadeonExtTags, v => { _osdShowRadeonExtTags = v; SyncOverlayFromStudio(); },
+                "Include Smart Access Memory (SAM), Enhanced Sync, and FRTC cap pills in the OSD Radeon tags row");
+            curY += rowStep * 2;
 
-            _osdShowModeCb = new CheckBox { Text = "Thermal Mode", Location = new Point(476, 262), Size = new Size(224, 21), Checked = _osdShowMode, UseMnemonic = false };
-            _osdShowModeCb.CheckedChanged += (s, e) => { _osdShowMode = _osdShowModeCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdShowModeCb);
+            // 3. RAM (DDR5)
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "RAM (DDR5)", ref curY);
+            _osdShowRamCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "RAM Load & Power", _osdShowRam, v => { _osdShowRam = v; SyncOverlayFromStudio(); }, null);
+            _osdShowRamTempCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "RAM Temp (°C)", _osdShowRamTemp, v => { _osdShowRamTemp = v; SyncOverlayFromStudio(); },
+                "Show DDR5 temperature on the RAM overlay row");
+            _osdShowRamDualSticksCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "RAM Dual-Stick (35/41°C)", _osdShowRamDualSticks, v => { _osdShowRamDualSticks = v; SyncOverlayFromStudio(); },
+                "Show both SODIMM temperatures (35/41°C). Uncheck to show only the single hottest stick (41°C).");
+            _osdShowRamSpreadCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "RAM Spread Delta (Δ°C)", _osdShowRamSpread, v => { _osdShowRamSpread = v; SyncOverlayFromStudio(); },
+                "Show thermal spread delta badge (Δ6°) between stacked SODIMM slots");
+            _osdShowRamLoadCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep, colW, cbH, "RAM Load (%)", _osdShowRamLoad, v => { _osdShowRamLoad = v; SyncOverlayFromStudio(); },
+                "Show memory utilization percentage (e.g. 22%) on the RAM overlay row");
+            _osdShowRamPowerCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep, colW, cbH, "RAM Power Draw (~W)", _osdShowRamPower, v => { _osdShowRamPower = v; SyncOverlayFromStudio(); },
+                "Show DDR5 power draw (~3.6W) on the RAM overlay row");
+            _osdShowRamClockCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY + rowStep, colW, cbH, "RAM Clock (@ MHz)", _osdShowRamClock, v => { _osdShowRamClock = v; SyncOverlayFromStudio(); },
+                "Show effective DDR data rate (@ 5600MHz) on the RAM overlay row (independent of CPU/iGPU clocks)");
+            curY += rowStep * 2;
 
-            _osdShowPeaksCb = new CheckBox { Text = "Peak Trackers (▲)", Location = new Point(706, 262), Size = new Size(222, 21), Checked = _osdShowPeaks, UseMnemonic = false };
-            _osdShowPeaksCb.CheckedChanged += (s, e) => { _osdShowPeaks = _osdShowPeaksCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdShowPeaksCb);
+            // 4. NVMe Storage (left) & Chassis & Silicon (right)
+            pairY = curY;
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "NVMe Storage", ref curY, 8, 490);
+            _osdShowNvmeCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY, 242, cbH, "NVMe SSD Temp", _osdShowNvme, v => { _osdShowNvme = v; SyncOverlayFromStudio(); }, null);
+            _osdShowNvmePowerCb = AddOsdCheckBox(_osdMetricsScrollPanel, 258, curY, 242, cbH, "NVMe Power Draw (~W)", _osdShowNvmePower, v => { _osdShowNvmePower = v; SyncOverlayFromStudio(); },
+                "Show PCIe NVMe SSD power draw (~0.9W) on the NVMe overlay row");
+            _osdShowNvmeIoCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY + rowStep, 242, cbH, "NVMe I/O (MB/s)", _osdShowNvmeIo, v => { _osdShowNvmeIo = v; SyncOverlayFromStudio(); },
+                "Show live NVMe read/write throughput (MB/s) on the NVMe overlay row");
+            _osdShowNvmeDualCb = AddOsdCheckBox(_osdMetricsScrollPanel, 258, curY + rowStep, 242, cbH, "NVMe Dual-Drive (°C/°C)", _osdShowNvmeDual, v => { _osdShowNvmeDual = v; SyncOverlayFromStudio(); },
+                "Show second NVMe drive temperature when idle and a second drive is detected");
 
-            // Row 9 (y=286): Graph Styles & Toggles
-            _osdMatchThemeCb = new CheckBox { Text = "Match App Theme", Location = new Point(8, 286), Size = new Size(224, 21), Checked = _osdMatchTheme, UseMnemonic = false };
-            _osdMatchThemeCb.CheckedChanged += (s, e) => { _osdMatchTheme = _osdMatchThemeCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdMatchThemeCb);
+            rightY = pairY;
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "Chassis & Silicon", ref rightY, 518, 490);
+            _osdShowAmbientCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY, 242, cbH, "Chassis Ambient", _osdShowAmbient, v => { _osdShowAmbient = v; SyncOverlayFromStudio(); },
+                "Display motherboard chassis ambient temperature (IT8613 Sensor 4)");
+            _osdShowFabricClockCb = AddOsdCheckBox(_osdMetricsScrollPanel, 768, rightY, 242, cbH, "Infinity Fabric (FCLK)", _osdShowFabricClock, v => { _osdShowFabricClock = v; SyncOverlayFromStudio(); },
+                "Display AMD Infinity Fabric clock frequency (FCLK) and 1:1 memory bus synchronization status");
+            _osdShowFclkSyncCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY + rowStep, 242, cbH, "FCLK Sync Badge (1:1)", _osdShowFclkSync, v => { _osdShowFclkSync = v; SyncOverlayFromStudio(); },
+                "Show 1:1 Sync / Async badge on the Infinity Fabric row");
+            _osdShowNpuCb = AddOsdCheckBox(_osdMetricsScrollPanel, 768, rightY + rowStep, 242, cbH, "Ryzen AI NPU", _osdShowNpu, v => { _osdShowNpu = v; SyncOverlayFromStudio(); },
+                "Display AMD Ryzen AI NPU activity percentage (PMLOG_NPU_BUSY_AVG) and inference clock");
+            curY += rowStep * 2;
 
-            _osdShowLiveTrendCb = new CheckBox { Text = "Live Trend Graph", Location = new Point(238, 286), Size = new Size(224, 21), Checked = _osdShowLiveTrend, UseMnemonic = false };
-            _osdShowLiveTrendCb.CheckedChanged += (s, e) =>
+            // 5. FPS & Frametime
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "FPS & Frametime", ref curY);
+            _osdShowFpsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "Live FPS & Frametime", _osdShowFps, v => { _osdShowFps = v; SyncOverlayFromStudio(); }, null);
+            _osdShowFrametimeMsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "FPS Frametime (ms)", _osdShowFrametimeMs, v => { _osdShowFrametimeMs = v; SyncOverlayFromStudio(); },
+                "Show frame time in milliseconds (e.g. 16.7ms) next to FPS");
+            _osdShowLowsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "0.1% Low & Avg FPS", _osdShowLows, v => { _osdShowLows = v; SyncOverlayFromStudio(); }, null);
+            _osdShowFpsAvgCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "FPS Session Avg", _osdShowFpsAvg, v => { _osdShowFpsAvg = v; SyncOverlayFromStudio(); },
+                "Show session average FPS on the FPS row instead of peak/min tracker");
+            curY += rowStep;
+
+            // 6. Fans
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "Fans", ref curY);
+            _osdShowApuFanCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "APU Fan RPM", _osdShowApuFan, v => { _osdShowApuFan = v; SyncOverlayFromStudio(); }, null);
+            _osdShowSysFanCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, _hasDualFans ? "Sys Fan RPM" : "Sys Fan RPM (N/A)", _osdShowSysFan && _hasDualFans, v => { _osdShowSysFan = v; SyncOverlayFromStudio(); }, null);
+            _osdShowSysFanCb.Enabled = _hasDualFans;
+            curY += rowStep;
+
+            // 7. Graphs, Theme & Global Overlay
+            _osdSubFieldsHeaderLabel = AddOsdSectionHeader(_osdMetricsScrollPanel, "Graphs, Theme & Global Overlay", ref curY);
+            _osdShowLiveTrendCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "Live Trend Graph", _osdShowLiveTrend, v =>
             {
-                _osdShowLiveTrend = _osdShowLiveTrendCb.Checked;
+                _osdShowLiveTrend = v;
                 if (_osdShowLiveTrend)
                 {
                     if (_osdGraphMode == 0) _osdGraphMode = 2;
@@ -5029,134 +5295,96 @@ namespace MiniFanControl
                 }
                 SyncOverlayFromStudio();
                 UpdateOsdStudioStyles();
+            }, "Display the multi-sensor live history trend chart (CPU, iGPU, NVMe, Power, Fan RPM)");
+            _osdShowFpsGraphCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "FPS & Frametime Graph", _osdShowFpsGraph, v => { _osdShowFpsGraph = v; SyncOverlayFromStudio(); }, null);
+            _osdDfGraphStyleCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "DF Twin Graphs", _osdDfGraphStyle, v => { _osdDfGraphStyle = v; SyncOverlayFromStudio(); },
+                "Render Digital Foundry style twin graphs: FRAME-TIME (MS) 0-50-100 and FRAME-RATE (FPS) 0-40-80-120");
+            _osdDfGraphFirstCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "DF Graphs on Top", _osdDfGraphFirst, v => { _osdDfGraphFirst = v; SyncOverlayFromStudio(); },
+                "Render Digital Foundry style twin graphs above the multi-sensor Live Trend graph");
+
+            _osdPlotFpsOnTrendCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep, colW, cbH, "Plot FPS on Live Trend", _osdPlotFpsOnTrend, v => { _osdPlotFpsOnTrend = v; SyncOverlayFromStudio(); }, null);
+            _osdSparklineBgCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep, colW, cbH, "Background Sparklines", _osdSparklineBg, v => { _osdSparklineBg = v; SyncOverlayFromStudio(); },
+                "Render sparklines as full-width glowing background underlays across each metric row");
+            _osdShowModeCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY + rowStep, colW, cbH, "Thermal Mode", _osdShowMode, v => { _osdShowMode = v; SyncOverlayFromStudio(); }, null);
+            _osdShowGameNameCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY + rowStep, colW, cbH, "Active Game Title", _osdShowGameName, v => { _osdShowGameName = v; SyncOverlayFromStudio(); },
+                "Display the active 3D game process name on the OSD header and horizontal bar");
+
+            _osdMatchThemeCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep * 2, colW, cbH, "Match App Theme", _osdMatchTheme, v => { _osdMatchTheme = v; SyncOverlayFromStudio(); }, null);
+            _osdShowPeaksCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep * 2, 96, cbH, "Trackers", _osdShowPeaks, v =>
+            {
+                _osdShowPeaks = v;
+                if (_osdTrackerModeCombo != null) _osdTrackerModeCombo.Enabled = _osdShowPeaks;
+                SyncOverlayFromStudio();
+            }, "Show session Peak (▲), Low (▼), Min/Max (▼▲), or Avg (~) trackers for temperature, power, and usage.");
+
+            _osdTrackerModeCombo = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Regular),
+                Location = new Point(colX[1] + 98, curY + 2 * rowStep),
+                Size = new Size(134, 24),
+                Enabled = _osdShowPeaks,
+                Cursor = Cursors.Hand
             };
-            _uiToolTip.SetToolTip(_osdShowLiveTrendCb, "Display the multi-sensor live history trend chart (CPU, iGPU, NVMe, Power, Fan RPM)");
-            p.Controls.Add(_osdShowLiveTrendCb);
-
-            _osdShowFpsGraphCb = new CheckBox { Text = "FPS & Frametime Graph", Location = new Point(476, 286), Size = new Size(224, 21), Checked = _osdShowFpsGraph, UseMnemonic = false };
-            _osdShowFpsGraphCb.CheckedChanged += (s, e) => { _osdShowFpsGraph = _osdShowFpsGraphCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdShowFpsGraphCb);
-
-            _osdDfGraphStyleCb = new CheckBox { Text = "DF Twin Graphs", Location = new Point(706, 286), Size = new Size(222, 21), Checked = _osdDfGraphStyle, UseMnemonic = false };
-            _osdDfGraphStyleCb.CheckedChanged += (s, e) => { _osdDfGraphStyle = _osdDfGraphStyleCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdDfGraphStyleCb, "Render Digital Foundry style twin graphs: FRAME-TIME (MS) 0-50-100 and FRAME-RATE (FPS) 0-40-80-120");
-            p.Controls.Add(_osdDfGraphStyleCb);
-
-            // Row 10 (y=310): Feature Tags & Ordering
-            _osdShowRadeonCb = new CheckBox { Text = "Radeon Feature Tags", Location = new Point(8, 310), Size = new Size(224, 21), Checked = _osdShowRadeon, UseMnemonic = false };
-            _osdShowRadeonCb.CheckedChanged += (s, e) => { _osdShowRadeon = _osdShowRadeonCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowRadeonCb, "Display compact pill tags for active AMD Radeon features (FreeSync, Anti-Lag, AFMF, Chill, Boost, RSR, RIS)");
-            p.Controls.Add(_osdShowRadeonCb);
-
-            _osdShowDriverVerCb = new CheckBox { Text = "Radeon Driver Version", Location = new Point(238, 310), Size = new Size(224, 21), Checked = _osdShowDriverVer, UseMnemonic = false };
-            _osdShowDriverVerCb.CheckedChanged += (s, e) => { _osdShowDriverVer = _osdShowDriverVerCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowDriverVerCb, "Show the installed AMD Radeon Software (Adrenalin) driver version on the OSD");
-            p.Controls.Add(_osdShowDriverVerCb);
-
-            _osdPlotFpsOnTrendCb = new CheckBox { Text = "Plot FPS on Live Trend", Location = new Point(476, 310), Size = new Size(224, 21), Checked = _osdPlotFpsOnTrend, UseMnemonic = false };
-            _osdPlotFpsOnTrendCb.CheckedChanged += (s, e) => { _osdPlotFpsOnTrend = _osdPlotFpsOnTrendCb.Checked; SyncOverlayFromStudio(); };
-            p.Controls.Add(_osdPlotFpsOnTrendCb);
-
-            _osdDfGraphFirstCb = new CheckBox { Text = "DF Graphs on Top", Location = new Point(706, 310), Size = new Size(222, 21), Checked = _osdDfGraphFirst, UseMnemonic = false };
-            _osdDfGraphFirstCb.CheckedChanged += (s, e) => { _osdDfGraphFirst = _osdDfGraphFirstCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdDfGraphFirstCb, "Render Digital Foundry style twin graphs above the multi-sensor Live Trend graph");
-            p.Controls.Add(_osdDfGraphFirstCb);
-
-            // Row 11 (y=334): Clock Speeds & Sparkline Styles
-            _osdShowClocksCb = new CheckBox { Text = "Clock Speeds (@ GHz/MHz)", Location = new Point(8, 334), Size = new Size(224, 21), Checked = _osdShowClocks, UseMnemonic = false };
-            _osdShowClocksCb.CheckedChanged += (s, e) => { _osdShowClocks = _osdShowClocksCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowClocksCb, "Display effective CPU, iGPU, and RAM clock frequencies (@ 4.1G / @ 800MHz). Uncheck to maximize space for sparklines.");
-            p.Controls.Add(_osdShowClocksCb);
-
-            _osdSparklineBgCb = new CheckBox { Text = "Background Sparklines", Location = new Point(238, 334), Size = new Size(224, 21), Checked = _osdSparklineBg, UseMnemonic = false };
-            _osdSparklineBgCb.CheckedChanged += (s, e) => { _osdSparklineBg = _osdSparklineBgCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdSparklineBgCb, "Render sparklines as full-width glowing background underlays across each metric row");
-            p.Controls.Add(_osdSparklineBgCb);
-
-            _osdShowGameNameCb = new CheckBox { Text = "Active Game Title", Location = new Point(476, 334), Size = new Size(224, 21), Checked = _osdShowGameName, UseMnemonic = false };
-            _osdShowGameNameCb.CheckedChanged += (s, e) => { _osdShowGameName = _osdShowGameNameCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowGameNameCb, "Display the active 3D game process name on the OSD header and horizontal bar");
-            p.Controls.Add(_osdShowGameNameCb);
-
-            _osdShowVrmCurrentCb = new CheckBox { Text = "VRM Current (TDC/EDC)", Location = new Point(706, 334), Size = new Size(222, 21), Checked = _osdShowVrmCurrent, UseMnemonic = false };
-            _osdShowVrmCurrentCb.CheckedChanged += (s, e) => { _osdShowVrmCurrent = _osdShowVrmCurrentCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowVrmCurrentCb, "Display deep silicon VRM amperage draw (continuous TDC and peak EDC amps for VDD & SOC rails)");
-            p.Controls.Add(_osdShowVrmCurrentCb);
-
-            // Row 12 (y=356): Fabric Clock, Ryzen AI NPU & Chassis Temp
-            _osdShowFabricClockCb = new CheckBox { Text = "Infinity Fabric (FCLK)", Location = new Point(8, 356), Size = new Size(150, 21), Checked = _osdShowFabricClock, UseMnemonic = false };
-            _osdShowFabricClockCb.CheckedChanged += (s, e) => { _osdShowFabricClock = _osdShowFabricClockCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowFabricClockCb, "Display AMD Infinity Fabric clock frequency (FCLK) and 1:1 memory bus synchronization status");
-            p.Controls.Add(_osdShowFabricClockCb);
-
-            _osdShowNpuCb = new CheckBox { Text = "Ryzen AI NPU", Location = new Point(164, 356), Size = new Size(125, 21), Checked = _osdShowNpu, UseMnemonic = false };
-            _osdShowNpuCb.CheckedChanged += (s, e) => { _osdShowNpu = _osdShowNpuCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowNpuCb, "Display AMD Ryzen AI NPU activity percentage (PMLOG_NPU_BUSY_AVG) and inference clock");
-            p.Controls.Add(_osdShowNpuCb);
-
-            _osdShowAmbientCb = new CheckBox { Text = "Chassis Ambient", Location = new Point(295, 356), Size = new Size(150, 21), Checked = _osdShowAmbient, UseMnemonic = false };
-            _osdShowAmbientCb.CheckedChanged += (s, e) => { _osdShowAmbient = _osdShowAmbientCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowAmbientCb, "Display motherboard chassis ambient temperature (IT8613 Sensor 4)");
-            p.Controls.Add(_osdShowAmbientCb);
+            _osdTrackerModeCombo.Items.AddRange(new object[] { "Peaks (▲)", "Lows (▼)", "Min/Max (▼▲)", "Avg (~)" });
+            _osdTrackerModeCombo.SelectedIndex = Math.Max(0, Math.Min(3, _osdPeakTrackerMode));
+            _osdTrackerModeCombo.SelectedIndexChanged += (s, e) =>
+            {
+                if (_osdTrackerModeCombo.SelectedIndex >= 0)
+                {
+                    _osdPeakTrackerMode = _osdTrackerModeCombo.SelectedIndex;
+                    SyncOverlayFromStudio();
+                }
+            };
+            _uiToolTip.SetToolTip(_osdTrackerModeCombo, "Choose whether the right-hand tracker column displays Peaks (▲), Lows (▼), Min/Max (▼▲), or Session Average (~).");
+            _osdMetricsScrollPanel.Controls.Add(_osdTrackerModeCombo);
+            curY += rowStep * 3 + 4;
 
             _osdTipLabel = new Label
             {
                 Text = "Tip: Drag OSD with mouse. Right-click for options. Ctrl+Alt+F9 toggles.",
-                Font = new Font("Segoe UI", 7.75f, FontStyle.Regular),
-                Location = new Point(452, 357),
-                Size = new Size(476, 20),
-                Padding = new Padding(2, 0, 2, 0),
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Regular),
+                Location = new Point(8, curY),
+                Size = new Size(990, 22),
+                Padding = new Padding(4, 2, 4, 2),
                 UseMnemonic = false
             };
             _uiToolTip.SetToolTip(_osdTipLabel, "Drag OSD anywhere across multiple monitors with your mouse. Right-click the OSD anytime for quick scale, graph modes, heights & click-through lock, or press Ctrl+Alt+F9 to toggle overlay.");
-            p.Controls.Add(_osdTipLabel);
+            _osdMetricsScrollPanel.Controls.Add(_osdTipLabel);
+        }
 
-            // Row 13 (y=384): Granular Sub-Field Customization (RAM & NVMe Row Details)
-            _osdSubFieldsHeaderLabel = new Label
+        private Label AddOsdSectionHeader(Panel parent, string title, ref int curY, int x = 8, int width = 990)
+        {
+            if (curY > 2) curY += 3;
+            Label lbl = new Label
             {
-                Text = "RAM & NVMe Row Sub-Field Details (Uncheck items to declutter overlay):",
-                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
-                Location = new Point(8, 384),
-                Size = new Size(650, 18),
+                Text = title,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(x, curY),
+                Size = new Size(width, 17),
                 UseMnemonic = false
             };
-            p.Controls.Add(_osdSubFieldsHeaderLabel);
+            parent.Controls.Add(lbl);
+            _osdSectionHeaders.Add(lbl);
+            curY += 17;
+            return lbl;
+        }
 
-            _osdShowRamTempCb = new CheckBox { Text = "RAM Temp (°C)", Location = new Point(8, 404), Size = new Size(224, 21), Checked = _osdShowRamTemp, UseMnemonic = false };
-            _osdShowRamTempCb.CheckedChanged += (s, e) => { _osdShowRamTemp = _osdShowRamTempCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowRamTempCb, "Show DDR5 temperature on the RAM overlay row");
-            p.Controls.Add(_osdShowRamTempCb);
-
-            _osdShowRamDualSticksCb = new CheckBox { Text = "RAM Dual-Stick (35/41°C)", Location = new Point(238, 404), Size = new Size(224, 21), Checked = _osdShowRamDualSticks, UseMnemonic = false };
-            _osdShowRamDualSticksCb.CheckedChanged += (s, e) => { _osdShowRamDualSticks = _osdShowRamDualSticksCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowRamDualSticksCb, "Show both SODIMM temperatures (35/41°C). Uncheck to show only the single hottest stick (41°C).");
-            p.Controls.Add(_osdShowRamDualSticksCb);
-
-            _osdShowRamSpreadCb = new CheckBox { Text = "RAM Spread Delta (Δ°C)", Location = new Point(476, 404), Size = new Size(224, 21), Checked = _osdShowRamSpread, UseMnemonic = false };
-            _osdShowRamSpreadCb.CheckedChanged += (s, e) => { _osdShowRamSpread = _osdShowRamSpreadCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowRamSpreadCb, "Show thermal spread delta badge (Δ6°) between stacked SODIMM slots");
-            p.Controls.Add(_osdShowRamSpreadCb);
-
-            _osdShowRamLoadCb = new CheckBox { Text = "RAM Load (%)", Location = new Point(706, 404), Size = new Size(222, 21), Checked = _osdShowRamLoad, UseMnemonic = false };
-            _osdShowRamLoadCb.CheckedChanged += (s, e) => { _osdShowRamLoad = _osdShowRamLoadCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowRamLoadCb, "Show memory utilization percentage (e.g. 22%) on the RAM overlay row");
-            p.Controls.Add(_osdShowRamLoadCb);
-
-            // Row 14 (y=428):
-            _osdShowRamPowerCb = new CheckBox { Text = "RAM Power Draw (~W)", Location = new Point(8, 428), Size = new Size(224, 21), Checked = _osdShowRamPower, UseMnemonic = false };
-            _osdShowRamPowerCb.CheckedChanged += (s, e) => { _osdShowRamPower = _osdShowRamPowerCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowRamPowerCb, "Show DDR5 power draw (~3.6W) on the RAM overlay row");
-            p.Controls.Add(_osdShowRamPowerCb);
-
-            _osdShowRamClockCb = new CheckBox { Text = "RAM Clock (@ MHz)", Location = new Point(238, 428), Size = new Size(224, 21), Checked = _osdShowRamClock, UseMnemonic = false };
-            _osdShowRamClockCb.CheckedChanged += (s, e) => { _osdShowRamClock = _osdShowRamClockCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowRamClockCb, "Show effective DDR data rate (@ 5600MHz) on the RAM overlay row (independent of CPU/iGPU clocks)");
-            p.Controls.Add(_osdShowRamClockCb);
-
-            _osdShowNvmePowerCb = new CheckBox { Text = "NVMe Power Draw (~W)", Location = new Point(476, 428), Size = new Size(224, 21), Checked = _osdShowNvmePower, UseMnemonic = false };
-            _osdShowNvmePowerCb.CheckedChanged += (s, e) => { _osdShowNvmePower = _osdShowNvmePowerCb.Checked; SyncOverlayFromStudio(); };
-            _uiToolTip.SetToolTip(_osdShowNvmePowerCb, "Show PCIe NVMe SSD power draw (~0.9W) on the NVMe overlay row");
-            p.Controls.Add(_osdShowNvmePowerCb);
+        private CheckBox AddOsdCheckBox(Panel parent, int x, int y, int width, int height, string text, bool initialChecked, Action<bool> onChanged, string tooltip)
+        {
+            CheckBox cb = new CheckBox
+            {
+                Text = text,
+                Location = new Point(x, y),
+                Size = new Size(width, height),
+                Checked = initialChecked,
+                UseMnemonic = false
+            };
+            cb.CheckedChanged += (s, e) => onChanged(cb.Checked);
+            if (!string.IsNullOrEmpty(tooltip))
+                _uiToolTip.SetToolTip(cb, tooltip);
+            parent.Controls.Add(cb);
+            return cb;
         }
 
         private void EnsureProtectedExamplesPresent()
@@ -5725,6 +5953,15 @@ namespace MiniFanControl
             if (_osdSnapLabel != null) { _osdSnapLabel.BackColor = surface; _osdSnapLabel.ForeColor = text; }
             if (_osdMetricsHeaderLabel != null) { _osdMetricsHeaderLabel.BackColor = surface; _osdMetricsHeaderLabel.ForeColor = text; }
             if (_osdSubFieldsHeaderLabel != null) { _osdSubFieldsHeaderLabel.BackColor = surface; _osdSubFieldsHeaderLabel.ForeColor = text; }
+            if (_osdMetricsScrollPanel != null) { _osdMetricsScrollPanel.BackColor = surface; _osdMetricsScrollPanel.ForeColor = text; }
+            foreach (Label secHdr in _osdSectionHeaders)
+            {
+                if (secHdr != null)
+                {
+                    secHdr.BackColor = surface;
+                    secHdr.ForeColor = accent;
+                }
+            }
             if (_osdTipLabel != null)
             {
                 _osdTipLabel.BackColor = surface2;
@@ -5738,11 +5975,13 @@ namespace MiniFanControl
                 _osdShowVrmCurrentCb, _osdShowAmbientCb, _osdShowFabricClockCb, _osdShowNpuCb,
                 _osdShowApuFanCb, _osdShowSysFanCb, _osdShowPowerCb, _osdShowGpuLoadCb,
                 _osdShowFpsCb, _osdShowLowsCb,
-                _osdShowModeCb, _osdShowPeaksCb, _osdShowRadeonCb, _osdShowDriverVerCb,
+                _osdShowModeCb, _osdShowPeaksCb, _osdShowRadeonCb, _osdShowRadeonExtTagsCb, _osdShowDriverVerCb,
                 _osdShowClocksCb, _osdShowGameNameCb, _osdSparklineBgCb, _osdMatchThemeCb,
                 _osdShowLiveTrendCb, _osdShowFpsGraphCb, _osdPlotFpsOnTrendCb, _osdDfGraphStyleCb, _osdDfGraphFirstCb,
                 _osdShowRamTempCb, _osdShowRamDualSticksCb, _osdShowRamSpreadCb, _osdShowRamLoadCb,
-                _osdShowRamPowerCb, _osdShowRamClockCb, _osdShowNvmePowerCb
+                _osdShowRamPowerCb, _osdShowRamClockCb, _osdShowNvmePowerCb,
+                _osdShowNvmeIoCb, _osdShowNvmeDualCb, _osdShowCpuLoadCb, _osdShowGpuHotspotCb,
+                _osdShowPowerLimitCb, _osdShowFclkSyncCb, _osdShowFrametimeMsCb, _osdShowFpsAvgCb
             };
             foreach (CheckBox cb in cbs)
             {
@@ -5751,6 +5990,11 @@ namespace MiniFanControl
                     cb.BackColor = surface;
                     cb.ForeColor = text;
                 }
+            }
+            if (_osdTrackerModeCombo != null)
+            {
+                _osdTrackerModeCombo.BackColor = surface2;
+                _osdTrackerModeCombo.ForeColor = text;
             }
         }
 
@@ -5987,6 +6231,15 @@ namespace MiniFanControl
                 _ramPowerLabel.ForeColor = tempBoxFg;
             }
 
+            if (_ambientBox != null)
+            {
+                _ambientBox.BackColor = tempBoxBg;
+                _ambientBoxTitle.BackColor = tempBoxBg;
+                _ambientBoxTitle.ForeColor = tempBoxTitleFg;
+                _ambientLabel.BackColor = tempBoxBg;
+                _ambientLabel.ForeColor = tempBoxFg;
+            }
+
             if (_ramCard != null)
             {
                 _ramCard.BackColor = tempBoxBg;
@@ -6063,7 +6316,7 @@ namespace MiniFanControl
                 }
             }
 
-            foreach (CheckBox cb in new[] { _showCpuTrayCb, _showGpuTrayCb, _showOverlayCb, _lockOverlayCb, _autostartCb, _alwaysOnTopCb, _trayCb })
+            foreach (CheckBox cb in new[] { _showCpuTrayCb, _showGpuTrayCb, _showOverlayCb, _lockOverlayCb, _autostartCb, _alwaysOnTopCb, _useFahrenheitCb, _trayCb })
             {
                 if (cb != null)
                 {
@@ -6597,16 +6850,22 @@ namespace MiniFanControl
 
             if (_cpuTrayIcon != null)
             {
-                string tip = string.Format("CPU: {0}°C (iGPU: {1}°C)\nAPU: {2} RPM | Sys: {3} RPM",
-                    st.CpuTemp, st.GpuTemp, st.Fan1Rpm, st.Fan2Rpm);
+                string tipUnit = TelemetrySessionStats.TempUnit(_useFahrenheit);
+                string tip = string.Format("CPU: {0}{4} (iGPU: {1}{4})\nAPU: {2} RPM | Sys: {3} RPM",
+                    TelemetrySessionStats.ToDisplayTemp(st.CpuTemp, _useFahrenheit),
+                    TelemetrySessionStats.ToDisplayTemp(st.GpuTemp, _useFahrenheit),
+                    st.Fan1Rpm, st.Fan2Rpm, tipUnit);
                 if (tip.Length > 63) tip = tip.Substring(0, 63);
                 if (_cpuTrayIcon.Text != tip) _cpuTrayIcon.Text = tip;
             }
 
             if (_gpuTrayIcon != null)
             {
-                string tip = string.Format("iGPU: {0}°C (CPU: {1}°C)\nAPU: {2} RPM | Sys: {3} RPM",
-                    st.GpuTemp, st.CpuTemp, st.Fan1Rpm, st.Fan2Rpm);
+                string tipUnit = TelemetrySessionStats.TempUnit(_useFahrenheit);
+                string tip = string.Format("iGPU: {0}{4} (CPU: {1}{4})\nAPU: {2} RPM | Sys: {3} RPM",
+                    TelemetrySessionStats.ToDisplayTemp(st.GpuTemp, _useFahrenheit),
+                    TelemetrySessionStats.ToDisplayTemp(st.CpuTemp, _useFahrenheit),
+                    st.Fan1Rpm, st.Fan2Rpm, tipUnit);
                 if (tip.Length > 63) tip = tip.Substring(0, 63);
                 if (_gpuTrayIcon.Text != tip) _gpuTrayIcon.Text = tip;
             }
@@ -6648,9 +6907,15 @@ namespace MiniFanControl
             }
             if (_liveCanvas != null)
             {
+                _liveCanvas.UseFahrenheit = _useFahrenheit;
                 _liveCanvas.Status = st;
                 if (_showingLiveTelemetry)
                     _liveCanvas.Invalidate();
+            }
+            if (_curveCanvas != null && _curveCanvas.UseFahrenheit != _useFahrenheit)
+            {
+                _curveCanvas.UseFahrenheit = _useFahrenheit;
+                _curveCanvas.Invalidate();
             }
             if (_perfCanvas != null)
             {
@@ -6664,42 +6929,43 @@ namespace MiniFanControl
             Color rampColor = _isDarkMode ? Color.FromArgb(0xFA, 0xB3, 0x87) : Color.FromArgb(0xEA, 0x58, 0x0C);
             bool isRadeon = (_themePref == ThemePreference.Radeon);
 
-            string cpuValTxt = st.CpuTemp > 0 ? string.Format("{0}°C", st.CpuTemp) : "N/A";
+            string tUnit = TelemetrySessionStats.TempUnit(_useFahrenheit);
+            string cpuValTxt = st.CpuTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.CpuTemp, _useFahrenheit), tUnit) : "N/A";
             if (_cpuTempLabel.Text != cpuValTxt) _cpuTempLabel.Text = cpuValTxt;
             if (_cpuTempLabel.ForeColor != tempFg) _cpuTempLabel.ForeColor = tempFg;
             if (_cpuBoxTitle != null)
             {
                 string clkPart = st.CpuClockMhz > 0 ? string.Format(" • {0:0.0}G", st.CpuClockMhz / 1000.0) : "";
                 string cpuHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxCpuTemp > 0)
-                    ? string.Format("CPU • MAX {0}°{1}", _sessionStats.MaxCpuTemp, clkPart)
+                    ? string.Format("CPU • MAX {0}°{1}", TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxCpuTemp, _useFahrenheit), clkPart)
                     : (st.CpuClockMhz > 0 ? string.Format("CPU • {0:0.0} GHz", st.CpuClockMhz / 1000.0) : "CPU TEMP");
                 if (_cpuBoxTitle.Text != cpuHeader) _cpuBoxTitle.Text = cpuHeader;
             }
             if (_cpuTempBox != null) _cpuTempBox.Invalidate();
 
-            string gpuValTxt = st.GpuTemp > 0 ? string.Format("{0}°C", st.GpuTemp) : "N/A";
+            string gpuValTxt = st.GpuTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.GpuTemp, _useFahrenheit), tUnit) : "N/A";
             if (_gpuTempLabel.Text != gpuValTxt) _gpuTempLabel.Text = gpuValTxt;
             if (_gpuTempLabel.ForeColor != tempFg) _gpuTempLabel.ForeColor = tempFg;
             if (_gpuBoxTitle != null)
             {
-                string hotPart = st.GpuHotspotTemp > 0 ? string.Format(" • 🔥{0}°", st.GpuHotspotTemp) : "";
+                string hotPart = st.GpuHotspotTemp > 0 ? string.Format(" • 🔥{0}°", TelemetrySessionStats.ToDisplayTemp(st.GpuHotspotTemp, _useFahrenheit)) : "";
                 string gpuHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxGpuTemp > 0)
-                    ? string.Format("iGPU • MAX {0}°{1}", _sessionStats.MaxGpuTemp, hotPart)
-                    : (st.GpuHotspotTemp > 0 ? string.Format("iGPU • 🔥{0}°C", st.GpuHotspotTemp) : "iGPU TEMP");
+                    ? string.Format("iGPU • MAX {0}°{1}", TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxGpuTemp, _useFahrenheit), hotPart)
+                    : (st.GpuHotspotTemp > 0 ? string.Format("iGPU • 🔥{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.GpuHotspotTemp, _useFahrenheit), tUnit) : "iGPU TEMP");
                 if (_gpuBoxTitle.Text != gpuHeader) _gpuBoxTitle.Text = gpuHeader;
             }
             if (_gpuTempBox != null) _gpuTempBox.Invalidate();
 
             if (_nvmeTempLabel != null)
             {
-                string nvmeValTxt = st.NvmeTemp > 0 ? string.Format("{0}°C", st.NvmeTemp) : "N/A";
+                string nvmeValTxt = st.NvmeTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.NvmeTemp, _useFahrenheit), tUnit) : "N/A";
                 if (_nvmeTempLabel.Text != nvmeValTxt) _nvmeTempLabel.Text = nvmeValTxt;
                 Color nvmeFg = (st.NvmeTemp >= 70) ? Color.FromArgb(0xFB, 0x71, 0x85) : tempFg;
                 if (_nvmeTempLabel.ForeColor != nvmeFg) _nvmeTempLabel.ForeColor = nvmeFg;
                 if (_nvmeBoxTitle != null)
                 {
                     string nvmeHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxNvmeTemp > 0)
-                        ? string.Format("NVMe • MAX {0}°", _sessionStats.MaxNvmeTemp)
+                        ? string.Format("NVMe • MAX {0}°", TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxNvmeTemp, _useFahrenheit))
                         : "NVMe TEMP";
                     if (_nvmeBoxTitle.Text != nvmeHeader) _nvmeBoxTitle.Text = nvmeHeader;
                 }
@@ -6724,17 +6990,50 @@ namespace MiniFanControl
 
             if (_ramPowerLabel != null)
             {
-                string ramPwrTxt = st.RamPowerWatts > 0 ? string.Format("~{0:F1}W", st.RamPowerWatts) : "--W";
-                if (_ramPowerLabel.Text != ramPwrTxt) _ramPowerLabel.Text = ramPwrTxt;
+                string ramValTxt = st.DdrTemp > 0
+                    ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.DdrTemp, _useFahrenheit), tUnit)
+                    : (st.RamPowerWatts > 0 ? string.Format("~{0:F1}W", st.RamPowerWatts) : ("--" + tUnit));
+                if (_ramPowerLabel.Text != ramValTxt) _ramPowerLabel.Text = ramValTxt;
                 if (_ramPowerLabel.ForeColor != tempFg) _ramPowerLabel.ForeColor = tempFg;
                 if (_ramBoxTitle != null)
                 {
-                    string ramHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxRamPowerWatts > 0)
-                        ? string.Format("RAM • MAX {0:F1}W", _sessionStats.MaxRamPowerWatts)
-                        : "RAM POWER";
+                    string ramHeader;
+                    if (st.DdrTemp > 0)
+                    {
+                        if (st.DdrStickCount == 2 && st.DdrTemp1 > 0 && st.DdrTemp2 > 0)
+                            ramHeader = string.Format("RAM • {0}/{1}° Δ{2}°",
+                                TelemetrySessionStats.ToDisplayTemp(st.DdrTemp1, _useFahrenheit),
+                                TelemetrySessionStats.ToDisplayTemp(st.DdrTemp2, _useFahrenheit),
+                                TelemetrySessionStats.ToDisplayTempDelta(st.DdrTempSpread, _useFahrenheit));
+                        else if (_sessionStats.SampleCount > 0 && _sessionStats.MaxDdrTemp > 0)
+                            ramHeader = string.Format("RAM • MAX {0}° • {1}%", TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxDdrTemp, _useFahrenheit), st.RamLoadPct);
+                        else
+                            ramHeader = "RAM TEMP";
+                    }
+                    else
+                    {
+                        ramHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxRamPowerWatts > 0)
+                            ? string.Format("RAM • MAX {0:F1}W", _sessionStats.MaxRamPowerWatts)
+                            : "RAM POWER";
+                    }
                     if (_ramBoxTitle.Text != ramHeader) _ramBoxTitle.Text = ramHeader;
                 }
                 if (_ramPowerBox != null) _ramPowerBox.Invalidate();
+            }
+
+            if (_ambientLabel != null)
+            {
+                string ambValTxt = st.AmbientTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.AmbientTemp, _useFahrenheit), tUnit) : "N/A";
+                if (_ambientLabel.Text != ambValTxt) _ambientLabel.Text = ambValTxt;
+                if (_ambientLabel.ForeColor != tempFg) _ambientLabel.ForeColor = tempFg;
+                if (_ambientBoxTitle != null)
+                {
+                    string ambHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxAmbientTemp > 0)
+                        ? string.Format("Chassis • MAX {0}°", TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxAmbientTemp, _useFahrenheit))
+                        : "Chassis";
+                    if (_ambientBoxTitle.Text != ambHeader) _ambientBoxTitle.Text = ambHeader;
+                }
+                if (_ambientBox != null) _ambientBox.Invalidate();
             }
 
             string f1ValTxt = string.Format("{0} RPM •", st.Fan1Rpm);
@@ -6779,8 +7078,8 @@ namespace MiniFanControl
                 string fclkPart = st.FabricClockMhz > 0 ? string.Format(" • FCLK {0}MHz", st.FabricClockMhz) : "";
                 string ddrEstSuffix = st.IsDdrEstimated ? " [Est]" : "";
                 string ddrTempPart = (st.DdrStickCount == 2 && st.DdrTemp1 > 0 && st.DdrTemp2 > 0)
-                    ? string.Format(" • DDR5: {0}°/{1}°C{2}", st.DdrTemp1, st.DdrTemp2, ddrEstSuffix)
-                    : (st.DdrTemp > 0 ? string.Format(" • DDR5: {0}°C{1}", st.DdrTemp, ddrEstSuffix) : "");
+                    ? string.Format(" • DDR5: {0}°/{1}{2}{3}", TelemetrySessionStats.ToDisplayTemp(st.DdrTemp1, _useFahrenheit), TelemetrySessionStats.ToDisplayTemp(st.DdrTemp2, _useFahrenheit), tUnit, ddrEstSuffix)
+                    : (st.DdrTemp > 0 ? string.Format(" • DDR5: {0}{1}{2}", TelemetrySessionStats.ToDisplayTemp(st.DdrTemp, _useFahrenheit), tUnit, ddrEstSuffix) : "");
                 string ramPwrPart = st.RamPowerWatts > 0 ? string.Format(" • ~{0:0.0}W", st.RamPowerWatts) : "";
                 string ramPart = st.RamTotalGb > 0
                     ? string.Format("🧠 RAM: {0:F1} / {1:F1} GB ({2}% Load{3}{4}{5}{6})", st.RamUsedGb, st.RamTotalGb, st.RamLoadPct, memSpeedPart, fclkPart, ddrTempPart, ramPwrPart)
@@ -6800,12 +7099,12 @@ namespace MiniFanControl
                     {
                         string m2 = !string.IsNullOrEmpty(st.Nvme2Model) ? st.Nvme2Model : "NVMe 2";
                         if (m2.Length > 16) m2 = m2.Substring(0, 14).Trim() + "…";
-                        nvmePart += string.Format(" • SSD 2: {0} ({1}°C)", m2, st.Nvme2Temp);
+                        nvmePart += string.Format(" • SSD 2: {0} ({1}{2})", m2, TelemetrySessionStats.ToDisplayTemp(st.Nvme2Temp, _useFahrenheit), tUnit);
                     }
                 }
 
-                string ambPart = st.AmbientTemp > 0 ? string.Format(" • 🌡️ Amb: {0}°C{1}", st.AmbientTemp, st.IsAmbientEstimated ? " [Est]" : "") : "";
-                string vrmPart = st.VrmTemp > 0 ? string.Format(" • ⚡ VRM: {0}°C{1}", st.VrmTemp, st.IsVrmEstimated ? " [Est]" : "") : "";
+                string ambPart = st.AmbientTemp > 0 ? string.Format(" • 🌡️ Amb: {0}{1}{2}", TelemetrySessionStats.ToDisplayTemp(st.AmbientTemp, _useFahrenheit), tUnit, st.IsAmbientEstimated ? " [Est]" : "") : "";
+                string vrmPart = st.VrmTemp > 0 ? string.Format(" • ⚡ VRM: {0}{1}{2}", TelemetrySessionStats.ToDisplayTemp(st.VrmTemp, _useFahrenheit), tUnit, st.IsVrmEstimated ? " [Est]" : "") : "";
 
                 string newRamTxt = ramPart + nvmePart + ambPart + vrmPart;
                 Color ramFg = (st.RamLoadPct >= 90) ? Color.FromArgb(0xFB, 0x71, 0x85) : tempFg;
