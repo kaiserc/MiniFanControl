@@ -3891,6 +3891,140 @@ namespace MiniFanControl
                 "Sleep & Suspend Lifecycle Protection (Worker Pause, Safe Standby Auto, Inverted Duty & Resume Recovery)",
                 sleepDetails);
 
+            // -----------------------------------------------------------------
+            // 18. Review Refactors: JSON Parsers, OsdOverlayConfig & Accessibility
+            // -----------------------------------------------------------------
+            bool profileJsonOk = false;
+            string profileJsonDetail = "";
+            try
+            {
+                string pj = "{\n"
+                    + "  \"id\": \"custom-profile\",\n"
+                    + "  \"displayName\": \"Custom: GMKtec K12 (12:34 test)\",\n"
+                    + "  \"chipsetNotes\": \"Scanned on 2026-11-18 14:30:00\",\n"
+                    + "  \"regCpuTemp\": \"0x70\",\n"
+                    + "  \"hasDualFans\": true\n"
+                    + "}";
+                DeviceProfile dpParsed = DeviceProfile.FromJson(pj);
+                profileJsonOk = dpParsed != null
+                    && dpParsed.Id == "custom-profile"
+                    && dpParsed.DisplayName == "Custom: GMKtec K12 (12:34 test)"
+                    && dpParsed.ChipsetNotes == "Scanned on 2026-11-18 14:30:00"
+                    && dpParsed.RegCpuTemp == 0x70
+                    && dpParsed.HasDualFans;
+                profileJsonDetail = dpParsed != null ? dpParsed.DisplayName : "null";
+            }
+            catch (Exception ex) { profileJsonDetail = ex.Message; }
+            Check(profileJsonOk,
+                "DeviceProfile.FromJson Preserves Colons Inside String Values",
+                profileJsonDetail);
+
+            bool locJsonOk = false;
+            string locJsonDetail = "";
+            try
+            {
+                string singleLineLoc = "{\"Test_Colon\": \"Value: 12:34 \\\"quoted\\\"\", \"Test_Unicode\": \"Temp\\u00B0C\"}";
+                Loc.LoadCustomJson(singleLineLoc);
+                string v1 = Loc.T("Test_Colon", "");
+                string v2 = Loc.T("Test_Unicode", "");
+                Loc.ClearCustomStrings();
+                locJsonOk = (v1 == "Value: 12:34 \"quoted\"") && (v2 == "Temp\u00B0C");
+                locJsonDetail = string.Format("v1='{0}', v2='{1}'", v1, v2);
+            }
+            catch (Exception ex)
+            {
+                try { Loc.ClearCustomStrings(); } catch { }
+                locJsonDetail = ex.Message;
+            }
+            Check(locJsonOk,
+                "Loc Tokenizing JSON Parser (Single-Line, Colons, Escapes & Unicode)",
+                locJsonDetail);
+
+            bool osdCfgOk = false;
+            string osdCfgDetail = "";
+            try
+            {
+                var cfg = new OsdOverlayConfig();
+                cfg.DeselectAllMetrics();
+                bool afterDeselect = !cfg.ShowCpu && !cfg.ShowGpu && !cfg.ShowFps;
+                cfg.SelectAllMetrics(false);
+                bool afterSelectSingle = cfg.ShowCpu && cfg.ShowGpu && !cfg.ShowSysFan;
+                cfg.SelectAllMetrics(true);
+                bool afterSelectDual = cfg.ShowSysFan && cfg.ShowVrmCurrent;
+                cfg.ResetDefaults(false);
+                bool afterReset = cfg.ShowCpu && !cfg.ShowSysFan && !cfg.ShowVrmCurrent && cfg.PeakTrackerMode == 0;
+
+                cfg.OverlayX = 123;
+                cfg.OpacityPct = 77;
+                cfg.PeakTrackerMode = 2;
+                cfg.ShowGameName = false;
+                var lines = new List<string>();
+                cfg.AppendSettings(lines);
+
+                var cfg2 = new OsdOverlayConfig();
+                for (int li = 0; li < lines.Count; li++)
+                {
+                    int eq = lines[li].IndexOf('=');
+                    if (eq > 0)
+                    {
+                        cfg2.TryParseSetting(lines[li].Substring(0, eq), lines[li].Substring(eq + 1));
+                    }
+                }
+                bool roundTrip = cfg2.OverlayX == 123 && cfg2.OpacityPct == 77 && cfg2.PeakTrackerMode == 2 && !cfg2.ShowGameName;
+                osdCfgOk = afterDeselect && afterSelectSingle && afterSelectDual && afterReset && roundTrip;
+                osdCfgDetail = string.Format("desel={0} sel1={1} sel2={2} rst={3} rt={4}",
+                    afterDeselect, afterSelectSingle, afterSelectDual, afterReset, roundTrip);
+            }
+            catch (Exception ex) { osdCfgDetail = ex.Message; }
+            Check(osdCfgOk,
+                "OsdOverlayConfig Defaults, Dual/Single SelectAll & Settings Round-Trip",
+                osdCfgDetail);
+
+            bool a11yOk = false;
+            string a11yDetail = "";
+            try
+            {
+                using (var pnl = new DoubleBufferedPanel())
+                using (var curve = new FanCurveCanvas())
+                {
+                    pnl.EnableKeyboardActivation("CPU Metric", "Open CPU details");
+                    bool pnlOk = pnl.TabStop && pnl.AccessibleRole == AccessibleRole.PushButton && pnl.AccessibleName == "CPU Metric";
+                    bool curveOk = curve.TabStop && curve.AccessibleRole == AccessibleRole.Chart;
+                    a11yOk = pnlOk && curveOk;
+                    a11yDetail = string.Format("pnlOk={0}, curveOk={1}", pnlOk, curveOk);
+                }
+            }
+            catch (Exception ex) { a11yDetail = ex.Message; }
+            Check(a11yOk,
+                "Custom Controls Accessibility (Keyboard TabStop & UIA Roles)",
+                a11yDetail);
+
+            bool ctrlSvcOk = false;
+            string ctrlSvcDetail = "";
+            try
+            {
+                var ctrlDemo = new DemoBackend();
+                var dummyCurve = new CurvePoint[] { new CurvePoint(40, 30), new CurvePoint(80, 100) };
+                var profs = new FanCurveProfile[] {
+                    new FanCurveProfile("Balanced", true, 0, dummyCurve, dummyCurve),
+                    new FanCurveProfile("Performance", true, 1, dummyCurve, dummyCurve)
+                };
+                using (var svc = new FanControllerService(null, ctrlDemo, profs, true))
+                {
+                    bool manualOk = svc.ApplyManualFan(1, 65) && svc.ApuManualOverride && svc.ApuManualPct == 65;
+                    bool autoOk = svc.ApplyAutoAll() && !svc.ApuManualOverride && svc.ApuManualPct == 0;
+                    bool evalNormal = svc.EvaluateAndApplyFanProfiles(55);
+                    bool emergencyOk = svc.EvaluateAndApplyFanProfiles(96) && svc.EmergencyThermalActive && svc.LastAppliedApuPct == 100;
+                    ctrlSvcOk = manualOk && autoOk && emergencyOk;
+                    ctrlSvcDetail = string.Format("manual={0} auto={1} evalNorm={2} emerg={3} apuPct={4}",
+                        manualOk, autoOk, evalNormal, emergencyOk, svc.LastAppliedApuPct);
+                }
+            }
+            catch (Exception ex) { ctrlSvcDetail = ex.Message; }
+            Check(ctrlSvcOk,
+                "FanControllerService Decoupled Evaluation, Manual/Auto Transitions & Thermal Tripwire",
+                ctrlSvcDetail);
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));

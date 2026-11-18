@@ -52,10 +52,32 @@ namespace MiniFanControl
         public LivePerformanceCanvas()
         {
             DoubleBuffered = true;
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
+            TabStop = true;
+            AccessibleName = "Live Performance Frametime and Framerate Graph";
+            AccessibleDescription = "Real-time FPS and frametime chart. Press V to toggle split view or R to reset session peaks.";
+            AccessibleRole = AccessibleRole.Chart;
             IsDarkMode = true;
             SplitView = true; // Default to Digital Foundry split twin graph view
             Cursor = Cursors.Cross;
+        }
+
+        protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
+        protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (e.KeyCode == Keys.V)
+            {
+                SplitView = !SplitView;
+                Invalidate();
+                e.Handled = true;
+            }
+            else if (e.KeyCode == Keys.R && ResetPeaksRequested != null)
+            {
+                ResetPeaksRequested(this, EventArgs.Empty);
+                e.Handled = true;
+            }
         }
 
         public void UpdateStatus(FanStatus st)

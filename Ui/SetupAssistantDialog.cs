@@ -248,6 +248,8 @@ namespace MiniFanControl
             };
             closeBtn.FlatAppearance.BorderSize = 0;
             Controls.Add(closeBtn);
+            AcceptButton = closeBtn;
+            CancelButton = closeBtn;
         }
 
         private Panel CreateStepCard(int x, int y, int w, int h, Color bg, Color border)

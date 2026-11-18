@@ -71,7 +71,7 @@ namespace MiniFanControl
         private const int HOTKEY_LOCK_OSD   = 9003;
         private const int HOTKEY_RESET_AUTO = 9004;
 
-        public const string APP_VERSION         = "1.0.2";
+        public const string APP_VERSION         = "1.0.3";
         public const string SCHTASK_NAME        = "MiniFanControl_Autostart";
         public const string URL_GMKTEC_DRIVERS  = "https://www.gmktec.com/pages/drivers-and-software";
         public const string URL_AMD_DRIVERS     = "https://www.amd.com/en/support/download/drivers.html";
@@ -130,83 +130,46 @@ namespace MiniFanControl
         private readonly HardwareBackend _hw = new HardwareBackend();
         private readonly DemoBackend _demo = new DemoBackend();
         private readonly SystemHardwareInfo _sysInfo;
-        private bool _demoMode;
+        private readonly AppSettings _settings = new AppSettings();
+        private OsdOverlayConfig _osd { get { return _settings.Osd; } }
+        private FanControllerService _controller;
+        private bool _demoMode
+        {
+            get { return _controller != null ? _controller.DemoMode : _initialDemoMode; }
+            set
+            {
+                _initialDemoMode = value;
+                if (_controller != null) _controller.DemoMode = value;
+            }
+        }
+        private bool _initialDemoMode;
 
         private bool IsAb { get { return _themePref == ThemePreference.Afterburner; } }
-        private ThemePreference _themePref = ThemePreference.System;
+        private ThemePreference _themePref
+        {
+            get { return _settings.ThemePref; }
+            set { _settings.ThemePref = value; }
+        }
         private bool _isDarkMode = true;
         private bool _isTaskbarDark = true;
 
-        private bool _showCpuTray = true;
-        private bool _showGpuTray = true;
-        private bool _showOverlay = false;
-        private bool _lockOverlay = false;
-        private bool _overlayVertical = true;
-        private int _overlayX = 24;
-        private int _overlayY = 24;
-        private bool _restoreAutoOnExit = true;
-        private bool _closeToTray = false;
-        private bool _useFahrenheit = false;
-        private bool _silentSleepStandby = true;
+        private bool _showCpuTray { get { return _settings.ShowCpuTray; } set { _settings.ShowCpuTray = value; } }
+        private bool _showGpuTray { get { return _settings.ShowGpuTray; } set { _settings.ShowGpuTray = value; } }
+        private bool _showOverlay { get { return _settings.ShowOverlay; } set { _settings.ShowOverlay = value; } }
+        private bool _lockOverlay { get { return _settings.LockOverlay; } set { _settings.LockOverlay = value; } }
+        private bool _restoreAutoOnExit { get { return _settings.RestoreAutoOnExit; } set { _settings.RestoreAutoOnExit = value; } }
+        private bool _closeToTray { get { return _settings.CloseToTray; } set { _settings.CloseToTray = value; } }
+        private bool _useFahrenheit { get { return _settings.UseFahrenheit; } set { _settings.UseFahrenheit = value; } }
+        private bool _silentSleepStandby { get { return _settings.SilentSleepStandby; } set { _settings.SilentSleepStandby = value; } }
         private bool _forceFullExit = false;
         private bool _isUnitTest = false;
-        private bool _alwaysOnTop = false;
-        private bool _enableGlobalHotkeys = true;
+        private bool _alwaysOnTop { get { return _settings.AlwaysOnTop; } set { _settings.AlwaysOnTop = value; } }
+        private bool _enableGlobalHotkeys { get { return _settings.EnableGlobalHotkeys; } set { _settings.EnableGlobalHotkeys = value; } }
         private bool _hotkeysRegistered = false;
         private bool _startMinimized = false;
         private bool _safeExitRestored = false;
         private readonly TelemetrySessionStats _sessionStats = new TelemetrySessionStats();
         private CapFrameXOverlayForm _overlayForm;
-
-        // CapFrameX OSD Overlay Studio Configuration
-        private int _osdScaleTier = 1; // 0 = 100% (Standard), 1 = 125% (Large), 2 = 150% (Extra Large), 3 = 185% (Jumbo 4K)
-        private int _osdGraphMode = 3; // 0=None, 1=Sparklines, 2=Combined, 3=Both
-        private int _osdGraphHeight = 140; // 75=Compact, 105=Medium, 140=Large, 180=XL
-        private int _osdOpacityPct = 80; // 35..100
-        private bool _osdMatchTheme = true;
-        private bool _osdShowCpu = true;
-        private bool _osdShowGpu = true;
-        private bool _osdShowNvme = true;
-        private bool _osdShowPower = true;
-        private bool _osdShowRam = true;
-        private bool _osdShowVrmCurrent = false;
-        private bool _osdShowAmbient = true;
-        private bool _osdShowFabricClock = true;
-        private bool _osdShowNpu = true;
-        private bool _osdShowFps = true;
-        private bool _osdShowLows = true;
-        private bool _osdShowGpuLoad = true;
-        private bool _osdShowApuFan = true;
-        private bool _osdShowSysFan = true;
-        private bool _osdShowMode = true;
-        private bool _osdShowPeaks = true;
-        private int _osdPeakTrackerMode = 0; // 0=Peaks(▲), 1=Lows(▼), 2=Min/Max(▼▲), 3=Avg(~)
-        private bool _osdShowRadeon = true;
-        private bool _osdShowRadeonExtTags = true;
-        private bool _osdShowDriverVer = true;
-        private bool _osdShowClocks = true;
-        private bool _osdShowGameName = true;
-        private bool _osdSparklineBg = true;
-        private bool _osdShowLiveTrend = true;
-        private bool _osdShowFpsGraph = true;
-        private bool _osdPlotFpsOnTrend = true;
-        private bool _osdDfGraphStyle = true;
-        private bool _osdDfGraphFirst = true;
-        private bool _osdShowRamTemp = true;
-        private bool _osdShowRamDualSticks = false;
-        private bool _osdShowRamSpread = true;
-        private bool _osdShowRamLoad = true;
-        private bool _osdShowRamPower = true;
-        private bool _osdShowRamClock = false;
-        private bool _osdShowNvmePower = true;
-        private bool _osdShowNvmeIo = true;
-        private bool _osdShowNvmeDual = true;
-        private bool _osdShowCpuLoad = true;
-        private bool _osdShowGpuHotspot = true;
-        private bool _osdShowPowerLimit = true;
-        private bool _osdShowFclkSync = true;
-        private bool _osdShowFrametimeMs = true;
-        private bool _osdShowFpsAvg = true;
 
         private IntPtr _cpuIconHandle = IntPtr.Zero;
         private IntPtr _gpuIconHandle = IntPtr.Zero;
@@ -219,21 +182,24 @@ namespace MiniFanControl
         private EventWaitHandle _watchdogHeartbeatEvent;
         private EventWaitHandle _watchdogShutdownEvent;
         private EventWaitHandle _watchdogReadyEvent;
-        private string _lastHardwareWriteError = null;
-        private int _consecutiveWriteFailures = 0;
-        private bool _readOnlyFailsafeLatched = false;
+        private string _uiWriteErrorBannerDetail = null;
+        private int _uiWriteErrorFailCount = 0;
 
         internal DemoBackend DemoBackend { get { return _demo; } }
-        internal int LastAppliedApuPct { get { return _lastAppliedApuPct; } }
-        internal int LastAppliedSysPct { get { return _lastAppliedSysPct; } }
-        internal int LastAppliedEcMode { get { return _lastAppliedEcMode; } }
-        internal string LastHardwareWriteError { get { return _lastHardwareWriteError; } }
-        internal int ConsecutiveWriteFailures { get { return _consecutiveWriteFailures; } }
-        internal bool ReadOnlyFailsafeLatched { get { return _readOnlyFailsafeLatched; } }
-        internal bool TestEvaluateAndApplyFanProfiles(int apuTemp) { return EvaluateAndApplyFanProfiles(apuTemp); }
+        internal int LastAppliedApuPct { get { return _controller != null ? _controller.LastAppliedApuPct : -1; } }
+        internal int LastAppliedSysPct { get { return _controller != null ? _controller.LastAppliedSysPct : -1; } }
+        internal int LastAppliedEcMode { get { return _controller != null ? _controller.LastAppliedEcMode : -1; } }
+        internal string LastHardwareWriteError { get { return _controller != null ? _controller.LastHardwareWriteError : null; } }
+        internal int ConsecutiveWriteFailures { get { return _controller != null ? _controller.ConsecutiveWriteFailures : 0; } }
+        internal bool ReadOnlyFailsafeLatched { get { return _controller != null && _controller.ReadOnlyFailsafeLatched; } }
+        internal bool TestEvaluateAndApplyFanProfiles(int apuTemp) { return _controller != null && _controller.EvaluateAndApplyFanProfiles(apuTemp); }
         internal void TestSetFanManual(int fanId, int pct) { ApplyFan(fanId, pct); }
         internal void TestApplyAutoAll() { ApplyAutoAll(); }
-        internal FanCurveProfile ApuProfile { get { return _apuProfile; } set { _apuProfile = value; } }
+        internal FanCurveProfile ApuProfile
+        {
+            get { return _controller != null ? _controller.ApuProfile : _builtInProfiles[0]; }
+            set { if (_controller != null) _controller.ApuProfile = value; }
+        }
         internal List<FanCurveProfile> CustomProfiles { get { return _customProfiles; } }
         internal Label TestCpuTempLabel { get { return _cpuTempLabel; } }
         internal Panel TestCpuTempBox { get { return _cpuTempBox; } }
@@ -268,7 +234,6 @@ namespace MiniFanControl
         internal void TestDeleteSelectedCustomMode() { DeleteSelectedCustomMode(); }
         internal void TestSetGraphViewMode(bool showLive, bool showPerf, int hl) { SetGraphViewMode(showLive, showPerf, hl); }
         internal void TestSetOsdConfigViewMode(bool show) { SetOsdConfigViewMode(show); }
-        private DateTime _lastWorkerSampleUtc = DateTime.UtcNow;
         private bool _watchdogStarted = false;
         private SessionEndingEventHandler _sessionEndingHandler;
         private PowerModeChangedEventHandler _powerModeChangedHandler;
@@ -294,22 +259,29 @@ namespace MiniFanControl
         };
 
         private readonly List<FanCurveProfile> _customProfiles = new List<FanCurveProfile>();
-        private FanCurveProfile _apuProfile;
-        private FanCurveProfile _sysProfile;
-        private bool _hasDualFans = true;
-        private int _fan2ConsecutiveWriteFailures = 0;
-        private bool _apuManualOverride = false;
-        private bool _sysManualOverride = false;
-        private int _lastAppliedApuPct = -1;
-        private int _lastAppliedSysPct = -1;
-        private int _lastAppliedEcMode = -1;
-        private int _lastCustomEvalTemp = -100;
-        private bool _emergencyThermalActive = false;
-
-        private Thread _hwThread;
-        private volatile bool _hwThreadRunning;
-        private volatile bool _hwWorkerPaused;
-        private readonly AutoResetEvent _hwWakeEvent = new AutoResetEvent(false);
+        private FanCurveProfile _apuProfile
+        {
+            get { return _controller != null ? _controller.ApuProfile : _builtInProfiles[0]; }
+            set { if (_controller != null) _controller.ApuProfile = value; }
+        }
+        private FanCurveProfile _sysProfile
+        {
+            get { return _controller != null ? _controller.SysProfile : _builtInProfiles[0]; }
+            set { if (_controller != null) _controller.SysProfile = value; }
+        }
+        private bool _hasDualFans
+        {
+            get { return _settings.HasDualFans; }
+            set
+            {
+                _settings.HasDualFans = value;
+                if (_controller != null) _controller.HasDualFans = value;
+            }
+        }
+        private bool _emergencyThermalActive
+        {
+            get { return _controller != null && _controller.EmergencyThermalActive; }
+        }
 
         private readonly List<Label> _sectionHeaders = new List<Label>();
         private readonly List<Panel> _sectionCards = new List<Panel>();
@@ -338,8 +310,20 @@ namespace MiniFanControl
         private Label _samplingLabel;
         private ComboBox _samplingCombo;
         private FanStatus _lastStatus;
-        private int _refreshIntervalMs = 1000;
-        private string _profileOverrideId = "auto";
+        private int _refreshIntervalMs
+        {
+            get { return _settings.RefreshIntervalMs; }
+            set
+            {
+                _settings.RefreshIntervalMs = value;
+                if (_controller != null) _controller.RefreshIntervalMs = value;
+            }
+        }
+        private string _profileOverrideId
+        {
+            get { return _settings.ProfileOverrideId; }
+            set { _settings.ProfileOverrideId = value; }
+        }
         private Label _cpuBoxTitle;
         private Label _gpuBoxTitle;
         private Label _nvmeBoxTitle;
@@ -480,8 +464,14 @@ namespace MiniFanControl
         private Label _fan2SliderPct;
         private bool _dragging1;
         private bool _dragging2;
-        private int _apuManualPct = 0;
-        private int _sysManualPct = 0;
+        private bool _apuManualOverride { get { return _controller != null && _controller.ApuManualOverride; } }
+        private bool _sysManualOverride { get { return _controller != null && _controller.SysManualOverride; } }
+        private int _apuManualPct { get { return _controller != null ? _controller.ApuManualPct : 0; } }
+        private int _sysManualPct { get { return _controller != null ? _controller.SysManualPct : 0; } }
+        private bool _hwWorkerPaused { get { return _controller != null && _controller.IsWorkerPaused; } }
+        private string _lastHardwareWriteError { get { return _uiWriteErrorBannerDetail; } }
+        private int _consecutiveWriteFailures { get { return _uiWriteErrorFailCount; } }
+        private DateTime _lastWorkerSampleUtc { get { return _controller != null ? _controller.LastWorkerSampleUtc : DateTime.UtcNow; } }
         private bool _suppressComboEvent;
 
         private CheckBox _showCpuTrayCb;
@@ -503,18 +493,24 @@ namespace MiniFanControl
 
         public MainForm(bool startInDemo, bool startMinimized = false, bool isUnitTest = false)
         {
-            _demoMode = startInDemo;
+            _initialDemoMode = startInDemo;
             _startMinimized = startMinimized;
             _isUnitTest = isUnitTest;
-            if (_demoMode && _demo != null)
-            {
-                try { _lastStatus = _demo.GetStatus(); } catch { }
-            }
             _sysInfo = SystemHardwareInfo.Detect();
             _hw.Profile = _sysInfo.MatchedProfile;
-            _apuProfile = _builtInProfiles[0];
-            _sysProfile = _builtInProfiles[0];
+            _controller = new FanControllerService(_hw, _demo, _builtInProfiles, startInDemo);
+            if (_demoMode && _demo != null)
+            {
+                try
+                {
+                    _lastStatus = _demo.GetStatus();
+                    _controller.SetInitialStatus(_lastStatus);
+                }
+                catch { }
+            }
             LoadSettings();
+            _controller.HasDualFans = _settings.HasDualFans;
+            _controller.RefreshIntervalMs = _settings.RefreshIntervalMs;
             EnsureProtectedExamplesPresent();
             if (_customProfiles.Count == 0)
             {
@@ -541,10 +537,14 @@ namespace MiniFanControl
 
             Text = "MiniFanControl";
             Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
+            AutoScaleMode = AutoScaleMode.Dpi;
+            FormBorderStyle = FormBorderStyle.Sizable;
+            MinimumSize = new Size(860, 640);
+            AutoScroll = true;
+            MaximizeBox = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(1100, 1160);
+            Rectangle wa = Screen.PrimaryScreen != null ? Screen.PrimaryScreen.WorkingArea : new Rectangle(0, 0, 1280, 1024);
+            ClientSize = new Size(Math.Min(1100, Math.Max(860, wa.Width - 24)), Math.Min(1160, Math.Max(640, wa.Height - 40)));
             try
             {
                 Icon assoc = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -562,75 +562,190 @@ namespace MiniFanControl
             UpdateTrayIcons(0, 0);
             SetGraphViewMode(true, false, 1);
 
+            WireControllerEvents();
+
             if (!isUnitTest)
             {
                 SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
-            _sessionEndingHandler = (s, e) => RestoreHardwareSafeAutoIfNeeded();
-            _powerModeChangedHandler = (s, e) =>
-            {
-                if (e.Mode == PowerModes.Suspend)
+                _sessionEndingHandler = (s, e) => RestoreHardwareSafeAutoIfNeeded();
+                _powerModeChangedHandler = (s, e) =>
                 {
-                    OnPowerSuspend();
-                }
-                else if (e.Mode == PowerModes.Resume)
-                {
-                    OnPowerResume();
-                }
-            };
-            SystemEvents.SessionEnding += _sessionEndingHandler;
-            SystemEvents.PowerModeChanged += _powerModeChangedHandler;
-            AppDomain.CurrentDomain.ProcessExit += OnProcessOrCrashExit;
-            AppDomain.CurrentDomain.UnhandledException += OnProcessOrCrashExit;
+                    if (e.Mode == PowerModes.Suspend)
+                    {
+                        OnPowerSuspend();
+                    }
+                    else if (e.Mode == PowerModes.Resume)
+                    {
+                        OnPowerResume();
+                    }
+                };
+                SystemEvents.SessionEnding += _sessionEndingHandler;
+                SystemEvents.PowerModeChanged += _powerModeChangedHandler;
+                AppDomain.CurrentDomain.ProcessExit += OnProcessOrCrashExit;
+                AppDomain.CurrentDomain.UnhandledException += OnProcessOrCrashExit;
 
-            _refreshTimer = new System.Windows.Forms.Timer { Interval = _refreshIntervalMs };
-            _refreshTimer.Tick += (s, e) =>
-            {
-                // UI-thread pulse: Dual-thread heartbeat verifies both background hardware worker and UI message pump are alive
-                if ((DateTime.UtcNow - _lastWorkerSampleUtc).TotalMilliseconds < 4500)
+                _refreshTimer = new System.Windows.Forms.Timer { Interval = _refreshIntervalMs };
+                _refreshTimer.Tick += (s, e) =>
                 {
-                    PulseWatchdogHeartbeat();
-                }
+                    if ((DateTime.UtcNow - _lastWorkerSampleUtc).TotalMilliseconds < 4500)
+                    {
+                        PulseWatchdogHeartbeat();
+                    }
 
-                // UI-only periodic refresh (theme sync and status bar timer)
-                if (_themePref == ThemePreference.System)
-                {
-                    CheckAndApplyThemeChanges();
-                }
-                if (_emergencyThermalActive)
-                {
-                    _statusBarLabel.ForeColor = Color.FromArgb(0xFB, 0x71, 0x85);
-                    _statusBarLabel.Text = string.Format("🔥 EMERGENCY THERMAL OVERRIDE (CPU {0}°C) — Fans forced to 100%", _lastStatus.CpuTemp);
-                }
-            };
-            _refreshTimer.Start();
+                    if (_themePref == ThemePreference.System)
+                    {
+                        CheckAndApplyThemeChanges();
+                    }
+                    if (_emergencyThermalActive)
+                    {
+                        _statusBarLabel.ForeColor = Color.FromArgb(0xFB, 0x71, 0x85);
+                        _statusBarLabel.Text = string.Format("🔥 EMERGENCY THERMAL OVERRIDE (CPU {0}°C) — Fans forced to 100%", _lastStatus.CpuTemp);
+                    }
+                };
+                _refreshTimer.Start();
 
-            // Decouple hardware polling and fan curve regulation to a dedicated background worker
-            _hwThreadRunning = true;
-            _hwThread = new Thread(HardwareWorkerLoop)
-            {
-                IsBackground = true,
-                Name = "MiniFanControl.HardwareWorker",
-                Priority = ThreadPriority.AboveNormal
-            };
-            _hwThread.Start();
-            StartWatchdogSupervisor();
-            StartSingleInstanceWakeListener();
+                _controller.Start();
+                StartWatchdogSupervisor();
+                StartSingleInstanceWakeListener();
 
-            Shown += (s, e) =>
-            {
-                UpdateGlobalHotkeysRegistration();
-                if (_startMinimized)
+                Shown += (s, e) =>
                 {
-                    MinimizeToTray();
-                }
-                else if (!_isUnitTest && _showSetupAssistant && string.IsNullOrEmpty(FanCurveProfile.LastCalibratedDate))
-                {
-                    BeginInvoke((Action)(() => ShowSetupAssistantDialog(false)));
-                }
-            };
+                    UpdateGlobalHotkeysRegistration();
+                    if (_startMinimized)
+                    {
+                        MinimizeToTray();
+                    }
+                    else if (!_isUnitTest && _showSetupAssistant && string.IsNullOrEmpty(FanCurveProfile.LastCalibratedDate))
+                    {
+                        BeginInvoke((Action)(() => ShowSetupAssistantDialog(false)));
+                    }
+                };
                 FormClosing += OnFormClosing;
-                _hwWakeEvent.Set();
             }
+        }
+
+        private void WireControllerEvents()
+        {
+            if (_controller == null) return;
+
+            _controller.SampleReceived += st =>
+            {
+                if (!IsHandleCreated || IsDisposed) return;
+                if (Interlocked.CompareExchange(ref _uiSamplePending, 1, 0) == 0)
+                {
+                    FanStatus sample = st;
+                    try
+                    {
+                        BeginInvoke((Action)(() => OnHardwareWorkerSample(sample)));
+                    }
+                    catch
+                    {
+                        Interlocked.Exchange(ref _uiSamplePending, 0);
+                    }
+                }
+            };
+
+            _controller.WorkerError += ex =>
+            {
+                if (!IsHandleCreated || IsDisposed) return;
+                try { BeginInvoke((Action)(() => OnHardwareWorkerError(ex))); } catch { }
+            };
+
+            _controller.DualFanAutoAdapted += () =>
+            {
+                _settings.HasDualFans = false;
+                if (!IsHandleCreated || IsDisposed) return;
+                try
+                {
+                    BeginInvoke((Action)(() =>
+                    {
+                        ApplyFanLayoutMode();
+                        RefreshStatus();
+                    }));
+                }
+                catch { }
+            };
+
+            _controller.WriteErrorStateChanged += (detail, fails) =>
+            {
+                _uiWriteErrorBannerDetail = detail;
+                _uiWriteErrorFailCount = fails;
+                if (!IsHandleCreated || IsDisposed) return;
+                try
+                {
+                    BeginInvoke((Action)(() =>
+                    {
+                        if (string.IsNullOrEmpty(detail))
+                        {
+                            if (_errorBanner != null) _errorBanner.Visible = false;
+                            if (_statusBarLabel != null) _statusBarLabel.Text = "Ready";
+                        }
+                        else
+                        {
+                            if (_errorBanner != null)
+                            {
+                                _errorBanner.Text = string.Format("⚠️ Hardware Write Failure: {0} (Attempt {1})", detail, fails);
+                                _errorBanner.Visible = true;
+                            }
+                            if (_statusBarLabel != null)
+                            {
+                                _statusBarLabel.ForeColor = _isDarkMode ? ErrorFgDark : ErrorFgLight;
+                                _statusBarLabel.Text = string.Format("⚠️ Hardware write rejected ({0} retries)", fails);
+                            }
+                        }
+                    }));
+                }
+                catch { }
+            };
+
+            _controller.EscalatedFailsafeTriggered += fails =>
+            {
+                _uiWriteErrorBannerDetail = "Escalated failsafe";
+                _uiWriteErrorFailCount = fails;
+                if (!IsHandleCreated || IsDisposed) return;
+                try
+                {
+                    BeginInvoke((Action)(() =>
+                    {
+                        if (_errorBanner != null)
+                        {
+                            _errorBanner.Text = string.Format("CRITICAL: {0} consecutive hardware write failures. Safety failsafe engaged: BIOS Auto restored and manual writes latched read-only.", fails);
+                            _errorBanner.Visible = true;
+                        }
+                        if (_statusBarLabel != null)
+                        {
+                            _statusBarLabel.ForeColor = _isDarkMode ? ErrorFgDark : ErrorFgLight;
+                            _statusBarLabel.Text = "CRITICAL: Write failures escalated -> BIOS Auto restored (Read-Only Latched)";
+                        }
+                    }));
+                }
+                catch { }
+            };
+
+            _controller.WorkerIterationCompleted += () =>
+            {
+                if (_watchdogStarted && _watchdogProcess != null && _watchdogProcess.HasExited)
+                {
+                    _watchdogStarted = false;
+                    int exitCode = -1;
+                    try { exitCode = _watchdogProcess.ExitCode; } catch { }
+                    WatchdogSupervisor.LogWatchdogEvent(string.Format("ALERT: Safety watchdog supervisor process PID {0} exited unexpectedly (code {1}). Attempting automatic restart...",
+                        _watchdogProcess.Id, exitCode));
+                    if (IsHandleCreated && !IsDisposed)
+                    {
+                        try
+                        {
+                            BeginInvoke((Action)(() =>
+                            {
+                                _errorBanner.Text = string.Format("⚠️ Safety Watchdog process stopped (ExitCode: {0}). Restarting supervisor...", exitCode);
+                                _errorBanner.Visible = true;
+                                StartWatchdogSupervisor();
+                            }));
+                        }
+                        catch { }
+                    }
+                }
+            };
         }
 
         private void OnProcessOrCrashExit(object sender, EventArgs e)
@@ -680,19 +795,12 @@ namespace MiniFanControl
 
             WatchdogSupervisor.LogWatchdogEvent("Power state: System suspending / entering sleep. Pausing hardware worker and putting fans into safe standby auto.");
 
-            // 1. Immediately pause background hardware worker loop so it does not poll disconnecting/sleeping sensors
-            // or compute curves with invalid temperatures during sleep transition.
-            _hwWorkerPaused = true;
+            if (_controller != null) _controller.PauseForSuspend();
             if (_refreshTimer != null) _refreshTimer.Stop();
 
-            // 2. Clear any active emergency thermal override flag so it does not stay latched during sleep
-            _emergencyThermalActive = false;
-
-            // 3. Gracefully stop the watchdog supervisor process so it does not miss heartbeats and falsely fire failsafes while the machine is sleeping
             StopWatchdogSupervisorGracefully();
             StopSingleInstanceWakeListener();
 
-            // 4. Restore fans to safe BIOS native auto / quiet standby state
             if (!_demoMode && _hw != null)
             {
                 try
@@ -700,8 +808,6 @@ namespace MiniFanControl
                     bool isSuperIo = (_hw.SuperIoBaseAddr != 0 || _hw.AccessMethod == HardwareBackend.EcAccessMethod.SuperIo2E || _hw.AccessMethod == HardwareBackend.EcAccessMethod.SuperIo4E);
                     if (_silentSleepStandby)
                     {
-                        // Silent Standby: Gently coast fans down to 0% quiet duty in manual mode,
-                        // completely eliminating the 2-4 second motherboard BIOS kickstart spin-up burst!
                         _hw.SetFan(1, 0);
                         if (_hasDualFans) _hw.SetFan(2, 0);
                     }
@@ -736,30 +842,15 @@ namespace MiniFanControl
 
             WatchdogSupervisor.LogWatchdogEvent("Power state: System resumed from sleep / standby. Reinitializing hardware state and resuming worker.");
 
-            // 1. Unlatch safe exit in case anything set it
             _safeExitRestored = false;
 
-            // Re-enumerate and re-activate Super I/O hardware monitor LDN4 after BIOS sleep reset
-            if (_hw != null)
-            {
-                _hw.ReinitializeHardwareAfterResume();
-            }
+            if (_controller != null) _controller.ResumeFromSuspend(true);
+            else if (_hw != null) _hw.ReinitializeHardwareAfterResume();
 
-            // 2. Reset applied fan percentages and temperature tracking so fresh hardware curves can be evaluated
-            _lastAppliedApuPct = -1;
-            _lastAppliedSysPct = -1;
-            _lastCustomEvalTemp = 0;
-            _emergencyThermalActive = false;
-            _lastWorkerSampleUtc = DateTime.UtcNow;
-
-            // 3. Restart the out-of-process safety watchdog supervisor
             StartWatchdogSupervisor();
             StartSingleInstanceWakeListener();
 
-            // 4. Unpause the background hardware worker loop and resume UI refresh timer
-            _hwWorkerPaused = false;
             if (_refreshTimer != null) _refreshTimer.Start();
-            _hwWakeEvent.Set();
         }
 
         private void RestoreHardwareSafeAutoIfNeeded()
@@ -768,31 +859,10 @@ namespace MiniFanControl
             _safeExitRestored = true;
             StopWatchdogSupervisorGracefully();
             StopSingleInstanceWakeListener();
-            if (!_restoreAutoOnExit || _demoMode) return;
-
-            try
+            if (_controller != null)
             {
-                // If either fan was running on a software-evaluated curve or manual slider override,
-                // restore its EC control register to 0x00 (Native BIOS EC Auto) on exit so the fan
-                // never stays stuck at a fixed low PWM after MiniFanControl closes.
-                bool apuWasSoftwareOrManual = _apuManualOverride || (_apuProfile != null && !_apuProfile.IsBuiltIn) || _lastAppliedApuPct > 0;
-                bool sysWasSoftwareOrManual = _sysManualOverride || (_sysProfile != null && !_sysProfile.IsBuiltIn) || _lastAppliedSysPct > 0;
-
-                bool isSuperIo = (_hw != null && (_hw.SuperIoBaseAddr != 0 || _hw.AccessMethod == HardwareBackend.EcAccessMethod.SuperIo2E || _hw.AccessMethod == HardwareBackend.EcAccessMethod.SuperIo4E));
-                if (isSuperIo)
-                {
-                    _hw.SetAuto();
-                }
-                else
-                {
-                    if (apuWasSoftwareOrManual)
-                        _hw.SetFan(1, 0);
-                    if (_hasDualFans && sysWasSoftwareOrManual)
-                        _hw.SetFan(2, 0);
-                    _hw.SetAuto();
-                }
+                _controller.RestoreSafeAutoOnExit(_restoreAutoOnExit);
             }
-            catch { }
         }
 
         private void StartWatchdogSupervisor()
@@ -811,7 +881,6 @@ namespace MiniFanControl
                 {
                     WatchdogSupervisor.LogWatchdogEvent("Failed to create secure IPC events for watchdog. Supervisor not started.");
                     StopWatchdogSupervisorGracefully();
-            StopSingleInstanceWakeListener();
                     _watchdogStarted = false;
                     return;
                 }
@@ -850,7 +919,6 @@ namespace MiniFanControl
                             WatchdogSupervisor.LogWatchdogEvent(string.Format("Supervisor process PID {0} failed handshake (ready={1}, hasExited={2}).",
                                 _watchdogProcess.Id, readySignaled, _watchdogProcess.HasExited));
                             StopWatchdogSupervisorGracefully();
-            StopSingleInstanceWakeListener();
                         }
                     }
                     else
@@ -858,7 +926,6 @@ namespace MiniFanControl
                         _watchdogStarted = false;
                         WatchdogSupervisor.LogWatchdogEvent("Watchdog process failed to stay running after launch.");
                         StopWatchdogSupervisorGracefully();
-            StopSingleInstanceWakeListener();
                     }
                 }
                 else
@@ -908,6 +975,7 @@ namespace MiniFanControl
 
         private EventWaitHandle _showAppEvent = null;
         private Thread _showAppThread = null;
+        private volatile bool _wakeListenerRunning = false;
 
         private void StartSingleInstanceWakeListener()
         {
@@ -918,9 +986,10 @@ namespace MiniFanControl
                 _showAppEvent = WatchdogSupervisor.CreateOrOpenEvent("MiniFanControl_ShowMainWindow", EventResetMode.AutoReset, out createdNew, WatchdogIpcRole.Signaler);
                 if (_showAppEvent != null)
                 {
+                    _wakeListenerRunning = true;
                     _showAppThread = new Thread(() =>
                     {
-                        while (_hwThreadRunning)
+                        while (_wakeListenerRunning)
                         {
                             try
                             {
@@ -954,6 +1023,7 @@ namespace MiniFanControl
 
         private void StopSingleInstanceWakeListener()
         {
+            _wakeListenerRunning = false;
             try
             {
                 if (_showAppEvent != null)
@@ -1199,73 +1269,18 @@ namespace MiniFanControl
         {
             _overlayForm = new CapFrameXOverlayForm
             {
-                Location = new Point(Math.Max(0, _overlayX), Math.Max(0, _overlayY)),
-                VerticalLayout = _overlayVertical,
-                HasDualFans = _hasDualFans,
+                Location = new Point(Math.Max(0, _osd.OverlayX), Math.Max(0, _osd.OverlayY)),
                 Stats = _sessionStats,
-                OsdScaleTier = _osdScaleTier,
-                GraphMode = _osdGraphMode,
-                GraphHeight = _osdGraphHeight,
-                OpacityPct = _osdOpacityPct,
-                MatchAppTheme = _osdMatchTheme,
-                IsRadeonTheme = (_themePref == ThemePreference.Radeon), IsAfterburnerTheme = (_themePref == ThemePreference.Afterburner), ShowDriverVersion = _osdShowDriverVer,
-                ShowClocks = _osdShowClocks, ShowGameName = _osdShowGameName, SparklinesAsBackground = _osdSparklineBg,
-                ShowCpu = _osdShowCpu,
-                ShowGpu = _osdShowGpu,
-                ShowNvme = _osdShowNvme,
-                ShowPower = _osdShowPower,
-                ShowRam = _osdShowRam,
-                ShowVrmCurrent = _osdShowVrmCurrent,
-                ShowAmbient = _osdShowAmbient,
-                ShowFabricClock = _osdShowFabricClock,
-                ShowNpu = _osdShowNpu,
-                ShowFps = _osdShowFps,
-                ShowLows = _osdShowLows,
-                ShowGpuLoad = _osdShowGpuLoad,
-                ShowApuFan = _osdShowApuFan,
-                ShowSysFan = _osdShowSysFan,
-                ShowMode = _osdShowMode,
-                ShowPeaks = _osdShowPeaks,
-                PeakTrackerMode = _osdPeakTrackerMode,
-                ShowRadeonSettings = _osdShowRadeon,
-                ShowLiveTrend = _osdShowLiveTrend,
-                ShowFpsGraph = _osdShowFpsGraph,
-                PlotFpsOnTrend = _osdPlotFpsOnTrend,
-                DfGraphStyle = _osdDfGraphStyle,
-                DfGraphFirst = _osdDfGraphFirst,
-                ShowRamTemp = _osdShowRamTemp,
-                ShowRamDualSticks = _osdShowRamDualSticks,
-                ShowRamSpread = _osdShowRamSpread,
-                ShowRamLoad = _osdShowRamLoad,
-                ShowRamPower = _osdShowRamPower,
-                ShowRamClock = _osdShowRamClock,
-                ShowNvmePower = _osdShowNvmePower,
-                ShowNvmeIo = _osdShowNvmeIo,
-                ShowNvmeDual = _osdShowNvmeDual,
-                ShowCpuLoad = _osdShowCpuLoad,
-                ShowGpuHotspot = _osdShowGpuHotspot,
-                ShowPowerLimit = _osdShowPowerLimit,
-                ShowFclkSync = _osdShowFclkSync,
-                ShowFrametimeMs = _osdShowFrametimeMs,
-                ShowFpsAvg = _osdShowFpsAvg,
-                ShowRadeonExtendedTags = _osdShowRadeonExtTags,
-                UseFahrenheit = _useFahrenheit,
                 ProcessorBadgeText = GetRyzenTierBadge()
             };
-            _overlayForm.ApplyOpacity(_osdOpacityPct);
+            _osd.ApplyToOverlay(_overlayForm, _themePref, _hasDualFans, _useFahrenheit);
             _overlayForm.UpdateDimensions();
             _overlayForm.PositionOrLayoutChanged += (s, e) =>
             {
-                _overlayX = _overlayForm.Location.X;
-                _overlayY = _overlayForm.Location.Y;
-                _overlayVertical = _overlayForm.VerticalLayout;
-                _osdScaleTier = _overlayForm.OsdScaleTier;
-                _osdGraphMode = _overlayForm.GraphMode;
-                _osdGraphHeight = _overlayForm.GraphHeight;
-                _osdOpacityPct = _overlayForm.OpacityPct;
+                _osd.ReadFromOverlay(_overlayForm);
                 SyncOsdStudioUiFromOverlay();
                 SaveSettings();
-                _driversMenu = CreateDriversAndToolsMenu();
+                RebuildDriversMenu();
             };
             _overlayForm.RequestHideOverlay += (s, e) =>
             {
@@ -1310,57 +1325,7 @@ namespace MiniFanControl
         {
             if (_overlayForm == null) return;
             _overlayForm.Stats = _sessionStats;
-            _overlayForm.HasDualFans = _hasDualFans;
-            _overlayForm.OsdScaleTier = _osdScaleTier;
-            _overlayForm.GraphMode = _osdGraphMode;
-            _overlayForm.GraphHeight = _osdGraphHeight;
-            _overlayForm.VerticalLayout = _overlayVertical;
-            _overlayForm.MatchAppTheme = _osdMatchTheme;
-            _overlayForm.IsRadeonTheme = (_themePref == ThemePreference.Radeon); _overlayForm.IsAfterburnerTheme = (_themePref == ThemePreference.Afterburner); _overlayForm.ShowDriverVersion = _osdShowDriverVer;
-            _overlayForm.ShowClocks = _osdShowClocks;
-            _overlayForm.ShowGameName = _osdShowGameName;
-            _overlayForm.SparklinesAsBackground = _osdSparklineBg;
-            _overlayForm.ShowCpu = _osdShowCpu;
-            _overlayForm.ShowGpu = _osdShowGpu;
-            _overlayForm.ShowNvme = _osdShowNvme;
-            _overlayForm.ShowPower = _osdShowPower;
-            _overlayForm.ShowRam = _osdShowRam;
-            _overlayForm.ShowVrmCurrent = _osdShowVrmCurrent;
-            _overlayForm.ShowAmbient = _osdShowAmbient;
-            _overlayForm.ShowFabricClock = _osdShowFabricClock;
-            _overlayForm.ShowNpu = _osdShowNpu;
-            _overlayForm.ShowFps = _osdShowFps;
-            _overlayForm.ShowLows = _osdShowLows;
-            _overlayForm.ShowGpuLoad = _osdShowGpuLoad;
-            _overlayForm.ShowApuFan = _osdShowApuFan;
-            _overlayForm.ShowSysFan = _osdShowSysFan;
-            _overlayForm.ShowMode = _osdShowMode;
-            _overlayForm.ShowPeaks = _osdShowPeaks;
-            _overlayForm.PeakTrackerMode = _osdPeakTrackerMode;
-            _overlayForm.ShowRadeonSettings = _osdShowRadeon;
-            _overlayForm.ShowLiveTrend = _osdShowLiveTrend;
-            _overlayForm.ShowFpsGraph = _osdShowFpsGraph;
-            _overlayForm.PlotFpsOnTrend = _osdPlotFpsOnTrend;
-            _overlayForm.DfGraphStyle = _osdDfGraphStyle;
-            _overlayForm.DfGraphFirst = _osdDfGraphFirst;
-            _overlayForm.ShowRamTemp = _osdShowRamTemp;
-            _overlayForm.ShowRamDualSticks = _osdShowRamDualSticks;
-            _overlayForm.ShowRamSpread = _osdShowRamSpread;
-            _overlayForm.ShowRamLoad = _osdShowRamLoad;
-            _overlayForm.ShowRamPower = _osdShowRamPower;
-            _overlayForm.ShowRamClock = _osdShowRamClock;
-            _overlayForm.ShowNvmePower = _osdShowNvmePower;
-            _overlayForm.ShowNvmeIo = _osdShowNvmeIo;
-            _overlayForm.ShowNvmeDual = _osdShowNvmeDual;
-            _overlayForm.ShowCpuLoad = _osdShowCpuLoad;
-            _overlayForm.ShowGpuHotspot = _osdShowGpuHotspot;
-            _overlayForm.ShowPowerLimit = _osdShowPowerLimit;
-            _overlayForm.ShowFclkSync = _osdShowFclkSync;
-            _overlayForm.ShowFrametimeMs = _osdShowFrametimeMs;
-            _overlayForm.ShowFpsAvg = _osdShowFpsAvg;
-            _overlayForm.ShowRadeonExtendedTags = _osdShowRadeonExtTags;
-            _overlayForm.UseFahrenheit = _useFahrenheit;
-            _overlayForm.ApplyOpacity(_osdOpacityPct);
+            _osd.ApplyToOverlay(_overlayForm, _themePref, _hasDualFans, _useFahrenheit);
             _overlayForm.UpdateDimensions();
             _overlayForm.Invalidate();
             SaveSettings();
@@ -1370,113 +1335,68 @@ namespace MiniFanControl
         {
             if (_overlayForm != null)
             {
-                _osdScaleTier = _overlayForm.OsdScaleTier;
-                _osdGraphMode = _overlayForm.GraphMode;
-                _osdGraphHeight = _overlayForm.GraphHeight;
-                _osdOpacityPct = _overlayForm.OpacityPct;
-                _overlayVertical = _overlayForm.VerticalLayout;
-                _osdShowCpu = _overlayForm.ShowCpu;
-                _osdShowGpu = _overlayForm.ShowGpu;
-                _osdShowNvme = _overlayForm.ShowNvme;
-                _osdShowPower = _overlayForm.ShowPower;
-                _osdShowRam = _overlayForm.ShowRam;
-                _osdShowVrmCurrent = _overlayForm.ShowVrmCurrent;
-                _osdShowAmbient = _overlayForm.ShowAmbient;
-                _osdShowFabricClock = _overlayForm.ShowFabricClock;
-                _osdShowNpu = _overlayForm.ShowNpu;
-                _osdShowFps = _overlayForm.ShowFps;
-                _osdShowLows = _overlayForm.ShowLows;
-                _osdShowGpuLoad = _overlayForm.ShowGpuLoad;
-                _osdShowApuFan = _overlayForm.ShowApuFan;
-                _osdShowSysFan = _overlayForm.ShowSysFan;
-                _osdShowMode = _overlayForm.ShowMode;
-                _osdShowPeaks = _overlayForm.ShowPeaks;
-                _osdPeakTrackerMode = _overlayForm.PeakTrackerMode;
-                _osdShowRadeon = _overlayForm.ShowRadeonSettings; _osdShowRadeonExtTags = _overlayForm.ShowRadeonExtendedTags; _osdShowDriverVer = _overlayForm.ShowDriverVersion;
-                _osdShowClocks = _overlayForm.ShowClocks;
-                _osdShowGameName = _overlayForm.ShowGameName;
-                _osdSparklineBg = _overlayForm.SparklinesAsBackground;
-                _osdShowLiveTrend = _overlayForm.ShowLiveTrend;
-                _osdShowFpsGraph = _overlayForm.ShowFpsGraph;
-                _osdPlotFpsOnTrend = _overlayForm.PlotFpsOnTrend;
-                _osdDfGraphStyle = _overlayForm.DfGraphStyle;
-                _osdDfGraphFirst = _overlayForm.DfGraphFirst;
-                _osdShowRamTemp = _overlayForm.ShowRamTemp;
-                _osdShowRamDualSticks = _overlayForm.ShowRamDualSticks;
-                _osdShowRamSpread = _overlayForm.ShowRamSpread;
-                _osdShowRamLoad = _overlayForm.ShowRamLoad;
-                _osdShowRamPower = _overlayForm.ShowRamPower;
-                _osdShowRamClock = _overlayForm.ShowRamClock;
-                _osdShowNvmePower = _overlayForm.ShowNvmePower;
-                _osdShowNvmeIo = _overlayForm.ShowNvmeIo;
-                _osdShowNvmeDual = _overlayForm.ShowNvmeDual;
-                _osdShowCpuLoad = _overlayForm.ShowCpuLoad;
-                _osdShowGpuHotspot = _overlayForm.ShowGpuHotspot;
-                _osdShowPowerLimit = _overlayForm.ShowPowerLimit;
-                _osdShowFclkSync = _overlayForm.ShowFclkSync;
-                _osdShowFrametimeMs = _overlayForm.ShowFrametimeMs;
-                _osdShowFpsAvg = _overlayForm.ShowFpsAvg;
+                _osd.ReadFromOverlay(_overlayForm);
             }
 
-            if (_osdOpacitySlider != null && _osdOpacitySlider.Value != _osdOpacityPct)
-                _osdOpacitySlider.Value = Math.Max(_osdOpacitySlider.Minimum, Math.Min(_osdOpacitySlider.Maximum, _osdOpacityPct));
+            if (_osdOpacitySlider != null && _osdOpacitySlider.Value != _osd.OpacityPct)
+                _osdOpacitySlider.Value = Math.Max(_osdOpacitySlider.Minimum, Math.Min(_osdOpacitySlider.Maximum, _osd.OpacityPct));
             if (_osdOpacityPctLabel != null)
-                _osdOpacityPctLabel.Text = string.Format("{0}%", _osdOpacityPct);
+                _osdOpacityPctLabel.Text = string.Format("{0}%", _osd.OpacityPct);
 
-            if (_osdShowCpuCb != null) _osdShowCpuCb.Checked = _osdShowCpu;
-            if (_osdShowGpuCb != null) _osdShowGpuCb.Checked = _osdShowGpu;
-            if (_osdShowNvmeCb != null) _osdShowNvmeCb.Checked = _osdShowNvme;
-            if (_osdShowPowerCb != null) _osdShowPowerCb.Checked = _osdShowPower;
-            if (_osdShowRamCb != null) _osdShowRamCb.Checked = _osdShowRam;
-            if (_osdShowVrmCurrentCb != null) _osdShowVrmCurrentCb.Checked = _osdShowVrmCurrent;
-            if (_osdShowAmbientCb != null) _osdShowAmbientCb.Checked = _osdShowAmbient;
-            if (_osdShowFabricClockCb != null) _osdShowFabricClockCb.Checked = _osdShowFabricClock;
-            if (_osdShowNpuCb != null) _osdShowNpuCb.Checked = _osdShowNpu;
-            if (_osdShowFpsCb != null) _osdShowFpsCb.Checked = _osdShowFps;
-            if (_osdShowLowsCb != null) _osdShowLowsCb.Checked = _osdShowLows;
-            if (_osdShowGpuLoadCb != null) _osdShowGpuLoadCb.Checked = _osdShowGpuLoad;
-            if (_osdShowApuFanCb != null) _osdShowApuFanCb.Checked = _osdShowApuFan;
+            if (_osdShowCpuCb != null) _osdShowCpuCb.Checked = _osd.ShowCpu;
+            if (_osdShowGpuCb != null) _osdShowGpuCb.Checked = _osd.ShowGpu;
+            if (_osdShowNvmeCb != null) _osdShowNvmeCb.Checked = _osd.ShowNvme;
+            if (_osdShowPowerCb != null) _osdShowPowerCb.Checked = _osd.ShowPower;
+            if (_osdShowRamCb != null) _osdShowRamCb.Checked = _osd.ShowRam;
+            if (_osdShowVrmCurrentCb != null) _osdShowVrmCurrentCb.Checked = _osd.ShowVrmCurrent;
+            if (_osdShowAmbientCb != null) _osdShowAmbientCb.Checked = _osd.ShowAmbient;
+            if (_osdShowFabricClockCb != null) _osdShowFabricClockCb.Checked = _osd.ShowFabricClock;
+            if (_osdShowNpuCb != null) _osdShowNpuCb.Checked = _osd.ShowNpu;
+            if (_osdShowFpsCb != null) _osdShowFpsCb.Checked = _osd.ShowFps;
+            if (_osdShowLowsCb != null) _osdShowLowsCb.Checked = _osd.ShowLows;
+            if (_osdShowGpuLoadCb != null) _osdShowGpuLoadCb.Checked = _osd.ShowGpuLoad;
+            if (_osdShowApuFanCb != null) _osdShowApuFanCb.Checked = _osd.ShowApuFan;
             if (_osdShowSysFanCb != null)
             {
-                _osdShowSysFanCb.Checked = _osdShowSysFan && _hasDualFans;
+                _osdShowSysFanCb.Checked = _osd.ShowSysFan && _hasDualFans;
                 _osdShowSysFanCb.Enabled = _hasDualFans;
                 _osdShowSysFanCb.Text = _hasDualFans ? "Sys Fan RPM" : "Sys Fan RPM (N/A)";
             }
-            if (_osdShowModeCb != null) _osdShowModeCb.Checked = _osdShowMode;
-            if (_osdShowPeaksCb != null) _osdShowPeaksCb.Checked = _osdShowPeaks;
+            if (_osdShowModeCb != null) _osdShowModeCb.Checked = _osd.ShowMode;
+            if (_osdShowPeaksCb != null) _osdShowPeaksCb.Checked = _osd.ShowPeaks;
             if (_osdTrackerModeCombo != null)
             {
-                int tmIdx = Math.Max(0, Math.Min(3, _osdPeakTrackerMode));
+                int tmIdx = Math.Max(0, Math.Min(3, _osd.PeakTrackerMode));
                 if (_osdTrackerModeCombo.SelectedIndex != tmIdx) _osdTrackerModeCombo.SelectedIndex = tmIdx;
-                _osdTrackerModeCombo.Enabled = _osdShowPeaks;
+                _osdTrackerModeCombo.Enabled = _osd.ShowPeaks;
             }
-            if (_osdShowRadeonCb != null) _osdShowRadeonCb.Checked = _osdShowRadeon;
-            if (_osdShowRadeonExtTagsCb != null) _osdShowRadeonExtTagsCb.Checked = _osdShowRadeonExtTags;
-            if (_osdShowDriverVerCb != null) _osdShowDriverVerCb.Checked = _osdShowDriverVer;
-            if (_osdShowClocksCb != null) _osdShowClocksCb.Checked = _osdShowClocks;
-            if (_osdShowGameNameCb != null) _osdShowGameNameCb.Checked = _osdShowGameName;
-            if (_osdSparklineBgCb != null) _osdSparklineBgCb.Checked = _osdSparklineBg;
-            if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = _osdShowLiveTrend;
-            if (_osdShowFpsGraphCb != null) _osdShowFpsGraphCb.Checked = _osdShowFpsGraph;
-            if (_osdPlotFpsOnTrendCb != null) _osdPlotFpsOnTrendCb.Checked = _osdPlotFpsOnTrend;
-            if (_osdDfGraphStyleCb != null) _osdDfGraphStyleCb.Checked = _osdDfGraphStyle;
-            if (_osdDfGraphFirstCb != null) _osdDfGraphFirstCb.Checked = _osdDfGraphFirst;
-            if (_osdShowRamTempCb != null) _osdShowRamTempCb.Checked = _osdShowRamTemp;
-            if (_osdShowRamDualSticksCb != null) _osdShowRamDualSticksCb.Checked = _osdShowRamDualSticks;
-            if (_osdShowRamSpreadCb != null) _osdShowRamSpreadCb.Checked = _osdShowRamSpread;
-            if (_osdShowRamLoadCb != null) _osdShowRamLoadCb.Checked = _osdShowRamLoad;
-            if (_osdShowRamPowerCb != null) _osdShowRamPowerCb.Checked = _osdShowRamPower;
-            if (_osdShowRamClockCb != null) _osdShowRamClockCb.Checked = _osdShowRamClock;
-            if (_osdShowNvmePowerCb != null) _osdShowNvmePowerCb.Checked = _osdShowNvmePower;
-            if (_osdShowNvmeIoCb != null) _osdShowNvmeIoCb.Checked = _osdShowNvmeIo;
-            if (_osdShowNvmeDualCb != null) _osdShowNvmeDualCb.Checked = _osdShowNvmeDual;
-            if (_osdShowCpuLoadCb != null) _osdShowCpuLoadCb.Checked = _osdShowCpuLoad;
-            if (_osdShowGpuHotspotCb != null) _osdShowGpuHotspotCb.Checked = _osdShowGpuHotspot;
-            if (_osdShowPowerLimitCb != null) _osdShowPowerLimitCb.Checked = _osdShowPowerLimit;
-            if (_osdShowFclkSyncCb != null) _osdShowFclkSyncCb.Checked = _osdShowFclkSync;
-            if (_osdShowFrametimeMsCb != null) _osdShowFrametimeMsCb.Checked = _osdShowFrametimeMs;
-            if (_osdShowFpsAvgCb != null) _osdShowFpsAvgCb.Checked = _osdShowFpsAvg;
-            if (_osdMatchThemeCb != null) _osdMatchThemeCb.Checked = _osdMatchTheme;
+            if (_osdShowRadeonCb != null) _osdShowRadeonCb.Checked = _osd.ShowRadeon;
+            if (_osdShowRadeonExtTagsCb != null) _osdShowRadeonExtTagsCb.Checked = _osd.ShowRadeonExtTags;
+            if (_osdShowDriverVerCb != null) _osdShowDriverVerCb.Checked = _osd.ShowDriverVer;
+            if (_osdShowClocksCb != null) _osdShowClocksCb.Checked = _osd.ShowClocks;
+            if (_osdShowGameNameCb != null) _osdShowGameNameCb.Checked = _osd.ShowGameName;
+            if (_osdSparklineBgCb != null) _osdSparklineBgCb.Checked = _osd.SparklineBg;
+            if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = _osd.ShowLiveTrend;
+            if (_osdShowFpsGraphCb != null) _osdShowFpsGraphCb.Checked = _osd.ShowFpsGraph;
+            if (_osdPlotFpsOnTrendCb != null) _osdPlotFpsOnTrendCb.Checked = _osd.PlotFpsOnTrend;
+            if (_osdDfGraphStyleCb != null) _osdDfGraphStyleCb.Checked = _osd.DfGraphStyle;
+            if (_osdDfGraphFirstCb != null) _osdDfGraphFirstCb.Checked = _osd.DfGraphFirst;
+            if (_osdShowRamTempCb != null) _osdShowRamTempCb.Checked = _osd.ShowRamTemp;
+            if (_osdShowRamDualSticksCb != null) _osdShowRamDualSticksCb.Checked = _osd.ShowRamDualSticks;
+            if (_osdShowRamSpreadCb != null) _osdShowRamSpreadCb.Checked = _osd.ShowRamSpread;
+            if (_osdShowRamLoadCb != null) _osdShowRamLoadCb.Checked = _osd.ShowRamLoad;
+            if (_osdShowRamPowerCb != null) _osdShowRamPowerCb.Checked = _osd.ShowRamPower;
+            if (_osdShowRamClockCb != null) _osdShowRamClockCb.Checked = _osd.ShowRamClock;
+            if (_osdShowNvmePowerCb != null) _osdShowNvmePowerCb.Checked = _osd.ShowNvmePower;
+            if (_osdShowNvmeIoCb != null) _osdShowNvmeIoCb.Checked = _osd.ShowNvmeIo;
+            if (_osdShowNvmeDualCb != null) _osdShowNvmeDualCb.Checked = _osd.ShowNvmeDual;
+            if (_osdShowCpuLoadCb != null) _osdShowCpuLoadCb.Checked = _osd.ShowCpuLoad;
+            if (_osdShowGpuHotspotCb != null) _osdShowGpuHotspotCb.Checked = _osd.ShowGpuHotspot;
+            if (_osdShowPowerLimitCb != null) _osdShowPowerLimitCb.Checked = _osd.ShowPowerLimit;
+            if (_osdShowFclkSyncCb != null) _osdShowFclkSyncCb.Checked = _osd.ShowFclkSync;
+            if (_osdShowFrametimeMsCb != null) _osdShowFrametimeMsCb.Checked = _osd.ShowFrametimeMs;
+            if (_osdShowFpsAvgCb != null) _osdShowFpsAvgCb.Checked = _osd.ShowFpsAvg;
+            if (_osdMatchThemeCb != null) _osdMatchThemeCb.Checked = _osd.MatchTheme;
 
             if (_osdToggleOverlayBtn != null)
                 _osdToggleOverlayBtn.Text = _showOverlay ? "● OSD Active" : "○ OSD Hidden";
@@ -1499,32 +1419,32 @@ namespace MiniFanControl
             switch (corner)
             {
                 case 0: // Top-Left
-                    _overlayX = wa.Left + margin;
-                    _overlayY = wa.Top + margin;
+                    _osd.OverlayX = wa.Left + margin;
+                    _osd.OverlayY = wa.Top + margin;
                     break;
                 case 1: // Top-Right
-                    _overlayX = wa.Right - w - margin;
-                    _overlayY = wa.Top + margin;
+                    _osd.OverlayX = wa.Right - w - margin;
+                    _osd.OverlayY = wa.Top + margin;
                     break;
                 case 2: // Bottom-Left
-                    _overlayX = wa.Left + margin;
-                    _overlayY = Math.Max(wa.Top + margin, wa.Bottom - h - margin);
+                    _osd.OverlayX = wa.Left + margin;
+                    _osd.OverlayY = Math.Max(wa.Top + margin, wa.Bottom - h - margin);
                     break;
                 case 3: // Bottom-Right
-                    _overlayX = wa.Right - w - margin;
-                    _overlayY = Math.Max(wa.Top + margin, wa.Bottom - h - margin);
+                    _osd.OverlayX = wa.Right - w - margin;
+                    _osd.OverlayY = Math.Max(wa.Top + margin, wa.Bottom - h - margin);
                     break;
                 case 4: // Center-Top
-                    _overlayX = wa.Left + Math.Max(0, (wa.Width - w) / 2);
-                    _overlayY = wa.Top + margin;
+                    _osd.OverlayX = wa.Left + Math.Max(0, (wa.Width - w) / 2);
+                    _osd.OverlayY = wa.Top + margin;
                     break;
                 case 5: // Center-Bottom
-                    _overlayX = wa.Left + Math.Max(0, (wa.Width - w) / 2);
-                    _overlayY = Math.Max(wa.Top + margin, wa.Bottom - h - margin);
+                    _osd.OverlayX = wa.Left + Math.Max(0, (wa.Width - w) / 2);
+                    _osd.OverlayY = Math.Max(wa.Top + margin, wa.Bottom - h - margin);
                     break;
             }
 
-            _overlayForm.Location = new Point(_overlayX, _overlayY);
+            _overlayForm.Location = new Point(_osd.OverlayX, _osd.OverlayY);
             SaveSettings();
             _overlayForm.Invalidate();
         }
@@ -1667,14 +1587,7 @@ namespace MiniFanControl
 
             UpdateCurveTabStyles();
             UpdateOsdStudioStyles();
-            if (_cpuTempBox != null) _cpuTempBox.Invalidate();
-            if (_gpuTempBox != null) _gpuTempBox.Invalidate();
-            if (_nvmeTempBox != null) _nvmeTempBox.Invalidate();
-            if (_pwrBox != null) _pwrBox.Invalidate();
-            if (_ramPowerBox != null) _ramPowerBox.Invalidate();
-            if (_ambientBox != null) _ambientBox.Invalidate();
-            if (_fan1Box != null) _fan1Box.Invalidate();
-            if (_fan2Box != null) _fan2Box.Invalidate();
+            InvalidateAllMetricBoxes();
         }
 
         private void SetOverlayVisible(bool visible)
@@ -1696,7 +1609,7 @@ namespace MiniFanControl
                 }
             }
             SaveSettings();
-            _driversMenu = CreateDriversAndToolsMenu();
+            RebuildDriversMenu();
             RefreshStatus();
         }
 
@@ -1708,20 +1621,30 @@ namespace MiniFanControl
                 _overlayForm.ApplyClickThrough(locked);
             }
             SaveSettings();
+            RebuildDriversMenu();
+        }
+
+        private void RebuildDriversMenu()
+        {
+            ContextMenu oldMenu = _driversMenu;
             _driversMenu = CreateDriversAndToolsMenu();
+            if (oldMenu != null)
+            {
+                try { oldMenu.Dispose(); } catch { }
+            }
         }
 
         private void ToggleOverlayLayoutStyle()
         {
-            _overlayVertical = !_overlayVertical;
+            _osd.VerticalLayout = !_osd.VerticalLayout;
             if (_overlayForm != null)
             {
-                _overlayForm.VerticalLayout = _overlayVertical;
+                _overlayForm.VerticalLayout = _osd.VerticalLayout;
                 _overlayForm.UpdateDimensions();
                 _overlayForm.Invalidate();
             }
             SaveSettings();
-            _driversMenu = CreateDriversAndToolsMenu();
+            RebuildDriversMenu();
         }
 
         private static void OpenUrlSafe(string url)
@@ -1880,7 +1803,7 @@ namespace MiniFanControl
                 _hwSubLabel.Text = string.Format("EC Map: {0} • Driver: {1} • Global\\Access_EC Mutex • 64-bit", customProf.DisplayName, drvInfo);
             }
             SaveSettings();
-            _driversMenu = CreateDriversAndToolsMenu();
+            RebuildDriversMenu();
             _statusBarLabel.Text = string.Format("✓ Active Profile: {0} (Unlocked)", customProf.DisplayName);
             RefreshStatus();
         }
@@ -1956,7 +1879,7 @@ namespace MiniFanControl
 
         public void RunGuiFanCalibration()
         {
-            _hwWorkerPaused = true;
+            if (_controller != null) _controller.PauseForSuspend();
             bool timerWasEnabled = _refreshTimer != null && _refreshTimer.Enabled;
             if (_refreshTimer != null) _refreshTimer.Stop();
 
@@ -1983,13 +1906,7 @@ namespace MiniFanControl
                                 _ramPowerLabel.Text = st.RamPowerWatts > 0 ? string.Format("~{0:F1}W", st.RamPowerWatts) : "--W";
                             _fan1RpmLabel.Text = string.Format("{0} RPM ↻", st.Fan1Rpm);
                             _fan2RpmLabel.Text = _hasDualFans ? (st.Fan2Rpm > 0 ? string.Format("{0} RPM •", st.Fan2Rpm) : "-- RPM") : "N/A (1-Fan Mode)";
-                            if (_cpuTempBox != null) _cpuTempBox.Invalidate();
-                            if (_gpuTempBox != null) _gpuTempBox.Invalidate();
-                            if (_pwrBox != null) _pwrBox.Invalidate();
-                            if (_nvmeTempBox != null) _nvmeTempBox.Invalidate();
-                            if (_ramPowerBox != null) _ramPowerBox.Invalidate();
-                            if (_fan1Box != null) _fan1Box.Invalidate();
-                            if (_fan2Box != null) _fan2Box.Invalidate();
+                            InvalidateAllMetricBoxes();
                             UpdateTrayIcons(st.CpuTemp, st.GpuTemp);
                             if (_overlayForm != null && _showOverlay)
                                 _overlayForm.UpdateMetrics(st, "Calib", _hasDualFans);
@@ -2008,13 +1925,11 @@ namespace MiniFanControl
                             ? res.CalibratedAt
                             : DateTime.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 
-                        _lastAppliedApuPct = -1;
-                        _lastAppliedSysPct = -1;
-                        _lastAppliedEcMode = -1;
+                        if (_controller != null) _controller.InvalidateAppliedCache();
                         ApplyFanLayoutMode();
                         UpdateCalibrationBadge();
                         SaveSettings();
-                        _driversMenu = CreateDriversAndToolsMenu();
+                        RebuildDriversMenu();
                     }
                 }
             }
@@ -2025,14 +1940,17 @@ namespace MiniFanControl
             }
             finally
             {
-                _hwWorkerPaused = false;
+                if (_controller != null) _controller.ResumeFromSuspend(false);
                 if (_refreshTimer != null && timerWasEnabled)
                     _refreshTimer.Start();
-                _hwWakeEvent.Set();
             }
         }
 
-        private bool _showSetupAssistant = true;
+        private bool _showSetupAssistant
+        {
+            get { return _settings.ShowSetupAssistant; }
+            set { _settings.ShowSetupAssistant = value; }
+        }
 
         internal void ShowSetupAssistantDialog(bool manual)
         {
@@ -2048,12 +1966,10 @@ namespace MiniFanControl
         private void ToggleDualFanMode()
         {
             _hasDualFans = !_hasDualFans;
-            _lastAppliedApuPct = -1;
-            _lastAppliedSysPct = -1;
-            _lastAppliedEcMode = -1;
+            if (_controller != null) _controller.InvalidateAppliedCache();
             ApplyFanLayoutMode();
             SaveSettings();
-            _driversMenu = CreateDriversAndToolsMenu();
+            RebuildDriversMenu();
             RefreshStatus();
         }
 
@@ -2174,7 +2090,7 @@ namespace MiniFanControl
                 if (_showOverlayCb != null) _showOverlayCb.Checked = !_showOverlayCb.Checked;
                 else SetOverlayVisible(!_showOverlay);
             });
-            string osdStyleLabel = _overlayVertical
+            string osdStyleLabel = _osd.VerticalLayout
                 ? "OSD Layout: Vertical Stack — Click for Horizontal Bar"
                 : "OSD Layout: Horizontal Bar — Click for Vertical Stack";
             menu.MenuItems.Add(osdStyleLabel, (s, e) => ToggleOverlayLayoutStyle());
@@ -2483,65 +2399,17 @@ namespace MiniFanControl
 
         private string GetSettingsPath()
         {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            string primary = Path.Combine(baseDir, "minifancontrol.cfg");
-            string legacy = Path.Combine(baseDir, "k12-settings.cfg");
-
-            // 1. If configuration file exists in the application directory (portable mode), use it
-            if (File.Exists(primary)) return primary;
-            if (File.Exists(legacy)) return legacy;
-
-            // 2. Determine LocalAppData path (standard for Windows desktop applications)
-            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string appDataDir = Path.Combine(localAppData, "MiniFanControl");
-            string appDataConfig = Path.Combine(appDataDir, "minifancontrol.cfg");
-            if (File.Exists(appDataConfig)) return appDataConfig;
-
-            // 3. If running inside Program Files, write to LocalAppData to avoid UAC / permission failures
-            string progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-            string progFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-            bool inProgramFiles = (!string.IsNullOrEmpty(progFiles) && baseDir.StartsWith(progFiles, StringComparison.OrdinalIgnoreCase)) ||
-                                  (!string.IsNullOrEmpty(progFilesX86) && baseDir.StartsWith(progFilesX86, StringComparison.OrdinalIgnoreCase));
-
-            if (inProgramFiles)
-            {
-                try
-                {
-                    if (!Directory.Exists(appDataDir)) Directory.CreateDirectory(appDataDir);
-                    return appDataConfig;
-                }
-                catch { }
-            }
-
-            return primary;
+            return AppSettings.GetSettingsPath();
         }
 
         public static CurvePoint[] ParsePointList(string str)
         {
-            List<CurvePoint> pts = new List<CurvePoint>();
-            foreach (string tok in str.Split(';'))
-            {
-                string[] kv = tok.Split(':');
-                int t, p;
-                if (kv.Length == 2 && int.TryParse(kv[0], out t) && int.TryParse(kv[1], out p))
-                {
-                    pts.Add(new CurvePoint(
-                        Math.Max(FanCurveCanvas.MIN_TEMP, Math.Min(FanCurveCanvas.MAX_TEMP, t)),
-                        Math.Max(0, Math.Min(100, p))));
-                }
-            }
-            return pts.ToArray();
+            return AppSettings.ParsePointList(str);
         }
 
         public static string FormatPointList(CurvePoint[] pts)
         {
-            List<string> list = new List<string>();
-            if (pts != null)
-            {
-                foreach (CurvePoint pt in pts)
-                    list.Add(string.Format(CultureInfo.InvariantCulture, "{0}:{1}", pt.Temp, pt.Pct));
-            }
-            return string.Join(";", list.ToArray());
+            return AppSettings.FormatPointList(pts);
         }
 
         private FanCurveProfile FindProfileByName(string name)
@@ -2562,287 +2430,23 @@ namespace MiniFanControl
 
         public static bool TryParseHexOrDecByte(string s, out byte val)
         {
-            val = 0;
-            if (string.IsNullOrEmpty(s)) return false;
-            s = s.Trim();
-            if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                return byte.TryParse(s.Substring(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out val);
-            return byte.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out val);
+            return AppSettings.TryParseHexOrDecByte(s, out val);
         }
 
         private void LoadSettings()
         {
             if (_isUnitTest) return;
-            try
-            {
-                string path = GetSettingsPath();
-                if (!File.Exists(path)) return;
-                string legacyCustomName = null;
-                string apuModeName = null;
-                string sysModeName = null;
-                DeviceProfile prof = _sysInfo != null ? _sysInfo.MatchedProfile : DeviceProfile.KnownProfiles[0];
-
-                foreach (string rawLine in File.ReadAllLines(path))
-                {
-                    string line = rawLine.Trim();
-                    if (string.IsNullOrEmpty(line)) continue;
-
-                    if (line.StartsWith("CustomProfile=", StringComparison.OrdinalIgnoreCase))
-                    {
-                        string payload = line.Substring("CustomProfile=".Length);
-                        string[] segments = payload.Split('|');
-                        if (segments.Length >= 2)
-                        {
-                            string name = segments[0].Trim();
-                            CurvePoint[] apuPts = ParsePointList(segments[1]);
-                            CurvePoint[] sysPts = segments.Length >= 3 ? ParsePointList(segments[2]) : FanCurveProfile.ClonePoints(apuPts);
-                            if (!string.IsNullOrEmpty(name) && apuPts.Length >= 2)
-                            {
-                                if (sysPts.Length < 2) sysPts = FanCurveProfile.ClonePoints(apuPts);
-                                _customProfiles.Add(new FanCurveProfile(name, false, -1, apuPts, sysPts));
-                            }
-                        }
-                        continue;
-                    }
-
-                    string[] parts = line.Split('=');
-                    if (parts.Length != 2) continue;
-                    string k = parts[0].Trim();
-                    string v = parts[1].Trim();
-                    byte regByte;
-                    int intVal;
-                    if (k == "ShowCpuTray") _showCpuTray = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "ShowGpuTray") _showGpuTray = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "ShowOverlay") _showOverlay = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "LockOverlay") _lockOverlay = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OverlayVertical") _overlayVertical = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OverlayX" && int.TryParse(v, out intVal)) _overlayX = Math.Max(0, Math.Min(3800, intVal));
-                    else if (k == "OverlayY" && int.TryParse(v, out intVal)) _overlayY = Math.Max(0, Math.Min(2100, intVal));
-                    else if (k == "OsdScaleTier" && int.TryParse(v, out intVal)) _osdScaleTier = Math.Max(0, Math.Min(3, intVal));
-                    else if (k == "OsdGraphMode" && int.TryParse(v, out intVal)) _osdGraphMode = Math.Max(0, Math.Min(3, intVal));
-                    else if (k == "OsdGraphHeight" && int.TryParse(v, out intVal))
-                    {
-                        if (intVal <= 85) _osdGraphHeight = 75;
-                        else if (intVal <= 120) _osdGraphHeight = 105;
-                        else if (intVal <= 160) _osdGraphHeight = 140;
-                        else _osdGraphHeight = 180;
-                    }
-                    else if (k == "OsdOpacityPct" && int.TryParse(v, out intVal)) _osdOpacityPct = Math.Max(35, Math.Min(100, intVal));
-                    else if (k == "OsdMatchTheme") _osdMatchTheme = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowCpu") _osdShowCpu = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowGpu") _osdShowGpu = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowNvme") _osdShowNvme = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowPower") _osdShowPower = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowRam") _osdShowRam = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowVrmCurrent") _osdShowVrmCurrent = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowAmbient") _osdShowAmbient = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowFabricClock") _osdShowFabricClock = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowNpu") _osdShowNpu = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "Language")
-                    {
-                        try
-                        {
-                            AppLanguage parsedLang = (AppLanguage)Enum.Parse(typeof(AppLanguage), v, true);
-                            Loc.SetLanguage(parsedLang);
-                        }
-                        catch { }
-                    }
-                    else if (k == "OsdShowFps") _osdShowFps = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowLows") _osdShowLows = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowGpuLoad") _osdShowGpuLoad = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowApuFan") _osdShowApuFan = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowSysFan") _osdShowSysFan = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowMode") _osdShowMode = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowPeaks") _osdShowPeaks = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdPeakTrackerMode" && int.TryParse(v, out intVal)) _osdPeakTrackerMode = Math.Max(0, Math.Min(3, intVal));
-                    else if (k == "OsdShowRadeon") _osdShowRadeon = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowDriverVer") _osdShowDriverVer = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowClocks") _osdShowClocks = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowGameName") _osdShowGameName = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdSparklineBg") _osdSparklineBg = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowLiveTrend") _osdShowLiveTrend = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowFpsGraph") _osdShowFpsGraph = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdPlotFpsOnTrend") _osdPlotFpsOnTrend = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdDfGraphStyle") _osdDfGraphStyle = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdDfGraphFirst") _osdDfGraphFirst = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowRamTemp") _osdShowRamTemp = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowRamDualSticks") _osdShowRamDualSticks = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowRamSpread") _osdShowRamSpread = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowRamLoad") _osdShowRamLoad = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowRamPower") _osdShowRamPower = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowRamClock") _osdShowRamClock = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowNvmePower") _osdShowNvmePower = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowNvmeIo") _osdShowNvmeIo = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowNvmeDual") _osdShowNvmeDual = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowCpuLoad") _osdShowCpuLoad = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowGpuHotspot") _osdShowGpuHotspot = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowPowerLimit") _osdShowPowerLimit = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowFclkSync") _osdShowFclkSync = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowFrametimeMs") _osdShowFrametimeMs = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowFpsAvg") _osdShowFpsAvg = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "OsdShowRadeonExtTags") _osdShowRadeonExtTags = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "RestoreAutoOnExit") _restoreAutoOnExit = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "CloseToTray") _closeToTray = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "UseFahrenheit") _useFahrenheit = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "SilentSleepStandby") _silentSleepStandby = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "AlwaysOnTop") _alwaysOnTop = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "EnableHotkeys") _enableGlobalHotkeys = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "HasDualFans") _hasDualFans = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "ShowSetupAssistant") _showSetupAssistant = (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
-                    else if (k == "HardwareProfile" || k == "ProfileId")
-                    {
-                        _profileOverrideId = v;
-                        if (!v.Equals("auto", StringComparison.OrdinalIgnoreCase))
-                        {
-                            DeviceProfile explicitProf = DeviceProfile.FindProfile(v);
-                            if (explicitProf != null)
-                            {
-                                prof = explicitProf;
-                                if (_sysInfo != null) _sysInfo.MatchedProfile = explicitProf;
-                                if (_hw != null) _hw.Profile = explicitProf;
-                            }
-                        }
-                    }
-                    else if (k == "RefreshIntervalMs" && int.TryParse(v, out intVal)) _refreshIntervalMs = Math.Max(100, Math.Min(10000, intVal));
-                    else if (k == "ApuMinSpinPct" && int.TryParse(v, out intVal)) FanCurveProfile.ApuMinSpinPct = Math.Max(18, Math.Min(45, intVal));
-                    else if (k == "SysMinSpinPct" && int.TryParse(v, out intVal)) FanCurveProfile.SysMinSpinPct = Math.Max(18, Math.Min(45, intVal));
-                    else if (k == "ApuMaxRpm" && int.TryParse(v, out intVal)) FanCurveProfile.ApuMaxRpm = Math.Max(500, Math.Min(6000, intVal));
-                    else if (k == "SysMaxRpm" && int.TryParse(v, out intVal)) FanCurveProfile.SysMaxRpm = Math.Max(0, Math.Min(6000, intVal));
-                    else if (k == "LastCalibratedDate") FanCurveProfile.LastCalibratedDate = v;
-                    else if (k == "Theme")
-                    {
-                        int t;
-                        if (int.TryParse(v, out t) && t >= 0 && t <= 4)
-                            _themePref = (ThemePreference)t;
-                    }
-                    else if (k == "ActiveCustom") legacyCustomName = v;
-                    else if (k == "ApuMode") apuModeName = v;
-                    else if (k == "SysMode") sysModeName = v;
-                    else if (k == "RegModeStatus" && TryParseHexOrDecByte(v, out regByte)) prof.RegModeStatus = regByte;
-                    else if (k == "RegModeCmd" && TryParseHexOrDecByte(v, out regByte)) prof.RegModeCmd = regByte;
-                    else if (k == "RegFan1Ctrl" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan1Ctrl = regByte;
-                    else if (k == "RegFan2Ctrl" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan2Ctrl = regByte;
-                    else if (k == "RegFan1Hi" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan1Hi = regByte;
-                    else if (k == "RegFan1Lo" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan1Lo = regByte;
-                    else if (k == "RegFan2Hi" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan2Hi = regByte;
-                    else if (k == "RegFan2Lo" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan2Lo = regByte;
-                    else if (k == "RegCpuTemp" && TryParseHexOrDecByte(v, out regByte)) prof.RegCpuTemp = regByte;
-                    else if (k == "RegGpuTemp" && TryParseHexOrDecByte(v, out regByte)) prof.RegGpuTemp = regByte;
-                    else if (k == "EcAccess" || k == "AccessMethod")
-                    {
-                        if (v.Equals("PortIo", StringComparison.OrdinalIgnoreCase) || v.Equals("Port", StringComparison.OrdinalIgnoreCase) || v.Equals("0x62", StringComparison.OrdinalIgnoreCase))
-                            _hw.AccessMethod = HardwareBackend.EcAccessMethod.PortIo62;
-                        else if (v.Equals("PortIo6C", StringComparison.OrdinalIgnoreCase) || v.Equals("0x6C", StringComparison.OrdinalIgnoreCase))
-                            _hw.AccessMethod = HardwareBackend.EcAccessMethod.PortIo6C;
-                        else if (v.Equals("Mmio", StringComparison.OrdinalIgnoreCase))
-                            _hw.AccessMethod = HardwareBackend.EcAccessMethod.Mmio;
-                    }
-                }
-
-                FanCurveProfile apuProf = FindProfileByName(apuModeName) ?? FindProfileByName(legacyCustomName);
-                FanCurveProfile sysProf = FindProfileByName(sysModeName) ?? FindProfileByName(legacyCustomName);
-                if (apuProf != null) _apuProfile = apuProf;
-                if (sysProf != null) _sysProfile = sysProf;
-            }
-            catch { }
+            _settings.Load(_sysInfo, _hw, _customProfiles);
+            FanCurveProfile apuProf = FindProfileByName(_settings.ApuModeName) ?? FindProfileByName(_settings.LegacyCustomName);
+            FanCurveProfile sysProf = FindProfileByName(_settings.SysModeName) ?? FindProfileByName(_settings.LegacyCustomName);
+            if (apuProf != null) _apuProfile = apuProf;
+            if (sysProf != null) _sysProfile = sysProf;
         }
 
         private void SaveSettings()
         {
-            try
-            {
-                List<string> lines = new List<string>();
-                lines.Add("ShowCpuTray=" + (_showCpuTray ? "1" : "0"));
-                lines.Add("ShowGpuTray=" + (_showGpuTray ? "1" : "0"));
-                lines.Add("ShowOverlay=" + (_showOverlay ? "1" : "0"));
-                lines.Add("LockOverlay=" + (_lockOverlay ? "1" : "0"));
-                lines.Add("OverlayVertical=" + (_overlayVertical ? "1" : "0"));
-                lines.Add("OverlayX=" + _overlayX);
-                lines.Add("OverlayY=" + _overlayY);
-                lines.Add("OsdScaleTier=" + _osdScaleTier);
-                lines.Add("OsdGraphMode=" + _osdGraphMode);
-                lines.Add("OsdGraphHeight=" + _osdGraphHeight);
-                lines.Add("OsdOpacityPct=" + _osdOpacityPct);
-                lines.Add("OsdMatchTheme=" + (_osdMatchTheme ? "1" : "0"));
-                lines.Add("OsdShowCpu=" + (_osdShowCpu ? "1" : "0"));
-                lines.Add("OsdShowGpu=" + (_osdShowGpu ? "1" : "0"));
-                lines.Add("OsdShowNvme=" + (_osdShowNvme ? "1" : "0"));
-                lines.Add("OsdShowPower=" + (_osdShowPower ? "1" : "0"));
-                lines.Add("OsdShowRam=" + (_osdShowRam ? "1" : "0"));
-                lines.Add("OsdShowVrmCurrent=" + (_osdShowVrmCurrent ? "1" : "0"));
-                lines.Add("OsdShowAmbient=" + (_osdShowAmbient ? "1" : "0"));
-                lines.Add("OsdShowFabricClock=" + (_osdShowFabricClock ? "1" : "0"));
-                lines.Add("OsdShowNpu=" + (_osdShowNpu ? "1" : "0"));
-                lines.Add("OsdShowFps=" + (_osdShowFps ? "1" : "0"));
-                lines.Add("OsdShowLows=" + (_osdShowLows ? "1" : "0"));
-                lines.Add("OsdShowGpuLoad=" + (_osdShowGpuLoad ? "1" : "0"));
-                lines.Add("OsdShowApuFan=" + (_osdShowApuFan ? "1" : "0"));
-                lines.Add("OsdShowSysFan=" + (_osdShowSysFan ? "1" : "0"));
-                lines.Add("OsdShowMode=" + (_osdShowMode ? "1" : "0"));
-                lines.Add("OsdShowPeaks=" + (_osdShowPeaks ? "1" : "0"));
-                lines.Add("OsdPeakTrackerMode=" + _osdPeakTrackerMode);
-                lines.Add("OsdShowRadeon=" + (_osdShowRadeon ? "1" : "0"));
-                lines.Add("OsdShowDriverVer=" + (_osdShowDriverVer ? "1" : "0"));
-                lines.Add("OsdShowClocks=" + (_osdShowClocks ? "1" : "0"));
-                lines.Add("OsdShowGameName=" + (_osdShowGameName ? "1" : "0"));
-                lines.Add("OsdSparklineBg=" + (_osdSparklineBg ? "1" : "0"));
-                lines.Add("OsdShowLiveTrend=" + (_osdShowLiveTrend ? "1" : "0"));
-                lines.Add("OsdShowFpsGraph=" + (_osdShowFpsGraph ? "1" : "0"));
-                lines.Add("OsdPlotFpsOnTrend=" + (_osdPlotFpsOnTrend ? "1" : "0"));
-                lines.Add("OsdDfGraphStyle=" + (_osdDfGraphStyle ? "1" : "0"));
-                lines.Add("OsdDfGraphFirst=" + (_osdDfGraphFirst ? "1" : "0"));
-                lines.Add("OsdShowRamTemp=" + (_osdShowRamTemp ? "1" : "0"));
-                lines.Add("OsdShowRamDualSticks=" + (_osdShowRamDualSticks ? "1" : "0"));
-                lines.Add("OsdShowRamSpread=" + (_osdShowRamSpread ? "1" : "0"));
-                lines.Add("OsdShowRamLoad=" + (_osdShowRamLoad ? "1" : "0"));
-                lines.Add("OsdShowRamPower=" + (_osdShowRamPower ? "1" : "0"));
-                lines.Add("OsdShowRamClock=" + (_osdShowRamClock ? "1" : "0"));
-                lines.Add("OsdShowNvmePower=" + (_osdShowNvmePower ? "1" : "0"));
-                lines.Add("OsdShowNvmeIo=" + (_osdShowNvmeIo ? "1" : "0"));
-                lines.Add("OsdShowNvmeDual=" + (_osdShowNvmeDual ? "1" : "0"));
-                lines.Add("OsdShowCpuLoad=" + (_osdShowCpuLoad ? "1" : "0"));
-                lines.Add("OsdShowGpuHotspot=" + (_osdShowGpuHotspot ? "1" : "0"));
-                lines.Add("OsdShowPowerLimit=" + (_osdShowPowerLimit ? "1" : "0"));
-                lines.Add("OsdShowFclkSync=" + (_osdShowFclkSync ? "1" : "0"));
-                lines.Add("OsdShowFrametimeMs=" + (_osdShowFrametimeMs ? "1" : "0"));
-                lines.Add("OsdShowFpsAvg=" + (_osdShowFpsAvg ? "1" : "0"));
-                lines.Add("OsdShowRadeonExtTags=" + (_osdShowRadeonExtTags ? "1" : "0"));
-                lines.Add("RestoreAutoOnExit=" + (_restoreAutoOnExit ? "1" : "0"));
-                lines.Add("CloseToTray=" + (_closeToTray ? "1" : "0"));
-                lines.Add("UseFahrenheit=" + (_useFahrenheit ? "1" : "0"));
-                lines.Add("ShowSetupAssistant=" + (_showSetupAssistant ? "1" : "0"));
-                lines.Add("SilentSleepStandby=" + (_silentSleepStandby ? "1" : "0"));
-                lines.Add("AlwaysOnTop=" + (_alwaysOnTop ? "1" : "0"));
-                lines.Add("EnableHotkeys=" + (_enableGlobalHotkeys ? "1" : "0"));
-                lines.Add("HasDualFans=" + (_hasDualFans ? "1" : "0"));
-                lines.Add("HardwareProfile=" + (_profileOverrideId ?? "auto"));
-                lines.Add("Language=" + Loc.CurrentLanguage.ToString());
-                lines.Add("RefreshIntervalMs=" + _refreshIntervalMs);
-                lines.Add("ApuMinSpinPct=" + FanCurveProfile.ApuMinSpinPct);
-                lines.Add("SysMinSpinPct=" + FanCurveProfile.SysMinSpinPct);
-                lines.Add("ApuMaxRpm=" + FanCurveProfile.ApuMaxRpm);
-                lines.Add("SysMaxRpm=" + FanCurveProfile.SysMaxRpm);
-                if (!string.IsNullOrEmpty(FanCurveProfile.LastCalibratedDate))
-                    lines.Add("LastCalibratedDate=" + FanCurveProfile.LastCalibratedDate);
-                lines.Add("Theme=" + (int)_themePref);
-                lines.Add("ApuMode=" + (_apuProfile != null ? _apuProfile.Name : "Balanced"));
-                lines.Add("SysMode=" + (_sysProfile != null ? _sysProfile.Name : "Balanced"));
-
-                foreach (FanCurveProfile cp in _customProfiles)
-                {
-                    lines.Add("CustomProfile=" + cp.Name.Replace("|", "/") + "|" + FormatPointList(cp.ApuPoints) + "|" + FormatPointList(cp.SysPoints));
-                }
-
-                string path = GetSettingsPath();
-                string dir = Path.GetDirectoryName(path);
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-                File.WriteAllLines(path, lines.ToArray());
-                RebuildTrayContextMenus();
-            }
-            catch { }
+            _settings.Save(_apuProfile, _sysProfile, _customProfiles);
+            RebuildTrayContextMenus();
         }
 
         private void DetectSystemTheme(out bool appDark, out bool taskbarDark)
@@ -2911,6 +2515,7 @@ namespace MiniFanControl
             _pendingActionText = actionDescription;
             _rampTargetFan = targetFan;
             _rampUntil = DateTime.UtcNow.AddSeconds(4.5);
+            if (_controller != null) _controller.SetRampUntil(_rampUntil);
             if (_refreshTimer != null)
             {
                 _refreshTimer.Interval = FAST_REFRESH_MS;
@@ -3464,6 +3069,14 @@ namespace MiniFanControl
             }
         }
 
+        private static bool IsSliderValueChangeKey(Keys keyCode)
+        {
+            return keyCode == Keys.Left || keyCode == Keys.Right ||
+                   keyCode == Keys.Up || keyCode == Keys.Down ||
+                   keyCode == Keys.PageUp || keyCode == Keys.PageDown ||
+                   keyCode == Keys.Home || keyCode == Keys.End;
+        }
+
         private void SetGraphViewMode(bool showLive, int highlightMetric)
         {
             SetGraphViewMode(showLive, false, highlightMetric);
@@ -3530,7 +3143,11 @@ namespace MiniFanControl
             UpdateCurveTabStyles();
             UpdateModeButtonStyles(_lastSelectedModeCode);
             UpdateCurveHint();
+            InvalidateAllMetricBoxes();
+        }
 
+        private void InvalidateAllMetricBoxes()
+        {
             if (_cpuTempBox != null) _cpuTempBox.Invalidate();
             if (_gpuTempBox != null) _gpuTempBox.Invalidate();
             if (_nvmeTempBox != null) _nvmeTempBox.Invalidate();
@@ -3539,6 +3156,14 @@ namespace MiniFanControl
             if (_ambientBox != null) _ambientBox.Invalidate();
             if (_fan1Box != null) _fan1Box.Invalidate();
             if (_fan2Box != null) _fan2Box.Invalidate();
+        }
+
+        private void OnMetricBoxKeyboardActivate(int metricKind)
+        {
+            if (_showingLiveTelemetry && _highlightedMetric == metricKind)
+                SetGraphViewMode(false, 0);
+            else
+                SetGraphViewMode(true, metricKind);
         }
 
         private void OnMetricBoxMouseUp(int metricKind, MouseEventArgs e)
@@ -3685,6 +3310,8 @@ namespace MiniFanControl
             };
             _cpuTempBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _cpuTempBox, _cpuBoxTitle, _cpuTempLabel, _sessionStats.CpuHistory, 1);
             _cpuTempBox.MouseUp += (s, e) => OnMetricBoxMouseUp(1, e);
+            _cpuTempBox.EnableKeyboardActivation("CPU Temperature", "Press Enter or Space to toggle CPU trend highlight on the live graph.");
+            _cpuTempBox.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(1);
             statusCard.Controls.Add(_cpuTempBox);
 
             string cpuTip = "APU / CPU Package Temperature (EC Register 0x70 • Tctl/Tdie)\r\nLeft-click to highlight CPU Trend on the big graph • Right-click to reset peaks.";
@@ -3717,6 +3344,8 @@ namespace MiniFanControl
             };
             _gpuTempBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _gpuTempBox, _gpuBoxTitle, _gpuTempLabel, _sessionStats.GpuHistory, 2);
             _gpuTempBox.MouseUp += (s, e) => OnMetricBoxMouseUp(2, e);
+            _gpuTempBox.EnableKeyboardActivation("iGPU Temperature", "Press Enter or Space to toggle iGPU trend highlight on the live graph.");
+            _gpuTempBox.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(2);
             statusCard.Controls.Add(_gpuTempBox);
 
             string gpuTip = "Integrated Radeon Graphics Temperature (AMD ADL2 PMLog GFX/SoC Sensor)\r\nLeft-click to highlight iGPU Trend on the big graph • Right-click to reset peaks.";
@@ -3750,6 +3379,8 @@ namespace MiniFanControl
             _ramPowerBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _ramPowerBox, _ramBoxTitle, _ramPowerLabel,
                 (_sessionStats.RamTempHistory.Count > 0 ? _sessionStats.RamTempHistory : _sessionStats.RamPowerHistory), 7);
             _ramPowerBox.MouseUp += (s, e) => OnMetricBoxMouseUp(7, e);
+            _ramPowerBox.EnableKeyboardActivation("RAM Temperature and Power", "Press Enter or Space to toggle RAM trend highlight on the live graph.");
+            _ramPowerBox.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(7);
             statusCard.Controls.Add(_ramPowerBox);
 
             string ramPwrTip = "DDR5 Memory Temperature, Dual-Stick Delta & Utilization\r\nLeft-click to highlight RAM Trend on the big graph • Right-click to reset peaks.";
@@ -3782,6 +3413,8 @@ namespace MiniFanControl
             };
             _nvmeTempBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _nvmeTempBox, _nvmeBoxTitle, _nvmeTempLabel, _sessionStats.NvmeHistory, 6);
             _nvmeTempBox.MouseUp += (s, e) => OnMetricBoxMouseUp(6, e);
+            _nvmeTempBox.EnableKeyboardActivation("NVMe SSD Temperature", "Press Enter or Space to toggle NVMe trend highlight on the live graph.");
+            _nvmeTempBox.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(6);
             statusCard.Controls.Add(_nvmeTempBox);
 
             string nvmeTip = "NVMe Storage Temperature & Health\r\nLeft-click to highlight NVMe Trend on the big graph • Right-click to reset peaks.";
@@ -3814,6 +3447,8 @@ namespace MiniFanControl
             };
             _pwrBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _pwrBox, _pwrBoxTitle, _pwrLabel, _sessionStats.PowerHistory, 3);
             _pwrBox.MouseUp += (s, e) => OnMetricBoxMouseUp(3, e);
+            _pwrBox.EnableKeyboardActivation("APU Package Power", "Press Enter or Space to toggle APU Power trend highlight on the live graph.");
+            _pwrBox.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(3);
             statusCard.Controls.Add(_pwrBox);
 
             string pwrTip = "APU Package Power (CPU + iGPU + SoC Telemetry)\r\nLeft-click to highlight Power Trend on the big graph • Right-click to reset peaks.";
@@ -3846,6 +3481,8 @@ namespace MiniFanControl
             };
             _ambientBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _ambientBox, _ambientBoxTitle, _ambientLabel, _sessionStats.AmbientHistory, 9);
             _ambientBox.MouseUp += (s, e) => OnMetricBoxMouseUp(9, e);
+            _ambientBox.EnableKeyboardActivation("Chassis Ambient Temperature", "Press Enter or Space to toggle Chassis Ambient trend highlight on the live graph.");
+            _ambientBox.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(9);
             statusCard.Controls.Add(_ambientBox);
 
             string ambTip = "Motherboard Chassis Ambient Temperature (IT8613 Sensor 4)\r\nLeft-click to toggle Live Trend • Right-click to reset peaks.";
@@ -3878,6 +3515,8 @@ namespace MiniFanControl
             };
             _fan1Box.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _fan1Box, _fan1BoxTitle, _fan1RpmLabel, _sessionStats.Fan1RpmHistory, 4);
             _fan1Box.MouseUp += (s, e) => OnMetricBoxMouseUp(4, e);
+            _fan1Box.EnableKeyboardActivation("APU Fan Speed", "Press Enter or Space to toggle APU Fan speed trend highlight on the live graph.");
+            _fan1Box.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(4);
             statusCard.Controls.Add(_fan1Box);
 
             string fan1Tip = "APU / CPU Fan Tachometer\r\nLeft-click to highlight APU Fan on the big graph • Right-click to reset peaks.";
@@ -3910,6 +3549,8 @@ namespace MiniFanControl
             };
             _fan2Box.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _fan2Box, _fan2BoxTitle, _fan2RpmLabel, _sessionStats.Fan2RpmHistory, 5);
             _fan2Box.MouseUp += (s, e) => OnMetricBoxMouseUp(5, e);
+            _fan2Box.EnableKeyboardActivation("System Fan Speed", "Press Enter or Space to toggle System Fan speed trend highlight on the live graph.");
+            _fan2Box.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(5);
             statusCard.Controls.Add(_fan2Box);
 
             string fan2Tip = "System RAM / NVMe Fan Tachometer\r\nLeft-click to highlight Sys Fan on the big graph • Right-click to reset peaks.";
@@ -4207,14 +3848,12 @@ namespace MiniFanControl
                     }
                     if (_curveCanvas.EditSysFan)
                     {
-                        _sysProfile = existing;
-                        _sysManualOverride = false;
+                        if (_controller != null) _controller.SetProfileTarget(existing, true);
                         _curveCanvas.SysProfile = _sysProfile;
                     }
                     else
                     {
-                        _apuProfile = existing;
-                        _apuManualOverride = false;
+                        if (_controller != null) _controller.SetProfileTarget(existing, false);
                         _curveCanvas.ApuProfile = _apuProfile;
                     }
                     PopulateCustomCombo();
@@ -4222,10 +3861,10 @@ namespace MiniFanControl
             };
             _curveCanvas.CurveModified += (s, e) =>
             {
-                if (_curveCanvas.EditSysFan) _sysManualOverride = false;
-                else _apuManualOverride = false;
-                _lastAppliedApuPct = -1;
-                _lastAppliedSysPct = -1;
+                if (_controller != null)
+                {
+                    _controller.SetProfileTarget(_curveCanvas.EditSysFan ? _sysProfile : _apuProfile, _curveCanvas.EditSysFan);
+                }
                 SaveSettings();
                 UpdateCurveTabStyles();
                 UpdateModeButtonStyles(_lastSelectedModeCode);
@@ -4247,14 +3886,7 @@ namespace MiniFanControl
             {
                 _highlightedMetric = _liveCanvas.HighlightMetric;
                 UpdateCurveHint();
-                if (_cpuTempBox != null) _cpuTempBox.Invalidate();
-                if (_gpuTempBox != null) _gpuTempBox.Invalidate();
-                if (_nvmeTempBox != null) _nvmeTempBox.Invalidate();
-                if (_pwrBox != null) _pwrBox.Invalidate();
-                if (_ramPowerBox != null) _ramPowerBox.Invalidate();
-                if (_ambientBox != null) _ambientBox.Invalidate();
-                if (_fan1Box != null) _fan1Box.Invalidate();
-                if (_fan2Box != null) _fan2Box.Invalidate();
+                InvalidateAllMetricBoxes();
             };
             modeCard.Controls.Add(_liveCanvas);
 
@@ -4316,7 +3948,8 @@ namespace MiniFanControl
                 Maximum = 100,
                 TickStyle = TickStyle.None,
                 Location = new Point(134, 10),
-                Size = new Size(642, 32)
+                Size = new Size(642, 32),
+                AccessibleName = "APU / CPU Fan Manual Speed Percentage (0 equals Auto)"
             };
             _fan1Slider.Scroll += (s, e) =>
             {
@@ -4342,7 +3975,11 @@ namespace MiniFanControl
             };
             _fan1Slider.KeyUp += (s, e) =>
             {
-                ApplyFan(1, _fan1Slider.Value);
+                if (IsSliderValueChangeKey(e.KeyCode))
+                {
+                    _fan1SliderPct.Text = _fan1Slider.Value == 0 ? "Auto" : string.Format("{0}%", _fan1Slider.Value);
+                    ApplyFan(1, _fan1Slider.Value);
+                }
             };
             fanCard.Controls.Add(_fan1Slider);
 
@@ -4375,7 +4012,8 @@ namespace MiniFanControl
                 Maximum = 100,
                 TickStyle = TickStyle.None,
                 Location = new Point(134, 48),
-                Size = new Size(642, 32)
+                Size = new Size(642, 32),
+                AccessibleName = "System / RAM Fan Manual Speed Percentage (0 equals Auto)"
             };
             _fan2Slider.Scroll += (s, e) =>
             {
@@ -4401,7 +4039,11 @@ namespace MiniFanControl
             };
             _fan2Slider.KeyUp += (s, e) =>
             {
-                ApplyFan(2, _fan2Slider.Value);
+                if (IsSliderValueChangeKey(e.KeyCode))
+                {
+                    _fan2SliderPct.Text = _fan2Slider.Value == 0 ? "Auto" : string.Format("{0}%", _fan2Slider.Value);
+                    ApplyFan(2, _fan2Slider.Value);
+                }
             };
             fanCard.Controls.Add(_fan2Slider);
 
@@ -4737,7 +4379,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnBothGraphs.FlatAppearance.BorderSize = 0;
-            _osdBtnBothGraphs.Click += (s, e) => { _osdGraphMode = 3; _osdShowLiveTrend = true; if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = true; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnBothGraphs.Click += (s, e) => { _osd.GraphMode = 3; _osd.ShowLiveTrend = true; if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = true; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             _uiToolTip.SetToolTip(_osdBtnBothGraphs, "Show both mini sparklines per metric and combined live trend graph");
             p.Controls.Add(_osdBtnBothGraphs);
 
@@ -4751,7 +4393,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnCombinedGraph.FlatAppearance.BorderSize = 0;
-            _osdBtnCombinedGraph.Click += (s, e) => { _osdGraphMode = 2; _osdShowLiveTrend = true; if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = true; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnCombinedGraph.Click += (s, e) => { _osd.GraphMode = 2; _osd.ShowLiveTrend = true; if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = true; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             _uiToolTip.SetToolTip(_osdBtnCombinedGraph, "Show combined multi-series live trend graph only");
             p.Controls.Add(_osdBtnCombinedGraph);
 
@@ -4765,7 +4407,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnSparklines.FlatAppearance.BorderSize = 0;
-            _osdBtnSparklines.Click += (s, e) => { _osdGraphMode = 1; _osdShowLiveTrend = false; if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = false; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnSparklines.Click += (s, e) => { _osd.GraphMode = 1; _osd.ShowLiveTrend = false; if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = false; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             _uiToolTip.SetToolTip(_osdBtnSparklines, "Show mini inline sparklines per metric only");
             p.Controls.Add(_osdBtnSparklines);
 
@@ -4779,7 +4421,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnTextOnly.FlatAppearance.BorderSize = 0;
-            _osdBtnTextOnly.Click += (s, e) => { _osdGraphMode = 0; _osdShowLiveTrend = false; if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = false; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnTextOnly.Click += (s, e) => { _osd.GraphMode = 0; _osd.ShowLiveTrend = false; if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = false; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             _uiToolTip.SetToolTip(_osdBtnTextOnly, "Display metrics as text only without live graphs");
             p.Controls.Add(_osdBtnTextOnly);
 
@@ -4794,7 +4436,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnHeightCompact.FlatAppearance.BorderSize = 0;
-            _osdBtnHeightCompact.Click += (s, e) => { _osdGraphHeight = 75; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnHeightCompact.Click += (s, e) => { _osd.GraphHeight = 75; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnHeightCompact);
 
             _osdBtnHeightMedium = new Button
@@ -4807,7 +4449,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnHeightMedium.FlatAppearance.BorderSize = 0;
-            _osdBtnHeightMedium.Click += (s, e) => { _osdGraphHeight = 105; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnHeightMedium.Click += (s, e) => { _osd.GraphHeight = 105; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnHeightMedium);
 
             _osdBtnHeightLarge = new Button
@@ -4820,7 +4462,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnHeightLarge.FlatAppearance.BorderSize = 0;
-            _osdBtnHeightLarge.Click += (s, e) => { _osdGraphHeight = 140; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnHeightLarge.Click += (s, e) => { _osd.GraphHeight = 140; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnHeightLarge);
 
             _osdBtnHeightXl = new Button
@@ -4833,7 +4475,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnHeightXl.FlatAppearance.BorderSize = 0;
-            _osdBtnHeightXl.Click += (s, e) => { _osdGraphHeight = 180; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnHeightXl.Click += (s, e) => { _osd.GraphHeight = 180; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnHeightXl);
 
             // Row 3 (y=88): Section 2 - Scale Tier (Left) & Layout Direction (Right)
@@ -4868,7 +4510,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnScale100.FlatAppearance.BorderSize = 0;
-            _osdBtnScale100.Click += (s, e) => { _osdScaleTier = 0; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnScale100.Click += (s, e) => { _osd.ScaleTier = 0; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnScale100);
 
             _osdBtnScale125 = new Button
@@ -4881,7 +4523,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnScale125.FlatAppearance.BorderSize = 0;
-            _osdBtnScale125.Click += (s, e) => { _osdScaleTier = 1; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnScale125.Click += (s, e) => { _osd.ScaleTier = 1; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnScale125);
 
             _osdBtnScale150 = new Button
@@ -4894,7 +4536,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnScale150.FlatAppearance.BorderSize = 0;
-            _osdBtnScale150.Click += (s, e) => { _osdScaleTier = 2; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnScale150.Click += (s, e) => { _osd.ScaleTier = 2; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnScale150);
 
             _osdBtnScale185 = new Button
@@ -4907,7 +4549,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnScale185.FlatAppearance.BorderSize = 0;
-            _osdBtnScale185.Click += (s, e) => { _osdScaleTier = 3; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnScale185.Click += (s, e) => { _osd.ScaleTier = 3; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnScale185);
 
             _osdBtnLayoutH = new Button
@@ -4920,7 +4562,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnLayoutH.FlatAppearance.BorderSize = 0;
-            _osdBtnLayoutH.Click += (s, e) => { _overlayVertical = false; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnLayoutH.Click += (s, e) => { _osd.VerticalLayout = false; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnLayoutH);
 
             _osdBtnLayoutV = new Button
@@ -4933,7 +4575,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _osdBtnLayoutV.FlatAppearance.BorderSize = 0;
-            _osdBtnLayoutV.Click += (s, e) => { _overlayVertical = true; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _osdBtnLayoutV.Click += (s, e) => { _osd.VerticalLayout = true; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
             p.Controls.Add(_osdBtnLayoutV);
 
             // Row 4 (y=136): Section 3 - Opacity Slider & Quick Snap Corner Buttons
@@ -4951,23 +4593,24 @@ namespace MiniFanControl
             {
                 Minimum = 35,
                 Maximum = 100,
-                Value = _osdOpacityPct,
+                Value = Math.Max(35, Math.Min(100, _osd.OpacityPct)),
                 TickStyle = TickStyle.None,
                 Location = new Point(72, 134),
-                Size = new Size(130, 30)
+                Size = new Size(130, 30),
+                AccessibleName = "OSD Overlay Opacity Percentage"
             };
             _osdOpacitySlider.Scroll += (s, e) =>
             {
-                _osdOpacityPct = _osdOpacitySlider.Value;
-                _osdOpacityPctLabel.Text = string.Format("{0}%", _osdOpacityPct);
-                if (_overlayForm != null) _overlayForm.ApplyOpacity(_osdOpacityPct);
+                _osd.OpacityPct = _osdOpacitySlider.Value;
+                _osdOpacityPctLabel.Text = string.Format("{0}%", _osd.OpacityPct);
+                if (_overlayForm != null) _overlayForm.ApplyOpacity(_osd.OpacityPct);
                 SaveSettings();
             };
             p.Controls.Add(_osdOpacitySlider);
 
             _osdOpacityPctLabel = new Label
             {
-                Text = string.Format("{0}%", _osdOpacityPct),
+                Text = string.Format("{0}%", _osd.OpacityPct),
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
                 Location = new Point(206, 138),
                 Size = new Size(42, 20),
@@ -5045,29 +4688,7 @@ namespace MiniFanControl
             _osdSelectAllBtn.FlatAppearance.BorderSize = 0;
             _osdSelectAllBtn.Click += (s, e) =>
             {
-                _osdShowCpu = true;
-                _osdShowGpu = true;
-                _osdShowNvme = true;
-                _osdShowPower = true;
-                _osdShowRam = true;
-                _osdShowVrmCurrent = true;
-                _osdShowAmbient = true;
-                _osdShowFabricClock = true;
-                _osdShowNpu = true;
-                _osdShowFps = true;
-                _osdShowLows = true;
-                _osdShowGpuLoad = true;
-                _osdShowApuFan = true;
-                if (_hasDualFans) _osdShowSysFan = true;
-                _osdShowMode = true;
-                _osdShowPeaks = true;
-                _osdShowRadeon = true;
-                _osdShowClocks = false;
-                _osdShowGameName = true;
-                _osdSparklineBg = false;
-                _osdShowLiveTrend = true;
-                _osdShowFpsGraph = true;
-                _osdPlotFpsOnTrend = true;
+                _osd.SelectAllMetrics(_hasDualFans);
                 SyncOsdStudioUiFromOverlay();
                 SyncOverlayFromStudio();
             };
@@ -5085,24 +4706,7 @@ namespace MiniFanControl
             _osdDeselectAllBtn.FlatAppearance.BorderSize = 0;
             _osdDeselectAllBtn.Click += (s, e) =>
             {
-                _osdShowCpu = false;
-                _osdShowGpu = false;
-                _osdShowNvme = false;
-                _osdShowPower = false;
-                _osdShowRam = false;
-                _osdShowVrmCurrent = false;
-                _osdShowAmbient = false;
-                _osdShowFabricClock = false;
-                _osdShowNpu = false;
-                _osdShowFps = false;
-                _osdShowLows = false;
-                _osdShowGpuLoad = false;
-                _osdShowApuFan = false;
-                _osdShowSysFan = false;
-                _osdShowMode = false;
-                _osdShowPeaks = false;
-                _osdShowRadeon = false;
-                _osdShowGameName = false;
+                _osd.DeselectAllMetrics();
                 SyncOsdStudioUiFromOverlay();
                 SyncOverlayFromStudio();
             };
@@ -5120,65 +4724,18 @@ namespace MiniFanControl
             _osdResetDefaultsBtn.FlatAppearance.BorderSize = 0;
             _osdResetDefaultsBtn.Click += (s, e) =>
             {
-                _osdShowCpu = true;
-                _osdShowGpu = true;
-                _osdShowNvme = true;
-                _osdShowPower = true;
-                _osdShowRam = true;
-                _osdShowVrmCurrent = false;
-                _osdShowAmbient = true;
-                _osdShowFabricClock = true;
-                _osdShowNpu = true;
-                _osdShowFps = true;
-                _osdShowLows = true;
-                _osdShowGpuLoad = true;
-                _osdShowApuFan = true;
-                _osdShowSysFan = _hasDualFans;
-                _osdShowMode = true;
-                _osdShowPeaks = true;
-                _osdPeakTrackerMode = 0;
-                _osdShowRadeon = true;
-                _osdShowDriverVer = true;
-                _osdShowClocks = true;
-                _osdShowGameName = true;
-                _osdSparklineBg = true;
-                _osdShowLiveTrend = true;
-                _osdShowFpsGraph = true;
-                _osdPlotFpsOnTrend = true;
-                _osdDfGraphStyle = true;
-                _osdDfGraphFirst = true;
-                _osdShowRamTemp = true;
-                _osdShowRamDualSticks = false;
-                _osdShowRamSpread = true;
-                _osdShowRamLoad = true;
-                _osdShowRamPower = true;
-                _osdShowRamClock = false;
-                _osdShowNvmePower = true;
-                _osdShowNvmeIo = true;
-                _osdShowNvmeDual = true;
-                _osdShowCpuLoad = true;
-                _osdShowGpuHotspot = true;
-                _osdShowPowerLimit = true;
-                _osdShowFclkSync = true;
-                _osdShowFrametimeMs = true;
-                _osdShowFpsAvg = true;
-                _osdMatchTheme = true;
-                _osdScaleTier = 1;
-                _osdGraphMode = 3;
-                _osdGraphHeight = 140;
-                _osdOpacityPct = 80;
-                _overlayVertical = true;
+                _osd.ResetDefaults(_hasDualFans);
                 SyncOsdStudioUiFromOverlay();
                 SyncOverlayFromStudio();
             };
             p.Controls.Add(_osdResetDefaultsBtn);
 
-            // Row 6+ (y=214..686): Per-Metric Configuration Sections (no scrollbar)
+            // Row 6+ (y=214..686): Per-Metric Configuration Sections (scrollable at higher DPI)
             _osdMetricsScrollPanel = new Panel
             {
                 Location = new Point(4, 214),
                 Size = new Size(1048, 472),
-                AutoScroll = false
+                AutoScroll = true
             };
             p.Controls.Add(_osdMetricsScrollPanel);
             _osdSectionHeaders.Clear();
@@ -5192,128 +4749,128 @@ namespace MiniFanControl
             // 1. CPU (left) & Power & VRM (right)
             int pairY = curY;
             AddOsdSectionHeader(_osdMetricsScrollPanel, "CPU", ref curY, 8, 490);
-            _osdShowCpuCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY, 242, cbH, "CPU Temp", _osdShowCpu, v => { _osdShowCpu = v; SyncOverlayFromStudio(); }, null);
-            _osdShowCpuLoadCb = AddOsdCheckBox(_osdMetricsScrollPanel, 258, curY, 242, cbH, "CPU Load (%)", _osdShowCpuLoad, v => { _osdShowCpuLoad = v; SyncOverlayFromStudio(); },
+            _osdShowCpuCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY, 242, cbH, "CPU Temp", _osd.ShowCpu, v => { _osd.ShowCpu = v; SyncOverlayFromStudio(); }, null);
+            _osdShowCpuLoadCb = AddOsdCheckBox(_osdMetricsScrollPanel, 258, curY, 242, cbH, "CPU Load (%)", _osd.ShowCpuLoad, v => { _osd.ShowCpuLoad = v; SyncOverlayFromStudio(); },
                 "Show CPU utilization percentage on the CPU overlay row");
-            _osdShowClocksCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY + rowStep, 242, cbH, "Clock Speeds (@ GHz/MHz)", _osdShowClocks, v => { _osdShowClocks = v; SyncOverlayFromStudio(); },
+            _osdShowClocksCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY + rowStep, 242, cbH, "Clock Speeds (@ GHz/MHz)", _osd.ShowClocks, v => { _osd.ShowClocks = v; SyncOverlayFromStudio(); },
                 "Display effective CPU, iGPU, and RAM clock frequencies (@ 4.1G / @ 800MHz). Uncheck to maximize space for sparklines.");
 
             int rightY = pairY;
             AddOsdSectionHeader(_osdMetricsScrollPanel, "Power & VRM", ref rightY, 518, 490);
-            _osdShowPowerCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY, 242, cbH, "APU Power (W)", _osdShowPower, v => { _osdShowPower = v; SyncOverlayFromStudio(); }, null);
-            _osdShowPowerLimitCb = AddOsdCheckBox(_osdMetricsScrollPanel, 768, rightY, 242, cbH, "APU Power Limit (/W)", _osdShowPowerLimit, v => { _osdShowPowerLimit = v; SyncOverlayFromStudio(); },
+            _osdShowPowerCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY, 242, cbH, "APU Power (W)", _osd.ShowPower, v => { _osd.ShowPower = v; SyncOverlayFromStudio(); }, null);
+            _osdShowPowerLimitCb = AddOsdCheckBox(_osdMetricsScrollPanel, 768, rightY, 242, cbH, "APU Power Limit (/W)", _osd.ShowPowerLimit, v => { _osd.ShowPowerLimit = v; SyncOverlayFromStudio(); },
                 "Show active PPT/STAPM power limit (/65W) next to APU Power");
-            _osdShowVrmCurrentCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY + rowStep, 242, cbH, "VRM Current (TDC/EDC)", _osdShowVrmCurrent, v => { _osdShowVrmCurrent = v; SyncOverlayFromStudio(); },
+            _osdShowVrmCurrentCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY + rowStep, 242, cbH, "VRM Current (TDC/EDC)", _osd.ShowVrmCurrent, v => { _osd.ShowVrmCurrent = v; SyncOverlayFromStudio(); },
                 "Display deep silicon VRM amperage draw (continuous TDC and peak EDC amps for VDD & SOC rails)");
             curY += rowStep * 2;
 
             // 2. iGPU & Radeon
             AddOsdSectionHeader(_osdMetricsScrollPanel, "iGPU & Radeon", ref curY);
-            _osdShowGpuCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "iGPU Temp", _osdShowGpu, v => { _osdShowGpu = v; SyncOverlayFromStudio(); }, null);
-            _osdShowGpuHotspotCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "iGPU Hotspot (🔥°C)", _osdShowGpuHotspot, v => { _osdShowGpuHotspot = v; SyncOverlayFromStudio(); },
+            _osdShowGpuCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "iGPU Temp", _osd.ShowGpu, v => { _osd.ShowGpu = v; SyncOverlayFromStudio(); }, null);
+            _osdShowGpuHotspotCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "iGPU Hotspot (🔥°C)", _osd.ShowGpuHotspot, v => { _osd.ShowGpuHotspot = v; SyncOverlayFromStudio(); },
                 "Show iGPU junction hotspot temperature (🔥°C) when available");
-            _osdShowGpuLoadCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "GPU Load & Clock", _osdShowGpuLoad, v => { _osdShowGpuLoad = v; SyncOverlayFromStudio(); }, null);
-            _osdShowRadeonCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "Radeon Feature Tags", _osdShowRadeon, v => { _osdShowRadeon = v; SyncOverlayFromStudio(); },
+            _osdShowGpuLoadCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "GPU Load & Clock", _osd.ShowGpuLoad, v => { _osd.ShowGpuLoad = v; SyncOverlayFromStudio(); }, null);
+            _osdShowRadeonCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "Radeon Feature Tags", _osd.ShowRadeon, v => { _osd.ShowRadeon = v; SyncOverlayFromStudio(); },
                 "Display compact pill tags for active AMD Radeon features (FreeSync, Anti-Lag, AFMF, Chill, Boost, RSR, RIS)");
-            _osdShowDriverVerCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep, colW, cbH, "Radeon Driver Version", _osdShowDriverVer, v => { _osdShowDriverVer = v; SyncOverlayFromStudio(); },
+            _osdShowDriverVerCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep, colW, cbH, "Radeon Driver Version", _osd.ShowDriverVer, v => { _osd.ShowDriverVer = v; SyncOverlayFromStudio(); },
                 "Show the installed AMD Radeon Software (Adrenalin) driver version on the OSD");
-            _osdShowRadeonExtTagsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep, colW, cbH, "SAM, EnhSync & FRTC Tags", _osdShowRadeonExtTags, v => { _osdShowRadeonExtTags = v; SyncOverlayFromStudio(); },
+            _osdShowRadeonExtTagsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep, colW, cbH, "SAM, EnhSync & FRTC Tags", _osd.ShowRadeonExtTags, v => { _osd.ShowRadeonExtTags = v; SyncOverlayFromStudio(); },
                 "Include Smart Access Memory (SAM), Enhanced Sync, and FRTC cap pills in the OSD Radeon tags row");
             curY += rowStep * 2;
 
             // 3. RAM (DDR5)
             AddOsdSectionHeader(_osdMetricsScrollPanel, "RAM (DDR5)", ref curY);
-            _osdShowRamCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "RAM Load & Power", _osdShowRam, v => { _osdShowRam = v; SyncOverlayFromStudio(); }, null);
-            _osdShowRamTempCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "RAM Temp (°C)", _osdShowRamTemp, v => { _osdShowRamTemp = v; SyncOverlayFromStudio(); },
+            _osdShowRamCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "RAM Load & Power", _osd.ShowRam, v => { _osd.ShowRam = v; SyncOverlayFromStudio(); }, null);
+            _osdShowRamTempCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "RAM Temp (°C)", _osd.ShowRamTemp, v => { _osd.ShowRamTemp = v; SyncOverlayFromStudio(); },
                 "Show DDR5 temperature on the RAM overlay row");
-            _osdShowRamDualSticksCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "RAM Dual-Stick (35/41°C)", _osdShowRamDualSticks, v => { _osdShowRamDualSticks = v; SyncOverlayFromStudio(); },
+            _osdShowRamDualSticksCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "RAM Dual-Stick (35/41°C)", _osd.ShowRamDualSticks, v => { _osd.ShowRamDualSticks = v; SyncOverlayFromStudio(); },
                 "Show both SODIMM temperatures (35/41°C). Uncheck to show only the single hottest stick (41°C).");
-            _osdShowRamSpreadCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "RAM Spread Delta (Δ°C)", _osdShowRamSpread, v => { _osdShowRamSpread = v; SyncOverlayFromStudio(); },
+            _osdShowRamSpreadCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "RAM Spread Delta (Δ°C)", _osd.ShowRamSpread, v => { _osd.ShowRamSpread = v; SyncOverlayFromStudio(); },
                 "Show thermal spread delta badge (Δ6°) between stacked SODIMM slots");
-            _osdShowRamLoadCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep, colW, cbH, "RAM Load (%)", _osdShowRamLoad, v => { _osdShowRamLoad = v; SyncOverlayFromStudio(); },
+            _osdShowRamLoadCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep, colW, cbH, "RAM Load (%)", _osd.ShowRamLoad, v => { _osd.ShowRamLoad = v; SyncOverlayFromStudio(); },
                 "Show memory utilization percentage (e.g. 22%) on the RAM overlay row");
-            _osdShowRamPowerCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep, colW, cbH, "RAM Power Draw (~W)", _osdShowRamPower, v => { _osdShowRamPower = v; SyncOverlayFromStudio(); },
+            _osdShowRamPowerCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep, colW, cbH, "RAM Power Draw (~W)", _osd.ShowRamPower, v => { _osd.ShowRamPower = v; SyncOverlayFromStudio(); },
                 "Show DDR5 power draw (~3.6W) on the RAM overlay row");
-            _osdShowRamClockCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY + rowStep, colW, cbH, "RAM Clock (@ MHz)", _osdShowRamClock, v => { _osdShowRamClock = v; SyncOverlayFromStudio(); },
+            _osdShowRamClockCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY + rowStep, colW, cbH, "RAM Clock (@ MHz)", _osd.ShowRamClock, v => { _osd.ShowRamClock = v; SyncOverlayFromStudio(); },
                 "Show effective DDR data rate (@ 5600MHz) on the RAM overlay row (independent of CPU/iGPU clocks)");
             curY += rowStep * 2;
 
             // 4. NVMe Storage (left) & Chassis & Silicon (right)
             pairY = curY;
             AddOsdSectionHeader(_osdMetricsScrollPanel, "NVMe Storage", ref curY, 8, 490);
-            _osdShowNvmeCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY, 242, cbH, "NVMe SSD Temp", _osdShowNvme, v => { _osdShowNvme = v; SyncOverlayFromStudio(); }, null);
-            _osdShowNvmePowerCb = AddOsdCheckBox(_osdMetricsScrollPanel, 258, curY, 242, cbH, "NVMe Power Draw (~W)", _osdShowNvmePower, v => { _osdShowNvmePower = v; SyncOverlayFromStudio(); },
+            _osdShowNvmeCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY, 242, cbH, "NVMe SSD Temp", _osd.ShowNvme, v => { _osd.ShowNvme = v; SyncOverlayFromStudio(); }, null);
+            _osdShowNvmePowerCb = AddOsdCheckBox(_osdMetricsScrollPanel, 258, curY, 242, cbH, "NVMe Power Draw (~W)", _osd.ShowNvmePower, v => { _osd.ShowNvmePower = v; SyncOverlayFromStudio(); },
                 "Show PCIe NVMe SSD power draw (~0.9W) on the NVMe overlay row");
-            _osdShowNvmeIoCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY + rowStep, 242, cbH, "NVMe I/O (MB/s)", _osdShowNvmeIo, v => { _osdShowNvmeIo = v; SyncOverlayFromStudio(); },
+            _osdShowNvmeIoCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY + rowStep, 242, cbH, "NVMe I/O (MB/s)", _osd.ShowNvmeIo, v => { _osd.ShowNvmeIo = v; SyncOverlayFromStudio(); },
                 "Show live NVMe read/write throughput (MB/s) on the NVMe overlay row");
-            _osdShowNvmeDualCb = AddOsdCheckBox(_osdMetricsScrollPanel, 258, curY + rowStep, 242, cbH, "NVMe Dual-Drive (°C/°C)", _osdShowNvmeDual, v => { _osdShowNvmeDual = v; SyncOverlayFromStudio(); },
+            _osdShowNvmeDualCb = AddOsdCheckBox(_osdMetricsScrollPanel, 258, curY + rowStep, 242, cbH, "NVMe Dual-Drive (°C/°C)", _osd.ShowNvmeDual, v => { _osd.ShowNvmeDual = v; SyncOverlayFromStudio(); },
                 "Show second NVMe drive temperature when idle and a second drive is detected");
 
             rightY = pairY;
             AddOsdSectionHeader(_osdMetricsScrollPanel, "Chassis & Silicon", ref rightY, 518, 490);
-            _osdShowAmbientCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY, 242, cbH, "Chassis Ambient", _osdShowAmbient, v => { _osdShowAmbient = v; SyncOverlayFromStudio(); },
+            _osdShowAmbientCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY, 242, cbH, "Chassis Ambient", _osd.ShowAmbient, v => { _osd.ShowAmbient = v; SyncOverlayFromStudio(); },
                 "Display motherboard chassis ambient temperature (IT8613 Sensor 4)");
-            _osdShowFabricClockCb = AddOsdCheckBox(_osdMetricsScrollPanel, 768, rightY, 242, cbH, "Infinity Fabric (FCLK)", _osdShowFabricClock, v => { _osdShowFabricClock = v; SyncOverlayFromStudio(); },
+            _osdShowFabricClockCb = AddOsdCheckBox(_osdMetricsScrollPanel, 768, rightY, 242, cbH, "Infinity Fabric (FCLK)", _osd.ShowFabricClock, v => { _osd.ShowFabricClock = v; SyncOverlayFromStudio(); },
                 "Display AMD Infinity Fabric clock frequency (FCLK) and 1:1 memory bus synchronization status");
-            _osdShowFclkSyncCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY + rowStep, 242, cbH, "FCLK Sync Badge (1:1)", _osdShowFclkSync, v => { _osdShowFclkSync = v; SyncOverlayFromStudio(); },
+            _osdShowFclkSyncCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY + rowStep, 242, cbH, "FCLK Sync Badge (1:1)", _osd.ShowFclkSync, v => { _osd.ShowFclkSync = v; SyncOverlayFromStudio(); },
                 "Show 1:1 Sync / Async badge on the Infinity Fabric row");
-            _osdShowNpuCb = AddOsdCheckBox(_osdMetricsScrollPanel, 768, rightY + rowStep, 242, cbH, "Ryzen AI NPU", _osdShowNpu, v => { _osdShowNpu = v; SyncOverlayFromStudio(); },
+            _osdShowNpuCb = AddOsdCheckBox(_osdMetricsScrollPanel, 768, rightY + rowStep, 242, cbH, "Ryzen AI NPU", _osd.ShowNpu, v => { _osd.ShowNpu = v; SyncOverlayFromStudio(); },
                 "Display AMD Ryzen AI NPU activity percentage (PMLOG_NPU_BUSY_AVG) and inference clock");
             curY += rowStep * 2;
 
             // 5. FPS & Frametime
             AddOsdSectionHeader(_osdMetricsScrollPanel, "FPS & Frametime", ref curY);
-            _osdShowFpsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "Live FPS & Frametime", _osdShowFps, v => { _osdShowFps = v; SyncOverlayFromStudio(); }, null);
-            _osdShowFrametimeMsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "FPS Frametime (ms)", _osdShowFrametimeMs, v => { _osdShowFrametimeMs = v; SyncOverlayFromStudio(); },
+            _osdShowFpsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "Live FPS & Frametime", _osd.ShowFps, v => { _osd.ShowFps = v; SyncOverlayFromStudio(); }, null);
+            _osdShowFrametimeMsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "FPS Frametime (ms)", _osd.ShowFrametimeMs, v => { _osd.ShowFrametimeMs = v; SyncOverlayFromStudio(); },
                 "Show frame time in milliseconds (e.g. 16.7ms) next to FPS");
-            _osdShowLowsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "0.1% Low & Avg FPS", _osdShowLows, v => { _osdShowLows = v; SyncOverlayFromStudio(); }, null);
-            _osdShowFpsAvgCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "FPS Session Avg", _osdShowFpsAvg, v => { _osdShowFpsAvg = v; SyncOverlayFromStudio(); },
+            _osdShowLowsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "0.1% Low & Avg FPS", _osd.ShowLows, v => { _osd.ShowLows = v; SyncOverlayFromStudio(); }, null);
+            _osdShowFpsAvgCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "FPS Session Avg", _osd.ShowFpsAvg, v => { _osd.ShowFpsAvg = v; SyncOverlayFromStudio(); },
                 "Show session average FPS on the FPS row instead of peak/min tracker");
             curY += rowStep;
 
             // 6. Fans
             AddOsdSectionHeader(_osdMetricsScrollPanel, "Fans", ref curY);
-            _osdShowApuFanCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "APU Fan RPM", _osdShowApuFan, v => { _osdShowApuFan = v; SyncOverlayFromStudio(); }, null);
-            _osdShowSysFanCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, _hasDualFans ? "Sys Fan RPM" : "Sys Fan RPM (N/A)", _osdShowSysFan && _hasDualFans, v => { _osdShowSysFan = v; SyncOverlayFromStudio(); }, null);
+            _osdShowApuFanCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "APU Fan RPM", _osd.ShowApuFan, v => { _osd.ShowApuFan = v; SyncOverlayFromStudio(); }, null);
+            _osdShowSysFanCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, _hasDualFans ? "Sys Fan RPM" : "Sys Fan RPM (N/A)", _osd.ShowSysFan && _hasDualFans, v => { _osd.ShowSysFan = v; SyncOverlayFromStudio(); }, null);
             _osdShowSysFanCb.Enabled = _hasDualFans;
             curY += rowStep;
 
             // 7. Graphs, Theme & Global Overlay
             _osdSubFieldsHeaderLabel = AddOsdSectionHeader(_osdMetricsScrollPanel, "Graphs, Theme & Global Overlay", ref curY);
-            _osdShowLiveTrendCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "Live Trend Graph", _osdShowLiveTrend, v =>
+            _osdShowLiveTrendCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "Live Trend Graph", _osd.ShowLiveTrend, v =>
             {
-                _osdShowLiveTrend = v;
-                if (_osdShowLiveTrend)
+                _osd.ShowLiveTrend = v;
+                if (_osd.ShowLiveTrend)
                 {
-                    if (_osdGraphMode == 0) _osdGraphMode = 2;
-                    else if (_osdGraphMode == 1) _osdGraphMode = 3;
+                    if (_osd.GraphMode == 0) _osd.GraphMode = 2;
+                    else if (_osd.GraphMode == 1) _osd.GraphMode = 3;
                 }
                 else
                 {
-                    if (_osdGraphMode == 2) _osdGraphMode = 0;
-                    else if (_osdGraphMode == 3) _osdGraphMode = 1;
+                    if (_osd.GraphMode == 2) _osd.GraphMode = 0;
+                    else if (_osd.GraphMode == 3) _osd.GraphMode = 1;
                 }
                 SyncOverlayFromStudio();
                 UpdateOsdStudioStyles();
             }, "Display the multi-sensor live history trend chart (CPU, iGPU, NVMe, Power, Fan RPM)");
-            _osdShowFpsGraphCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "FPS & Frametime Graph", _osdShowFpsGraph, v => { _osdShowFpsGraph = v; SyncOverlayFromStudio(); }, null);
-            _osdDfGraphStyleCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "DF Twin Graphs", _osdDfGraphStyle, v => { _osdDfGraphStyle = v; SyncOverlayFromStudio(); },
+            _osdShowFpsGraphCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "FPS & Frametime Graph", _osd.ShowFpsGraph, v => { _osd.ShowFpsGraph = v; SyncOverlayFromStudio(); }, null);
+            _osdDfGraphStyleCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "DF Twin Graphs", _osd.DfGraphStyle, v => { _osd.DfGraphStyle = v; SyncOverlayFromStudio(); },
                 "Render Digital Foundry style twin graphs: FRAME-TIME (MS) 0-50-100 and FRAME-RATE (FPS) 0-40-80-120");
-            _osdDfGraphFirstCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "DF Graphs on Top", _osdDfGraphFirst, v => { _osdDfGraphFirst = v; SyncOverlayFromStudio(); },
+            _osdDfGraphFirstCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "DF Graphs on Top", _osd.DfGraphFirst, v => { _osd.DfGraphFirst = v; SyncOverlayFromStudio(); },
                 "Render Digital Foundry style twin graphs above the multi-sensor Live Trend graph");
 
-            _osdPlotFpsOnTrendCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep, colW, cbH, "Plot FPS on Live Trend", _osdPlotFpsOnTrend, v => { _osdPlotFpsOnTrend = v; SyncOverlayFromStudio(); }, null);
-            _osdSparklineBgCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep, colW, cbH, "Background Sparklines", _osdSparklineBg, v => { _osdSparklineBg = v; SyncOverlayFromStudio(); },
+            _osdPlotFpsOnTrendCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep, colW, cbH, "Plot FPS on Live Trend", _osd.PlotFpsOnTrend, v => { _osd.PlotFpsOnTrend = v; SyncOverlayFromStudio(); }, null);
+            _osdSparklineBgCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep, colW, cbH, "Background Sparklines", _osd.SparklineBg, v => { _osd.SparklineBg = v; SyncOverlayFromStudio(); },
                 "Render sparklines as full-width glowing background underlays across each metric row");
-            _osdShowModeCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY + rowStep, colW, cbH, "Thermal Mode", _osdShowMode, v => { _osdShowMode = v; SyncOverlayFromStudio(); }, null);
-            _osdShowGameNameCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY + rowStep, colW, cbH, "Active Game Title", _osdShowGameName, v => { _osdShowGameName = v; SyncOverlayFromStudio(); },
+            _osdShowModeCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY + rowStep, colW, cbH, "Thermal Mode", _osd.ShowMode, v => { _osd.ShowMode = v; SyncOverlayFromStudio(); }, null);
+            _osdShowGameNameCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY + rowStep, colW, cbH, "Active Game Title", _osd.ShowGameName, v => { _osd.ShowGameName = v; SyncOverlayFromStudio(); },
                 "Display the active 3D game process name on the OSD header and horizontal bar");
 
-            _osdMatchThemeCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep * 2, colW, cbH, "Match App Theme", _osdMatchTheme, v => { _osdMatchTheme = v; SyncOverlayFromStudio(); }, null);
-            _osdShowPeaksCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep * 2, 96, cbH, "Trackers", _osdShowPeaks, v =>
+            _osdMatchThemeCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep * 2, colW, cbH, "Match App Theme", _osd.MatchTheme, v => { _osd.MatchTheme = v; SyncOverlayFromStudio(); }, null);
+            _osdShowPeaksCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep * 2, 96, cbH, "Trackers", _osd.ShowPeaks, v =>
             {
-                _osdShowPeaks = v;
-                if (_osdTrackerModeCombo != null) _osdTrackerModeCombo.Enabled = _osdShowPeaks;
+                _osd.ShowPeaks = v;
+                if (_osdTrackerModeCombo != null) _osdTrackerModeCombo.Enabled = _osd.ShowPeaks;
                 SyncOverlayFromStudio();
             }, "Show session Peak (▲), Low (▼), Min/Max (▼▲), or Avg (~) trackers for temperature, power, and usage.");
 
@@ -5323,16 +4880,17 @@ namespace MiniFanControl
                 Font = new Font("Segoe UI", 8.0f, FontStyle.Regular),
                 Location = new Point(colX[1] + 98, curY + 2 * rowStep),
                 Size = new Size(134, 24),
-                Enabled = _osdShowPeaks,
+                Enabled = _osd.ShowPeaks,
+                AccessibleName = "OSD Peak Tracker Mode",
                 Cursor = Cursors.Hand
             };
             _osdTrackerModeCombo.Items.AddRange(new object[] { "Peaks (▲)", "Lows (▼)", "Min/Max (▼▲)", "Avg (~)" });
-            _osdTrackerModeCombo.SelectedIndex = Math.Max(0, Math.Min(3, _osdPeakTrackerMode));
+            _osdTrackerModeCombo.SelectedIndex = Math.Max(0, Math.Min(3, _osd.PeakTrackerMode));
             _osdTrackerModeCombo.SelectedIndexChanged += (s, e) =>
             {
                 if (_osdTrackerModeCombo.SelectedIndex >= 0)
                 {
-                    _osdPeakTrackerMode = _osdTrackerModeCombo.SelectedIndex;
+                    _osd.PeakTrackerMode = _osdTrackerModeCombo.SelectedIndex;
                     SyncOverlayFromStudio();
                 }
             };
@@ -5529,18 +5087,7 @@ namespace MiniFanControl
         {
             if (profile == null) return;
             bool editSys = _curveCanvas != null && _curveCanvas.EditSysFan;
-            if (editSys)
-            {
-                _sysProfile = profile;
-                _sysManualOverride = false;
-                _lastAppliedSysPct = -1;
-            }
-            else
-            {
-                _apuProfile = profile;
-                _apuManualOverride = false;
-                _lastAppliedApuPct = -1;
-            }
+            if (_controller != null) _controller.SetProfileTarget(profile, editSys);
 
             if (_curveCanvas != null)
             {
@@ -5579,8 +5126,7 @@ namespace MiniFanControl
             if (selected.IsProtectedExample)
             {
                 selected.ResetToDefaults();
-                _lastAppliedApuPct = -1;
-                _lastAppliedSysPct = -1;
+                if (_controller != null) _controller.InvalidateAppliedCache();
                 if (_curveCanvas != null)
                 {
                     _curveCanvas.ApuProfile = _apuProfile;
@@ -5607,16 +5153,7 @@ namespace MiniFanControl
 
             FanCurveProfile removed = selected;
             _customProfiles.RemoveAt(idx);
-            if (_apuProfile == removed)
-            {
-                _apuProfile = _builtInProfiles[0];
-                _lastAppliedApuPct = -1;
-            }
-            if (_sysProfile == removed)
-            {
-                _sysProfile = _builtInProfiles[0];
-                _lastAppliedSysPct = -1;
-            }
+            if (_controller != null) _controller.OnProfileRemoved(removed);
             if (_curveCanvas != null)
             {
                 _curveCanvas.ApuProfile = _apuProfile;
@@ -5831,7 +5368,7 @@ namespace MiniFanControl
             for (int i = 0; i < modeBtns.Length; i++)
             {
                 if (modeBtns[i] == null) continue;
-                bool active = (_osdGraphMode == i);
+                bool active = (_osd.GraphMode == i);
                 modeBtns[i].BackColor = active ? accent : surface2;
                 modeBtns[i].ForeColor = active ? activeFg : text;
                 modeBtns[i].Font = active ? TabFontBold : TabFontRegular;
@@ -5842,7 +5379,7 @@ namespace MiniFanControl
             for (int i = 0; i < scaleBtns.Length; i++)
             {
                 if (scaleBtns[i] == null) continue;
-                bool active = (_osdScaleTier == i);
+                bool active = (_osd.ScaleTier == i);
                 scaleBtns[i].BackColor = active ? accent : surface2;
                 scaleBtns[i].ForeColor = active ? activeFg : text;
                 scaleBtns[i].Font = active ? TabFontBold : TabFontRegular;
@@ -5851,14 +5388,14 @@ namespace MiniFanControl
             // Highlight active Layout button
             if (_osdBtnLayoutH != null)
             {
-                bool activeH = !_overlayVertical;
+                bool activeH = !_osd.VerticalLayout;
                 _osdBtnLayoutH.BackColor = activeH ? accent : surface2;
                 _osdBtnLayoutH.ForeColor = activeH ? activeFg : text;
                 _osdBtnLayoutH.Font = activeH ? TabFontBold : TabFontRegular;
             }
             if (_osdBtnLayoutV != null)
             {
-                bool activeV = _overlayVertical;
+                bool activeV = _osd.VerticalLayout;
                 _osdBtnLayoutV.BackColor = activeV ? accent : surface2;
                 _osdBtnLayoutV.ForeColor = activeV ? activeFg : text;
                 _osdBtnLayoutV.Font = activeV ? TabFontBold : TabFontRegular;
@@ -5867,28 +5404,28 @@ namespace MiniFanControl
             // Highlight active Height button (75px Compact, 105px Medium, 140px Large, 180px XL)
             if (_osdBtnHeightCompact != null)
             {
-                bool active = (_osdGraphHeight <= 85);
+                bool active = (_osd.GraphHeight <= 85);
                 _osdBtnHeightCompact.BackColor = active ? accent : surface2;
                 _osdBtnHeightCompact.ForeColor = active ? activeFg : text;
                 _osdBtnHeightCompact.Font = active ? TabFontBold : TabFontRegular;
             }
             if (_osdBtnHeightMedium != null)
             {
-                bool active = (_osdGraphHeight > 85 && _osdGraphHeight <= 120);
+                bool active = (_osd.GraphHeight > 85 && _osd.GraphHeight <= 120);
                 _osdBtnHeightMedium.BackColor = active ? accent : surface2;
                 _osdBtnHeightMedium.ForeColor = active ? activeFg : text;
                 _osdBtnHeightMedium.Font = active ? TabFontBold : TabFontRegular;
             }
             if (_osdBtnHeightLarge != null)
             {
-                bool active = (_osdGraphHeight > 120 && _osdGraphHeight <= 160);
+                bool active = (_osd.GraphHeight > 120 && _osd.GraphHeight <= 160);
                 _osdBtnHeightLarge.BackColor = active ? accent : surface2;
                 _osdBtnHeightLarge.ForeColor = active ? activeFg : text;
                 _osdBtnHeightLarge.Font = active ? TabFontBold : TabFontRegular;
             }
             if (_osdBtnHeightXl != null)
             {
-                bool active = (_osdGraphHeight > 160);
+                bool active = (_osd.GraphHeight > 160);
                 _osdBtnHeightXl.BackColor = active ? accent : surface2;
                 _osdBtnHeightXl.ForeColor = active ? activeFg : text;
                 _osdBtnHeightXl.Font = active ? TabFontBold : TabFontRegular;
@@ -6092,6 +5629,37 @@ namespace MiniFanControl
 
         private void ApplyThemeToControls()
         {
+            if (SystemInformation.HighContrast)
+            {
+                BackColor = SystemColors.Window;
+                ForeColor = SystemColors.WindowText;
+                foreach (Label h in _sectionHeaders)
+                    h.ForeColor = SystemColors.HotTrack;
+                foreach (Panel c in _sectionCards)
+                    c.BackColor = SystemColors.Control;
+                foreach (Label l in _staticLabels)
+                {
+                    l.BackColor = SystemColors.Control;
+                    l.ForeColor = SystemColors.ControlText;
+                }
+                foreach (DoubleBufferedPanel box in new[] { _cpuTempBox, _gpuTempBox, _nvmeTempBox, _pwrBox, _ramPowerBox, _ambientBox, _fan1Box, _fan2Box, _ramCard })
+                {
+                    if (box != null) box.BackColor = SystemColors.Window;
+                }
+                foreach (Label lbl in new[] { _cpuBoxTitle, _cpuTempLabel, _gpuBoxTitle, _gpuTempLabel, _nvmeBoxTitle, _nvmeTempLabel, _pwrBoxTitle, _pwrLabel, _ramBoxTitle, _ramPowerLabel, _ambientBoxTitle, _ambientLabel, _fan1BoxTitle, _fan1RpmLabel, _fan2BoxTitle, _fan2RpmLabel, _ramLabel })
+                {
+                    if (lbl != null)
+                    {
+                        lbl.BackColor = SystemColors.Window;
+                        lbl.ForeColor = SystemColors.WindowText;
+                    }
+                }
+                if (_curveCanvas != null) _curveCanvas.Invalidate();
+                if (_liveCanvas != null) _liveCanvas.Invalidate();
+                if (_perfCanvas != null) _perfCanvas.Invalidate();
+                return;
+            }
+
             bool isRadeon = (_themePref == ThemePreference.Radeon);
             Color bg = isRadeon ? RadeonBg : (IsAb ? AbBg : (_isDarkMode ? DarkBg : LightBg));
             Color surface = isRadeon ? RadeonSurface : (IsAb ? AbSurface : (_isDarkMode ? DarkSurface : LightSurface));
@@ -6414,411 +5982,24 @@ namespace MiniFanControl
             return string.Format("{0} RPM", rpm);
         }
 
-        private bool EvaluateAndApplyFanProfiles(int apuTemp)
-        {
-            if (_readOnlyFailsafeLatched) return false;
-            if (_apuProfile == null) _apuProfile = _builtInProfiles[0];
-            if (_sysProfile == null) _sysProfile = _builtInProfiles[0];
-
-            bool wroteHardware = false;
-
-            // Emergency Thermal Safety Guard (TJMax Tripwire):
-            // If APU temperature hits >= 90°C, bypass manual overrides and curves, forcing 100% PWM.
-            // Hysteresis holds until temperature recovers below 75°C.
-            if (HardwareBackend.CheckEmergencyThermalTripwire(apuTemp, ref _emergencyThermalActive))
-            {
-                if (_lastAppliedApuPct != 100)
-                {
-                    bool ok = _demoMode ? _demo.SetFan(1, 100) : _hw.SetFan(1, 100);
-                    if (ok)
-                    {
-                        _lastAppliedApuPct = 100;
-                        wroteHardware = true;
-                        ClearHardwareWriteError();
-                    }
-                    else
-                    {
-                        RecordHardwareWriteError("Emergency APU Fan 100% write rejected / read-back verification failed");
-                    }
-                }
-                if (_hasDualFans && _lastAppliedSysPct != 100)
-                {
-                    bool ok = _demoMode ? _demo.SetFan(2, 100) : _hw.SetFan(2, 100);
-                    if (ok)
-                    {
-                        _lastAppliedSysPct = 100;
-                        wroteHardware = true;
-                        ClearHardwareWriteError();
-                    }
-                    else
-                    {
-                        RecordHardwareWriteError("Emergency Sys Fan 100% write rejected / read-back verification failed");
-                    }
-                }
-                return wroteHardware;
-            }
-
-            // Determine which built-in EC mode register (0x32) to use:
-            // Prefer APU Fan's built-in mode so APU Fan can run on native EC Auto (0x00),
-            // or if APU Fan is custom/manual, use Sys Fan's built-in mode so Sys Fan can run on native EC Auto!
-            int desiredEcMode = -1;
-            bool isSuperIo = (_hw != null && _hw.SuperIoBaseAddr != 0);
-            bool apuUsesNativeEcAuto = false;
-            bool sysUsesNativeEcAuto = false;
-
-            if (!isSuperIo)
-            {
-                if (!_apuManualOverride && _apuProfile.IsBuiltIn)
-                {
-                    desiredEcMode = _apuProfile.BuiltInCode == 3 ? 1 : _apuProfile.BuiltInCode;
-                    apuUsesNativeEcAuto = (_apuProfile.BuiltInCode != 3);
-                    if (_hasDualFans && !_sysManualOverride && _sysProfile.IsBuiltIn && _sysProfile.BuiltInCode == _apuProfile.BuiltInCode)
-                    {
-                        sysUsesNativeEcAuto = (_sysProfile.BuiltInCode != 3);
-                    }
-                }
-                else if (_hasDualFans && !_sysManualOverride && _sysProfile.IsBuiltIn)
-                {
-                    desiredEcMode = _sysProfile.BuiltInCode == 3 ? 1 : _sysProfile.BuiltInCode;
-                    sysUsesNativeEcAuto = (_sysProfile.BuiltInCode != 3);
-                }
-
-                // If NVMe SSD is hot (>= 65°C) or NPU inference is active (>= 15%), override native EC auto for Fan 2 so Fan 2 actively cools the SSD/NPU
-                if (sysUsesNativeEcAuto && (_lastStatus.NvmeTemp >= 65 || _lastStatus.NpuActivityPct >= 15))
-                {
-                    sysUsesNativeEcAuto = false;
-                }
-            }
-
-            // Proactive NPU thermal feed-forward scaling:
-            // Elevates effective thermal target during local LLM / AI inference to flush out localized tile heat
-            int npuBoost = 0;
-            if (_lastStatus.NpuActivityPct >= 10)
-            {
-                npuBoost = (int)Math.Round(_lastStatus.NpuActivityPct * 0.35);
-            }
-            int effectiveApuTemp = apuTemp + npuBoost;
-
-            // 2°C cooldown hysteresis for software curve updates
-            bool withinCooldownHysteresis = (_lastCustomEvalTemp > 0 && effectiveApuTemp < _lastCustomEvalTemp && (_lastCustomEvalTemp - effectiveApuTemp) < 2);
-
-            try
-            {
-                if (desiredEcMode >= 0 && _lastAppliedEcMode != desiredEcMode)
-                {
-                    bool ok = _demoMode ? _demo.SetMode(desiredEcMode) : _hw.SetMode(desiredEcMode);
-                    if (ok)
-                    {
-                        _lastAppliedEcMode = desiredEcMode;
-                        wroteHardware = true;
-                        ClearHardwareWriteError();
-                    }
-                    else
-                    {
-                        RecordHardwareWriteError(string.Format("EC Mode change (0x{0:X2}) verification failed", desiredEcMode));
-                    }
-                }
-
-                // 1. Apply APU Fan (Fan 1)
-                if (!_apuManualOverride)
-                {
-                    if (apuUsesNativeEcAuto)
-                    {
-                        if (_lastAppliedApuPct != 0)
-                        {
-                            bool ok = _demoMode ? _demo.SetFan(1, 0) : _hw.SetFan(1, 0);
-                            if (ok)
-                            {
-                                _lastAppliedApuPct = 0;
-                                wroteHardware = true;
-                                ClearHardwareWriteError();
-                            }
-                            else
-                            {
-                                RecordHardwareWriteError("APU Fan reset to Auto (0%) write verification failed");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        int targetApu = _apuProfile.EvaluateApu(effectiveApuTemp);
-                        int regPct = targetApu <= 0 ? (isSuperIo ? 0 : 1) : targetApu;
-                        if (_lastAppliedApuPct < 0 || (!withinCooldownHysteresis && Math.Abs(regPct - _lastAppliedApuPct) >= 2) || regPct == 1 || regPct == 100)
-                        {
-                            bool ok = _demoMode ? _demo.SetFan(1, regPct) : _hw.SetFan(1, regPct);
-                            if (ok)
-                            {
-                                _lastAppliedApuPct = regPct;
-                                _lastCustomEvalTemp = effectiveApuTemp;
-                                wroteHardware = true;
-                                ClearHardwareWriteError();
-                            }
-                            else
-                            {
-                                RecordHardwareWriteError(string.Format("APU Fan speed write ({0}%) verification failed", regPct));
-                            }
-                        }
-                    }
-                }
-
-                // 2. Apply System RAM/NVMe Fan (Fan 2) only if device has 2 fans
-                if (_hasDualFans && !_sysManualOverride)
-                {
-                    if (sysUsesNativeEcAuto)
-                    {
-                        if (_lastAppliedSysPct != 0)
-                        {
-                            bool ok = _demoMode ? _demo.SetFan(2, 0) : _hw.SetFan(2, 0);
-                            if (ok)
-                            {
-                                _lastAppliedSysPct = 0;
-                                wroteHardware = true;
-                                _fan2ConsecutiveWriteFailures = 0;
-                                if (_hw == null || _hw.Profile == null || _hw.Profile.HasDualFans)
-                                {
-                                    ClearHardwareWriteError();
-                                }
-                            }
-                            else
-                            {
-                                RecordHardwareWriteError("Sys Fan reset to Auto (0%) write verification failed");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        int sysThermalSource = (_lastStatus.NvmeTemp > 0) ? Math.Max(effectiveApuTemp, _lastStatus.NvmeTemp) : effectiveApuTemp;
-                        int targetSys = _sysProfile.EvaluateSys(sysThermalSource);
-                        int regPct = targetSys <= 0 ? (isSuperIo ? 0 : 1) : targetSys;
-                        if (_lastAppliedSysPct < 0 || (!withinCooldownHysteresis && Math.Abs(regPct - _lastAppliedSysPct) >= 2) || regPct == 1 || regPct == 100)
-                        {
-                            bool ok = _demoMode ? _demo.SetFan(2, regPct) : _hw.SetFan(2, regPct);
-                            if (ok)
-                            {
-                                _lastAppliedSysPct = regPct;
-                                _lastCustomEvalTemp = effectiveApuTemp;
-                                wroteHardware = true;
-                                _fan2ConsecutiveWriteFailures = 0;
-                                if (_hw == null || _hw.Profile == null || _hw.Profile.HasDualFans)
-                                {
-                                    ClearHardwareWriteError();
-                                }
-                            }
-                            else
-                            {
-                                _fan2ConsecutiveWriteFailures++;
-                                // Only adapt to single-fan if:
-                                // 1. Five consecutive writes have failed
-                                // 2. Commanded duty is non-zero (>= 30% PWM spin threshold)
-                                // 3. Fan 2 tachometer stays at 0 RPM
-                                if (_fan2ConsecutiveWriteFailures >= 5 && regPct >= 30 && _lastStatus.Fan2Rpm == 0)
-                                {
-                                    _hasDualFans = false;
-                                    WatchdogSupervisor.LogWatchdogEvent(string.Format("Sys Fan (Fan 2) repeatedly unacknowledged ({0} failures) at {1}% duty and 0 RPM detected -> Auto-adapting to Single-Fan Mode.", _fan2ConsecutiveWriteFailures, regPct));
-                                    if (IsHandleCreated && !IsDisposed)
-                                    {
-                                        try
-                                        {
-                                            BeginInvoke((Action)(() =>
-                                            {
-                                                ApplyFanLayoutMode();
-                                                RefreshStatus();
-                                            }));
-                                        }
-                                        catch { }
-                                    }
-                                }
-                                else
-                                {
-                                    RecordHardwareWriteError(string.Format("Sys Fan write ({0}%) verification failed", regPct));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                RecordHardwareWriteError("Fan profile evaluation exception: " + ex.Message);
-                WatchdogSupervisor.LogWatchdogEvent("EvaluateAndApplyFanProfiles exception: " + ex.ToString());
-            }
-            return wroteHardware;
-        }
-
-        private void RecordHardwareWriteError(string errorDetail)
-        {
-            _consecutiveWriteFailures++;
-            _lastHardwareWriteError = errorDetail;
-
-            // Persistent write failure escalation:
-            // After 10 consecutive write verification failures, force SetAuto() and latch read-only mode to prevent hardware damage.
-            if (_consecutiveWriteFailures >= 10 && !_readOnlyFailsafeLatched)
-            {
-                _readOnlyFailsafeLatched = true;
-                WatchdogSupervisor.LogWatchdogEvent(string.Format("PERSISTENT WRITE FAILURES ({0} consecutive): Escalating to emergency failsafe. Restoring BIOS Auto and latching read-only mode.", _consecutiveWriteFailures));
-                try
-                {
-                    if (_hw != null)
-                    {
-                        _hw.SetAuto();
-                        if (_hw.Profile != null) _hw.Profile.IsReadOnly = true;
-                    }
-                }
-                catch { }
-
-                if (IsHandleCreated && !IsDisposed)
-                {
-                    try
-                    {
-                        BeginInvoke((Action)(() =>
-                        {
-                            _errorBanner.Text = string.Format("CRITICAL: {0} consecutive hardware write failures. Safety failsafe engaged: BIOS Auto restored and manual writes latched read-only.", _consecutiveWriteFailures);
-                            _errorBanner.Visible = true;
-                            _statusBarLabel.ForeColor = _isDarkMode ? ErrorFgDark : ErrorFgLight;
-                            _statusBarLabel.Text = "CRITICAL: Write failures escalated -> BIOS Auto restored (Read-Only Latched)";
-                        }));
-                    }
-                    catch { }
-                }
-                return;
-            }
-
-            if (IsHandleCreated && !IsDisposed)
-            {
-                try
-                {
-                    BeginInvoke((Action)(() =>
-                    {
-                        _errorBanner.Text = string.Format("⚠️ Hardware Write Failure: {0} (Attempt {1})", errorDetail, _consecutiveWriteFailures);
-                        _errorBanner.Visible = true;
-                        _statusBarLabel.ForeColor = _isDarkMode ? ErrorFgDark : ErrorFgLight;
-                        _statusBarLabel.Text = string.Format("⚠️ Hardware write rejected ({0} retries)", _consecutiveWriteFailures);
-                    }));
-                }
-                catch { }
-            }
-        }
-
-        private void ClearHardwareWriteError()
-        {
-            _readOnlyFailsafeLatched = false;
-            if (_hw != null && _hw.Profile != null && !_hw.Profile.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase))
-            {
-                _hw.Profile.IsReadOnly = false;
-            }
-            if (_consecutiveWriteFailures > 0 || _lastHardwareWriteError != null)
-            {
-                _consecutiveWriteFailures = 0;
-                _lastHardwareWriteError = null;
-                if (IsHandleCreated && !IsDisposed)
-                {
-                    try
-                    {
-                        BeginInvoke((Action)(() =>
-                        {
-                            _errorBanner.Visible = false;
-                            if (_statusBarLabel != null) { _statusBarLabel.Text = "Ready"; }
-                        }));
-                    }
-                    catch { }
-                }
-            }
-        }
-
         private int _uiSamplePending = 0;
-
-        private void HardwareWorkerLoop()
-        {
-            while (_hwThreadRunning)
-            {
-                if (!_hwWorkerPaused)
-                {
-                    try
-                    {
-                        FanStatus st = _demoMode ? _demo.GetStatus() : _hw.GetStatus();
-                        int apuTemp = Math.Max(st.CpuTemp, st.GpuTemp);
-
-                        bool hwChanged = EvaluateAndApplyFanProfiles(apuTemp);
-                        if (hwChanged)
-                        {
-                            st = _demoMode ? _demo.GetStatus() : _hw.GetStatus();
-                        }
-
-                        _lastStatus = st;
-
-                        if (IsHandleCreated && !IsDisposed)
-                        {
-                            if (Interlocked.CompareExchange(ref _uiSamplePending, 1, 0) == 0)
-                            {
-                                try
-                                {
-                                    BeginInvoke((Action)(() => OnHardwareWorkerSample(_lastStatus)));
-                                }
-                                catch
-                                {
-                                    Interlocked.Exchange(ref _uiSamplePending, 0);
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        WatchdogSupervisor.LogWatchdogEvent("Hardware worker loop exception: " + ex.ToString());
-                        RecordHardwareWriteError("Hardware loop exception: " + ex.Message);
-                        if (IsHandleCreated && !IsDisposed)
-                        {
-                            try
-                            {
-                                BeginInvoke((Action)(() => OnHardwareWorkerError(ex)));
-                            }
-                            catch { }
-                        }
-                    }
-                }
-
-                _lastWorkerSampleUtc = DateTime.UtcNow;
-
-                // Child supervisor monitoring: Check if watchdog process crashed or was terminated
-                if (_watchdogStarted && _watchdogProcess != null && _watchdogProcess.HasExited)
-                {
-                    _watchdogStarted = false;
-                    int exitCode = -1;
-                    try { exitCode = _watchdogProcess.ExitCode; } catch { }
-                    WatchdogSupervisor.LogWatchdogEvent(string.Format("ALERT: Safety watchdog supervisor process PID {0} exited unexpectedly (code {1}). Attempting automatic restart...",
-                        _watchdogProcess.Id, exitCode));
-                    if (IsHandleCreated && !IsDisposed)
-                    {
-                        try
-                        {
-                            BeginInvoke((Action)(() =>
-                            {
-                                _errorBanner.Text = string.Format("⚠️ Safety Watchdog process stopped (ExitCode: {0}). Restarting supervisor...", exitCode);
-                                _errorBanner.Visible = true;
-                                StartWatchdogSupervisor();
-                            }));
-                        }
-                        catch { }
-                    }
-                }
-
-                int waitMs = _refreshIntervalMs;
-                if (DateTime.UtcNow < _rampUntil) waitMs = Math.Min(waitMs, 250);
-                _hwWakeEvent.WaitOne(waitMs);
-            }
-        }
 
         private void OnHardwareWorkerSample(FanStatus st)
         {
             Interlocked.Exchange(ref _uiSamplePending, 0);
             try
             {
+                _lastStatus = st;
                 if ((DateTime.UtcNow - _lastWorkerSampleUtc).TotalMilliseconds < 4500)
                 {
                     PulseWatchdogHeartbeat();
                 }
                 ApplyStatusToUi(st);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                WatchdogSupervisor.LogWatchdogEvent("OnHardwareWorkerSample UI update error: " + ex.Message);
+            }
         }
 
         private void OnHardwareWorkerError(Exception ex)
@@ -6886,7 +6067,11 @@ namespace MiniFanControl
                 return;
             }
 
-            string winTitle = string.Format("CPU {0}°C | iGPU {1}°C - MiniFanControl", st.CpuTemp, st.GpuTemp);
+            string tUnit = TelemetrySessionStats.TempUnit(_useFahrenheit);
+            string winTitle = string.Format("CPU {0}{2} | iGPU {1}{2} - MiniFanControl",
+                TelemetrySessionStats.ToDisplayTemp(st.CpuTemp, _useFahrenheit),
+                TelemetrySessionStats.ToDisplayTemp(st.GpuTemp, _useFahrenheit),
+                tUnit);
             if (Text != winTitle) Text = winTitle;
 
             if (_hwSubLabel != null && !string.IsNullOrEmpty(st.RadeonSoftwareVer))
@@ -6929,7 +6114,6 @@ namespace MiniFanControl
             Color rampColor = _isDarkMode ? Color.FromArgb(0xFA, 0xB3, 0x87) : Color.FromArgb(0xEA, 0x58, 0x0C);
             bool isRadeon = (_themePref == ThemePreference.Radeon);
 
-            string tUnit = TelemetrySessionStats.TempUnit(_useFahrenheit);
             string cpuValTxt = st.CpuTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.CpuTemp, _useFahrenheit), tUnit) : "N/A";
             if (_cpuTempLabel.Text != cpuValTxt) _cpuTempLabel.Text = cpuValTxt;
             if (_cpuTempLabel.ForeColor != tempFg) _cpuTempLabel.ForeColor = tempFg;
@@ -6941,7 +6125,11 @@ namespace MiniFanControl
                     : (st.CpuClockMhz > 0 ? string.Format("CPU • {0:0.0} GHz", st.CpuClockMhz / 1000.0) : "CPU TEMP");
                 if (_cpuBoxTitle.Text != cpuHeader) _cpuBoxTitle.Text = cpuHeader;
             }
-            if (_cpuTempBox != null) _cpuTempBox.Invalidate();
+            if (_cpuTempBox != null)
+            {
+                _cpuTempBox.AccessibleName = string.Format("CPU Temperature: {0}", cpuValTxt);
+                _cpuTempBox.Invalidate();
+            }
 
             string gpuValTxt = st.GpuTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.GpuTemp, _useFahrenheit), tUnit) : "N/A";
             if (_gpuTempLabel.Text != gpuValTxt) _gpuTempLabel.Text = gpuValTxt;
@@ -6954,7 +6142,11 @@ namespace MiniFanControl
                     : (st.GpuHotspotTemp > 0 ? string.Format("iGPU • 🔥{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.GpuHotspotTemp, _useFahrenheit), tUnit) : "iGPU TEMP");
                 if (_gpuBoxTitle.Text != gpuHeader) _gpuBoxTitle.Text = gpuHeader;
             }
-            if (_gpuTempBox != null) _gpuTempBox.Invalidate();
+            if (_gpuTempBox != null)
+            {
+                _gpuTempBox.AccessibleName = string.Format("iGPU Temperature: {0}", gpuValTxt);
+                _gpuTempBox.Invalidate();
+            }
 
             if (_nvmeTempLabel != null)
             {
@@ -6969,7 +6161,11 @@ namespace MiniFanControl
                         : "NVMe TEMP";
                     if (_nvmeBoxTitle.Text != nvmeHeader) _nvmeBoxTitle.Text = nvmeHeader;
                 }
-                if (_nvmeTempBox != null) _nvmeTempBox.Invalidate();
+                if (_nvmeTempBox != null)
+                {
+                    _nvmeTempBox.AccessibleName = string.Format("NVMe Temperature: {0}", nvmeValTxt);
+                    _nvmeTempBox.Invalidate();
+                }
             }
 
             if (_pwrLabel != null)
@@ -6985,7 +6181,11 @@ namespace MiniFanControl
                         : (st.ApuPowerLimitWatts > 0 ? string.Format("PWR • {0}W LIMIT", st.ApuPowerLimitWatts) : "POWER •");
                     if (_pwrBoxTitle.Text != pwrHeader) _pwrBoxTitle.Text = pwrHeader;
                 }
-                if (_pwrBox != null) _pwrBox.Invalidate();
+                if (_pwrBox != null)
+                {
+                    _pwrBox.AccessibleName = string.Format("APU Power: {0}", pwrValTxt);
+                    _pwrBox.Invalidate();
+                }
             }
 
             if (_ramPowerLabel != null)
@@ -7018,7 +6218,11 @@ namespace MiniFanControl
                     }
                     if (_ramBoxTitle.Text != ramHeader) _ramBoxTitle.Text = ramHeader;
                 }
-                if (_ramPowerBox != null) _ramPowerBox.Invalidate();
+                if (_ramPowerBox != null)
+                {
+                    _ramPowerBox.AccessibleName = string.Format("RAM Sensor: {0}", ramValTxt);
+                    _ramPowerBox.Invalidate();
+                }
             }
 
             if (_ambientLabel != null)
@@ -7033,7 +6237,11 @@ namespace MiniFanControl
                         : "Chassis";
                     if (_ambientBoxTitle.Text != ambHeader) _ambientBoxTitle.Text = ambHeader;
                 }
-                if (_ambientBox != null) _ambientBox.Invalidate();
+                if (_ambientBox != null)
+                {
+                    _ambientBox.AccessibleName = string.Format("Chassis Ambient Temperature: {0}", ambValTxt);
+                    _ambientBox.Invalidate();
+                }
             }
 
             string f1ValTxt = string.Format("{0} RPM •", st.Fan1Rpm);
@@ -7054,6 +6262,7 @@ namespace MiniFanControl
                         : "APU FAN";
                     if (_fan1BoxTitle.Text != fan1Header) _fan1BoxTitle.Text = fan1Header;
                 }
+                _fan1Box.AccessibleName = string.Format("APU Fan Speed: {0} RPM", st.Fan1Rpm);
                 _fan1Box.Invalidate();
             }
 
@@ -7068,6 +6277,7 @@ namespace MiniFanControl
                             : "SYS FAN");
                     if (_fan2BoxTitle.Text != fan2Header) _fan2BoxTitle.Text = fan2Header;
                 }
+                _fan2Box.AccessibleName = !_hasDualFans ? "System Fan: Disabled" : string.Format("System Fan Speed: {0} RPM", st.Fan2Rpm);
                 _fan2Box.Invalidate();
             }
 
@@ -7153,7 +6363,9 @@ namespace MiniFanControl
             {
                 int sysThermalSource = (st.NvmeTemp > 0) ? Math.Max(apuTemp, st.NvmeTemp) : apuTemp;
                 int sysEval = _sysProfile != null ? _sysProfile.EvaluateSys(sysThermalSource) : st.Fan2Pct;
-                string nvmeTag = (st.NvmeTemp > apuTemp && st.NvmeTemp >= 50) ? string.Format(" • NVMe {0}°C", st.NvmeTemp) : "";
+                string nvmeTag = (st.NvmeTemp > apuTemp && st.NvmeTemp >= 50)
+                    ? string.Format(" • NVMe {0}{1}", TelemetrySessionStats.ToDisplayTemp(st.NvmeTemp, _useFahrenheit), tUnit)
+                    : "";
                 _pct2Label.Text = (st.Fan2Manual == 0) ? string.Format("Auto ({0}{1})", ShortModeTag(sysModeName), nvmeTag) : string.Format("{0}% ({1}{2})", sysEval, ShortModeTag(sysModeName), nvmeTag);
                 _pct2Label.ForeColor = autoColor;
             }
@@ -7179,7 +6391,7 @@ namespace MiniFanControl
 
         private void RefreshStatus()
         {
-            _hwWakeEvent.Set();
+            if (_controller != null) _controller.RequestImmediateRefresh();
         }
 
         private static string ShortModeTag(string modeName)
@@ -7206,19 +6418,7 @@ namespace MiniFanControl
             try
             {
                 bool editSys = _curveCanvas != null && _curveCanvas.EditSysFan;
-                if (editSys)
-                {
-                    _sysProfile = _builtInProfiles[code];
-                    _sysManualOverride = false;
-                    _lastAppliedSysPct = -1;
-                }
-                else
-                {
-                    _apuProfile = _builtInProfiles[code];
-                    _apuManualOverride = false;
-                    _lastAppliedApuPct = -1;
-                }
-                _lastAppliedEcMode = -1;
+                if (_controller != null) _controller.SetProfileTarget(_builtInProfiles[code], editSys);
 
                 if (_curveCanvas != null)
                 {
@@ -7245,41 +6445,18 @@ namespace MiniFanControl
         {
             try
             {
-                if (fanId == 1)
-                {
-                    _apuManualPct = Math.Max(0, Math.Min(100, pct));
-                    _apuManualOverride = (_apuManualPct > 0);
-                    _lastAppliedApuPct = -1;
-                }
-                else
-                {
-                    _sysManualPct = Math.Max(0, Math.Min(100, pct));
-                    _sysManualOverride = (_sysManualPct > 0);
-                    _lastAppliedSysPct = -1;
-                }
-                _lastAppliedEcMode = -1;
+                bool ok = _controller != null && _controller.ApplyManualFan(fanId, pct);
 
                 UpdateCurveTabStyles();
                 UpdateModeButtonStyles(_lastSelectedModeCode);
                 UpdateCurveHint();
                 SaveSettings();
 
-                bool ok = _demoMode ? _demo.SetFan(fanId, pct) : _hw.SetFan(fanId, pct);
                 if (ok)
                 {
-                    if (fanId == 1) _lastAppliedApuPct = pct;
-                    else _lastAppliedSysPct = pct;
-                    if (fanId == 1 || (_hw == null || _hw.Profile == null || _hw.Profile.HasDualFans))
-                    {
-                        ClearHardwareWriteError();
-                    }
                     string fanLabel = fanId == 1 ? "APU Fan" : "Sys Fan";
                     string desc = pct == 0 ? string.Format("{0} → {1}", fanLabel, (fanId == 1 ? _apuProfile : _sysProfile).Name) : string.Format("{0} → {1}%", fanLabel, pct);
                     StartRampIndication(desc, fanId);
-                }
-                else
-                {
-                    RecordHardwareWriteError(string.Format("Manual {0} write ({1}%) verification failed", fanId == 1 ? "APU Fan" : "Sys Fan", pct));
                 }
             }
             catch (Exception ex)
@@ -7293,22 +6470,8 @@ namespace MiniFanControl
         {
             try
             {
-                _readOnlyFailsafeLatched = false;
-                _consecutiveWriteFailures = 0;
-                if (_hw != null && _hw.Profile != null && !_hw.Profile.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase))
-                {
-                    _hw.Profile.IsReadOnly = false;
-                    _hw.ReinitializeHardwareAfterResume();
-                }
-                _apuManualPct = 0;
-                _sysManualPct = 0;
-                _apuManualOverride = false;
-                _sysManualOverride = false;
-                _lastAppliedApuPct = -1;
-                _lastAppliedSysPct = -1;
-                _lastAppliedEcMode = -1;
-                _apuProfile = _builtInProfiles[0];
-                _sysProfile = _builtInProfiles[0];
+                bool ok = _controller != null && _controller.ApplyAutoAll();
+
                 if (_curveCanvas != null)
                 {
                     _curveCanvas.ApuProfile = _apuProfile;
@@ -7320,15 +6483,9 @@ namespace MiniFanControl
                 UpdateCurveHint();
                 SaveSettings();
 
-                bool ok = _demoMode ? _demo.SetAuto() : _hw.SetAuto();
                 if (ok)
                 {
-                    ClearHardwareWriteError();
                     StartRampIndication("Reset both fans → Balanced (Auto)", 0);
-                }
-                else
-                {
-                    RecordHardwareWriteError("Reset both fans to Auto verification failed");
                 }
             }
             catch (Exception ex)
@@ -7446,6 +6603,8 @@ namespace MiniFanControl
             RefreshStatus();
         }
 
+        private bool _resourcesCleanedUp = false;
+
         private void OnFormClosing(object sender, FormClosingEventArgs e)
         {
             if (!_isUnitTest && !_forceFullExit && _closeToTray && e.CloseReason == CloseReason.UserClosing)
@@ -7454,23 +6613,32 @@ namespace MiniFanControl
                 MinimizeToTray();
                 return;
             }
+            CleanupManagedResources();
+        }
+
+        private void CleanupManagedResources()
+        {
+            if (_resourcesCleanedUp) return;
+            _resourcesCleanedUp = true;
 
             SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
             if (_sessionEndingHandler != null) { SystemEvents.SessionEnding -= _sessionEndingHandler; _sessionEndingHandler = null; }
             if (_powerModeChangedHandler != null) { SystemEvents.PowerModeChanged -= _powerModeChangedHandler; _powerModeChangedHandler = null; }
             StopWatchdogSupervisorGracefully();
             StopSingleInstanceWakeListener();
-            _hwThreadRunning = false;
-            _hwWakeEvent.Set();
-            if (_hwThread != null && _hwThread.IsAlive)
+            if (_controller != null)
             {
-                _hwThread.Join(500);
+                _controller.Stop(500);
             }
             AppDomain.CurrentDomain.ProcessExit -= OnProcessOrCrashExit;
             AppDomain.CurrentDomain.UnhandledException -= OnProcessOrCrashExit;
             UnregisterGlobalHotkeys();
             if (_refreshTimer != null)
+            {
                 _refreshTimer.Stop();
+                _refreshTimer.Dispose();
+                _refreshTimer = null;
+            }
             RestoreHardwareSafeAutoIfNeeded();
             if (_headerLogoBox != null && _headerLogoBox.Image != null)
             {
@@ -7489,6 +6657,7 @@ namespace MiniFanControl
                     _cpuTrayIcon.Icon = null;
                 }
                 _cpuTrayIcon.Dispose();
+                _cpuTrayIcon = null;
             }
             if (_gpuTrayIcon != null)
             {
@@ -7502,6 +6671,7 @@ namespace MiniFanControl
                     _gpuTrayIcon.Icon = null;
                 }
                 _gpuTrayIcon.Dispose();
+                _gpuTrayIcon = null;
             }
             if (_cpuIconHandle != IntPtr.Zero)
             {
@@ -7519,6 +6689,21 @@ namespace MiniFanControl
                 _overlayForm.Dispose();
                 _overlayForm = null;
             }
+            if (_driversMenu != null)
+            {
+                try { _driversMenu.Dispose(); } catch { }
+                _driversMenu = null;
+            }
+            if (_uiToolTip != null)
+            {
+                try { _uiToolTip.Dispose(); } catch { }
+                _uiToolTip = null;
+            }
+            if (_controller != null)
+            {
+                _controller.Dispose();
+                _controller = null;
+            }
             _hw.Dispose();
         }
 
@@ -7527,7 +6712,7 @@ namespace MiniFanControl
             if (disposing)
             {
                 _forceFullExit = true;
-                OnFormClosing(this, new FormClosingEventArgs(CloseReason.ApplicationExitCall, false));
+                CleanupManagedResources();
             }
             base.Dispose(disposing);
         }

@@ -38,6 +38,7 @@ namespace MiniFanControl
 
         private int _dragIndex = -1;
         private int _hoverIndex = -1;
+        private int _selectedIndex = -1;
 
         private static readonly Font AxisFont = new Font("Segoe UI", 7.25f, FontStyle.Regular);
         private static readonly Font PointTipFont = new Font("Segoe UI", 7.5f, FontStyle.Bold);
@@ -45,8 +46,113 @@ namespace MiniFanControl
         public FanCurveCanvas()
         {
             DoubleBuffered = true;
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Selectable, true);
+            TabStop = true;
+            AccessibleName = "Fan Curve Editor";
+            AccessibleDescription = "Interactive fan curve chart. Use Left/Right or PageUp/PageDown to select points, and Arrow keys to adjust temperature and fan percentage.";
+            AccessibleRole = AccessibleRole.Chart;
             Cursor = Cursors.Cross;
+        }
+
+        private void SyncPointAccessibility(CurvePoint pt, int index, int total)
+        {
+            string fanTag = EditSysFan ? "System Fan" : "APU Fan";
+            string unit = TelemetrySessionStats.TempUnit(UseFahrenheit);
+            int dispT = TelemetrySessionStats.ToDisplayTemp(pt.Temp, UseFahrenheit);
+            AccessibleName = string.Format("{0} Curve Editor - Point {1} of {2}: {3}{4} at {5}%",
+                fanTag, index + 1, total, dispT, unit, pt.Pct);
+        }
+
+        protected override void OnGotFocus(EventArgs e)
+        {
+            base.OnGotFocus(e);
+            CurvePoint[] pts = GetActivePoints();
+            if (pts != null && pts.Length > 0 && (_selectedIndex < 0 || _selectedIndex >= pts.Length))
+            {
+                _selectedIndex = 0;
+            }
+            if (pts != null && _selectedIndex >= 0 && _selectedIndex < pts.Length)
+            {
+                SyncPointAccessibility(pts[_selectedIndex], _selectedIndex, pts.Length);
+            }
+            Invalidate();
+        }
+
+        protected override void OnLostFocus(EventArgs e)
+        {
+            base.OnLostFocus(e);
+            Invalidate();
+        }
+
+        protected override bool IsInputKey(Keys keyData)
+        {
+            switch (keyData & Keys.KeyCode)
+            {
+                case Keys.Left:
+                case Keys.Right:
+                case Keys.Up:
+                case Keys.Down:
+                case Keys.PageUp:
+                case Keys.PageDown:
+                    return true;
+            }
+            return base.IsInputKey(keyData);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            CurvePoint[] pts = GetActivePoints();
+            FanCurveProfile prof = GetActiveProfile();
+            if (pts == null || pts.Length == 0 || prof == null) return;
+
+            if (_selectedIndex < 0 || _selectedIndex >= pts.Length) _selectedIndex = 0;
+
+            if (e.KeyCode == Keys.PageUp || e.KeyCode == Keys.OemOpenBrackets)
+            {
+                _selectedIndex = (_selectedIndex - 1 + pts.Length) % pts.Length;
+                SyncPointAccessibility(pts[_selectedIndex], _selectedIndex, pts.Length);
+                Invalidate();
+                e.Handled = true;
+                return;
+            }
+            if (e.KeyCode == Keys.PageDown || e.KeyCode == Keys.OemCloseBrackets)
+            {
+                _selectedIndex = (_selectedIndex + 1) % pts.Length;
+                SyncPointAccessibility(pts[_selectedIndex], _selectedIndex, pts.Length);
+                Invalidate();
+                e.Handled = true;
+                return;
+            }
+
+            int step = e.Control ? 1 : 5;
+            int dTemp = 0;
+            int dPct = 0;
+            if (e.KeyCode == Keys.Left) dTemp = -(e.Control ? 1 : 2);
+            else if (e.KeyCode == Keys.Right) dTemp = (e.Control ? 1 : 2);
+            else if (e.KeyCode == Keys.Up) dPct = step;
+            else if (e.KeyCode == Keys.Down) dPct = -step;
+
+            if (dTemp != 0 || dPct != 0)
+            {
+                if (prof.IsBuiltIn && BuiltInCurveDragStarted != null)
+                {
+                    BuiltInCurveDragStarted(this, EventArgs.Empty);
+                    pts = GetActivePoints();
+                    if (pts == null || _selectedIndex >= pts.Length) return;
+                }
+
+                CurvePoint cur = pts[_selectedIndex];
+                int minT = (_selectedIndex == 0) ? MIN_TEMP : pts[_selectedIndex - 1].Temp + 2;
+                int maxT = (_selectedIndex == pts.Length - 1) ? MAX_TEMP : pts[_selectedIndex + 1].Temp - 2;
+                int newTemp = Math.Max(minT, Math.Min(maxT, cur.Temp + dTemp));
+                int newPct = Math.Max(0, Math.Min(100, cur.Pct + dPct));
+                pts[_selectedIndex] = new CurvePoint(newTemp, newPct);
+                SyncPointAccessibility(pts[_selectedIndex], _selectedIndex, pts.Length);
+                Invalidate();
+                if (CurveModified != null) CurveModified(this, EventArgs.Empty);
+                e.Handled = true;
+            }
         }
 
         public FanCurveProfile GetActiveProfile()
@@ -308,7 +414,7 @@ namespace MiniFanControl
                 for (int i = 0; i < activePts.Length; i++)
                 {
                     PointF p = PointToScreen(activePts[i], plot);
-                    bool activePt = (i == _dragIndex || i == _hoverIndex);
+                    bool activePt = (i == _dragIndex || i == _hoverIndex || (Focused && i == _selectedIndex));
                     float r = activePt ? 6f : 4.5f;
 
                     using (Brush ptBg = new SolidBrush(IsDarkMode ? Color.Black : Color.White))
@@ -339,6 +445,10 @@ namespace MiniFanControl
             using (Pen borderPen = new Pen(gridColor, 1f))
             {
                 g.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            }
+            if (Focused)
+            {
+                ControlPaint.DrawFocusRectangle(g, new Rectangle(2, 2, Math.Max(1, Width - 4), Math.Max(1, Height - 4)));
             }
         }
     }

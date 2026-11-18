@@ -8,7 +8,7 @@ echo ======================================================================
 
 set /p VERSION=<VERSION
 set "VERSION=%VERSION: =%"
-if "%VERSION%"=="" set "VERSION=1.0.0"
+if "%VERSION%"=="" set "VERSION=1.0.3"
 echo Target Release Version: v%VERSION%
 echo.
 

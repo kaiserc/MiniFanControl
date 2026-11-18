@@ -65,11 +65,27 @@ namespace MiniFanControl
         public LiveTelemetryCanvas()
         {
             DoubleBuffered = true;
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
+            TabStop = true;
+            AccessibleName = "Live Telemetry Trend Graph";
+            AccessibleDescription = "Multi-sensor historical trend chart. Press R to reset session peaks.";
+            AccessibleRole = AccessibleRole.Chart;
             IsDarkMode = true;
             HasDualFans = true;
             HighlightMetric = 0;
             Cursor = Cursors.Cross;
+        }
+
+        protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
+        protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (e.KeyCode == Keys.R && ResetPeaksRequested != null)
+            {
+                ResetPeaksRequested(this, EventArgs.Empty);
+                e.Handled = true;
+            }
         }
 
         private int _legendRows = 1;
@@ -1020,6 +1036,10 @@ namespace MiniFanControl
             using (Pen borderPen = new Pen(gridColor, 1f))
             {
                 g.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            }
+            if (Focused)
+            {
+                ControlPaint.DrawFocusRectangle(g, new Rectangle(2, 2, Math.Max(1, Width - 4), Math.Max(1, Height - 4)));
             }
         }
     }

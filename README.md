@@ -1,6 +1,6 @@
 # MiniFanControl — Native EC Fan Control & Thermal Monitor for AMD Ryzen Mini PCs
 
-![Tests](https://img.shields.io/badge/tests-69%2F69%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-74%2F74%20passing-brightgreen)
 ![Security](https://img.shields.io/badge/Security-Fail--Closed%20%7C%20Least--Privilege-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
@@ -13,11 +13,11 @@
   <img src="assets/ui-main-osd.jpg" alt="MiniFanControl Dashboard and CapFrameX-Style OSD HUD" width="85%" />
 </p>
 
-[![Release: v1.0.1](https://img.shields.io/badge/Release-v1.0.1-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
+[![Release: v1.0.3](https://img.shields.io/badge/Release-v1.0.3-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 69 Passed](https://img.shields.io/badge/Automated%20Tests-69%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-6969-passing)
+[![Automated Tests: 74 Passed](https://img.shields.io/badge/Automated%20Tests-74%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-7474-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 [![Ko-fi: Support](https://img.shields.io/badge/Ko--fi-Support%20Project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/kaiser76)
 
@@ -47,9 +47,13 @@ The codebase is organized into cleanly separated domain modules supporting both 
 
 ```
 MiniFanControl/
-├── Core/               # Data contracts, hardware profile matching & theme preferences
+├── Core/               # Controller service, settings persistence, OSD config, profiles & themes
+│   ├── AppSettings.cs
 │   ├── DeviceProfile.cs
+│   ├── FanControllerService.cs
 │   ├── FanStatus.cs
+│   ├── Localization.cs
+│   ├── OsdOverlayConfig.cs
 │   ├── TelemetrySessionStats.cs
 │   └── ThemePreference.cs
 ├── Curves/             # Curve interpolation math & 3-pass automated calibration engine
@@ -68,16 +72,18 @@ MiniFanControl/
 ├── Telemetry/          # RTSS/CapFrameX shared memory reader & transparent OSD HUD
 │   ├── CapFrameXOverlayForm.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 69-point automated hardware safety & regression test suite
+├── Tests/              # 74-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
-├── Ui/                 # Double-buffered canvases, custom WinForms controls & dialogs
+├── Ui/                 # Double-buffered canvases, accessible WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
 │   ├── DoubleBufferedPanel.cs
 │   ├── FanCalibrationDialog.cs
 │   ├── FanCurveCanvas.cs
+│   ├── LivePerformanceCanvas.cs
 │   ├── LiveTelemetryCanvas.cs
 │   ├── MainForm.cs
-│   └── NewModeDialog.cs
+│   ├── NewModeDialog.cs
+│   └── SetupAssistantDialog.cs
 ├── .github/            # GitHub Actions CI/CD workflows & structured issue templates
 │   ├── workflows/ci.yml
 │   └── ISSUE_TEMPLATE/
@@ -340,13 +346,13 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Validate 6 hardware profiles, register layouts, and inverted polarity matrix
 .\minifan-helper.exe hw-matrix
 
-# Execute the 69-point automated hardware safety & curve test suite
+# Execute the 74-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (69/69 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (74/74 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -419,6 +425,11 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 67. **Live Telemetry Auto-Zoom Scaling, Right-Axis RPM Decoupling & AMD Silicon Junction Fallback Parity**: Validates dynamic graph vertical autoscaling without clipping, independent right-axis fan RPM normalization (0–4000 RPM), and fail-safe CPU silicon junction temperature fallback.
 68. **Cross-Process Watchdog IPC Verification & Child Lifecycle Handshake**: Spawns an actual independent child helper process (`minifan-helper.exe watchdog`), verifies full bi-directional IPC handshake (`ReadyEvent` signaled by child), validates AutoReset heartbeat pulse consumption without `UnauthorizedAccessException` (`Modify | Synchronize` permissions), and confirms clean graceful shutdown with exit code 0.
 69. **Sleep & Suspend Lifecycle Protection**: Validates hardware worker pause upon entering ACPI S3/Modern Standby sleep, emergency thermal tripwire reset preventing stale latches on disconnected sensor float (0xFF = 255°C / 0x7F = 127°C), Super I/O quiet safe standby duty fallback (writing 0x00 Extended PWM mode with safe 35% duty to 0x15..0x17), and clean resume recovery re-arming the watchdog and worker thread.
+70. **`DeviceProfile.FromJson` Colon Preservation**: Ensures JSON string values containing colons (`displayName`, `chipsetNotes`) are deserialized intact.
+71. **Tokenizing `Loc` JSON Parser**: Validates single-line JSON, embedded colons, escaped quotes, and `\uXXXX` Unicode escape decoding.
+72. **`OsdOverlayConfig` Defaults & Settings Round-Trip**: Verifies OSD visibility presets (`SelectAllMetrics` / `DeselectAllMetrics` / `ResetDefaults`) and `AppendSettings`/`TryParseSetting` persistence parity.
+73. **Custom Controls Accessibility**: Confirms keyboard `TabStop` and UIA `AccessibleRole` (`PushButton` / `Chart`) metadata across interactive telemetry boxes and curve canvases.
+74. **`FanControllerService` Decoupled Control & Tripwire**: Verifies decoupled curve evaluation, manual override, BIOS Auto reset transitions, and emergency thermal tripwire clamping.
 
 ---
 

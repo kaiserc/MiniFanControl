@@ -234,32 +234,97 @@ namespace MiniFanControl
             return false;
         }
 
+        private static string UnescapeJsonString(string s)
+        {
+            if (string.IsNullOrEmpty(s) || s.IndexOf('\\') < 0) return s;
+            StringBuilder sb = new StringBuilder(s.Length);
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == '\\' && i + 1 < s.Length)
+                {
+                    char n = s[++i];
+                    switch (n)
+                    {
+                        case '"': sb.Append('"'); break;
+                        case '\\': sb.Append('\\'); break;
+                        case '/': sb.Append('/'); break;
+                        case 'n': sb.Append('\n'); break;
+                        case 'r': sb.Append('\r'); break;
+                        case 't': sb.Append('\t'); break;
+                        case 'u':
+                            if (i + 4 < s.Length)
+                            {
+                                int code;
+                                if (int.TryParse(s.Substring(i + 1, 4), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out code))
+                                {
+                                    sb.Append((char)code);
+                                    i += 4;
+                                    break;
+                                }
+                            }
+                            sb.Append("\\u");
+                            break;
+                        default: sb.Append(n); break;
+                    }
+                }
+                else
+                {
+                    sb.Append(c);
+                }
+            }
+            return sb.ToString();
+        }
+
         private static void ParseJsonStrings(string json, Dictionary<string, string> dict)
         {
             if (string.IsNullOrEmpty(json)) return;
-            string[] lines = json.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            foreach (string rawLine in lines)
+            int i = 0;
+            int len = json.Length;
+            while (i < len)
             {
-                string line = rawLine.Trim();
-                if (line.StartsWith("\"") && line.Contains("\":"))
+                while (i < len && json[i] != '"') i++;
+                if (i >= len) break;
+                string k = ReadJsonTokenString(json, ref i);
+                while (i < len && char.IsWhiteSpace(json[i])) i++;
+                if (i < len && json[i] == ':')
                 {
-                    int colon = line.IndexOf("\":", StringComparison.Ordinal);
-                    if (colon > 1)
+                    i++;
+                    while (i < len && char.IsWhiteSpace(json[i])) i++;
+                    if (i < len && json[i] == '"')
                     {
-                        string k = line.Substring(1, colon - 1).Trim().Replace("\\\"", "\"");
-                        string rest = line.Substring(colon + 2).Trim();
-                        if (rest.StartsWith("\""))
+                        string v = ReadJsonTokenString(json, ref i);
+                        if (!string.IsNullOrEmpty(k))
                         {
-                            int endQ = rest.LastIndexOf('"');
-                            if (endQ > 0)
-                            {
-                                string v = rest.Substring(1, endQ - 1).Replace("\\\"", "\"").Replace("\\n", "\n");
-                                dict[k] = v;
-                            }
+                            dict[k] = v;
                         }
                     }
                 }
             }
+        }
+
+        private static string ReadJsonTokenString(string json, ref int pos)
+        {
+            if (pos >= json.Length || json[pos] != '"') return "";
+            pos++;
+            int start = pos;
+            while (pos < json.Length)
+            {
+                char c = json[pos];
+                if (c == '\\')
+                {
+                    pos += 2;
+                    continue;
+                }
+                if (c == '"')
+                {
+                    string raw = json.Substring(start, pos - start);
+                    pos++;
+                    return UnescapeJsonString(raw);
+                }
+                pos++;
+            }
+            return UnescapeJsonString(json.Substring(start));
         }
 
         private static void InitBuiltInStrings()

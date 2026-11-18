@@ -1,3 +1,18 @@
+# Release Notes: MiniFanControl v1.0.3 (Architecture Refactor, Reliability & Accessibility Release)
+
+**MiniFanControl v1.0.3** decouples core state, settings persistence, OSD configuration, and hardware fan-control loops out of `MainForm.cs` into dedicated `Core/` services while fixing parser/installer-path bugs and adding full keyboard navigation, screen-reader accessibility, High Contrast support, and DPI/scrolling improvements.
+
+## 🏗️ Architecture & Reliability Highlights (v1.0.3)
+- **Modular `Core/` Services**:
+  - `Core/OsdOverlayConfig.cs`: Encapsulates all CapFrameX OSD metrics, graph settings, defaults, and `CultureInfo.InvariantCulture` serialization.
+  - `Core/AppSettings.cs`: Encapsulates `minifancontrol.cfg` loading/saving and curve point serialization with watchdog exception logging.
+  - `Core/FanControllerService.cs`: Encapsulates thread-safe hardware polling, curve evaluation, manual/auto transitions, thermal tripwire, write-error failsafe latching, and sleep/resume lifecycle with deterministic disposal.
+- **Parser & Path Reliability**: Fixed `DeviceProfile.FromJson` colon splitting in string values, upgraded `Loc` JSON parsing to a full tokenizing parser supporting single-line JSON, backslash escapes, and `\uXXXX` Unicode escapes, and added `%LocalAppData%\MiniFanControl` fallback for `sio-diag.txt` under read-only installs (`Program Files`).
+- **Input, Lifetime & Display Fixes**: Preserved the single-instance wake listener if watchdog spawning fails, disposed prior `ContextMenu` instances in `RebuildDriversMenu()`, prevented `Tab` key releases on sliders from triggering manual fan writes, fixed Fahrenheit formatting in the window title and NVMe telemetry tags, and aligned version `1.0.3` across all manifests and packaging scripts.
+- **Accessibility & High-DPI Support**: Added keyboard point selection/editing on `FanCurveCanvas`, chart keyboard shortcuts (`R` reset peaks, `V` split view), keyboard activation (`Enter`/`Space`) and live-value UIA `AccessibleName` updates across all 8 telemetry metric boxes, `AcceptButton`/`CancelButton` on `SetupAssistantDialog`, `AutoScaleMode.Dpi` + resizable/`AutoScroll` support, and `SystemInformation.HighContrast` theme adaptation (verified by 74/74 automated self-tests).
+
+---
+
 # Release Notes: MiniFanControl v1.0.1 (Calibration & Tachometer Stability Patch)
 
 **MiniFanControl v1.0.1** is a targeted maintenance release fixing multi-pass fan calibration coast-down timing and 16-bit EC tachometer rollover spikes observed on real GMKtec K12 hardware.

@@ -668,6 +668,26 @@ namespace MiniFanControl
 
         }
 
+        private static string GetWritableDiagnosticPath(string fileName)
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            string progFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+            bool inProgramFiles = (!string.IsNullOrEmpty(progFiles) && baseDir.StartsWith(progFiles, StringComparison.OrdinalIgnoreCase)) ||
+                                  (!string.IsNullOrEmpty(progFilesX86) && baseDir.StartsWith(progFilesX86, StringComparison.OrdinalIgnoreCase));
+            if (inProgramFiles)
+            {
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                if (!string.IsNullOrEmpty(localAppData))
+                {
+                    string dir = Path.Combine(localAppData, "MiniFanControl");
+                    try { Directory.CreateDirectory(dir); } catch { }
+                    return Path.Combine(dir, fileName);
+                }
+            }
+            return Path.Combine(baseDir, fileName);
+        }
+
         public void DumpSuperIoDiagnostic(string logFile)
 
         {
@@ -1021,7 +1041,7 @@ namespace MiniFanControl
 
                     _isInitialized = true;
 
-                    DumpSuperIoDiagnostic(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sio-diag.txt"));
+                    DumpSuperIoDiagnostic(GetWritableDiagnosticPath("sio-diag.txt"));
 
                     return;
 
@@ -1041,7 +1061,7 @@ namespace MiniFanControl
 
                     _isInitialized = true;
 
-                    DumpSuperIoDiagnostic(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sio-diag.txt"));
+                    DumpSuperIoDiagnostic(GetWritableDiagnosticPath("sio-diag.txt"));
 
                     return;
 
@@ -1067,7 +1087,7 @@ namespace MiniFanControl
 
                         _isInitialized = true;
 
-                        DumpSuperIoDiagnostic(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sio-diag.txt"));
+                        DumpSuperIoDiagnostic(GetWritableDiagnosticPath("sio-diag.txt"));
 
                         return;
 

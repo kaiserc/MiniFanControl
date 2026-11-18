@@ -178,10 +178,17 @@ namespace MiniFanControl
             foreach (string rawLine in lines)
             {
                 string line = rawLine.Trim();
-                int colonIdx = line.IndexOf(':');
+                if (!line.StartsWith("\"")) continue;
+                int keyEnd = line.IndexOf('"', 1);
+                if (keyEnd <= 1) continue;
+                int colonIdx = line.IndexOf(':', keyEnd + 1);
                 if (colonIdx <= 0) continue;
-                string key = line.Substring(0, colonIdx).Trim(' ', '"', '\t');
-                string val = line.Substring(colonIdx + 1).Trim(' ', ',', '"', '\t');
+                string key = line.Substring(1, keyEnd - 1);
+                string val = line.Substring(colonIdx + 1).Trim().TrimEnd(',').Trim();
+                if (val.Length >= 2 && val.StartsWith("\"") && val.EndsWith("\""))
+                {
+                    val = val.Substring(1, val.Length - 2);
+                }
 
                 if (key.Equals("id", StringComparison.OrdinalIgnoreCase)) p.Id = UnescapeJson(val);
                 else if (key.Equals("displayName", StringComparison.OrdinalIgnoreCase)) p.DisplayName = UnescapeJson(val);

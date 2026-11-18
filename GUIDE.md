@@ -433,6 +433,12 @@ Control your thermal environment without leaving full-screen games:
 
 *(Global hotkeys can be toggled on or off via the `Tools & Drivers ▾` menu).*
 
+### In-App Keyboard Navigation & Accessibility
+MiniFanControl supports full keyboard navigation, Windows **High Contrast** themes, DPI scaling (`AutoScaleMode.Dpi`), and UI Automation (`AccessibleName` / `AccessibleRole`):
+- **Telemetry Metric Cards**: Use `Tab` to focus any of the 8 metric boxes (`CPU`, `iGPU`, `RAM`, `NVMe`, `PWR`, `Chassis`, `APU`, `SYS`) and press **`Enter`** or **`Space`** to activate its chart highlight or reset manual override.
+- **Fan Curve Canvas (`APU Fan` / `Sys Fan`)**: Focus the curve graph and press **`PageUp` / `PageDown`** or **`[` / `]`** to select control points, and **`Arrow` keys** to adjust temperature/PWM (`Hold Ctrl` for fine `1°C` / `1%` steps).
+- **Live Trend & Live Performance Charts**: Focus the canvas and press **`R`** to reset session peaks/lows, or **`V`** (Live Perf tab) to toggle split view.
+
 ---
 
 ## 6. Multi-Tool Coexistence & Hardware Bus Mutexes

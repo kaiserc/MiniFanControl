@@ -4,6 +4,25 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.0.3] - 2026-11-18
+
+### 🏗️ Architecture Refactor (`MainForm` Decomposition)
+- **`Core/OsdOverlayConfig.cs`**: Extracted all ~45 CapFrameX OSD layout/metric settings, `ResetDefaults`, `SelectAllMetrics`, `DeselectAllMetrics`, `ApplyToOverlay`, `ReadFromOverlay`, `TryParseSetting`, and `AppendSettings` (using `CultureInfo.InvariantCulture`).
+- **`Core/AppSettings.cs`**: Extracted `minifancontrol.cfg` persistence (`Load`, `Save`, `ParsePointList`, `FormatPointList`, `TryParseHexOrDecByte`, `GetSettingsPath`) with `CultureInfo.InvariantCulture` formatting/parsing and watchdog event logging on I/O failures.
+- **`Core/FanControllerService.cs`**: Extracted hardware polling, `EvaluateAndApplyFanProfiles`, manual/auto fan transitions, thermal tripwire, write-error escalation/failsafe latching, sleep/resume worker pause handling, and immutable snapshot events out of `Ui/MainForm.cs` with deterministic `Dispose()`.
+- **Deterministic Resource Cleanup**: Added `CleanupManagedResources()` in `Ui/MainForm.cs` disposing `_controller`, `_uiToolTip`, `_driversMenu` (via `RebuildDriversMenu()`), and `_refreshTimer`.
+
+### 🛡️ Bug & Robustness Fixes
+- **JSON Parser Hardening (`DeviceProfile.FromJson` & `Loc.ParseJsonStrings`)**: Fixed colon-splitting bug in `DeviceProfile.FromJson` when string values contain colons (e.g., `displayName` or `chipsetNotes`), and replaced line-based `Loc.ParseJsonStrings` with a tokenizing parser supporting single-line JSON, embedded colons, backslash escapes (`\"`, `\\`, `\/`, `\n`, `\r`, `\t`), and `\uXXXX` Unicode escapes (plus `LoadCustomJson`/`ClearCustomStrings`).
+- **Writable Diagnostic Path (`sio-diag.txt`)**: Updated `HardwareBackend.DumpSuperIoDiagnostic` via `GetWritableDiagnosticPath` to fall back to `%LocalAppData%\MiniFanControl` when installed under read-only folders like `Program Files`.
+- **Single-Instance & Control State Fixes**: Stopped `StartWatchdogSupervisor()` from tearing down `StopSingleInstanceWakeListener()` on watchdog spawn failures and tied the listener loop condition to `_wakeListenerRunning`. Filtered slider `KeyUp` events via `IsSliderValueChangeKey` so `Tab` navigation never dispatches unintended fan PWM writes.
+- **Fahrenheit (`°F`) & Version Synchronization**: Fixed missing Fahrenheit conversion in the main window title bar and NVMe telemetry tag, and synchronized version `1.0.3` across `VERSION`, `MiniFanControl.csproj`, `installer.iss`, `app.manifest`, `Program.cs`, `Ui/MainForm.cs`, and `package-release.bat`.
+
+### ♿ Accessibility, High Contrast & DPI Improvements
+- **Full Keyboard Navigation & UIA Metadata**: Added `ControlStyles.Selectable`, `TabStop = true`, UIA `AccessibleRole` (`Chart` / `PushButton`), focus indicators, and keyboard interaction across `FanCurveCanvas` (`PageUp`/`PageDown`/`[`/`]` point selection, Arrow keys with `Ctrl` fine-stepping), `LiveTelemetryCanvas` (`R` reset peaks), `LivePerformanceCanvas` (`V` split view toggle, `R` reset peaks), and all 8 telemetry metric boxes (`DoubleBufferedPanel.EnableKeyboardActivation`, `Enter`/`Space` click equivalent, and live-value `AccessibleName` updates in `ApplyStatusToUi`).
+- **Dialog Keyboard Flow, DPI Scaling & High Contrast**: Added `AcceptButton`/`CancelButton` on `SetupAssistantDialog`, enabled `AutoScaleMode.Dpi`, resizable borders, and `AutoScroll = true` on `MainForm` and `_osdMetricsScrollPanel`, and added `SystemInformation.HighContrast` system color adaptation in `ApplyThemeToControls()`.
+- **Expanded Regression Test Suite**: Added 5 regression checks in `Tests/SelfTestSuite.cs` (74/74 automated tests passing).
+
 ## [1.0.2] - 2026-11-18
 
 ### 🎨 UI Clarity, Per-Metric OSD Studio & Expanded Fan Curve Layout
