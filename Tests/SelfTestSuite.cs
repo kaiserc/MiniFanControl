@@ -2811,7 +2811,10 @@ namespace MiniFanControl
                 }
 
                 // 65W + 86°C peak should have a firmer/earlier acoustic knee than 35W Eco, and elevated Sys Fan duty for 66°C NVMe / 45% NPU
-                bool kneeScalingOk = (ecoTuned.ApuPoints[1].Pct >= 26) &&
+                // Both curves must anchor APU idle at ApuMinSpinPct (26%) rather than 0% to prevent fan hunting
+                bool kneeScalingOk = (ecoTuned.ApuPoints[0].Pct == 26) &&
+                                     (perfTuned.ApuPoints[0].Pct == 26) &&
+                                     (ecoTuned.ApuPoints[1].Pct >= 26) &&
                                      (perfTuned.ApuPoints[2].Pct > ecoTuned.ApuPoints[2].Pct) &&
                                      (perfTuned.ApuPoints[2].Temp < ecoTuned.ApuPoints[2].Temp) &&
                                      (perfTuned.SysPoints[2].Pct > ecoTuned.SysPoints[2].Pct);
@@ -2852,7 +2855,15 @@ namespace MiniFanControl
                                               (mf.TestDeleteCustomBtn != null && mf.TestDeleteCustomBtn.Text == "Del") &&
                                               (mf.TestAutoTuneCustomBtn != null && mf.TestAutoTuneCustomBtn.Text.IndexOf("Auto-Tune", StringComparison.OrdinalIgnoreCase) >= 0);
 
-                    examplesAndAutoTuneOk = fourExamplesOk && monotonicOk && kneeScalingOk && hasProtectedInForm && btnShowsReset && notDeletedOk && autoTuneSelectedOk;
+                    // Wide 2-Column Mode (>= 1450px): Live Trend docks in right panel alongside Fan Curve on left, then restores when narrowed
+                    mf.ClientSize = new Size(1900, 1000);
+                    bool wideOnOk = (mf.TestWideRightPanel != null) &&
+                                    (mf.TestLiveCanvas != null && mf.TestLiveCanvas.Parent == mf.TestWideRightPanel && mf.TestLiveCanvas.Width >= 700);
+                    mf.ClientSize = new Size(1090, 900);
+                    bool wideOffOk = (mf.TestWideRightPanel != null) &&
+                                     (mf.TestLiveCanvas != null && mf.TestLiveCanvas.Parent == mf.TestModeCardPanel);
+
+                    examplesAndAutoTuneOk = fourExamplesOk && monotonicOk && kneeScalingOk && hasProtectedInForm && btnShowsReset && notDeletedOk && autoTuneSelectedOk && wideOnOk && wideOffOk;
                     examplesAndAutoTuneDetails = string.Format("Examples4={0}, Monotonic={1}, KneeScale={2} (35W={3}%@{4}°C vs 65W={5}%@{6}°C), ResetBtn={7}, ResetRestored={8}, AutoTuneUI={9}",
                         fourExamplesOk, monotonicOk, kneeScalingOk,
                         ecoTuned.ApuPoints[2].Pct, ecoTuned.ApuPoints[2].Temp,
@@ -3057,6 +3068,22 @@ namespace MiniFanControl
                 {
                     fsrAndNvmeOk = false;
                     fsrAndNvmeDetails = "FSR pill missing from active tags or summary!";
+                }
+
+                // 1b. Validate Global vs Running-Game Adrenalin DB scoping (never leak per-game FSR/Anti-Lag at idle)
+                string mockGm = @"{""games"":[{""guid"":""{b0256f8c-e353-42ea-a0fe-88ded17b32c5}"",""exe_path"":""C:\\Games\\SurrounDead-Win64-Shipping.exe"",""FSRUpgradeAvailable"":""TRUE""}]}";
+                string mockGex = @"{"""":{""Profiles"":[{""GPUS"":[{""GraphicsFeatures"":[{""FeatureID"":33,""FeatureValue"":""0""},{""FeatureID"":66,""FeatureValue"":""0""}]}]}]},""{b0256f8c-e353-42ea-a0fe-88ded17b32c5}"":{""Profiles"":[{""GPUS"":[{""GraphicsFeatures"":[{""FeatureID"":33,""FeatureValue"":""1""},{""FeatureID"":66,""FeatureValue"":""1""}]}]}]}}";
+
+                RadeonSettingsTelemetry idleTel = new RadeonSettingsTelemetry();
+                RadeonSettingsSensor.TryCorroborateFromAdrenalinJson(ref idleTel, mockGm, mockGex, null);
+                RadeonSettingsTelemetry gameTel = new RadeonSettingsTelemetry();
+                RadeonSettingsSensor.TryCorroborateFromAdrenalinJson(ref gameTel, mockGm, mockGex, "SurrounDead-Win64-Shipping.exe");
+
+                if (idleTel.Fsr || idleTel.AntiLag || !gameTel.Fsr || !gameTel.AntiLag)
+                {
+                    fsrAndNvmeOk = false;
+                    fsrAndNvmeDetails = string.Format("Adrenalin DB scoping failed! Idle(FSR={0},AntiLag={1}) Game(FSR={2},AntiLag={3})",
+                        idleTel.Fsr, idleTel.AntiLag, gameTel.Fsr, gameTel.AntiLag);
                 }
 
                 // 2. Validate Multi-NVMe & Read/Write throughput tracking in FanStatus & Tooltip

@@ -503,7 +503,18 @@ namespace MiniFanControl
                     if (P1LowFps <= 2) P1LowFps = (int)Math.Max(1, Math.Round(st.RtssFps * 0.88));
                 }
 
-                int curAvg = (int)Math.Round(AvgFps);
+                int curAvg = st.RtssAvgFps > 0 ? st.RtssAvgFps : 0;
+                if (curAvg <= 0 && _fpsHist.Count > 0)
+                {
+                    int wStart = Math.Max(0, _fpsHist.Count - 120);
+                    long wSum = 0;
+                    int wCnt = 0;
+                    for (int i = wStart; i < _fpsHist.Count; i++)
+                    {
+                        if (_fpsHist[i] > 0) { wSum += _fpsHist[i]; wCnt++; }
+                    }
+                    if (wCnt > 0) curAvg = (int)Math.Round((double)wSum / wCnt);
+                }
                 if (curAvg <= 0) curAvg = st.RtssFps;
                 if (MaxFps > 0 && curAvg > MaxFps) curAvg = MaxFps;
                 PushSample(_avgFpsHist, curAvg);

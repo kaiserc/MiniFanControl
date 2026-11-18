@@ -76,6 +76,40 @@ namespace MiniFanControl
         private int _numAdapters = 0;
         private int _preferredAdapterIndex = -1;
         private bool _initAttempted = false;
+        private static bool? _cachedNpuHardwarePresent = null;
+
+        public static bool HasNpuHardware
+        {
+            get
+            {
+                if (_cachedNpuHardwarePresent.HasValue) return _cachedNpuHardwarePresent.Value;
+                bool found = false;
+                try
+                {
+                    using (RegistryKey pci = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Enum\PCI", false))
+                    {
+                        if (pci != null)
+                        {
+                            foreach (string sub in pci.GetSubKeyNames())
+                            {
+                                // AMD XDNA / IPU PCI device IDs (Phoenix/Hawk Point 1502/1508, Strix Point 17F0/17F8)
+                                if (sub.StartsWith("VEN_1022&DEV_1502", StringComparison.OrdinalIgnoreCase) ||
+                                    sub.StartsWith("VEN_1022&DEV_17F0", StringComparison.OrdinalIgnoreCase) ||
+                                    sub.StartsWith("VEN_1022&DEV_1508", StringComparison.OrdinalIgnoreCase) ||
+                                    sub.StartsWith("VEN_1022&DEV_17F8", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+                _cachedNpuHardwarePresent = found;
+                return found;
+            }
+        }
 
         public AmdAdlGpuSensor()
         {
@@ -250,7 +284,9 @@ namespace MiniFanControl
                         gfxVoltageMv = ReadSensorVal(pm.sensors, ADL_PMLOG_GFX_VOLTAGE, 200, 2000);
                         memClockMhz = ReadSensorVal(pm.sensors, ADL_PMLOG_CLK_MEMCLK, 100, 6000);
                         npuClockMhz = ReadSensorVal(pm.sensors, ADL_PMLOG_CLK_NPUCLK, 50, 4500);
-                        npuActivityPct = ReadSensorVal(pm.sensors, ADL_PMLOG_NPU_BUSY_AVG, 0, 100);
+                        npuActivityPct = (HasNpuHardware || npuClockMhz > 0)
+                            ? ReadSensorVal(pm.sensors, ADL_PMLOG_NPU_BUSY_AVG, 0, 100)
+                            : -1;
 
                         // Tier 3: Silicon Currents and Fabric Clock
                         fclkMhz = ReadSensorVal(pm.sensors, ADL_PMLOG_CLK_FCLK, 100, 3600);

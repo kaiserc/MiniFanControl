@@ -1,3 +1,16 @@
+# Release Notes: MiniFanControl v1.0.4 (Wide 2-Column Mode, Curve Hysteresis & Accurate Radeon/NPU Telemetry)
+
+**MiniFanControl v1.0.4** introduces a responsive 2-column Wide Mode for maximized/widescreen tuning, eliminates APU fan hunting on Auto-Tuned curves, fixes AMD Adrenalin 26.x RIS/FSR/Anti-Lag detection, auto-hides NPU telemetry on non-NPU APUs (Ryzen 7 H 255), and aligns OSD/Live Perf readouts (verified by 74/74 automated self-tests).
+
+## ✨ Highlights in v1.0.4
+- **Wide 2-Column Mode (`>= 1450px`)**: Maximizing or widening the window docks **Live Trend** / **Live Perf** side-by-side on the right while keeping **Fan Curves** / **OSD Studio** on the left.
+- **Anti-Hunting Auto-Tune & 4°C Asymmetric Hysteresis**: Auto-Tune now anchors the APU fan at `ApuMinSpinPct` instead of `0%`, updates automatically after recalibration, and uses `4°C` cooldown hysteresis (`0°C` up).
+- **Accurate Adrenalin 26.x & Running-Game Detection**: Scopes `GExDb.blb` / `gmdb.blb` to Global at idle and the active game `.exe` during gameplay, removes `UMD\FsrOverride` / `FSRUpgradeAvailable` false positives, maps `FeatureID 27` to RIS, and removes the obsolete KMD registry toggle submenu.
+- **No-NPU & Driver-Only Clarity**: Detects AMD XDNA NPU PCI hardware (`HasNpuHardware`) to hide NPU rows/menus on non-NPU APUs, and adds in-app + `README.md` diagnostics for Driver-Only and missing-driver setups.
+- **OSD & Live Perf Polish**: Fixed-width CPU/iGPU/FCLK OSD formatting without `@` jitter, and rolling live-window `Avg` FPS in `Live Perf`.
+
+---
+
 # Release Notes: MiniFanControl v1.0.3 (Architecture Refactor, Reliability & Accessibility Release)
 
 **MiniFanControl v1.0.3** decouples core state, settings persistence, OSD configuration, and hardware fan-control loops out of `MainForm.cs` into dedicated `Core/` services while fixing parser/installer-path bugs and adding full keyboard navigation, screen-reader accessibility, High Contrast support, and DPI/scrolling improvements.

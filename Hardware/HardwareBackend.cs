@@ -2048,7 +2048,7 @@ namespace MiniFanControl
                 cpuClk, memClk, gfxVolt, adlFclk, adlGfxCurr, adlSocCurr);
 
             RtssTelemetry rtss = FpsMonitor.GetTelemetry();
-            RadeonSettingsTelemetry rad = RadeonSettingsSensor.Sample();
+            RadeonSettingsTelemetry rad = RadeonSettingsSensor.Sample(rtss.ProcessName);
 
             // DDR5 Dual Stacked SO-DIMM Thermal Resolution
             int ddrCount = GetDdrStickCount(mem.TotalGb);
@@ -2225,6 +2225,7 @@ namespace MiniFanControl
                 RamTotalGb = mem.IsAvailable ? mem.TotalGb : 0.0,
                 RamLoadPct = mem.IsAvailable ? mem.LoadPct : 0,
                 RadeonFeaturesAvailable = rad.IsAvailable,
+                RadeonAdrenalinInstalled = rad.AdrenalinInstalled,
                 RadeonFeaturesSummary = rad.Summary,
                 RadeonSoftwareVer = rad.SoftwareVersion,
                 RadeonFreeSync = rad.FreeSync,

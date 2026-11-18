@@ -4,6 +4,26 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.0.4] - 2026-11-18
+
+### 🌀 Fan Curve & Hysteresis
+- **Non-Zero Auto-Tune APU Idle Floor (`Curves/CurvePoint.cs`)**: `SynthesizeAutoTunedCurve` now anchors the APU fan idle point at `apuFloor` (`ApuMinSpinPct`) instead of `0%`, eliminating constant start/stop hunting during light desktop bursts (while preserving `🔒 Zero-RPM Desktop Idle` for explicit 0 RPM setups).
+- **Recalibration Curve Sync (`Ui/MainForm.cs`)**: Added `RefreshAutoTunedCurveAfterCalibration()` so recalibrating fans automatically re-synthesizes any existing `✨ Auto-Tuned` custom curve with the newly calibrated minimum spin floors.
+- **Asymmetric Cooldown Hysteresis (`Core/FanControllerService.cs`)**: Increased cooldown hysteresis from `2°C` to `4°C` down (`0°C` up) and removed the `regPct == 1` hysteresis bypass so fans ramp up immediately under load but resist hunting on brief temperature dips.
+
+### 🖥️ Wide 2-Column Mode & Live Performance
+- **Side-by-Side Wide Mode (`Ui/MainForm.cs`)**: When the window is widened or maximized (`ClientSize.Width >= 1450px`), a **Live Telemetry & Performance Monitor** companion panel docks on the right (`• Live Trend` / `• Live Perf` toggle) alongside the Fan Curve Editor / OSD Studio on the left.
+- **Rolling Live Average FPS (`Ui/LivePerformanceCanvas.cs`, `Core/TelemetrySessionStats.cs`)**: `Live Perf` `Avg` and the dashed `AVG` graph line now prioritize RTSS's live rolling average (`RtssAvgFps`) or the visible 120-sample window instead of the cumulative all-session average.
+
+### 🎮 AMD Radeon, NPU & OSD Polish
+- **Accurate Adrenalin Feature Detection (`Hardware/RadeonSettingsSensor.cs`, `Hardware/HardwareBackend.cs`)**:
+  - Removed false-positive triggers (`UMD\FsrOverride` capability flag and `FSRUpgradeAvailable` / `has_upscaling_profile` in `gmdb.blb`).
+  - Scoped `GExDb.blb` parsing strictly to the Global (`""`) profile at idle plus the running game's `.exe` profile (via `rtss.ProcessName`) when gaming, and mapped Adrenalin 26.x `FeatureID 27` to **Radeon Image Sharpening (RIS)**.
+  - Removed the obsolete `🎮 Radeon Driver Features (KMD)` registry toggle submenu from `Tools & Drivers`.
+- **NPU Hardware Auto-Detection (`Hardware/AmdAdlGpuSensor.cs`, `Telemetry/CapFrameXOverlayForm.cs`, `Ui/MainForm.cs`)**: Added `HasNpuHardware` PCI device detection (`VEN_1022&DEV_1502/1508/17F0/17F8`) so APUs without an XDNA NPU (such as the Ryzen 7 H 255) hide `◆ NPU` from the OSD, hide `Ryzen AI NPU` from the overlay right-click menu, and show `Ryzen AI NPU (N/A)` in OSD Studio.
+- **Fixed-Width OSD Alignment (`Telemetry/CapFrameXOverlayForm.cs`)**: Removed `@` from CPU and iGPU OSD lines, added fixed-width padding (`{temp,2}`, `{load,3}%`, `{clock,4}MHz`) to prevent horizontal jitter across 3/4-digit clocks and 1/2/3-digit loads, and unified `FCLK` to `{0,4}MHz`.
+- **Driver & Adrenalin Diagnostics (`README.md`, `Ui/MainForm.cs`)**: Added `AdrenalinInstalled` detection, in-app status/warning banners for missing EC kernel drivers and minimal/missing AMD display drivers, and a Driver & Software Compatibility Matrix in `README.md` (verified by 74/74 automated self-tests).
+
 ## [1.0.3] - 2026-11-18
 
 ### 🏗️ Architecture Refactor (`MainForm` Decomposition)

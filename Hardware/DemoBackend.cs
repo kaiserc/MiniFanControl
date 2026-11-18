@@ -119,6 +119,7 @@ namespace MiniFanControl
                 RamTotalGb = 32.0,
                 RamLoadPct = 58,
                 RadeonFeaturesAvailable = true,
+                RadeonAdrenalinInstalled = true,
                 RadeonFeaturesSummary = "FreeSync • Anti-Lag • AFMF 2 • FSR • Boost",
                 RadeonSoftwareVer = "26.10.1",
                 RadeonFreeSync = true,

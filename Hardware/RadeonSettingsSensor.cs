@@ -9,6 +9,7 @@ namespace MiniFanControl
     public struct RadeonSettingsTelemetry
     {
         public bool IsAvailable;
+        public bool AdrenalinInstalled;    // True when Adrenalin UI / CN databases are present (false on Driver-Only installs)
         public string GpuDesc;             // e.g. "AMD Radeon 780M Graphics"
         public string SoftwareEdition;     // e.g. "AMD Software: Adrenalin Edition"
         public string SoftwareVersion;     // e.g. "26.10.1"
@@ -87,6 +88,7 @@ namespace MiniFanControl
     {
         private static RadeonSettingsTelemetry _cached;
         private static DateTime _lastSampleTime = DateTime.MinValue;
+        private static string _cachedProcessName = null;
         private static readonly object _lock = new object();
         private static string _discoveredAdapterKey = null;
 
@@ -98,92 +100,23 @@ namespace MiniFanControl
             }
         }
 
-        public static bool SetKmdFeatureEnabled(string featureKey, bool enabled, out string error)
+        public static RadeonSettingsTelemetry Sample()
         {
-            error = null;
-            lock (_lock)
-            {
-                try
-                {
-                    if (string.IsNullOrEmpty(_discoveredAdapterKey))
-                    {
-                        Sample();
-                    }
-                    if (string.IsNullOrEmpty(_discoveredAdapterKey))
-                    {
-                        error = "No AMD Radeon display adapter registry key found.";
-                        return false;
-                    }
-
-                    int val = enabled ? 1 : 0;
-                    if (string.Equals(featureKey, "EnhSync", StringComparison.OrdinalIgnoreCase))
-                    {
-                        using (RegistryKey umdKey = Registry.LocalMachine.OpenSubKey(_discoveredAdapterKey + @"\UMD", true))
-                        {
-                            if (umdKey == null) { error = "Radeon UMD registry subkey not found."; return false; }
-                            umdKey.SetValue("TurboSync", val, RegistryValueKind.DWord);
-                        }
-                    }
-                    else
-                    {
-                        using (RegistryKey kmdKey = Registry.LocalMachine.OpenSubKey(_discoveredAdapterKey, true))
-                        {
-                            if (kmdKey == null) { error = "Radeon KMD registry key not writable."; return false; }
-                            switch (featureKey)
-                            {
-                                case "AntiLag":
-                                    kmdKey.SetValue("KMD_DeLagEnabled", val, RegistryValueKind.DWord);
-                                    break;
-                                case "Chill":
-                                    kmdKey.SetValue("KMD_ChillEnabled", val, RegistryValueKind.DWord);
-                                    break;
-                                case "Boost":
-                                    kmdKey.SetValue("KMD_RadeonBoostEnabled", val, RegistryValueKind.DWord);
-                                    break;
-                                case "RIS":
-                                    kmdKey.SetValue("KMD_ImageSharpeningEnabled", val, RegistryValueKind.DWord);
-                                    break;
-                                case "RSR":
-                                    kmdKey.SetValue("Gmx_RSREnabled", val, RegistryValueKind.DWord);
-                                    break;
-                                case "FRTC":
-                                    kmdKey.SetValue("KMD_FRTEnabled", val, RegistryValueKind.DWord);
-                                    if (enabled && GetDword(kmdKey, "KMD_MaxFrameRateRequested") <= 0)
-                                        kmdKey.SetValue("KMD_MaxFrameRateRequested", 120, RegistryValueKind.DWord);
-                                    break;
-                                default:
-                                    error = "Unsupported Radeon feature key: " + featureKey;
-                                    return false;
-                            }
-                        }
-                    }
-
-                    _lastSampleTime = DateTime.MinValue;
-                    return true;
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    error = "Administrator privileges required to modify AMD driver settings.";
-                    return false;
-                }
-                catch (Exception ex)
-                {
-                    error = ex.Message;
-                    return false;
-                }
-            }
+            return Sample(null);
         }
 
-        public static RadeonSettingsTelemetry Sample()
+        public static RadeonSettingsTelemetry Sample(string activeProcessName)
         {
             lock (_lock)
             {
                 DateTime now = DateTime.UtcNow;
-                if ((now - _lastSampleTime).TotalMilliseconds < 2000 && _cached.IsAvailable)
+                bool sameProc = string.Equals(_cachedProcessName ?? "", activeProcessName ?? "", StringComparison.OrdinalIgnoreCase);
+                if (sameProc && (now - _lastSampleTime).TotalMilliseconds < 2000 && _cached.IsAvailable)
                 {
                     return _cached;
                 }
                 _lastSampleTime = now;
+                _cachedProcessName = activeProcessName;
 
                 RadeonSettingsTelemetry t = new RadeonSettingsTelemetry();
                 try
@@ -206,6 +139,7 @@ namespace MiniFanControl
                             t.IsAvailable = true;
                             t.GpuDesc = kmdKey.GetValue("DriverDesc") as string;
                             t.SoftwareEdition = kmdKey.GetValue("RadeonSoftwareEdition") as string;
+                            t.AdrenalinInstalled = !string.IsNullOrEmpty(t.SoftwareEdition);
                             t.SoftwareVersion = kmdKey.GetValue("RadeonSoftwareVersion") as string;
                             if (string.IsNullOrEmpty(t.SoftwareVersion))
                                 t.SoftwareVersion = kmdKey.GetValue("Catalyst_Version") as string;
@@ -259,11 +193,11 @@ namespace MiniFanControl
                                     int sharp = GetDword(umdKey, "Sharpness_Enable");
                                     if (cas != 0 || sharp != 0) t.Ris = true;
 
-                                    int fsrOverride = GetDword(umdKey, "FsrOverride");
-                                    if (fsrOverride == 0) fsrOverride = GetDword(umdKey, "FsrEnabled");
-                                    if (fsrOverride == 0) fsrOverride = GetDword(umdKey, "ML_FSR_Enable");
-                                    if (fsrOverride == 0) fsrOverride = GetDword(umdKey, "FsrUpgrade");
-                                    if (fsrOverride != 0) t.Fsr = true;
+                                    // Note: UMD\FsrOverride=1 is a driver capability flag (paired with FsrOvrDLLPath), not an active toggle
+                                    int fsrActive = GetDword(umdKey, "FsrEnabled");
+                                    if (fsrActive == 0) fsrActive = GetDword(umdKey, "ML_FSR_Enable");
+                                    if (fsrActive == 0) fsrActive = GetDword(umdKey, "FsrUpgrade");
+                                    if (fsrActive != 0) t.Fsr = true;
                                 }
                             }
 
@@ -305,7 +239,7 @@ namespace MiniFanControl
                             catch { }
 
                             // Corroborate with live Adrenalin profile & gaming experience databases if accessible
-                            TryCorroborateWithAdrenalinDatabase(ref t);
+                            TryCorroborateWithAdrenalinDatabase(ref t, activeProcessName);
 
                             // Authoritative: the driver's per-display VRR switch (Radeon Software > Display > VRR)
                             // lives in DAL3_DATA\freesync_v1\EDID_*\userenable (0 = off, non-zero = on).
@@ -356,81 +290,193 @@ namespace MiniFanControl
             }
         }
 
-        private static void TryCorroborateWithAdrenalinDatabase(ref RadeonSettingsTelemetry t)
+        private static void TryCorroborateWithAdrenalinDatabase(ref RadeonSettingsTelemetry t, string activeProcessName)
         {
             try
             {
                 string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 if (string.IsNullOrEmpty(localAppData)) return;
 
-                // 1. Inspect AMD Game Manager Database (gmdb.blb) for AFMF (Fluid Motion Frames) & RSR/FSR Upscaling
-                string gmPath = Path.Combine(localAppData, @"AMD\CN\gmdb.blb");
-                string gm = SafeReadAllText(gmPath);
-                if (!string.IsNullOrEmpty(gm))
-                {
-                    if (Regex.IsMatch(gm, @"""framegen_enabled"":\s*[1-9]"))
-                    {
-                        t.Afmf = true;
-                    }
-                    if (Regex.IsMatch(gm, @"""upscaling_enabled"":\s*(?:""TRUE""|1)", RegexOptions.IgnoreCase))
-                    {
-                        t.Rsr = true;
-                    }
-                    if (Regex.IsMatch(gm, @"""sharpening_enabled"":\s*(?:""TRUE""|1)", RegexOptions.IgnoreCase))
-                    {
-                        t.Ris = true;
-                    }
-                    if (Regex.IsMatch(gm, @"""(?:fsr_enabled|fsr|FSRUpgradeAvailable|fsr_upgrade|has_upscaling_profile|ml_fsr|amd_fsr)""\s*:\s*""?(?:TRUE|1|on)""?", RegexOptions.IgnoreCase))
-                    {
-                        t.Fsr = true;
-                    }
-                }
-
-                // 2. Inspect AMD Gaming Experience Database (GExDb.blb) for active feature toggles
-                string gexPath = Path.Combine(localAppData, @"AMD\CN\GExDb.blb");
-                string gex = SafeReadAllText(gexPath);
-                if (!string.IsNullOrEmpty(gex))
-                {
-                    bool? gexChill = null;
-                    bool? gexAntiLag = null;
-                    bool? gexBoost = null;
-                    bool? gexRsr = null;
-                    bool? gexRis = null;
-                    bool? gexFsr = null;
-                    bool? gexVrr = null;
-
-                    MatchCollection mc = Regex.Matches(gex, @"""FeatureID""\s*:\s*(\d+)\s*,\s*""FeatureValue""\s*:\s*""?([^"",}]+)""?");
-                    foreach (Match m in mc)
-                    {
-                        int fid;
-                        if (int.TryParse(m.Groups[1].Value, out fid))
-                        {
-                            string val = m.Groups[2].Value.Trim().Trim('"');
-                            bool isEnabled = (val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase) || val.Equals("on", StringComparison.OrdinalIgnoreCase));
-
-                            if (fid == 35) gexChill = (gexChill == true) ? true : isEnabled;        // Radeon Chill
-                            if (fid == 33) gexAntiLag = (gexAntiLag == true) ? true : isEnabled;    // Radeon Anti-Lag
-                            if (fid == 30) gexBoost = (gexBoost == true) ? true : isEnabled;        // Radeon Boost
-                            if (fid == 13) gexRsr = (gexRsr == true) ? true : isEnabled;            // Radeon Super Resolution
-                            if (fid == 15) gexRis = (gexRis == true) ? true : isEnabled;            // Radeon Image Sharpening
-                            if (fid == 58 || fid == 66) gexFsr = (gexFsr == true) ? true : isEnabled; // AMD FSR Upscaling (ML-based FSR Upgrade)
-                            if (fid == 27) gexVrr = (gexVrr == true) ? true : isEnabled;            // Variable Refresh Rate (VRR / FreeSync)
-                        }
-                    }
-
-                    if (gexChill.HasValue) t.Chill = gexChill.Value;
-                    if (gexAntiLag.HasValue) t.AntiLag = gexAntiLag.Value;
-                    if (gexBoost.HasValue) t.RadeonBoost = gexBoost.Value;
-                    if (gexRsr.HasValue && gexRsr.Value) t.Rsr = true;
-                    if (gexRis.HasValue && gexRis.Value) t.Ris = true;
-                    if (gexFsr.HasValue) t.Fsr = gexFsr.Value;
-                    if (gexVrr.HasValue) t.FreeSync = gexVrr.Value;
-                }
+                string gm = SafeReadAllText(Path.Combine(localAppData, @"AMD\CN\gmdb.blb"));
+                string gex = SafeReadAllText(Path.Combine(localAppData, @"AMD\CN\GExDb.blb"));
+                if (!string.IsNullOrEmpty(gm) || !string.IsNullOrEmpty(gex))
+                    t.AdrenalinInstalled = true;
+                TryCorroborateFromAdrenalinJson(ref t, gm, gex, activeProcessName);
             }
             catch
             {
                 // File access restrictions or fallback to driver registry values
             }
+        }
+
+        internal static void TryCorroborateFromAdrenalinJson(ref RadeonSettingsTelemetry t, string gm, string gex, string activeProcessName)
+        {
+            string activeGameGuid = null;
+
+            // 1. Inspect AMD Game Manager Database (gmdb.blb) ONLY for the currently running game (never leak idle per-game entries or capability flags like FSRUpgradeAvailable)
+            if (!string.IsNullOrEmpty(gm) && !string.IsNullOrEmpty(activeProcessName))
+            {
+                string gameBlock = FindGmdbGameBlock(gm, activeProcessName);
+                if (!string.IsNullOrEmpty(gameBlock))
+                {
+                    Match guidM = Regex.Match(gameBlock, @"""guid""\s*:\s*""([^""]+)""", RegexOptions.IgnoreCase);
+                    if (guidM.Success)
+                        activeGameGuid = guidM.Groups[1].Value;
+
+                    if (Regex.IsMatch(gameBlock, @"""framegen_enabled""\s*:\s*[1-9]"))
+                        t.Afmf = true;
+                    if (Regex.IsMatch(gameBlock, @"""upscaling_enabled""\s*:\s*(?:""TRUE""|1)", RegexOptions.IgnoreCase))
+                        t.Rsr = true;
+                    if (Regex.IsMatch(gameBlock, @"""sharpening_enabled""\s*:\s*(?:""TRUE""|1)", RegexOptions.IgnoreCase))
+                        t.Ris = true;
+                    if (Regex.IsMatch(gameBlock, @"""(?:fsr_enabled|fsr|fsr_upgrade|ml_fsr|amd_fsr)""\s*:\s*""?(?:TRUE|1|on)""?", RegexOptions.IgnoreCase))
+                        t.Fsr = true;
+                }
+            }
+
+            // 2. Inspect AMD Gaming Experience Database (GExDb.blb) scoped strictly to Global ("") + running game's GUID
+            if (!string.IsNullOrEmpty(gex))
+            {
+                string globalBlock = ExtractTopLevelJsonObject(gex, "");
+                if (!string.IsNullOrEmpty(globalBlock))
+                    ApplyGexFeatureBlock(ref t, globalBlock);
+
+                if (!string.IsNullOrEmpty(activeGameGuid))
+                {
+                    string gameGexBlock = ExtractTopLevelJsonObject(gex, activeGameGuid);
+                    if (!string.IsNullOrEmpty(gameGexBlock))
+                        ApplyGexFeatureBlock(ref t, gameGexBlock);
+                }
+            }
+        }
+
+        private static void ApplyGexFeatureBlock(ref RadeonSettingsTelemetry t, string block)
+        {
+            bool? gexChill = null;
+            bool? gexAntiLag = null;
+            bool? gexBoost = null;
+            bool? gexRsr = null;
+            bool? gexRis = null;
+            bool? gexFsr = null;
+            bool? gexVrr = null;
+
+            MatchCollection mc = Regex.Matches(block, @"""FeatureID""\s*:\s*(\d+)\s*,\s*""FeatureValue""\s*:\s*""?([^"",}]+)""?");
+            foreach (Match m in mc)
+            {
+                int fid;
+                if (int.TryParse(m.Groups[1].Value, out fid))
+                {
+                    string val = m.Groups[2].Value.Trim().Trim('"');
+                    bool isEnabled = (val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase) || val.Equals("on", StringComparison.OrdinalIgnoreCase));
+
+                    if (fid == 35) gexChill = isEnabled;        // Radeon Chill
+                    if (fid == 33) gexAntiLag = isEnabled;      // Radeon Anti-Lag
+                    if (fid == 30) gexBoost = isEnabled;        // Radeon Boost
+                    if (fid == 13) gexRsr = isEnabled;          // Radeon Super Resolution
+                    if (fid == 15 || fid == 27) gexRis = isEnabled; // Radeon Image Sharpening (Adrenalin 26.x uses FeatureID 27)
+                    if (fid == 58 || fid == 66) gexFsr = isEnabled; // AMD FSR Upscaling (ML-based FSR Upgrade)
+                }
+            }
+
+            if (gexChill.HasValue) t.Chill = gexChill.Value;
+            if (gexAntiLag.HasValue) t.AntiLag = gexAntiLag.Value;
+            if (gexBoost.HasValue) t.RadeonBoost = gexBoost.Value;
+            if (gexRsr.HasValue && gexRsr.Value) t.Rsr = true;
+            if (gexRis.HasValue && gexRis.Value) t.Ris = true;
+            if (gexFsr.HasValue) t.Fsr = gexFsr.Value;
+            if (gexVrr.HasValue) t.FreeSync = gexVrr.Value;
+        }
+
+        private static string FindGmdbGameBlock(string gm, string activeProcessName)
+        {
+            string targetExe;
+            try { targetExe = Path.GetFileName(activeProcessName).Trim(); }
+            catch { targetExe = activeProcessName.Trim(); }
+            if (string.IsNullOrEmpty(targetExe)) return null;
+            string targetBase = Path.GetFileNameWithoutExtension(targetExe);
+
+            MatchCollection exeMatches = Regex.Matches(gm, @"""exe_path""\s*:\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            foreach (Match m in exeMatches)
+            {
+                string rawPath = m.Groups[1].Value.Replace(@"\\", @"\");
+                string exeName;
+                try { exeName = Path.GetFileName(rawPath); }
+                catch { exeName = rawPath; }
+                string exeBase = Path.GetFileNameWithoutExtension(exeName);
+
+                if (string.Equals(exeName, targetExe, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrEmpty(targetBase) && string.Equals(exeBase, targetBase, StringComparison.OrdinalIgnoreCase)))
+                {
+                    // Walk backwards from before the opening '"' of "exe_path" to the enclosing '{'
+                    int openIdx = -1;
+                    int depth = 0;
+                    bool inStr = false;
+                    for (int i = m.Index - 1; i >= 0; i--)
+                    {
+                        char c = gm[i];
+                        if (c == '"' && (i == 0 || gm[i - 1] != '\\')) inStr = !inStr;
+                        if (inStr) continue;
+                        if (c == '}') depth++;
+                        else if (c == '{')
+                        {
+                            if (depth == 0) { openIdx = i; break; }
+                            depth--;
+                        }
+                    }
+                    if (openIdx < 0) continue;
+
+                    int closeIdx = FindMatchingBrace(gm, openIdx);
+                    if (closeIdx > openIdx)
+                        return gm.Substring(openIdx, closeIdx - openIdx + 1);
+                }
+            }
+            return null;
+        }
+
+        private static string ExtractTopLevelJsonObject(string json, string topKey)
+        {
+            string pattern = "\"" + Regex.Escape(topKey) + "\"\\s*:\\s*\\{";
+            MatchCollection matches = Regex.Matches(json, pattern, RegexOptions.IgnoreCase);
+            foreach (Match m in matches)
+            {
+                int braceIdx = m.Index + m.Length - 1;
+                // Verify this key is at top-level (brace depth == 1 right before '{')
+                int depth = 0;
+                bool inStr = false;
+                for (int i = 0; i < braceIdx; i++)
+                {
+                    char c = json[i];
+                    if (c == '"' && (i == 0 || json[i - 1] != '\\')) inStr = !inStr;
+                    if (inStr) continue;
+                    if (c == '{') depth++;
+                    else if (c == '}') depth--;
+                }
+                if (depth != 1) continue;
+
+                int closeIdx = FindMatchingBrace(json, braceIdx);
+                if (closeIdx > braceIdx)
+                    return json.Substring(braceIdx, closeIdx - braceIdx + 1);
+            }
+            return null;
+        }
+
+        private static int FindMatchingBrace(string s, int openIdx)
+        {
+            int depth = 0;
+            bool inStr = false;
+            for (int i = openIdx; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == '"' && (i == 0 || s[i - 1] != '\\')) inStr = !inStr;
+                if (inStr) continue;
+                if (c == '{') depth++;
+                else if (c == '}')
+                {
+                    depth--;
+                    if (depth == 0) return i;
+                }
+            }
+            return -1;
         }
 
         /// <summary>

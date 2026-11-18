@@ -468,7 +468,8 @@ namespace MiniFanControl
             }
             int effectiveApuTemp = apuTemp + npuBoost;
 
-            bool withinCooldownHysteresis = (lastEvalTemp > 0 && effectiveApuTemp < lastEvalTemp && (lastEvalTemp - effectiveApuTemp) < 2);
+            // Asymmetric cooldown hysteresis (4°C down, 0°C up) prevents fan hunting on brief temperature dips
+            bool withinCooldownHysteresis = (lastEvalTemp > 0 && effectiveApuTemp < lastEvalTemp && (lastEvalTemp - effectiveApuTemp) < 4);
 
             try
             {
@@ -510,7 +511,7 @@ namespace MiniFanControl
                     {
                         int targetApu = apuProf.EvaluateApu(effectiveApuTemp);
                         int regPct = targetApu <= 0 ? (isSuperIo ? 0 : 1) : targetApu;
-                        if (lastApuPct < 0 || (!withinCooldownHysteresis && Math.Abs(regPct - lastApuPct) >= 2) || regPct == 1 || regPct == 100)
+                        if (lastApuPct < 0 || (!withinCooldownHysteresis && Math.Abs(regPct - lastApuPct) >= 2) || regPct == 100)
                         {
                             bool ok = demo ? _demo.SetFan(1, regPct) : _hw.SetFan(1, regPct);
                             if (ok)
@@ -562,7 +563,7 @@ namespace MiniFanControl
                         int sysThermalSource = (snapshot.NvmeTemp > 0) ? Math.Max(effectiveApuTemp, snapshot.NvmeTemp) : effectiveApuTemp;
                         int targetSys = sysProf.EvaluateSys(sysThermalSource);
                         int regPct = targetSys <= 0 ? (isSuperIo ? 0 : 1) : targetSys;
-                        if (lastSysPct < 0 || (!withinCooldownHysteresis && Math.Abs(regPct - lastSysPct) >= 2) || regPct == 1 || regPct == 100)
+                        if (lastSysPct < 0 || (!withinCooldownHysteresis && Math.Abs(regPct - lastSysPct) >= 2) || regPct == 100)
                         {
                             bool ok = demo ? _demo.SetFan(2, regPct) : _hw.SetFan(2, regPct);
                             if (ok)

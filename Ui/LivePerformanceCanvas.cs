@@ -287,11 +287,30 @@ namespace MiniFanControl
             DrawBottomTimeline(g);
         }
 
+        private int ComputeRollingAvgFps(int curFps)
+        {
+            if (Status.RtssAvgFps > 0) return Status.RtssAvgFps;
+            if (Stats != null && Stats.FpsHistory != null && Stats.FpsHistory.Count > 0)
+            {
+                int total = Stats.FpsHistory.Count;
+                int start = Math.Max(0, total - 120);
+                long sum = 0;
+                int cnt = 0;
+                for (int i = start; i < total; i++)
+                {
+                    int v = Stats.FpsHistory[i];
+                    if (v > 0) { sum += v; cnt++; }
+                }
+                if (cnt > 0) return (int)Math.Round((double)sum / cnt);
+            }
+            return (Stats != null && Stats.AvgFps > 0) ? (int)Math.Round(Stats.AvgFps) : curFps;
+        }
+
         private void DrawTopRibbon(Graphics g)
         {
             int curFps = Status.RtssFps > 0 ? Status.RtssFps : ((Stats != null && Stats.FpsHistory.Count > 0) ? Stats.FpsHistory[Stats.FpsHistory.Count - 1] : 0);
             double curFt = Status.RtssFrametimeMs > 0 ? Status.RtssFrametimeMs : (curFps > 0 ? (1000.0 / curFps) : ((Stats != null && Stats.FrametimeHistory.Count > 0) ? Stats.FrametimeHistory[Stats.FrametimeHistory.Count - 1] / 10.0 : 0.0));
-            int avgFps = (Stats != null && Stats.AvgFps > 0) ? (int)Math.Round(Stats.AvgFps) : (Status.RtssAvgFps > 0 ? Status.RtssAvgFps : curFps);
+            int avgFps = ComputeRollingAvgFps(curFps);
             int low01 = Status.RtssP01LowFps > 0 ? Status.RtssP01LowFps : ((Stats != null && Stats.P01LowFps > 0) ? Stats.P01LowFps : 0);
             int low1 = Status.RtssP1LowFps > 0 ? Status.RtssP1LowFps : ((Stats != null && Stats.P1LowFps > 0) ? Stats.P1LowFps : 0);
 
@@ -598,7 +617,7 @@ namespace MiniFanControl
             int start = total - take;
 
             int curFps = Status.RtssFps > 0 ? Status.RtssFps : ((total > 0 && Stats.FpsHistory[total - 1] > 0) ? Stats.FpsHistory[total - 1] : 0);
-            int avgFps = (Stats != null && Stats.AvgFps > 0) ? (int)Math.Round(Stats.AvgFps) : (Status.RtssAvgFps > 0 ? Status.RtssAvgFps : curFps);
+            int avgFps = ComputeRollingAvgFps(curFps);
             int low01 = Status.RtssP01LowFps > 0 ? Status.RtssP01LowFps : ((Stats != null && Stats.P01LowFps > 0) ? Stats.P01LowFps : 0);
 
             // Section Header

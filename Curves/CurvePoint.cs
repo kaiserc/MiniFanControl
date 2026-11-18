@@ -208,7 +208,7 @@ namespace MiniFanControl
 
             CurvePoint[] apuPts = new CurvePoint[]
             {
-                new CurvePoint(idleTemp, 0),
+                new CurvePoint(idleTemp, apuFloor),
                 new CurvePoint(spinUpTemp, spinUpPct),
                 new CurvePoint(kneeTemp, kneePct),
                 new CurvePoint(boostTemp, boostPct),
@@ -243,8 +243,8 @@ namespace MiniFanControl
             };
 
             string curveName = string.Format("✨ Auto-Tuned ({0}W • Min {1}%)", tdpWatts, apuFloor);
-            summary = string.Format("✓ Auto-Tuned for {0}W TDP (Idle ≤{1}°C → {2}% @ {3}°C, Knee {4}% @ {5}°C, 100% @ {6}°C)",
-                tdpWatts, idleTemp, spinUpPct, spinUpTemp, kneePct, kneeTemp, maxTemp);
+            summary = string.Format("✓ Auto-Tuned for {0}W TDP (Idle ≤{1}°C @ {2}%, Knee {3}% @ {4}°C, 100% @ {5}°C)",
+                tdpWatts, idleTemp, apuFloor, kneePct, kneeTemp, maxTemp);
 
             return new FanCurveProfile(curveName, false, -1, apuPts, sysPts, false);
         }

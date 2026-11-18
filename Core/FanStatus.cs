@@ -143,6 +143,7 @@ namespace MiniFanControl
 
         // Active AMD Radeon Software Features (FreeSync, Anti-Lag, AFMF, Chill, Boost, etc.)
         public bool RadeonFeaturesAvailable;
+        public bool RadeonAdrenalinInstalled;
         public string RadeonFeaturesSummary;
         public string RadeonSoftwareVer;
         public bool RadeonFreeSync;

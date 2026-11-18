@@ -71,7 +71,7 @@ namespace MiniFanControl
         private const int HOTKEY_LOCK_OSD   = 9003;
         private const int HOTKEY_RESET_AUTO = 9004;
 
-        public const string APP_VERSION         = "1.0.3";
+        public const string APP_VERSION         = "1.0.4";
         public const string SCHTASK_NAME        = "MiniFanControl_Autostart";
         public const string URL_GMKTEC_DRIVERS  = "https://www.gmktec.com/pages/drivers-and-software";
         public const string URL_AMD_DRIVERS     = "https://www.amd.com/en/support/download/drivers.html";
@@ -218,6 +218,7 @@ namespace MiniFanControl
         internal Button TestTabSysCurveBtn { get { return _tabSysCurveBtn; } }
         internal Button TestTabOsdConfigBtn { get { return _tabOsdConfigBtn; } }
         internal Panel TestModeCardPanel { get { return _modeCardPanel; } }
+        internal Panel TestWideRightPanel { get { return _wideRightPanel; } }
         internal Panel TestFanCardPanel { get { return _fanCardPanel; } }
         internal Label TestManualFanHeaderLabel { get { return _manualFanHeaderLabel; } }
         internal bool TestManualFanControlVisible { get { return _manualFanControlVisible; } }
@@ -290,6 +291,11 @@ namespace MiniFanControl
         private Label _manualFanHeaderLabel;
         private Panel _fanCardPanel;
         private bool _manualFanControlVisible = true;
+        private Panel _wideRightPanel;
+        private Label _wideRightHeaderLabel;
+        private Button _wideTrendBtn;
+        private Button _widePerfBtn;
+        private bool _wideRightShowPerf = false;
 
         private Label _hwBadgeLabel;
         private Label _hwSubLabel;
@@ -1351,7 +1357,13 @@ namespace MiniFanControl
             if (_osdShowVrmCurrentCb != null) _osdShowVrmCurrentCb.Checked = _osd.ShowVrmCurrent;
             if (_osdShowAmbientCb != null) _osdShowAmbientCb.Checked = _osd.ShowAmbient;
             if (_osdShowFabricClockCb != null) _osdShowFabricClockCb.Checked = _osd.ShowFabricClock;
-            if (_osdShowNpuCb != null) _osdShowNpuCb.Checked = _osd.ShowNpu;
+            if (_osdShowNpuCb != null)
+            {
+                bool hasNpu = _demoMode || _lastStatus.NpuActivityPct >= 0 || AmdAdlGpuSensor.HasNpuHardware;
+                _osdShowNpuCb.Checked = _osd.ShowNpu && hasNpu;
+                _osdShowNpuCb.Enabled = hasNpu;
+                _osdShowNpuCb.Text = hasNpu ? "Ryzen AI NPU" : "Ryzen AI NPU (N/A)";
+            }
             if (_osdShowFpsCb != null) _osdShowFpsCb.Checked = _osd.ShowFps;
             if (_osdShowLowsCb != null) _osdShowLowsCb.Checked = _osd.ShowLows;
             if (_osdShowGpuLoadCb != null) _osdShowGpuLoadCb.Checked = _osd.ShowGpuLoad;
@@ -1588,6 +1600,7 @@ namespace MiniFanControl
             UpdateCurveTabStyles();
             UpdateOsdStudioStyles();
             InvalidateAllMetricBoxes();
+            UpdateWideLayout();
         }
 
         private void SetOverlayVisible(bool visible)
@@ -1928,6 +1941,7 @@ namespace MiniFanControl
                         if (_controller != null) _controller.InvalidateAppliedCache();
                         ApplyFanLayoutMode();
                         UpdateCalibrationBadge();
+                        RefreshAutoTunedCurveAfterCalibration();
                         SaveSettings();
                         RebuildDriversMenu();
                     }
@@ -2204,22 +2218,6 @@ namespace MiniFanControl
             menu.MenuItems.Add("-");
             menu.MenuItems.Add("GMKtec Official Drivers & Manuals (K12 / Mini PCs)...", (s, e) => OpenUrlSafe(URL_GMKTEC_DRIVERS));
             menu.MenuItems.Add("AMD Software: Adrenalin & Chipset Drivers...", (s, e) => OpenUrlSafe(URL_AMD_DRIVERS));
-            if (_lastStatus.RadeonFeaturesAvailable || !_demoMode)
-            {
-                RadeonSettingsTelemetry radNow = RadeonSettingsSensor.Sample();
-                if (radNow.IsAvailable)
-                {
-                    MenuItem radeonToggleMenu = new MenuItem("🎮 Radeon Driver Features (KMD)");
-                    AddRadeonDriverToggleItem(radeonToggleMenu, "Radeon Anti-Lag", "AntiLag", radNow.AntiLag);
-                    AddRadeonDriverToggleItem(radeonToggleMenu, "Radeon Chill", "Chill", radNow.Chill);
-                    AddRadeonDriverToggleItem(radeonToggleMenu, "Radeon Boost", "Boost", radNow.RadeonBoost);
-                    AddRadeonDriverToggleItem(radeonToggleMenu, "Radeon Image Sharpening (RIS)", "RIS", radNow.Ris);
-                    AddRadeonDriverToggleItem(radeonToggleMenu, "Radeon Super Resolution (RSR)", "RSR", radNow.Rsr);
-                    AddRadeonDriverToggleItem(radeonToggleMenu, "Enhanced Sync", "EnhSync", radNow.EnhancedSync);
-                    AddRadeonDriverToggleItem(radeonToggleMenu, "FRTC (Frame Rate Target Control)", "FRTC", radNow.Frtc);
-                    menu.MenuItems.Add(radeonToggleMenu);
-                }
-            }
             menu.MenuItems.Add("-");
             menu.MenuItems.Add("🛡️ Kernel Driver & HVCI Security Status...", (s, e) => ShowKernelDriverSecurityDialog());
             MenuItem langMenu = new MenuItem("🌐 Language / 语言 / Sprache");
@@ -2234,29 +2232,6 @@ namespace MiniFanControl
             menu.MenuItems.Add("-");
             menu.MenuItems.Add("About MiniFanControl v" + APP_VERSION + "...", (s, e) => ShowAboutDialog());
             return menu;
-        }
-
-        private void AddRadeonDriverToggleItem(MenuItem parent, string title, string featureKey, bool isChecked)
-        {
-            MenuItem item = new MenuItem(title, (s, e) =>
-            {
-                bool targetState = !isChecked;
-                string err;
-                if (RadeonSettingsSensor.SetKmdFeatureEnabled(featureKey, targetState, out err))
-                {
-                    _driversMenu = CreateDriversAndToolsMenu();
-                    if (_statusBarLabel != null)
-                        _statusBarLabel.Text = string.Format("✓ Radeon {0}: {1} (driver registry updated)", title, targetState ? "Enabled" : "Disabled");
-                    RefreshStatus();
-                }
-                else
-                {
-                    if (_statusBarLabel != null)
-                        _statusBarLabel.Text = string.Format("⚠ Could not toggle {0}: {1}", title, err ?? "Unknown error");
-                }
-            });
-            if (isChecked) item.Checked = true;
-            parent.MenuItems.Add(item);
         }
 
         private void AddLanguageMenuItem(MenuItem parent, string title, AppLanguage lang)
@@ -3087,13 +3062,25 @@ namespace MiniFanControl
             _showingOsdConfig = false;
             if (_osdConfigPanel != null) _osdConfigPanel.Visible = false;
 
+            if (ClientSize.Width >= 1450 && (showLive || showPerf))
+            {
+                _wideRightShowPerf = showPerf;
+                if (showLive && highlightMetric > 0 && _liveCanvas != null)
+                {
+                    _highlightedMetric = highlightMetric;
+                    _liveCanvas.HighlightMetric = _highlightedMetric;
+                }
+                showLive = false;
+                showPerf = false;
+            }
+
             _showingLiveTelemetry = showLive;
             _showingPerfGraph = showPerf;
             if (showLive)
             {
                 _highlightedMetric = highlightMetric > 0 ? highlightMetric : 1;
             }
-            else
+            else if (ClientSize.Width < 1450)
             {
                 _highlightedMetric = 0;
             }
@@ -3144,6 +3131,7 @@ namespace MiniFanControl
             UpdateModeButtonStyles(_lastSelectedModeCode);
             UpdateCurveHint();
             InvalidateAllMetricBoxes();
+            UpdateWideLayout();
         }
 
         private void InvalidateAllMetricBoxes()
@@ -4296,6 +4284,145 @@ namespace MiniFanControl
             _closeBtn.FlatAppearance.BorderSize = 0;
             _closeBtn.Click += (s, e) => Close();
             Controls.Add(_closeBtn);
+
+            // 6. Wide-Screen Companion Panel (2-Column Mode when ClientSize.Width >= 1450)
+            _wideRightPanel = new DoubleBufferedPanel
+            {
+                Location = new Point(1096, 10),
+                Size = new Size(780, 900),
+                Visible = false
+            };
+            _wideRightHeaderLabel = new Label
+            {
+                Text = "LIVE TELEMETRY & PERFORMANCE MONITOR",
+                Font = new Font("Segoe UI", 9.0f, FontStyle.Bold),
+                Location = new Point(10, 9),
+                Size = new Size(340, 20),
+                UseMnemonic = false
+            };
+            _wideRightPanel.Controls.Add(_wideRightHeaderLabel);
+
+            _wideTrendBtn = new Button
+            {
+                Text = "• Live Trend",
+                FlatStyle = FlatStyle.Flat,
+                Font = TabFontBold,
+                Size = new Size(106, 24),
+                Cursor = Cursors.Hand
+            };
+            _wideTrendBtn.FlatAppearance.BorderSize = 0;
+            _wideTrendBtn.Click += (s, e) =>
+            {
+                _wideRightShowPerf = false;
+                UpdateWideLayout();
+            };
+            _wideRightPanel.Controls.Add(_wideTrendBtn);
+
+            _widePerfBtn = new Button
+            {
+                Text = "• Live Perf",
+                FlatStyle = FlatStyle.Flat,
+                Font = TabFontBold,
+                Size = new Size(106, 24),
+                Cursor = Cursors.Hand
+            };
+            _widePerfBtn.FlatAppearance.BorderSize = 0;
+            _widePerfBtn.Click += (s, e) =>
+            {
+                _wideRightShowPerf = true;
+                UpdateWideLayout();
+            };
+            _wideRightPanel.Controls.Add(_widePerfBtn);
+            Controls.Add(_wideRightPanel);
+
+            SizeChanged += (s, e) => UpdateWideLayout();
+            UpdateWideLayout();
+        }
+
+        private void UpdateWideLayout()
+        {
+            if (_wideRightPanel == null || _modeCardPanel == null || _liveCanvas == null || _perfCanvas == null)
+                return;
+
+            bool wide = ClientSize.Width >= 1450;
+            if (wide)
+            {
+                int rx = 1096;
+                int rw = Math.Max(340, ClientSize.Width - rx - 12);
+                int rh = Math.Max(520, ClientSize.Height - 24);
+                _wideRightPanel.Location = new Point(rx, 10);
+                _wideRightPanel.Size = new Size(rw, rh);
+                if (_widePerfBtn != null) _widePerfBtn.Location = new Point(rw - 114, 7);
+                if (_wideTrendBtn != null) _wideTrendBtn.Location = new Point(rw - 226, 7);
+
+                if (_showingLiveTelemetry || _showingPerfGraph)
+                {
+                    // Keep the left column on the Fan Curve editor when wide mode docks Live/Perf on the right
+                    _showingLiveTelemetry = false;
+                    _showingPerfGraph = false;
+                    SetPresetsAndCustomVisible(!_showingOsdConfig);
+                    SetManualFanControlVisible(!_showingOsdConfig);
+                    if (!_showingOsdConfig && _curveCanvas != null)
+                    {
+                        _curveCanvas.Location = new Point(8, 108);
+                        _curveCanvas.Size = new Size(1056, 496);
+                        _curveCanvas.Visible = true;
+                    }
+                    UpdateCurveTabStyles();
+                    UpdateCurveHint();
+                }
+
+                Control activeRight = _wideRightShowPerf ? (Control)_perfCanvas : (Control)_liveCanvas;
+                Control inactiveRight = _wideRightShowPerf ? (Control)_liveCanvas : (Control)_perfCanvas;
+
+                if (inactiveRight.Parent != _modeCardPanel)
+                {
+                    inactiveRight.Parent = _modeCardPanel;
+                }
+                inactiveRight.Visible = false;
+
+                if (activeRight.Parent != _wideRightPanel)
+                {
+                    activeRight.Parent = _wideRightPanel;
+                }
+                activeRight.Location = new Point(8, 38);
+                activeRight.Size = new Size(rw - 16, rh - 46);
+                activeRight.Visible = true;
+                activeRight.Invalidate();
+
+                if (!_wideRightPanel.Visible) _wideRightPanel.Visible = true;
+                UpdateWideRightButtonStyles();
+            }
+            else
+            {
+                if (_wideRightPanel.Visible) _wideRightPanel.Visible = false;
+                int canvasH = _manualFanControlVisible ? 560 : 690;
+
+                if (_liveCanvas.Parent != _modeCardPanel) _liveCanvas.Parent = _modeCardPanel;
+                _liveCanvas.Location = new Point(8, 42);
+                _liveCanvas.Size = new Size(1056, canvasH);
+                _liveCanvas.Visible = _showingLiveTelemetry;
+
+                if (_perfCanvas.Parent != _modeCardPanel) _perfCanvas.Parent = _modeCardPanel;
+                _perfCanvas.Location = new Point(8, 42);
+                _perfCanvas.Size = new Size(1056, canvasH);
+                _perfCanvas.Visible = _showingPerfGraph;
+            }
+        }
+
+        private void UpdateWideRightButtonStyles()
+        {
+            if (_wideTrendBtn == null || _widePerfBtn == null) return;
+            bool isRadeon = (_themePref == ThemePreference.Radeon);
+            Color surface2 = isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2));
+            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
+            Color accent = isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent));
+            Color activeFg = isRadeon ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
+
+            _wideTrendBtn.BackColor = !_wideRightShowPerf ? accent : surface2;
+            _wideTrendBtn.ForeColor = !_wideRightShowPerf ? activeFg : text;
+            _widePerfBtn.BackColor = _wideRightShowPerf ? accent : surface2;
+            _widePerfBtn.ForeColor = _wideRightShowPerf ? activeFg : text;
         }
 
         private void BuildOsdStudioPanel(Panel p)
@@ -5045,6 +5172,37 @@ namespace MiniFanControl
             }
         }
 
+        private void RefreshAutoTunedCurveAfterCalibration()
+        {
+            FanCurveProfile target = null;
+            foreach (FanCurveProfile cp in _customProfiles)
+            {
+                if (!cp.IsProtectedExample && cp.Name.StartsWith("✨ Auto-Tuned", StringComparison.OrdinalIgnoreCase))
+                {
+                    target = cp;
+                    break;
+                }
+            }
+            if (target == null) return;
+
+            string summary;
+            FanCurveProfile tuned = FanCurveProfile.SynthesizeAutoTunedCurve(_lastStatus, _sessionStats, out summary);
+            target.Name = tuned.Name;
+            target.ApuPoints = FanCurveProfile.ClonePoints(tuned.ApuPoints);
+            target.SysPoints = FanCurveProfile.ClonePoints(tuned.SysPoints);
+
+            PopulateCustomCombo();
+            if (_apuProfile == target || _sysProfile == target)
+            {
+                if (_curveCanvas != null)
+                    _curveCanvas.Invalidate();
+                if (_statusBarLabel != null)
+                    _statusBarLabel.Text = summary;
+                if (_curveHintLabel != null)
+                    _curveHintLabel.Text = summary;
+            }
+        }
+
         private FanCurveProfile GetSelectedTabProfile()
         {
             if (_curveCanvas != null && _curveCanvas.EditSysFan)
@@ -5540,7 +5698,12 @@ namespace MiniFanControl
             if (_curveHintLabel == null || _curveCanvas == null) return;
             if (_showingOsdConfig)
             {
-                _curveHintLabel.Text = "OSD Overlay Studio — configure live graphs, placement, opacity and telemetry metrics";
+                if (!_demoMode && !_lastStatus.RadeonFeaturesAvailable)
+                    _curveHintLabel.Text = "OSD Overlay Studio — ℹ No AMD display driver detected: Radeon iGPU sensors & OSD feature pills are unavailable";
+                else if (!_demoMode && _lastStatus.RadeonFeaturesAvailable && !_lastStatus.RadeonAdrenalinInstalled)
+                    _curveHintLabel.Text = "OSD Overlay Studio — ℹ AMD Minimal/Driver-Only install: FreeSync & iGPU sensors work, but RIS/AFMF/per-game FSR pills need Adrenalin";
+                else
+                    _curveHintLabel.Text = "OSD Overlay Studio — configure live graphs, placement, opacity and telemetry metrics";
                 return;
             }
             if (_showingPerfGraph)
@@ -5717,6 +5880,15 @@ namespace MiniFanControl
 
             foreach (Panel c in _sectionCards)
                 c.BackColor = surface;
+
+            if (_wideRightPanel != null)
+                _wideRightPanel.BackColor = surface;
+            if (_wideRightHeaderLabel != null)
+            {
+                _wideRightHeaderLabel.BackColor = surface;
+                _wideRightHeaderLabel.ForeColor = accent;
+            }
+            UpdateWideRightButtonStyles();
 
             foreach (Label l in _staticLabels)
             {
@@ -6076,9 +6248,18 @@ namespace MiniFanControl
 
             if (_hwSubLabel != null && !string.IsNullOrEmpty(st.RadeonSoftwareVer))
             {
-                string drvTag = "Radeon Software " + st.RadeonSoftwareVer;
-                if (_hwSubLabel.Text.IndexOf("Radeon Software", StringComparison.Ordinal) < 0)
+                string drvTag = st.RadeonAdrenalinInstalled
+                    ? ("Radeon Software " + st.RadeonSoftwareVer)
+                    : ("Radeon Driver-Only " + st.RadeonSoftwareVer);
+                if (_hwSubLabel.Text.IndexOf("Radeon Software", StringComparison.Ordinal) < 0 &&
+                    _hwSubLabel.Text.IndexOf("Radeon Driver-Only", StringComparison.Ordinal) < 0)
                     _hwSubLabel.Text = _hwSubLabel.Text + " • " + drvTag;
+            }
+            if (!_demoMode && NativeInpOut.ActiveDriver == HardwareDriverEngine.None &&
+                _errorBanner != null && string.IsNullOrEmpty(_uiWriteErrorBannerDetail))
+            {
+                _errorBanner.Text = "⚠ No EC kernel driver loaded (InpOut64/WinRing0 missing or blocked) — fan control & EC telemetry won't work. Run as Administrator or check Tools & Drivers → Kernel Driver Status.";
+                if (!_errorBanner.Visible) _errorBanner.Visible = true;
             }
 
             int apuTemp = Math.Max(st.CpuTemp, st.GpuTemp);
@@ -6094,7 +6275,7 @@ namespace MiniFanControl
             {
                 _liveCanvas.UseFahrenheit = _useFahrenheit;
                 _liveCanvas.Status = st;
-                if (_showingLiveTelemetry)
+                if (_liveCanvas.Visible)
                     _liveCanvas.Invalidate();
             }
             if (_curveCanvas != null && _curveCanvas.UseFahrenheit != _useFahrenheit)
@@ -6105,7 +6286,7 @@ namespace MiniFanControl
             if (_perfCanvas != null)
             {
                 _perfCanvas.UpdateStatus(st);
-                if (_showingPerfGraph)
+                if (_perfCanvas.Visible)
                     _perfCanvas.Invalidate();
             }
 

@@ -558,6 +558,11 @@ namespace MiniFanControl
             AddMetricToggleMenuItem(metricsMenu, "Chassis / Ambient Temp", () => ShowAmbient, v => { ShowAmbient = v; UpdateDimensions(); Invalidate(); });
             AddMetricToggleMenuItem(metricsMenu, "Infinity Fabric (FCLK)", () => ShowFabricClock, v => { ShowFabricClock = v; UpdateDimensions(); Invalidate(); });
             AddMetricToggleMenuItem(metricsMenu, "Ryzen AI NPU", () => ShowNpu, v => { ShowNpu = v; UpdateDimensions(); Invalidate(); });
+            ToolStripItem npuMenuItem = metricsMenu.DropDownItems[metricsMenu.DropDownItems.Count - 1];
+            metricsMenu.DropDownOpening += (s, e) =>
+            {
+                npuMenuItem.Visible = (_status.NpuActivityPct >= 0 || AmdAdlGpuSensor.HasNpuHardware);
+            };
             AddMetricToggleMenuItem(metricsMenu, "FPS & Frametime", () => ShowFps, v => ShowFps = v);
             AddMetricToggleMenuItem(metricsMenu, "0.1% Low & Avg FPS", () => ShowLows, v => ShowLows = v);
             AddMetricToggleMenuItem(metricsMenu, "GPU Load & Clock", () => ShowGpuLoad, v => ShowGpuLoad = v);
@@ -896,12 +901,12 @@ namespace MiniFanControl
             if (hasClock)
             {
                 return hasLoad
-                    ? string.Format("{0}{1} {2}% @ {3}MHz", cpuT, tUnit, _status.CpuLoadPct, _status.CpuClockMhz)
-                    : string.Format("{0}{1} @ {2}MHz", cpuT, tUnit, _status.CpuClockMhz);
+                    ? string.Format("{0,2}{1} {2,3}% {3,4}MHz", cpuT, tUnit, _status.CpuLoadPct, _status.CpuClockMhz)
+                    : string.Format("{0,2}{1} {2,4}MHz", cpuT, tUnit, _status.CpuClockMhz);
             }
             return hasLoad
-                ? string.Format("{0}{1} {2}%", cpuT, tUnit, _status.CpuLoadPct)
-                : string.Format("{0}{1}", cpuT, tUnit);
+                ? string.Format("{0,2}{1} {2,3}%", cpuT, tUnit, _status.CpuLoadPct)
+                : string.Format("{0,2}{1}", cpuT, tUnit);
         }
 
         private string FormatGpuOverlayValue()
@@ -914,16 +919,16 @@ namespace MiniFanControl
             int hotT = TelemetrySessionStats.ToDisplayTemp(_status.GpuHotspotTemp, UseFahrenheit);
 
             string gpuTempPart = hasGpuTemp
-                ? ((ShowGpuHotspot && _status.GpuHotspotTemp > 0) ? string.Format("{0}{1} (🔥{2}°)", gpuT, tUnit, hotT) : string.Format("{0}{1}", gpuT, tUnit))
+                ? ((ShowGpuHotspot && _status.GpuHotspotTemp > 0) ? string.Format("{0,2}{1} (🔥{2}°)", gpuT, tUnit, hotT) : string.Format("{0,2}{1}", gpuT, tUnit))
                 : null;
 
             string gpuLoadPart = null;
             if (hasGpuLoad && ShowClocks && hasGpuClock)
-                gpuLoadPart = string.Format("{0}% @ {1}MHz", _status.GfxActivityPct, _status.GfxClockMhz);
+                gpuLoadPart = string.Format("{0,3}% {1,4}MHz", _status.GfxActivityPct, _status.GfxClockMhz);
             else if (hasGpuLoad)
-                gpuLoadPart = string.Format("{0}%", _status.GfxActivityPct);
+                gpuLoadPart = string.Format("{0,3}%", _status.GfxActivityPct);
             else if (ShowClocks && hasGpuClock)
-                gpuLoadPart = string.Format("@ {0}MHz", _status.GfxClockMhz);
+                gpuLoadPart = string.Format("{0,4}MHz", _status.GfxClockMhz);
 
             if (gpuTempPart != null && gpuLoadPart != null)
                 return string.Format("{0} {1}", gpuTempPart, gpuLoadPart);
@@ -1054,7 +1059,7 @@ namespace MiniFanControl
 
             if (ShowFabricClock && _status.FabricClockMhz > 0)
             {
-                string fclkVal = string.Format("{0} MHz", _status.FabricClockMhz);
+                string fclkVal = string.Format("{0,4}MHz", _status.FabricClockMhz);
                 string fclkPeak = ShowFclkSync ? (_status.IsFabricSynced ? "1:1 Sync" : "Async") : null;
                 Color fclkCol = Color.FromArgb(0x10, 0xB9, 0x81);
                 Brush bFclk = new SolidBrush(fclkCol);
@@ -3101,7 +3106,7 @@ namespace MiniFanControl
                     }
                     if (ShowFabricClock && _status.FabricClockMhz > 0)
                     {
-                        string fclkVal = string.Format("{0} MHz", _status.FabricClockMhz);
+                        string fclkVal = string.Format("{0,4}MHz", _status.FabricClockMhz);
                         string fclkPeak = ShowFclkSync ? (_status.IsFabricSynced ? "1:1 Sync" : "Async") : null;
                         Color fclkCol = Color.FromArgb(0x10, 0xB9, 0x81);
                         using (Brush bFclk = new SolidBrush(fclkCol))

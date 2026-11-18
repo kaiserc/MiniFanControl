@@ -13,7 +13,7 @@
   <img src="assets/ui-main-osd.jpg" alt="MiniFanControl Dashboard and CapFrameX-Style OSD HUD" width="85%" />
 </p>
 
-[![Release: v1.0.3](https://img.shields.io/badge/Release-v1.0.3-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
+[![Release: v1.0.4](https://img.shields.io/badge/Release-v1.0.4-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
@@ -504,6 +504,15 @@ Accessible directly inside the app via **`Tools & Drivers ▾`**:
 - **AMD Software: Adrenalin Edition & Chipset Drivers (Ryzen 7 H 255 / 780M & HX 370 / 890M)**:  
   https://www.amd.com/en/support/download/drivers.html  
   *(Installing the official AMD Adrenalin driver enables native Radeon iGPU temperature & APU power telemetry via `atiadlxx.dll`.)*
+
+### Driver & Software Compatibility Matrix
+
+| Setup | What Works | What Won't Work |
+|-------|------------|-----------------|
+| **Full AMD Adrenalin + InpOut64 (Recommended)** | All EC fan control, SMU/SMN, ADL iGPU/power telemetry, and all OSD Radeon pills (`FreeSync`, `RIS`, `AFMF`, per-game `FSR` & `Anti-Lag`, etc.) | — |
+| **AMD Minimal / Driver-Only (`atiadlxx.dll` present, no Adrenalin UI)** | All EC fan control, SMU/SMN, ADL iGPU temp/hotspot/clock/power/NPU/FCLK telemetry, and driver `FreeSync` (VRR) | `RIS`, `AFMF`, and per-game `FSR` / `Anti-Lag` OSD pills (since `%LocalAppData%\AMD\CN\GExDb.blb` / `gmdb.blb` do not exist); `RadeonSoftwareVersion` falls back to `DriverVersion` |
+| **No AMD Display Driver (e.g. Microsoft Basic Display Adapter)** | EC fan control & CPU/NVMe/RAM telemetry (if EC kernel driver is loaded) | All ADL iGPU sensors (temp/hotspot/clock/load/power/NPU/FCLK) and **all** Radeon OSD pills & driver version readout |
+| **No EC Kernel Driver (`inpoutx64.dll` missing or blocked by HVCI)** | UI & non-EC telemetry only (or Demo Mode) | **Fan control & EC sensors** (APU/Sys RPM, fan curves, manual PWM, EC VRM/ambient); MiniFanControl displays a warning banner at the top of the window |
 
 ---
 
