@@ -4,8 +4,11 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
-## [Unreleased]
-- **CLI Profile Registry Export (`export-profiles`)**: Added `minifan-helper.exe export-profiles [--json]` (backed by `DeviceProfile.ExportKnownProfilesJson` and `ExportKnownProfilesTable`) so contributors and hardware databases can export verified device profiles, EC/Super I/O register layouts, and probed Super I/O chip ID prefixes directly from the CLI.
+## [1.0.5] - 2026-11-18
+
+### 🛠️ CLI & CI Reliability
+- **CLI Profile Registry Export (`export-profiles`)**: Added `minifan-helper.exe export-profiles [--json]` (backed by `DeviceProfile.ExportKnownProfilesJson` and `ExportKnownProfilesTable`) so contributors and hardware databases can export verified device profiles, EC/Super I/O register layouts, and probed Super I/O chip ID prefixes directly from the CLI (Test #75).
+- **Resolution-Independent Wide Layout Test**: Added `MainForm.TestApplyWideLayoutSize(int, int)` for Test #59 so Wide 2-Column Mode (`>= 1450px`) layout verification passes reliably on headless CI runners (`1024×768` / `1280×1024`).
 
 ## [1.0.4] - 2026-11-18
 

@@ -71,7 +71,7 @@ namespace MiniFanControl
         private const int HOTKEY_LOCK_OSD   = 9003;
         private const int HOTKEY_RESET_AUTO = 9004;
 
-        public const string APP_VERSION         = "1.0.4";
+        public const string APP_VERSION         = "1.0.5";
         public const string SCHTASK_NAME        = "MiniFanControl_Autostart";
         public const string URL_GMKTEC_DRIVERS  = "https://www.gmktec.com/pages/drivers-and-software";
         public const string URL_AMD_DRIVERS     = "https://www.amd.com/en/support/download/drivers.html";

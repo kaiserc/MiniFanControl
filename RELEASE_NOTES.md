@@ -1,3 +1,13 @@
+# Release Notes: MiniFanControl v1.0.5 (CLI Profile Export & CI Wide-Layout Fix)
+
+**MiniFanControl v1.0.5** adds a machine-readable hardware profile export command to `minifan-helper.exe`, includes all `v1.0.4` Wide 2-Column Mode and Adrenalin/NPU enhancements, and resolves the headless CI runner screen-clamping issue in Test #59 (verified by **75/75** automated self-tests).
+
+## ✨ Highlights in v1.0.5
+- **`minifan-helper.exe export-profiles [--json]`**: Exports verified hardware profiles, EC/Super I/O register mappings, and probed ITE/Nuvoton Super I/O chip ID prefixes as a formatted table or JSON (`DeviceProfile.ExportKnownProfilesJson` / `ExportKnownProfilesTable`), covered by Test #75.
+- **CI Wide-Layout Test Fix**: Decoupled Wide 2-Column Mode (`>= 1450px`) verification in `SelfTestSuite` Test #59 from the CI VM's physical display bounds via `MainForm.TestApplyWideLayoutSize(int, int)`.
+
+---
+
 # Release Notes: MiniFanControl v1.0.4 (Wide 2-Column Mode, Curve Hysteresis & Accurate Radeon/NPU Telemetry)
 
 **MiniFanControl v1.0.4** introduces a responsive 2-column Wide Mode for maximized/widescreen tuning, eliminates APU fan hunting on Auto-Tuned curves, fixes AMD Adrenalin 26.x RIS/FSR/Anti-Lag detection, auto-hides NPU telemetry on non-NPU APUs (Ryzen 7 H 255), and aligns OSD/Live Perf readouts (verified by 74/74 automated self-tests).

@@ -35,7 +35,7 @@ jobs:
           dotnet build MiniFanControl.csproj -c Release -f net10.0-windows
 
   standalone-build-and-test:
-    name: Standalone .NET 4.8 CSC Build & 74 Automated Self-Tests
+    name: Standalone .NET 4.8 CSC Build & 75 Automated Self-Tests
     runs-on: windows-latest
     permissions:
       contents: write
@@ -43,7 +43,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Compile Standalone Binaries & Run 74 Self-Tests
+      - name: Compile Standalone Binaries & Run 75 Self-Tests
         shell: cmd
         run: |
           set CI=true
