@@ -4,6 +4,13 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.0.6] - 2026-11-19
+
+### 🛡️ Fail-Closed Hardware Matching & Probe Diagnostics
+- **Vendor-Scoped `DeviceProfile.MatchProfile` (`Core/DeviceProfile.cs`)**: Added `Manufacturer` to hardware profile matching, removed ambiguous bare CPU/model token matches (`8845`, `8945`, `7840`, `7940`, `H 255`, `HX 370`, `STRIX`, bare `K8`), and added explicit fail-closed guards so unverified third-party systems (e.g., `Recoreqich K8`, `SZQFTX ARB39-SC`, `TianBei MACO`, `Beelink SER9`, `TOPC PHX`) stay safely in `unknown-safe` read-only mode while verified `GMKtec` (`NucBox K8`/`K11`/`K12`/`EVO-X1`), `TOPC TS-12C`, and `ADREAMER AriesBox 10` systems remain supported.
+- **Structured Probe JSON & Super I/O Chip Identification (`Program.cs`, `Core/DeviceProfile.cs`)**: Added `minifan-helper.exe dump --json` (`SystemHardwareInfo.BuildProbeReportJson`) and `DescribeSuperIoChip` (`ITE IT5570E`, `ITE IT8613E`, `Nuvoton NCT67xx`), and updated `dump` text output to report `CHIP DETECTED (NO LDN4)` when a Super I/O/EC chip ID responds without an IT87 hardware monitor base.
+- **Documentation & 76-Point Test Suite (`README.md`, `GUIDE.md`, `HARDWARE_VALIDATION.md`, `Tests/SelfTestSuite.cs`)**: Aligned `GMKtec EVO-X1 / TOPC TS-12C` hardware docs, documented `dump --json`, and added Test #76 plus vendor-scoped fail-closed regression checks (**76/76 passing**).
+
 ## [1.0.5] - 2026-11-18
 
 ### 🛠️ CLI & CI Reliability

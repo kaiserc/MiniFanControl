@@ -1,3 +1,14 @@
+# Release Notes: MiniFanControl v1.0.6 (Fail-Closed Profile Matching & JSON Probe Export)
+
+**MiniFanControl v1.0.6** hardens hardware auto-detection against false-positive profile matches on unverified Ryzen Mini PCs, adds structured JSON output to `minifan-helper.exe dump`, improves Super I/O / EC chip identification in diagnostic reports, and expands the automated safety test suite to **76/76 passing**.
+
+## ✨ Highlights in v1.0.6
+- **Vendor-Scoped Fail-Closed Profile Matching (`Core/DeviceProfile.cs`)**: `SystemHardwareInfo.MatchProfile` now incorporates `SystemManufacturer`, scopes CPU-number fallbacks (`8845`/`8945`/`H 255`) to verified `GMKtec` hardware, narrows `ryzen-hx370-ec` to `EVO-X1` and `TS-12C`, and ensures unrecognized or third-party Ryzen systems remain safely locked in `unknown-safe` read-only mode.
+- **`minifan-helper.exe dump --json` & Chip Naming (`Program.cs`, `Core/DeviceProfile.cs`)**: Exports structured DMI (`manufacturer`, `productName`, `baseBoard`, `biosVersion`, `cpuName`), `matchedProfile`, and `0x2E`/`0x4E` Super I/O chip metadata (`ITE IT5570E`, `ITE IT8613E`, `Nuvoton NCT67xx`) for easy hardware reporting and profile submissions (Test #76).
+- **Documentation & Profile Naming Alignment**: Corrected `ryzen-hx370-ec` naming across `DeviceProfile.cs`, `README.md`, `GUIDE.md`, and `HARDWARE_VALIDATION.md` to `GMKtec EVO-X1 / TOPC TS-12C`, and updated `unsupported_hardware.md` and `ci.yml` for the 76-point test suite.
+
+---
+
 # Release Notes: MiniFanControl v1.0.5 (CLI Profile Export & CI Wide-Layout Fix)
 
 **MiniFanControl v1.0.5** adds a machine-readable hardware profile export command to `minifan-helper.exe`, includes all `v1.0.4` Wide 2-Column Mode and Adrenalin/NPU enhancements, and resolves the headless CI runner screen-clamping issue in Test #59 (verified by **75/75** automated self-tests).

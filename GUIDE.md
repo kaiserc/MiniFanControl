@@ -125,7 +125,7 @@ MiniFanControl includes an interactive **First-Time Setup Assistant** that autom
 #### Step 1: Calibrate Fan Motors First (Essential Pre-Requisite)
 
 **Why Calibration is Crucial**:
-Brushless blower fans used in AMD Ryzen Mini PCs (e.g. TOPC TS-12C, GMKtec K12, KTHIN PRO) rely on small DC motors that require a minimum electromagnetic torque to overcome internal bearing friction. If driven below this startup threshold (e.g. 10%–20% PWM), the fan blades will completely stall, but electrical current continues flowing through the motor coils without any airflow—risking silent thermal buildup.
+Brushless blower fans used in AMD Ryzen Mini PCs (e.g. TOPC TS-12C, GMKtec K12, GMKtec EVO-X1) rely on small DC motors that require a minimum electromagnetic torque to overcome internal bearing friction. If driven below this startup threshold (e.g. 10%–20% PWM), the fan blades will completely stall, but electrical current continues flowing through the motor coils without any airflow—risking silent thermal buildup.
 
 - **Uncalibrated Baseline**: To prevent dangerous motor stalls on unknown hardware, MiniFanControl defaults to a conservative **30% PWM floor (~1400 RPM)**.
 - **The 3-Pass Calibration Engine**:
@@ -483,8 +483,9 @@ For power users, scripting, task schedulers, and headless servers, `minifan-help
 # Run the 3-pass automated fan calibration engine
 .\minifan-helper.exe calibrate
 
-# Export full 256-byte EC register hex dump & system diagnostic info
+# Export full 256-byte EC register hex dump & system diagnostic info (or structured JSON)
 .\minifan-helper.exe dump
+.\minifan-helper.exe dump --json
 
 # Watch all 256 EC registers live in console for 15 seconds to trace changes
 .\minifan-helper.exe watch
@@ -500,7 +501,7 @@ For power users, scripting, task schedulers, and headless servers, `minifan-help
 MiniFanControl features built-in multi-architecture hardware detection across several AMD Ryzen Mini PC generations:
 
 ### Pre-Configured Hardware Profiles
-1. **Ryzen AI 9 HX 370 Mini PCs (KTHIN PRO / EVO-X1 / TOPC TS-12C)**:
+1. **Ryzen AI 9 HX 370 Mini PCs (GMKtec EVO-X1 / TOPC TS-12C)**:
    - Architecture: AMD Zen 5 (12 cores / 24 threads) + RDNA 3.5 Radeon 890M.
    - Controller: ITE IT8613E LPC Super I/O at Port `0x2E` / base `0x0A30` + EC registers.
    - Dual Fans: Fan 3 mapped to primary APU blower; Fan 2 mapped to Sys / DDR5 RAM blower.

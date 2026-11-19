@@ -60,7 +60,7 @@ namespace MiniFanControl
             new DeviceProfile
             {
                 Id = "ryzen-hx370-ec",
-                DisplayName = "Ryzen AI 9 HX 370 Mini PC (KTHIN PRO / EVO-X1 / TOPC TS-12C)",
+                DisplayName = "Ryzen AI 9 HX 370 Mini PC (GMKtec EVO-X1 / TOPC TS-12C)",
                 ChipsetNotes = "ITE IT8613E Super I/O @ 0x2E/0x0A30 + EC • Single/Dual Blower • Radeon 890M via ADL2 / PMLOG",
                 HasDualFans = true
             },
@@ -473,13 +473,17 @@ namespace MiniFanControl
             }
             catch { }
 
-            string combined = (info.ProductName + " " + info.BaseBoard + " " + info.CpuName).ToUpperInvariant();
-            info.MatchedProfile = MatchProfile(info.ProductName, info.BaseBoard, info.CpuName);
+            info.MatchedProfile = MatchProfile(info.ProductName, info.BaseBoard, info.CpuName, info.Manufacturer);
 
             return info;
         }
 
         public static DeviceProfile MatchProfile(string productName, string baseBoard, string cpuName)
+        {
+            return MatchProfile(productName, baseBoard, cpuName, null);
+        }
+
+        public static DeviceProfile MatchProfile(string productName, string baseBoard, string cpuName, string manufacturer)
         {
             if (DeviceProfile.CustomProfile == null)
             {
@@ -487,17 +491,21 @@ namespace MiniFanControl
             }
             if (DeviceProfile.CustomProfile != null)
                 return DeviceProfile.CustomProfile;
-            string combined = ((productName ?? "") + " " + (baseBoard ?? "") + " " + (cpuName ?? "")).ToUpperInvariant();
-            if (combined.Contains("HX 370") || combined.Contains("HX370") || combined.Contains("EVO-X1") || combined.Contains("KTHIN") || combined.Contains("TS-12C") || combined.Contains("STRIX"))
+            string combined = ((manufacturer ?? "") + " " + (productName ?? "") + " " + (baseBoard ?? "") + " " + (cpuName ?? "")).ToUpperInvariant();
+            if (combined.Contains("RECOREQICH") || combined.Contains("KTHIN") || combined.Contains("HX PRO 370"))
+                return DeviceProfile.FindProfile("unknown-safe");
+            if (combined.Contains("EVO-X1") || combined.Contains("TS-12C"))
                 return DeviceProfile.FindProfile("ryzen-hx370-ec");
-            if (combined.Contains("ADREAMER") || combined.Contains("ARIESBOX") || combined.Contains("PB07") || combined.Contains("7840") || combined.Contains("7940"))
+            if (combined.Contains("ADREAMER") || combined.Contains("ARIESBOX") || combined.Contains("PB07"))
                 return DeviceProfile.FindProfile("adreamer-ariesbox10");
-            if (combined.Contains("K8") || combined.Contains("K11") || combined.Contains("8845") || combined.Contains("8945"))
+            if (combined.Contains("NUCBOX K8") || combined.Contains("NUCBOX_K8")
+                || combined.Contains("K8 PLUS") || combined.Contains("K8_PLUS")
+                || combined.Contains("NUCBOX K11") || combined.Contains("NUCBOX_K11")
+                || (combined.Contains("GMKTEC") && (combined.Contains("K8") || combined.Contains("K11") || combined.Contains("8845") || combined.Contains("8945"))))
                 return DeviceProfile.FindProfile("gmktec-k8-k11");
-            if (combined.Contains("K12") || combined.Contains("H 255") || combined.Contains("H255"))
+            if (combined.Contains("NUCBOX K12") || combined.Contains("NUCBOX_K12")
+                || (combined.Contains("GMKTEC") && (combined.Contains("K12") || combined.Contains("H 255") || combined.Contains("H255"))))
                 return DeviceProfile.FindProfile("gmktec-k12");
-            if (DeviceProfile.CustomProfile != null)
-                return DeviceProfile.CustomProfile;
             return DeviceProfile.FindProfile("unknown-safe");
         }
 
@@ -539,6 +547,79 @@ namespace MiniFanControl
             return shortCpu;
         }
 
+        public static string DescribeSuperIoChip(ushort chipId)
+        {
+            if (chipId == 0 || chipId == 0xFFFF) return "";
+            if (chipId == 0x5570) return "ITE IT5570E";
+            if ((chipId & 0xFF00) == 0x5500) return "ITE IT55xx EC";
+            if (chipId == 0x8613) return "ITE IT8613E";
+            if ((chipId & 0xFF00) == 0x8600) return "ITE IT86xx";
+            if ((chipId & 0xFF00) == 0x8700) return "ITE IT87xx";
+            byte hi = (byte)(chipId >> 8);
+            if (chipId == 0xB473 || chipId == 0xB571
+                || hi == 0xC3 || hi == 0xC5 || hi == 0xC8 || hi == 0xD4 || hi == 0xD8)
+                return "Nuvoton NCT67xx";
+            return "";
+        }
+
+        private static string EscapeJsonStr(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "").Replace("\n", " ");
+        }
+
+        public string BuildProbeReportJson(HardwareBackend hw, DemoBackend demo, bool demoMode)
+        {
+            bool allowWrites = (MatchedProfile != null && !MatchedProfile.IsReadOnly && MatchedProfile.Id == "ryzen-hx370-ec");
+            bool s2eOk = false, s4eOk = false;
+            ushort s2eChip = 0, s2eBase = 0, s4eChip = 0, s4eBase = 0;
+
+            if (!demoMode)
+            {
+                try
+                {
+                    s2eOk = HardwareBackend.ProbeSuperIo(0x2E, out s2eChip, out s2eBase, allowWrites);
+                    s4eOk = HardwareBackend.ProbeSuperIo(0x4E, out s4eChip, out s4eBase, allowWrites);
+                }
+                catch { }
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("{");
+            sb.AppendLine("  \"source\": \"kaiserc/MiniFanControl\",");
+            sb.AppendLine(string.Format("  \"demoMode\": {0},", demoMode ? "true" : "false"));
+            sb.AppendLine(string.Format("  \"manufacturer\": \"{0}\",", EscapeJsonStr(Manufacturer)));
+            sb.AppendLine(string.Format("  \"productName\": \"{0}\",", EscapeJsonStr(ProductName)));
+            sb.AppendLine(string.Format("  \"baseBoard\": \"{0}\",", EscapeJsonStr(BaseBoard)));
+            sb.AppendLine(string.Format("  \"biosVersion\": \"{0}\",", EscapeJsonStr(BiosVersion)));
+            sb.AppendLine(string.Format("  \"cpuName\": \"{0}\",", EscapeJsonStr(CpuName)));
+            sb.AppendLine("  \"matchedProfile\": {");
+            sb.AppendLine(string.Format("    \"id\": \"{0}\",", EscapeJsonStr(MatchedProfile != null ? MatchedProfile.Id : "unknown-safe")));
+            sb.AppendLine(string.Format("    \"displayName\": \"{0}\",", EscapeJsonStr(MatchedProfile != null ? MatchedProfile.DisplayName : "")));
+            sb.AppendLine(string.Format("    \"isVerified\": {0},", (MatchedProfile != null && MatchedProfile.IsVerified) ? "true" : "false"));
+            sb.AppendLine(string.Format("    \"isReadOnly\": {0},", (MatchedProfile == null || MatchedProfile.IsReadOnly) ? "true" : "false"));
+            sb.AppendLine(string.Format("    \"hasDualFans\": {0}", (MatchedProfile != null && MatchedProfile.HasDualFans) ? "true" : "false"));
+            sb.AppendLine("  },");
+            sb.AppendLine("  \"superIo\": {");
+            sb.AppendLine("    \"port0x2E\": {");
+            sb.AppendLine(string.Format("      \"detected\": {0},", (s2eOk || s2eChip != 0) ? "true" : "false"));
+            sb.AppendLine(string.Format("      \"hwMonVerified\": {0},", s2eOk ? "true" : "false"));
+            sb.AppendLine(string.Format("      \"chipId\": \"0x{0:X4}\",", s2eChip));
+            sb.AppendLine(string.Format("      \"chipName\": \"{0}\",", EscapeJsonStr(DescribeSuperIoChip(s2eChip))));
+            sb.AppendLine(string.Format("      \"hwBase\": \"0x{0:X4}\"", s2eBase));
+            sb.AppendLine("    },");
+            sb.AppendLine("    \"port0x4E\": {");
+            sb.AppendLine(string.Format("      \"detected\": {0},", (s4eOk || s4eChip != 0) ? "true" : "false"));
+            sb.AppendLine(string.Format("      \"hwMonVerified\": {0},", s4eOk ? "true" : "false"));
+            sb.AppendLine(string.Format("      \"chipId\": \"0x{0:X4}\",", s4eChip));
+            sb.AppendLine(string.Format("      \"chipName\": \"{0}\",", EscapeJsonStr(DescribeSuperIoChip(s4eChip))));
+            sb.AppendLine(string.Format("      \"hwBase\": \"0x{0:X4}\"", s4eBase));
+            sb.AppendLine("    }");
+            sb.AppendLine("  }");
+            sb.AppendLine("}");
+            return sb.ToString();
+        }
+
         public string BuildProbeReport(HardwareBackend hw, DemoBackend demo, bool demoMode)
         {
             StringBuilder sb = new StringBuilder();
@@ -572,11 +653,17 @@ namespace MiniFanControl
                     ushort s2eChip, s2eBase;
                     bool allowWrites = (MatchedProfile != null && !MatchedProfile.IsReadOnly && MatchedProfile.Id == "ryzen-hx370-ec");
                     bool s2eOk = HardwareBackend.ProbeSuperIo(0x2E, out s2eChip, out s2eBase, allowWrites);
-                    sb.AppendFormat("  Super I/O Port 0x2E Probe     : {0} (Chip ID: 0x{1:X4}, Base: 0x{2:X4})\r\n", s2eOk ? "FOUND" : "Not Detected", s2eChip, s2eBase);
+                    string s2eName = DescribeSuperIoChip(s2eChip);
+                    string s2eStatus = s2eOk ? "FOUND" : (s2eChip != 0 ? "CHIP DETECTED (NO LDN4)" : "Not Detected");
+                    sb.AppendFormat("  Super I/O Port 0x2E Probe     : {0} (Chip ID: 0x{1:X4}{2}, Base: 0x{3:X4})\r\n",
+                        s2eStatus, s2eChip, string.IsNullOrEmpty(s2eName) ? "" : " [" + s2eName + "]", s2eBase);
 
                     ushort s4eChip, s4eBase;
                     bool s4eOk = HardwareBackend.ProbeSuperIo(0x4E, out s4eChip, out s4eBase, allowWrites);
-                    sb.AppendFormat("  Super I/O Port 0x4E Probe     : {0} (Chip ID: 0x{1:X4}, Base: 0x{2:X4})\r\n", s4eOk ? "FOUND" : "Not Detected", s4eChip, s4eBase);
+                    string s4eName = DescribeSuperIoChip(s4eChip);
+                    string s4eStatus = s4eOk ? "FOUND" : (s4eChip != 0 ? "CHIP DETECTED (NO LDN4)" : "Not Detected");
+                    sb.AppendFormat("  Super I/O Port 0x4E Probe     : {0} (Chip ID: 0x{1:X4}{2}, Base: 0x{3:X4})\r\n",
+                        s4eStatus, s4eChip, string.IsNullOrEmpty(s4eName) ? "" : " [" + s4eName + "]", s4eBase);
                 }
                 catch (Exception pEx)
                 {

@@ -10,7 +10,7 @@ This specification establishes the physical hardware verification methodology, r
 |---|---|---|---|---|---|---|---|
 | **`gmktec-k12`** | GMKtec NucBox K12 | AMD Ryzen 7 H 255 / 8845HS | Native ITE IT5570E EC (`0xFE0B0400`) | `0x31`–`0x38`, `0x70` | Native EC (`SuperIoBase = 0`) | Native BIOS EC Auto (`0x00`) | **Verified on Hardware** |
 | **`gmktec-k8-k11`** | GMKtec NucBox K8 Plus / K11 | AMD Ryzen 7 8845HS / 8945HS | Native ITE IT5570E EC (`0xFE0B0400`) | `0x31`–`0x38`, `0x70` | Native EC (`SuperIoBase = 0`) | Native BIOS EC Auto (`0x00`) | **Verified on Hardware** |
-| **`ryzen-hx370-ec`** | KTHIN EVO-X1, TOPC TS-12C | AMD Ryzen AI 9 HX 370 | Dual: ITE IT8613E Super I/O + IT5570E EC | `0x31`–`0x38`, `0x70` | Super I/O @ `0x0A30` (Inverted PWM `255 - (pct * 255) / 100`) | Safe Super I/O Fallback + EC Auto | **Verified on Hardware** |
+| **`ryzen-hx370-ec`** | GMKtec EVO-X1, TOPC TS-12C | AMD Ryzen AI 9 HX 370 | Dual: ITE IT8613E Super I/O + IT5570E EC | `0x31`–`0x38`, `0x70` | Super I/O @ `0x0A30` (Inverted PWM `255 - (pct * 255) / 100`) | Safe Super I/O Fallback + EC Auto | **Verified on Hardware** |
 | **`adreamer-ariesbox10`** | ADREAMER AriesBox 10 / PB07 | AMD Ryzen 7 7840HS | Dual: ITE IT8613E Super I/O + IT5570E EC | `0x31`–`0x38`, `0x70` | Super I/O @ `0x0A30` / `0x0290` (Inverted) | Safe Super I/O Fallback + EC Auto | **Verified on Hardware** |
 | **`generic-it5570e`** | Generic Zen 4 / Zen 5 Mini PC | AMD Ryzen APU (Phoenix/Hawk/Strix) | Standard AMI Aptio V EC (`0xFE0B0400`) | `0x31`–`0x38`, `0x70` | Native EC (`SuperIoBase = 0`) | Native BIOS EC Auto (`0x00`) | **Verified on Hardware** |
 | **`unknown-safe`** | Unrecognized / New Motherboards | Any x86 APU / CPU | Read-Only Safe Fail-Closed Default | Read-Only (`0x70`) | Writes Disabled (`IsReadOnly = true`) | Non-Interference (Read-Only) | **Enforced Fail-Closed** |
@@ -22,7 +22,7 @@ This specification establishes the physical hardware verification methodology, r
 MiniFanControl enforces four mandatory bench tests before certifying hardware support for any Mini PC motherboard:
 
 ### 1. Register Read-Back & Inverted PWM Polarity Verification
-- **IT8613E Super I/O PWM Inversion**: Unlike standard desktop boards where 0 = Off and 255 = 100%, AMD Zen 4/5 Mini PCs using IT8613E Super I/O (such as TOPC TS-12C / KTHIN PRO) utilize **inverted PWM polarity** (configured by register `0x14 = 0xC7`):
+- **IT8613E Super I/O PWM Inversion**: Unlike standard desktop boards where 0 = Off and 255 = 100%, AMD Zen 4/5 Mini PCs using IT8613E Super I/O (such as TOPC TS-12C / GMKtec EVO-X1) utilize **inverted PWM polarity** (configured by register `0x14 = 0xC7`):
   - **Inverted Duty Mapping**: `duty = (pct <= 0) ? 255 : 255 - ((pct * 255) / 100)`
     - `0% PWM` translates to hardware duty `255` (0xFF, motor stopped / zero-RPM quiet idle).
     - `100% PWM` translates to hardware duty `0` (0x00, full-throttle emergency cooling).

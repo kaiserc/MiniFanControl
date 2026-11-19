@@ -7,7 +7,7 @@ assignees: ''
 ---
 
 ### System Information
-- **Manufacturer**: (e.g. GMKtec, Minisforum, Beelink, ADREAMER, Morefine, KTHIN)
+- **Manufacturer**: (e.g. GMKtec, Minisforum, Beelink, ADREAMER, Morefine)
 - **Model Name / Number**: (e.g. NucBox K12, AriesBox 10, EVO-X1, TS-12C)
 - **Processor (CPU / APU)**: (e.g. AMD Ryzen 7 8845HS, Ryzen AI 9 HX 370, Ryzen 7 7840HS)
 - **Integrated GPU**: (e.g. Radeon 780M, Radeon 890M)
@@ -15,7 +15,7 @@ assignees: ''
 - **Operating System**: Windows 10 / 11 64-bit (Build number)
 
 ### Embedded Controller (EC) Register Dump
-Please run the following command in PowerShell / Command Prompt as Administrator and paste the output below:
+Please run the following command in PowerShell / Command Prompt as Administrator and paste the output below (or attach `.\minifan-helper.exe dump --json` for structured DMI & chip metadata):
 
 ```powershell
 .\minifan-helper.exe dump

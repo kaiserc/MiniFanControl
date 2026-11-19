@@ -279,17 +279,39 @@ namespace MiniFanControl
 
             DeviceProfile pK12 = SystemHardwareInfo.MatchProfile("NucBox K12", "GMKtec", "AMD Ryzen 7 H 255");
 
+            DeviceProfile pK12Dmi = SystemHardwareInfo.MatchProfile("GMKtec", "GMKtec", "AMD Ryzen 7 H 255", "GMKtec");
+
             DeviceProfile pK8 = SystemHardwareInfo.MatchProfile("NucBox K8 Plus", "GMKtec", "AMD Ryzen 7 8845HS");
 
-            DeviceProfile pHx370 = SystemHardwareInfo.MatchProfile("EVO-X1", "Kthin", "AMD Ryzen AI 9 HX 370");
+            DeviceProfile pK8Fallback = SystemHardwareInfo.MatchProfile("Default string", "Default string", "AMD Ryzen 7 8845HS", "GMKtec");
+
+            DeviceProfile pHx370 = SystemHardwareInfo.MatchProfile("EVO-X1", "GMKtec", "AMD Ryzen AI 9 HX 370");
+
+            DeviceProfile pTopc = SystemHardwareInfo.MatchProfile("TS-12C", "TOPC", "AMD Ryzen AI 9 HX 370");
 
             DeviceProfile pAdreamer = SystemHardwareInfo.MatchProfile("AriesBox 10", "ADREAMER", "AMD Ryzen 7 7840HS");
 
-            Check(pK12.Id == "gmktec-k12" && pK8.Id == "gmktec-k8-k11" && pHx370.Id == "ryzen-hx370-ec" && pAdreamer.Id == "adreamer-ariesbox10",
+            DeviceProfile pRecoreqichK8 = SystemHardwareInfo.MatchProfile("K8", "Default string", "AMD Ryzen AI 9 HX PRO 370 w/ Radeon 890M", "Recoreqich");
 
-                "Multi-Model Ryzen Mini-PC Profile Matching (K12 / K8 Plus / HX 370 / AriesBox 10)",
+            DeviceProfile pUnverifiedHx370 = SystemHardwareInfo.MatchProfile("SER9", "Default string", "AMD Ryzen AI 9 HX 370", "Beelink");
 
-                string.Format("K12={0}, K8={1}, HX370={2}, AriesBox={3}", pK12.Id, pK8.Id, pHx370.Id, pAdreamer.Id));
+            DeviceProfile pSzqftx8845 = SystemHardwareInfo.MatchProfile("ARB39-SC", "SZQFTX", "AMD Ryzen 7 8845HS");
+
+            DeviceProfile pTianbeiH255 = SystemHardwareInfo.MatchProfile("MACO", "TianBei", "AMD Ryzen 7 H 255");
+
+            DeviceProfile pTopcPhx7940 = SystemHardwareInfo.MatchProfile("PHX", "TOPC", "AMD Ryzen 9 7940HS");
+
+            Check(pK12.Id == "gmktec-k12" && pK12Dmi.Id == "gmktec-k12"
+                && pK8.Id == "gmktec-k8-k11" && pK8Fallback.Id == "gmktec-k8-k11"
+                && pHx370.Id == "ryzen-hx370-ec" && pTopc.Id == "ryzen-hx370-ec"
+                && pAdreamer.Id == "adreamer-ariesbox10"
+                && pRecoreqichK8.Id == "unknown-safe" && pUnverifiedHx370.Id == "unknown-safe"
+                && pSzqftx8845.Id == "unknown-safe" && pTianbeiH255.Id == "unknown-safe" && pTopcPhx7940.Id == "unknown-safe",
+
+                "Multi-Model Ryzen Mini-PC Profile Matching (K12 / K8 Plus / EVO-X1 / TS-12C / AriesBox 10 / Vendor-Scoped Fail-Closed)",
+
+                string.Format("K12={0}, K12Dmi={1}, K8={2}, K8Fb={3}, EVO-X1={4}, TS-12C={5}, AriesBox={6}, RecoreqichK8={7}, UnvHX370={8}, SZQFTX={9}, TianBei={10}, TOPCPHX={11}",
+                    pK12.Id, pK12Dmi.Id, pK8.Id, pK8Fallback.Id, pHx370.Id, pTopc.Id, pAdreamer.Id, pRecoreqichK8.Id, pUnverifiedHx370.Id, pSzqftx8845.Id, pTianbeiH255.Id, pTopcPhx7940.Id));
 
 
 
@@ -4070,6 +4092,34 @@ namespace MiniFanControl
             Check(exportProfOk,
                 "DeviceProfile CLI Export (JSON & Summary Table Formats)",
                 exportProfDetail);
+
+            bool probeJsonOk = false;
+            string probeJsonDetail = "";
+            try
+            {
+                SystemHardwareInfo probeSys = new SystemHardwareInfo();
+                probeSys.Manufacturer = "Recoreqich";
+                probeSys.ProductName = "K8";
+                probeSys.BaseBoard = "Default string";
+                probeSys.BiosVersion = "1.09";
+                probeSys.CpuName = "AMD Ryzen AI 9 HX PRO 370 w/ Radeon 890M";
+                probeSys.MatchedProfile = SystemHardwareInfo.MatchProfile(probeSys.ProductName, probeSys.BaseBoard, probeSys.CpuName, probeSys.Manufacturer);
+                string dumpJson = probeSys.BuildProbeReportJson(null, new DemoBackend(), true);
+                probeJsonOk = !string.IsNullOrEmpty(dumpJson)
+                    && dumpJson.Contains("\"manufacturer\": \"Recoreqich\"")
+                    && dumpJson.Contains("\"baseBoard\": \"Default string\"")
+                    && dumpJson.Contains("\"id\": \"unknown-safe\"")
+                    && dumpJson.Contains("\"port0x4E\"")
+                    && SystemHardwareInfo.DescribeSuperIoChip(0x5570) == "ITE IT5570E"
+                    && SystemHardwareInfo.DescribeSuperIoChip(0x8613) == "ITE IT8613E"
+                    && SystemHardwareInfo.DescribeSuperIoChip(0xD423) == "Nuvoton NCT67xx";
+                probeJsonDetail = string.Format("dumpJsonLen={0}, chip5570={1}",
+                    dumpJson.Length, SystemHardwareInfo.DescribeSuperIoChip(0x5570));
+            }
+            catch (Exception ex) { probeJsonDetail = ex.Message; }
+            Check(probeJsonOk,
+                "Hardware Probe JSON Export & Super I/O Chip Identification (IT5570E / IT8613E / NCT67xx)",
+                probeJsonDetail);
 
             Console.WriteLine("----------------------------------------------------------------------");
 

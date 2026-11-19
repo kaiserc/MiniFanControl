@@ -2459,7 +2459,7 @@ namespace MiniFanControl
             // We deliberately keep Bit 7 = 0 because setting Bit 7 = 1 (IT87 SmartGuardian Auto) causes
             // the hardware to ramp fans to 100% full blast if thermal diode clocks gate during sleep or if
             // temperature inputs are unconfigured in motherboard firmware!
-            // In factory BIOS state on TS-12C / KTHIN PRO, Reg 0x15..0x17 are 0x00.
+            // In factory BIOS state on TS-12C / GMKtec EVO-X1, Reg 0x15..0x17 are 0x00.
             byte autoModeVal = 0x00;
             WritePortByte(addrPort, 0x15);
             WritePortByte(dataPort, autoModeVal);

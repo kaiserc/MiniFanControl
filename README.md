@@ -1,6 +1,6 @@
 # MiniFanControl — Native EC Fan Control & Thermal Monitor for AMD Ryzen Mini PCs
 
-![Tests](https://img.shields.io/badge/tests-74%2F74%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-76%2F76%20passing-brightgreen)
 ![Security](https://img.shields.io/badge/Security-Fail--Closed%20%7C%20Least--Privilege-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
@@ -13,15 +13,15 @@
   <img src="assets/ui-main-osd.jpg" alt="MiniFanControl Dashboard and CapFrameX-Style OSD HUD" width="85%" />
 </p>
 
-[![Release: v1.0.5](https://img.shields.io/badge/Release-v1.0.5-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
+[![Release: v1.0.6](https://img.shields.io/badge/Release-v1.0.6-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 74 Passed](https://img.shields.io/badge/Automated%20Tests-74%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-7474-passing)
+[![Automated Tests: 76 Passed](https://img.shields.io/badge/Automated%20Tests-76%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-7676-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 [![Ko-fi: Support](https://img.shields.io/badge/Ko--fi-Support%20Project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/kaiser76)
 
-**MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **KTHIN Ryzen AI 9 HX 370 PRO**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
+**MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **GMKtec EVO-X1 (Ryzen AI 9 HX 370)**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
 
 > 📖 **Walkthroughs & Technical References**:  
 > - [**Complete User & Hardware Tuning Guide (GUIDE.md)**](GUIDE.md): In-depth walkthrough for fan calibration, motor stall prevention, OSD Studio customization, multi-monitor gaming, and EC register probing.  
@@ -72,7 +72,7 @@ MiniFanControl/
 ├── Telemetry/          # RTSS/CapFrameX shared memory reader & transparent OSD HUD
 │   ├── CapFrameXOverlayForm.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 74-point automated hardware safety & regression test suite
+├── Tests/              # 76-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
 ├── Ui/                 # Double-buffered canvases, accessible WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
@@ -98,7 +98,7 @@ MiniFanControl/
 
 | System Model / Platform | Processor | Controller / Super I/O | Dual Fans | Control Mode |
 | :--- | :--- | :--- | :---: | :--- |
-| **KTHIN PRO / EVO-X1 / TOPC TS-12C** | AMD Ryzen AI 9 HX 370 (Radeon 890M) | ITE IT8613E Super I/O + EC | ✅ Yes | **Verified Native (Dual PWM)** |
+| **GMKtec EVO-X1 / TOPC TS-12C** | AMD Ryzen AI 9 HX 370 (Radeon 890M) | ITE IT8613E Super I/O + EC | ✅ Yes | **Verified Native (Dual PWM)** |
 | **GMKtec NucBox K12** | AMD Ryzen 7 H 255 / 8845HS (Radeon 780M) | ITE IT5570E EC @ `0xFE0B0400` | ✅ Yes | **Verified Native (Dual EC)** |
 | **GMKtec NucBox K8 Plus / K11** | AMD Ryzen 7 8845HS / 8945HS | ITE IT5570E EC @ `0xFE0B0400` | ✅ Yes | **Verified Native (Dual EC)** |
 | **ADREAMER AriesBox 10 / PB07** | AMD Ryzen 7 7840HS (Radeon 780M) | ITE IT5570E EC @ `0xFE0B0400` | ✅ Yes | **Verified Native (Dual EC)** |
@@ -334,8 +334,9 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Run 3-pass automated fan calibration (measures Min Spin %, Max RPM, and detects 1 vs 2 fans)
 .\minifan-helper.exe calibrate
 
-# Export 256-byte EC register hex dump & system diagnostic info (for new Mini PCs like HX 370)
+# Export 256-byte EC register hex dump & system diagnostic info (text or structured JSON)
 .\minifan-helper.exe dump
+.\minifan-helper.exe dump --json
 
 # Live-watch all 256 EC registers for 15 seconds to identify active control registers
 .\minifan-helper.exe watch
@@ -349,13 +350,13 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Export supported hardware profiles & probed Super I/O chip ID prefixes as JSON
 .\minifan-helper.exe export-profiles --json
 
-# Execute the 75-point automated hardware safety & curve test suite
+# Execute the 76-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (74/74 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (76/76 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -434,6 +435,7 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 73. **Custom Controls Accessibility**: Confirms keyboard `TabStop` and UIA `AccessibleRole` (`PushButton` / `Chart`) metadata across interactive telemetry boxes and curve canvases.
 74. **`FanControllerService` Decoupled Control & Tripwire**: Verifies decoupled curve evaluation, manual override, BIOS Auto reset transitions, and emergency thermal tripwire clamping.
 75. **`DeviceProfile` CLI Export**: Verifies `export-profiles` JSON and summary table outputs include verified profiles and probed Super I/O chip-ID families.
+76. **Hardware Probe JSON Export & Super I/O Chip Identification**: Verifies `dump --json` structured DMI/profile/Super I/O output and chip-ID naming for `ITE IT5570E` (`0x5570`), `ITE IT8613E` (`0x8613`), and `Nuvoton NCT67xx`.
 
 ---
 

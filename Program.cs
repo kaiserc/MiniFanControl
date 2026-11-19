@@ -136,7 +136,7 @@ namespace MiniFanControl
 
                 {
 
-                    Console.WriteLine("MiniFanControl v1.0.5 CLI Commands:");
+                    Console.WriteLine("MiniFanControl v1.0.6 CLI Commands:");
 
                     Console.WriteLine("  status [--demo]                       Query fan speeds, APU power, temperatures");
 
@@ -150,11 +150,11 @@ namespace MiniFanControl
 
                     Console.WriteLine("  auto [--demo]                         Restore BIOS Automatic control for both fans");
 
-                    Console.WriteLine("  probe / dump [--demo]                 Analyze hardware registers and EC access methods");
+                    Console.WriteLine("  probe / dump [--json] [--demo]        Analyze hardware registers and EC access methods");
                     Console.WriteLine("  diff-scan / ec-scan [--demo]          Run EC differential sensor scanner (Tier 2 discovery)");
                     Console.WriteLine("  calibrate [passes] [--demo]           Execute multi-pass fan calibration curve analysis");
 
-                    Console.WriteLine("  test                                  Run 74-point automated safety & regression suite");
+                    Console.WriteLine("  test                                  Run 76-point automated safety & regression suite");
                     Console.WriteLine("  hw-matrix                             Run multi-profile hardware validation matrix");
                     Console.WriteLine("  export-profiles [--json]              Export supported hardware profiles & Super I/O IDs");
 
@@ -500,9 +500,18 @@ namespace MiniFanControl
 
                         {
 
+                            bool asJson = false;
+                            for (int i = 0; i < args.Length; i++)
+                            {
+                                if (args[i].Equals("--json", StringComparison.OrdinalIgnoreCase))
+                                    asJson = true;
+                            }
+
                             SystemHardwareInfo sysInfo = SystemHardwareInfo.Detect();
 
-                            Console.WriteLine(sysInfo.BuildProbeReport(hw, demo, demoMode));
+                            Console.Write(asJson
+                                ? sysInfo.BuildProbeReportJson(hw, demo, demoMode)
+                                : sysInfo.BuildProbeReport(hw, demo, demoMode) + Environment.NewLine);
 
                             return 0;
 
