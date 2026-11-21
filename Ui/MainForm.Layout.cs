@@ -639,16 +639,13 @@ namespace MiniFanControl
             _hwSubLabel.Click += (s, e) => ShowHardwareCompatibilityDialog();
             Controls.Add(_hwSubLabel);
 
-            // Explicit BIOS Power Mode (TDP) Switcher — independent of Custom Fan Curves (EC 0x31/0x32)
-            bool showBiosPowerBar = (_demoMode || _hw == null || _hw.SuperIoBaseAddr == 0);
-            string biosPowerTip =
-                "BIOS Power Mode (EC 0x31/0x32) — Live APU TDP Preset!\r\n" +
-                "• 🌙 Silent (~35W)  |  ⚖ Balanced (~48W)  |  ⚡ Perf (~60W+ Peak)\r\n" +
-                "• When ✨ Auto-Tuned is active, switching BIOS Power also adapts your Auto-Tuned fan knee automatically.\r\n" +
-                "• When using a manual Custom Curve or 🔒 preset, switching BIOS Power changes TDP without replacing your curve.";
+            // Explicit Power Mode Switcher — BIOS EC 0x31/0x32 on EC boards, or native Windows Power Mode on Super I/O boards
+            bool usesWinPower = (!_demoMode && _hw != null && _hw.IsSuperIoControlled && WindowsPowerMode.IsSupported());
+            bool showBiosPowerBar = (_demoMode || _hw == null || !_hw.IsSuperIoControlled || usesWinPower);
+            string biosPowerTip = GetPowerBarTooltip(usesWinPower);
             _biosPowerLabel = new Label
             {
-                Text = "BIOS:",
+                Text = usesWinPower ? "Power:" : "BIOS:",
                 Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
                 Location = new Point(452, 27),
                 Size = new Size(42, 18),

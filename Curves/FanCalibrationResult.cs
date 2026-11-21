@@ -119,6 +119,7 @@ namespace MiniFanControl
 
             int stopPct = (!demoMode && hw != null) ? hw.GetManualStopPct() : 1;
             bool isSuperIo = (!demoMode && hw != null && hw.IsSuperIoControlled);
+            bool polarityAutoFlipped = false;
 
             if (!demoMode && stepDelayMs > 0 && stepDelayMs < 5000)
             {
@@ -279,6 +280,7 @@ namespace MiniFanControl
                     int passSysMin = 0;
                     int prevStepApuRpm = baseApuRpm;
                     int prevStepSysRpm = baseSysRpm;
+                    bool restartPassForPolarity = false;
 
                     // 2. Step through CalibrationSteps (12%..100%) with stabilization polling
                     for (int sIdx = 0; sIdx < CalibrationSteps.Length; sIdx++)
@@ -368,6 +370,28 @@ namespace MiniFanControl
                         int avgF1 = ComputeRobustStepRpm(f1Samples, lastSt.Fan1Rpm);
                         int avgF2 = ComputeRobustStepRpm(f2Samples, lastSt.Fan2Rpm);
 
+                        // Safety net: if a Super I/O board responds inversely (0% = high speed >= 2000 RPM,
+                        // and increasing PWM drops RPM by >= 350), flip polarity automatically and restart Pass 1.
+                        if (!demoMode && isSuperIo && !polarityAutoFlipped && pass == 1 && sIdx <= 2 &&
+                            baseApuRpm >= 2000 && avgF1 > 0 && avgF1 <= baseApuRpm - 350)
+                        {
+                            polarityAutoFlipped = true;
+                            hw.SetSuperIoPolarityOverride(!hw.IsSuperIoPwmInverted());
+                            minBaselineApu = int.MaxValue;
+                            minBaselineSys = int.MaxValue;
+                            maxApu = 0;
+                            maxSys = 0;
+                            completedUnits = 0;
+                            string flipMsg = string.Format("  [!] Inverted Super I/O PWM detected ({0}%={1} RPM -> {2}%={3} RPM) — auto-flipping polarity & restarting Pass 1!",
+                                stopPct, baseApuRpm, pct, avgF1);
+                            sb.AppendLine(flipMsg);
+                            EmitProgress(onProgress, pass, numPasses, 0, 0,
+                                "Inverted PWM polarity detected — auto-correcting & restarting Pass 1...",
+                                flipMsg, lastSt);
+                            restartPassForPolarity = true;
+                            break;
+                        }
+
                         bool apuJustSpun = IsSpinUpDetected(avgF1, baseApuRpm, prevStepApuRpm, passApuMin);
                         bool sysJustSpun = IsSpinUpDetected(avgF2, baseSysRpm, prevStepSysRpm, passSysMin);
 
@@ -397,6 +421,11 @@ namespace MiniFanControl
                     }
 
                     if (res.WasCanceled || res.WasThermalAborted) break;
+                    if (restartPassForPolarity)
+                    {
+                        pass--;
+                        continue;
+                    }
 
                     res.PassApuMin[pass - 1] = passApuMin;
                     res.PassSysMin[pass - 1] = passSysMin;

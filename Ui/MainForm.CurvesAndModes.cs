@@ -600,9 +600,54 @@ namespace MiniFanControl
 
         private static readonly Font BiosModeFontBold = new Font("Segoe UI", 8.0f, FontStyle.Bold);
         private static readonly Font BiosModeFontRegular = new Font("Segoe UI", 8.0f, FontStyle.Regular);
+        private bool _lastPowerBarIsWinMode = false;
+
+        private bool IsUsingWindowsPowerMode()
+        {
+            return (!_demoMode && _hw != null && _hw.IsSuperIoControlled && WindowsPowerMode.IsSupported());
+        }
+
+        private static string GetPowerBarTooltip(bool usesWinPower)
+        {
+            if (usesWinPower)
+            {
+                return "Windows Power Mode (Synced with Windows Settings → System → Power mode)\r\n" +
+                       "• 🌙 Silent (Best Power Efficiency)  |  ⚖ Balanced  |  ⚡ Perf (Best Performance)\r\n" +
+                       "• Safely adjusts AMD Ryzen boost & power behavior via Windows / AMD PPM kernel driver.\r\n" +
+                       "• Adapts ✨ Auto-Tuned fan curves automatically; leaves Custom Curves & 🔒 presets untouched.";
+            }
+            return "BIOS Power Mode (EC 0x31/0x32) — Live APU TDP Preset!\r\n" +
+                   "• 🌙 Silent (~35W)  |  ⚖ Balanced (~48W)  |  ⚡ Perf (~60W+ Peak)\r\n" +
+                   "• When ✨ Auto-Tuned is active, switching BIOS Power also adapts your Auto-Tuned fan knee automatically.\r\n" +
+                   "• When using a manual Custom Curve or 🔒 preset, switching BIOS Power changes TDP without replacing your curve.";
+        }
+
+        private void RefreshPowerBarCapabilityUi()
+        {
+            if (_biosPowerLabel == null) return;
+            bool usesWinPower = IsUsingWindowsPowerMode();
+            bool shouldShow = (_demoMode || _hw == null || !_hw.IsSuperIoControlled || usesWinPower);
+            if (_biosPowerLabel.Visible != shouldShow || _lastPowerBarIsWinMode != usesWinPower)
+            {
+                _lastPowerBarIsWinMode = usesWinPower;
+                _biosPowerLabel.Visible = shouldShow;
+                _biosPowerLabel.Text = usesWinPower ? "Power:" : "BIOS:";
+                string tip = GetPowerBarTooltip(usesWinPower);
+                if (_uiToolTip != null) _uiToolTip.SetToolTip(_biosPowerLabel, tip);
+                for (int i = 0; i < _biosModeButtons.Length; i++)
+                {
+                    if (_biosModeButtons[i] != null)
+                    {
+                        _biosModeButtons[i].Visible = shouldShow;
+                        if (_uiToolTip != null) _uiToolTip.SetToolTip(_biosModeButtons[i], tip);
+                    }
+                }
+            }
+        }
 
         private void UpdateBiosPowerModeStyles(int activeCode)
         {
+            RefreshPowerBarCapabilityUi();
             if (activeCode >= 0 && activeCode <= 2)
                 _lastActiveBiosModeCode = activeCode;
 
@@ -630,13 +675,29 @@ namespace MiniFanControl
         private void ApplyBiosPowerMode(int code)
         {
             if (code < 0 || code > 2) return;
-            string[] names = { "Balanced (~48W)", "Performance (~60W+)", "Silent (~35W)" };
+            bool usesWinPower = IsUsingWindowsPowerMode();
+            string[] ecNames = { "Balanced (~48W)", "Performance (~60W+)", "Silent (~35W)" };
             try
             {
-                bool ok = _controller != null && _controller.SetBiosPowerMode(code);
+                bool ok = usesWinPower
+                    ? WindowsPowerMode.SetModeCode(code)
+                    : (_controller != null && _controller.SetBiosPowerMode(code));
+
+                if (!ok)
+                {
+                    if (_errorBanner != null)
+                    {
+                        _errorBanner.Text = usesWinPower
+                            ? "⚠ Windows Power Mode could not be changed (ensure Windows Power Plan is set to Balanced)."
+                            : "⚠ BIOS Power Mode change was not accepted by hardware EC.";
+                        _errorBanner.Visible = true;
+                    }
+                    return;
+                }
+
                 UpdateBiosPowerModeStyles(code);
 
-                // If Auto-Tuned is active on either fan, adapt its TDP knee automatically for the new BIOS Power Mode
+                // If Auto-Tuned is active on either fan, adapt its TDP knee automatically for the new Power Mode
                 // while leaving hand-edited custom curves and protected reference presets untouched.
                 FanCurveProfile autoTuned = FindAutoTunedProfile();
                 if (autoTuned != null && (_apuProfile == autoTuned || _sysProfile == autoTuned))
@@ -654,10 +715,10 @@ namespace MiniFanControl
                 }
 
                 SaveSettings();
-                if (ok)
-                {
-                    StartRampIndication("BIOS Power Mode → " + names[code], 0);
-                }
+                string label = usesWinPower
+                    ? ("Windows Power Mode → " + WindowsPowerMode.GetModeDisplayName(code))
+                    : ("BIOS Power Mode → " + ecNames[code]);
+                StartRampIndication(label, 0);
             }
             catch (Exception ex)
             {

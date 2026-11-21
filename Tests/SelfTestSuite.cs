@@ -4651,6 +4651,83 @@ namespace MiniFanControl
                 "Super I/O 0% Stop Duty, Tachometer Channel Latching (No Ch2 Mirroring) & Non-Zero Floor Calibration",
                 sioCalibFixDetail);
 
+            // 89. Super I/O IT8613E Dynamic PWM Polarity Tracking via Reg 0x14 Bit 7 (Direct 0xC7 vs Sleep-Reset Inverted 0x47)
+            bool sioPolarityOk = false;
+            string sioPolarityDetail = "";
+            try
+            {
+                HardwareBackend polHw = new HardwareBackend(DeviceProfile.FindProfile("ryzen-hx370-ec"));
+                polHw.EnableSimulationMode();
+                polHw.SuperIoBaseAddr = 0x0A30;
+                polHw.AccessMethod = HardwareBackend.EcAccessMethod.SuperIo2E;
+
+                // A. Active-High / Direct (Reg 0x14 = 0xC7, Bit 7 = 1): 0% -> 0x00, 100% -> 0xFF, fallback 35% -> 89
+                polHw.WriteSuperIoHwReg(0x14, 0xC7);
+                bool directFlag = !polHw.IsSuperIoPwmInverted();
+                polHw.SetFan(1, 0);
+                byte dirZero = polHw.ReadSuperIoHwReg(0x6B);
+                polHw.SetFan(1, 100);
+                byte dirFull = polHw.ReadSuperIoHwReg(0x6B);
+                FanStatus dirSt = polHw.GetStatus();
+                polHw.ApplySafeSuperIoFallback();
+                byte dirFallback = polHw.ReadSuperIoHwReg(0x6B);
+
+                // B. Active-Low / Inverted (Reg 0x14 = 0x47, Bit 7 = 0 after sleep/resume): 0% -> 0xFF, 100% -> 0x00, fallback 35% -> 166
+                polHw.WriteSuperIoHwReg(0x14, 0x47);
+                bool invFlag = polHw.IsSuperIoPwmInverted();
+                polHw.SetFan(1, 0);
+                byte invZero = polHw.ReadSuperIoHwReg(0x6B);
+                FanStatus invZeroSt = polHw.GetStatus();
+                polHw.SetFan(1, 100);
+                byte invFull = polHw.ReadSuperIoHwReg(0x6B);
+                FanStatus invFullSt = polHw.GetStatus();
+                polHw.ApplySafeSuperIoFallback();
+                byte invFallback = polHw.ReadSuperIoHwReg(0x6B);
+
+                bool directOk = directFlag && (dirZero == 0) && (dirFull == 255) && (dirSt.Fan1Pct == 100) && (dirFallback == 89);
+                bool invertedOk = invFlag && (invZero == 255) && (invZeroSt.Fan1Pct == 0) && (invFull == 0) && (invFullSt.Fan1Pct == 100) && (invFallback == 166);
+                sioPolarityOk = directOk && invertedOk;
+                sioPolarityDetail = string.Format("Direct(0xC7)={0} [0%={1},100%={2},fb={3}], Inv(0x47)={4} [0%={5}/pct={6},100%={7}/pct={8},fb={9}]",
+                    directOk, dirZero, dirFull, dirFallback, invertedOk, invZero, invZeroSt.Fan1Pct, invFull, invFullSt.Fan1Pct, invFallback);
+            }
+            catch (Exception ex) { sioPolarityDetail = ex.Message; }
+            Check(sioPolarityOk,
+                "Super I/O IT8613E Dynamic Reg 0x14 Bit 7 PWM Polarity (Direct 0xC7 & Post-Sleep Inverted 0x47)",
+                sioPolarityDetail);
+
+            // 90. Native Windows Power Mode Overlay Mapping (Best Power Efficiency / Balanced / Best Performance)
+            bool winPowerModeOk = false;
+            string winPowerModeDetail = "";
+            try
+            {
+                Guid gSilent = WindowsPowerMode.ModeCodeToGuid(2);
+                Guid gBal = WindowsPowerMode.ModeCodeToGuid(0);
+                Guid gPerf = WindowsPowerMode.ModeCodeToGuid(1);
+
+                bool guidRoundTrip = (WindowsPowerMode.GuidToModeCode(gSilent) == 2)
+                    && (WindowsPowerMode.GuidToModeCode(gBal) == 0)
+                    && (WindowsPowerMode.GuidToModeCode(gPerf) == 1)
+                    && (gSilent == WindowsPowerMode.GuidBestPowerEfficiency)
+                    && (gBal == Guid.Empty)
+                    && (gPerf == WindowsPowerMode.GuidBestPerformance);
+
+                bool namesOk = WindowsPowerMode.GetModeDisplayName(2).Contains("Efficiency")
+                    && WindowsPowerMode.GetModeDisplayName(0).Contains("Balanced")
+                    && WindowsPowerMode.GetModeDisplayName(1).Contains("Performance");
+
+                bool invalidRejected = !WindowsPowerMode.SetModeCode(-1) && !WindowsPowerMode.SetModeCode(9);
+                int liveCode = WindowsPowerMode.GetActiveModeCode();
+                bool liveQuerySafe = (liveCode >= -1 && liveCode <= 2);
+
+                winPowerModeOk = guidRoundTrip && namesOk && invalidRejected && liveQuerySafe;
+                winPowerModeDetail = string.Format("RoundTrip={0}, Names={1}, InvalidRej={2}, LiveCode={3}",
+                    guidRoundTrip, namesOk, invalidRejected, liveCode);
+            }
+            catch (Exception ex) { winPowerModeDetail = ex.Message; }
+            Check(winPowerModeOk,
+                "Native Windows Power Mode Overlay Mapping (Best Power Efficiency / Balanced / Best Performance)",
+                winPowerModeDetail);
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));

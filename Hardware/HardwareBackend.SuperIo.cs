@@ -286,6 +286,8 @@ namespace MiniFanControl
 
                     byte reg13 = ReadSuperIoHwReg(0x13);
 
+                    byte reg14 = ReadSuperIoHwReg(0x14);
+
                     byte reg15 = ReadSuperIoHwReg(0x15);
 
                     byte reg16 = ReadSuperIoHwReg(0x16);
@@ -303,7 +305,8 @@ namespace MiniFanControl
                     byte t2B = ReadSuperIoHwReg(0x2B);
                     byte t2C = ReadSuperIoHwReg(0x2C);
 
-                    sb.AppendFormat("Reg 0x0C (TachMode)=0x{0:X2}, 0x0B (Divisor)=0x{1:X2}, 0x13 (MainCtrl)=0x{2:X2}\r\n", reg0C, reg0B, reg13);
+                    sb.AppendFormat("Reg 0x0C (TachMode)=0x{0:X2}, 0x0B (Divisor)=0x{1:X2}, 0x13 (MainCtrl)=0x{2:X2}, 0x14 (FanCtl)=0x{3:X2} (Polarity={4})\r\n",
+                        reg0C, reg0B, reg13, reg14, ((reg14 & 0x80) == 0 && reg14 != 0xFF) ? "Active-Low/Inverted" : "Active-High/Direct");
                     sb.AppendFormat("Fan 1: PWM=0x{0:X2}, ExtPWM=0x{1:X2}, Tach 0x0D=0x{2:X2}, 0x18=0x{3:X2} -> RPM={4}\r\n", reg15, reg63, ReadSuperIoHwReg(0x0D), ReadSuperIoHwReg(0x18), ReadSuperIoFanRpm(1));
                     sb.AppendFormat("Fan 2: PWM=0x{0:X2}, ExtPWM=0x{1:X2}, Tach 0x0E=0x{2:X2}, 0x19=0x{3:X2} -> RPM={4}\r\n", reg16, reg6B, ReadSuperIoHwReg(0x0E), ReadSuperIoHwReg(0x19), ReadSuperIoFanRpm(2));
                     sb.AppendFormat("Fan 3: PWM=0x{0:X2}, ExtPWM=0x{1:X2}, Tach 0x0F=0x{2:X2}, 0x1A=0x{3:X2} -> RPM={4}\r\n", reg17, reg73, ReadSuperIoHwReg(0x0F), ReadSuperIoHwReg(0x1A), ReadSuperIoFanRpm(3));
@@ -351,6 +354,42 @@ namespace MiniFanControl
 
         }
 
+        private bool _simulatedReg14Configured = false;
+        private bool? _sioPolarityOverride = null;
+
+        public void SetSuperIoPolarityOverride(bool? inverted)
+        {
+            _sioPolarityOverride = inverted;
+        }
+
+        /// <summary>
+        /// Reads ITE IT8613E / IT87xx Register 0x14 (IT87_REG_FAN_CTL) Bit 7 (PWM_POL):
+        /// - Bit 7 = 1 (Active High, e.g. 0xC7): Direct polarity (0x00 = 0% stop, 0xFF = 100% full speed)
+        /// - Bit 7 = 0 (Active Low / chip reset default after sleep/resume): Inverted polarity (0x00 = 100% full, 0xFF = 0% stop)
+        /// Dynamically tracking Reg 0x14 prevents fans running backwards if BIOS or Modern Standby resets Bit 7.
+        /// </summary>
+        public bool IsSuperIoPwmInverted()
+        {
+            if (SuperIoBaseAddr == 0) return false;
+            if (_sioPolarityOverride.HasValue) return _sioPolarityOverride.Value;
+            byte reg14 = ReadSuperIoHwReg(0x14);
+            if (reg14 == 0xFF) return false;
+            if (_isSimulatedMode && !_simulatedReg14Configured) return false;
+            return (reg14 & 0x80) == 0;
+        }
+
+        public static byte EncodeSuperIoDuty(int pct, bool inverted)
+        {
+            byte direct = (pct <= 0) ? (byte)0 : (byte)Math.Max(1, Math.Min(255, (pct * 255) / 100));
+            return inverted ? (byte)(255 - direct) : direct;
+        }
+
+        public static int DecodeSuperIoDutyPct(byte extReg, bool inverted)
+        {
+            int effective = inverted ? (255 - extReg) : extReg;
+            return Math.Max(0, Math.Min(100, (int)Math.Round(effective * 100.0 / 255.0)));
+        }
+
         public bool WriteSuperIoHwReg(byte reg, byte val)
         {
             if (SuperIoBaseAddr == 0) return false;
@@ -359,6 +398,7 @@ namespace MiniFanControl
             {
                 if (SimulateSuperIoWriteFailure) return false;
                 _simulatedSioRegs[reg] = val;
+                if (reg == 0x14) _simulatedReg14Configured = true;
                 return true;
             }
             try
@@ -627,9 +667,9 @@ namespace MiniFanControl
                 _simulatedSioRegs[0x17] = autoModeVal;
             }
 
-            // Safe baseline PWM floor duty (~35% / ~1100 RPM quiet cooling safety net: 89/255 = 35%)
-            // matching factory quiet operation
-            byte safeDuty = 89;
+            // Safe baseline PWM floor duty (~35% / ~1100 RPM quiet cooling safety net: 89 direct or 166 inverted)
+            // matching factory quiet operation regardless of IT8613E Reg 0x14 Bit 7 polarity
+            byte safeDuty = EncodeSuperIoDuty(35, IsSuperIoPwmInverted());
             if (!WriteSuperIoHwReg(0x63, safeDuty)) allOk = false;
             if (!WriteSuperIoHwReg(0x6B, safeDuty)) allOk = false;
             if (Profile == null || Profile.HasDualFans)

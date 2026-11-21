@@ -256,6 +256,7 @@ namespace MiniFanControl
             _isInitialized = false;
             ResetTachometerFilterState();
             ResetSuperIoChannelLatch();
+            SetSuperIoPolarityOverride(null);
             try
             {
                 EnsureOpen();
@@ -613,7 +614,8 @@ namespace MiniFanControl
                             ecGpuTemp = (temp2 >= 15 && temp2 <= 115) ? temp2 : 0;
 
                             f1h = 0; f1l = 0; f2h = 0; f2l = 0;
-                            modeVal = 0;
+                            int winPowerMode = _isSimulatedMode ? -1 : WindowsPowerMode.GetActiveModeCode();
+                            modeVal = (winPowerMode >= 0 && winPowerMode <= 2) ? (byte)winPowerMode : (byte)0;
                             byte ext1 = ReadSuperIoHwReg(0x6B); // APU Fan extended duty (0x6B)
                             byte ext2 = ReadSuperIoHwReg(0x73); // Sys Fan extended duty (0x73)
 
@@ -622,9 +624,10 @@ namespace MiniFanControl
                             bool f1Auto = (reg16 & 0x80) != 0;
                             bool f2Auto = (reg17 & 0x80) != 0;
 
-                            // Direct hardware duty: 0 (0x00) = 0% speed (stopped/quiet), 255 (0xFF) = 100% full speed
-                            int f1Duty = Math.Max(0, Math.Min(100, (int)Math.Round(ext1 * 100.0 / 255.0)));
-                            int f2Duty = Math.Max(0, Math.Min(100, (int)Math.Round(ext2 * 100.0 / 255.0)));
+                            // Dynamically match IT8613E Reg 0x14 Bit 7 PWM polarity (Direct Active-High vs Inverted Active-Low)
+                            bool sioInverted = IsSuperIoPwmInverted();
+                            int f1Duty = DecodeSuperIoDutyPct(ext1, sioInverted);
+                            int f2Duty = DecodeSuperIoDutyPct(ext2, sioInverted);
                             f1Ctrl = (byte)(f1Auto ? 0x00 : (0x80 | (f1Duty & 0x7F)));
                             f2Ctrl = (byte)(f2Auto ? 0x00 : (0x80 | (f2Duty & 0x7F)));
                         }
@@ -1018,11 +1021,11 @@ namespace MiniFanControl
                         WritePortByte(dataPort, (byte)(modeReg | 0x3F));
                     }
 
-                    // Direct Super I/O IT8613 blower duty cycle:
-                    // 0   (0x00) = 0% (Rotors stopped / Zero-RPM quiet idle)
-                    // 255 (0xFF) = 100% (Full throttle maximum blower speed)
-                    byte duty = (pct <= 0) ? (byte)0 : (byte)Math.Max(1, Math.Min(255, (pct * 255) / 100));
-                    byte duty7 = (byte)((duty * 127) / 255); // 7-bit duty (0 = 0% stop, 127 = 100% full speed)
+                    // Dynamic Super I/O IT8613E blower duty cycle matching hardware Reg 0x14 Bit 7 (PWM_POL):
+                    // - Active-High (Bit 7 = 1, e.g. 0xC7): 0x00 = 0% stop, 0xFF = 100% full speed
+                    // - Active-Low  (Bit 7 = 0, sleep/reset default): 0xFF = 0% stop, 0x00 = 100% full speed
+                    byte duty = EncodeSuperIoDuty(pct, IsSuperIoPwmInverted());
+                    byte duty7 = (byte)((duty * 127) / 255); // 7-bit synced duty (Bit 7 = 0 manual mode)
                     if (fanId == 1)
                     {
                         // Set manual mode (Bit 7 = 0) and 7-bit duty (Bits 6:0) on Channel 1 (0x15) and Channel 2 (0x16)
