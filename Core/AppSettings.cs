@@ -24,6 +24,7 @@ namespace MiniFanControl
         public ThemePreference ThemePref = ThemePreference.System;
         public string ApuModeName = "Balanced";
         public string SysModeName = "Balanced";
+        public int BiosPowerMode = -1; // -1 = follow profile/BIOS default, 0 = Balanced, 1 = Performance, 2 = Silent
         public string LegacyCustomName = null;
 
         public readonly OsdOverlayConfig Osd = new OsdOverlayConfig();
@@ -192,8 +193,8 @@ namespace MiniFanControl
                         }
                     }
                     else if (k == "RefreshIntervalMs" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) RefreshIntervalMs = Math.Max(100, Math.Min(10000, intVal));
-                    else if (k == "ApuMinSpinPct" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) FanCurveProfile.ApuMinSpinPct = Math.Max(18, Math.Min(45, intVal));
-                    else if (k == "SysMinSpinPct" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) FanCurveProfile.SysMinSpinPct = Math.Max(18, Math.Min(45, intVal));
+                    else if (k == "ApuMinSpinPct" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) FanCurveProfile.ApuMinSpinPct = Math.Max(14, Math.Min(45, intVal));
+                    else if (k == "SysMinSpinPct" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) FanCurveProfile.SysMinSpinPct = Math.Max(14, Math.Min(45, intVal));
                     else if (k == "ApuMaxRpm" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) FanCurveProfile.ApuMaxRpm = Math.Max(500, Math.Min(6000, intVal));
                     else if (k == "SysMaxRpm" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) FanCurveProfile.SysMaxRpm = Math.Max(0, Math.Min(6000, intVal));
                     else if (k == "LastCalibratedDate") FanCurveProfile.LastCalibratedDate = v;
@@ -204,6 +205,7 @@ namespace MiniFanControl
                     else if (k == "ActiveCustom") LegacyCustomName = v;
                     else if (k == "ApuMode") ApuModeName = v;
                     else if (k == "SysMode") SysModeName = v;
+                    else if (k == "BiosPowerMode" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal) && intVal >= -1 && intVal <= 2) BiosPowerMode = intVal;
                     else if (k == "RegModeStatus" && TryParseHexOrDecByte(v, out regByte)) prof.RegModeStatus = regByte;
                     else if (k == "RegModeCmd" && TryParseHexOrDecByte(v, out regByte)) prof.RegModeCmd = regByte;
                     else if (k == "RegFan1Ctrl" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan1Ctrl = regByte;
@@ -261,6 +263,8 @@ namespace MiniFanControl
                 lines.Add("Theme=" + ((int)ThemePref).ToString(CultureInfo.InvariantCulture));
                 lines.Add("ApuMode=" + (apuProfile != null ? apuProfile.Name : "Balanced"));
                 lines.Add("SysMode=" + (sysProfile != null ? sysProfile.Name : "Balanced"));
+                if (BiosPowerMode >= 0 && BiosPowerMode <= 2)
+                    lines.Add("BiosPowerMode=" + BiosPowerMode.ToString(CultureInfo.InvariantCulture));
 
                 if (customProfiles != null)
                 {

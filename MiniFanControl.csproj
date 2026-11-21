@@ -13,9 +13,9 @@
     <AssemblyName>MiniFanControl</AssemblyName>
     <RootNamespace>MiniFanControl</RootNamespace>
     <StartupObject>MiniFanControl.Program</StartupObject>
-    <Version>1.0.6</Version>
-    <AssemblyVersion>1.0.6.0</AssemblyVersion>
-    <FileVersion>1.0.6.0</FileVersion>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
     <Authors>Christian Kaiser</Authors>
     <Description>MiniFanControl - Hardware and EC Fan Control Utility for AMD Ryzen Mini PCs</Description>
     <NoWarn>$(NoWarn);WFDEV006;CS0618;WFO1000</NoWarn>

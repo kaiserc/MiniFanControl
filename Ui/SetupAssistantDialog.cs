@@ -77,11 +77,12 @@ namespace MiniFanControl
 
             Label h1 = new Label
             {
-                Text = Loc.Get("SetupAssistant.Step1Header", "Step 1: Measure Motor Stall Floor (Fan Calibration)"),
+                Text = Loc.Get("SetupAssistant.Step1Header", "Step 1: Measure Motor Stall Floor"),
                 Font = new Font("Segoe UI", 10.0f, FontStyle.Bold),
                 ForeColor = textMain,
                 Location = new Point(14, 10),
-                Size = new Size(360, 20)
+                Size = new Size(300, 20),
+                UseMnemonic = false
             };
             card1.Controls.Add(h1);
 
@@ -89,8 +90,9 @@ namespace MiniFanControl
             {
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
                 TextAlign = ContentAlignment.MiddleRight,
-                Location = new Point(350, 10),
-                Size = new Size(212, 20)
+                Location = new Point(316, 10),
+                Size = new Size(248, 20),
+                UseMnemonic = false
             };
             card1.Controls.Add(_calibBadge);
             RefreshCalibBadge();
@@ -204,13 +206,14 @@ namespace MiniFanControl
                 Font = new Font("Segoe UI", 10.0f, FontStyle.Bold),
                 ForeColor = textMain,
                 Location = new Point(14, 10),
-                Size = new Size(548, 20)
+                Size = new Size(548, 20),
+                UseMnemonic = false
             };
             card3.Controls.Add(h3);
 
             Label desc3 = new Label
             {
-                Text = Loc.Get("SetupAssistant.Step3Desc", "• Press Ctrl+Alt+F9 anytime to toggle the transparent in-game CapFrameX OSD overlay.\r\n" +
+                Text = Loc.Get("SetupAssistant.Step3Desc", "• Press Ctrl+Alt+F9 anytime to toggle the transparent in-game OSD overlay.\r\n" +
                        "• Customize points on the curve canvas or switch to 'Balanced' / 'Performance' tabs.\r\n" +
                        "• Click 'Reset Auto' anytime to safely revert to native BIOS automatic control."),
                 Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),
@@ -241,10 +244,11 @@ namespace MiniFanControl
                 FlatStyle = FlatStyle.Flat,
                 BackColor = accent,
                 ForeColor = (isRadeon || !_darkMode) ? Color.White : Color.FromArgb(0x11, 0x11, 0x1B),
-                Location = new Point(416, curY + 2),
-                Size = new Size(180, 32),
+                Location = new Point(406, curY + 2),
+                Size = new Size(190, 32),
                 Cursor = Cursors.Hand,
-                DialogResult = DialogResult.OK
+                DialogResult = DialogResult.OK,
+                UseMnemonic = false
             };
             closeBtn.FlatAppearance.BorderSize = 0;
             Controls.Add(closeBtn);

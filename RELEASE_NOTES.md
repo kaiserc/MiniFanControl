@@ -1,3 +1,15 @@
+# Release Notes: MiniFanControl v1.1.0 (BIOS Power Bar, Digital Foundry OSD & Universal Calibration)
+
+**MiniFanControl v1.1.0** is a major feature release adding an independent **`BIOS:` Power Mode** switcher in the header, an expanded 2×4 telemetry dashboard with a scrollbar-free OSD Studio, Digital Foundry **`DF Zoom`** / **`DF Corner`** / **`Graphs Only`** overlay modes, universal `≥ 88°C` calibration thermal safety with full `14%` low-PWM floor support, and **77/77 passing** automated safety tests.
+
+## ✨ Highlights in v1.1.0
+- **Independent `BIOS:` Power Mode Bar & Dual-Fan Mode-Aware `✨ Auto-Tune`**: Switch live factory BIOS TDP limits (`Silent ~35W` / `Balanced ~48W` / `Perf ~60W+`) independently of Custom Fan Curves, with `✨ Auto-Tune` automatically updating both APU & Sys fans and adapting its knee when switching BIOS Power modes.
+- **Expanded 2×4 Telemetry Dashboard & Scrollbar-Free OSD Studio**: Larger `257×108 px` sensor cards with `▼Low ~Avg ▲High` ranges, a `72×72` top-left logo, live `Source Temp • Duty % • RPM` callout badges on the Fan Curve graph, and a taller OSD Studio that displays all 7 metric sections with zero inner scrollbars.
+- **Digital Foundry Views & In-Game OSD Overhaul**: Added `🔍 DF Zoom`, `◰ DF Corner` / **`DF Corner Inset`** (Vertical & Horizontal), **`Graphs Only`** mode, `1%`/`0.1%` lows + shaded floor band on the overlay FPS chart, right-click **`Sampling Rate`** submenu, sample-rate-synced timestamps, and clean **In-Game OSD** branding.
+- **Universal Calibration & Tachometer Stabilization**: Added a live `≥ 88°C` thermal safety abort during calibration, lowered the sweep start to `12%` (`14%` safe floor honored end-to-end in `EvaluateCurve()`), added 1-second rolling steady-state RPM settling, and added high-load zero-tach debounce + `+2000 RPM` spike rejection (**77/77 passing**).
+
+---
+
 # Release Notes: MiniFanControl v1.0.6 (Fail-Closed Profile Matching & JSON Probe Export)
 
 **MiniFanControl v1.0.6** hardens hardware auto-detection against false-positive profile matches on unverified Ryzen Mini PCs, adds structured JSON output to `minifan-helper.exe dump`, improves Super I/O / EC chip identification in diagnostic reports, and expands the automated safety test suite to **76/76 passing**.

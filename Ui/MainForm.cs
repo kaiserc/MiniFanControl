@@ -71,7 +71,7 @@ namespace MiniFanControl
         private const int HOTKEY_LOCK_OSD   = 9003;
         private const int HOTKEY_RESET_AUTO = 9004;
 
-        public const string APP_VERSION         = "1.0.6";
+        public const string APP_VERSION         = "1.1.0";
         public const string SCHTASK_NAME        = "MiniFanControl_Autostart";
         public const string URL_GMKTEC_DRIVERS  = "https://www.gmktec.com/pages/drivers-and-software";
         public const string URL_AMD_DRIVERS     = "https://www.amd.com/en/support/download/drivers.html";
@@ -299,6 +299,9 @@ namespace MiniFanControl
 
         private Label _hwBadgeLabel;
         private Label _hwSubLabel;
+        private Label _biosPowerLabel;
+        private readonly Button[] _biosModeButtons = new Button[3]; // 0=Balanced, 1=Performance, 2=Silent
+        private int _lastActiveBiosModeCode = -1;
         private Button _driversMenuBtn;
         private ContextMenu _driversMenu;
         private Button _themeToggleBtn;
@@ -313,6 +316,19 @@ namespace MiniFanControl
         private DoubleBufferedPanel _fan2Box;
         private DoubleBufferedPanel _ramCard;
         private Label _ramLabel;
+        private sealed class MetricBoxDetail
+        {
+            public string PeakText = "";
+            public string SubText = "";
+            public Color SubColor = Color.Empty;
+            public string DetailText = "";
+            public string DetailText2 = "";
+            public Color Detail2Color = Color.Empty;
+        }
+        private readonly Dictionary<int, MetricBoxDetail> _metricDetails = new Dictionary<int, MetricBoxDetail>();
+        private static readonly Font MetricPeakFont = new Font("Segoe UI", 7.25f, FontStyle.Bold);
+        private static readonly Font MetricSubFont = new Font("Segoe UI", 7.75f, FontStyle.Bold);
+        private static readonly Font MetricDetailFont = new Font("Segoe UI", 7.5f, FontStyle.Regular);
         private Label _samplingLabel;
         private ComboBox _samplingCombo;
         private FanStatus _lastStatus;
@@ -382,6 +398,7 @@ namespace MiniFanControl
         private Button _osdBtnCombinedGraph;
         private Button _osdBtnSparklines;
         private Button _osdBtnTextOnly;
+        private Button _osdBtnGraphsOnly;
         private Button _osdBtnHeightCompact;
         private Button _osdBtnHeightMedium;
         private Button _osdBtnHeightLarge;
@@ -425,6 +442,7 @@ namespace MiniFanControl
         private CheckBox _osdShowFpsGraphCb;
         private CheckBox _osdPlotFpsOnTrendCb;
         private CheckBox _osdDfGraphStyleCb;
+        private CheckBox _osdDfCornerInsetCb;
         private CheckBox _osdDfGraphFirstCb;
         private Label _osdSubFieldsHeaderLabel;
         private CheckBox _osdShowRamTempCb;
@@ -550,7 +568,7 @@ namespace MiniFanControl
             MaximizeBox = true;
             StartPosition = FormStartPosition.CenterScreen;
             Rectangle wa = Screen.PrimaryScreen != null ? Screen.PrimaryScreen.WorkingArea : new Rectangle(0, 0, 1280, 1024);
-            ClientSize = new Size(Math.Min(1100, Math.Max(860, wa.Width - 24)), Math.Min(1160, Math.Max(640, wa.Height - 40)));
+            ClientSize = new Size(Math.Min(1100, Math.Max(860, wa.Width - 24)), Math.Min(1258, Math.Max(640, wa.Height - 40)));
             try
             {
                 Icon assoc = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -1216,12 +1234,13 @@ namespace MiniFanControl
         {
             _sessionStats.Reset();
             _activePopupTooltipText = null;
-            if (_cpuBoxTitle != null) _cpuBoxTitle.Text = "CPU TEMP";
-            if (_gpuBoxTitle != null) _gpuBoxTitle.Text = "iGPU TEMP";
-            if (_nvmeBoxTitle != null) _nvmeBoxTitle.Text = "NVMe TEMP";
-            if (_pwrBoxTitle != null) _pwrBoxTitle.Text = "POWER ⓘ";
-            if (_ramBoxTitle != null) _ramBoxTitle.Text = "RAM TEMP";
-            if (_ambientBoxTitle != null) _ambientBoxTitle.Text = "Chassis";
+            _metricDetails.Clear();
+            if (_cpuBoxTitle != null) _cpuBoxTitle.Text = "CPU";
+            if (_gpuBoxTitle != null) _gpuBoxTitle.Text = "iGPU";
+            if (_nvmeBoxTitle != null) _nvmeBoxTitle.Text = "NVMe";
+            if (_pwrBoxTitle != null) _pwrBoxTitle.Text = "POWER";
+            if (_ramBoxTitle != null) _ramBoxTitle.Text = "RAM (DDR5)";
+            if (_ambientBoxTitle != null) _ambientBoxTitle.Text = "CHASSIS";
             if (_fan1BoxTitle != null) _fan1BoxTitle.Text = "APU FAN";
             if (_fan2BoxTitle != null) _fan2BoxTitle.Text = "SYS FAN";
             if (_statusBarLabel != null)
@@ -1277,7 +1296,8 @@ namespace MiniFanControl
             {
                 Location = new Point(Math.Max(0, _osd.OverlayX), Math.Max(0, _osd.OverlayY)),
                 Stats = _sessionStats,
-                ProcessorBadgeText = GetRyzenTierBadge()
+                ProcessorBadgeText = GetRyzenTierBadge(),
+                SampleIntervalMs = _refreshIntervalMs
             };
             _osd.ApplyToOverlay(_overlayForm, _themePref, _hasDualFans, _useFahrenheit);
             _overlayForm.UpdateDimensions();
@@ -1305,6 +1325,10 @@ namespace MiniFanControl
             _overlayForm.RequestSnapLocation += (s, corner) =>
             {
                 SetOverlayCornerPosition(corner);
+            };
+            _overlayForm.RequestSamplingInterval += (s, ms) =>
+            {
+                SetRefreshInterval(ms);
             };
 
             // Pre-seed live telemetry into overlay before first display so dimensions account for all active rows (NVMe, RAM, Mode)
@@ -1342,6 +1366,18 @@ namespace MiniFanControl
             if (_overlayForm != null)
             {
                 _osd.ReadFromOverlay(_overlayForm);
+            }
+            if (_liveCanvas != null)
+            {
+                _liveCanvas.ShowCpu = _osd.TrendCpu;
+                _liveCanvas.ShowGpu = _osd.TrendGpu;
+                _liveCanvas.ShowRam = _osd.TrendRam;
+                _liveCanvas.ShowNvme = _osd.TrendNvme;
+                _liveCanvas.ShowPower = _osd.TrendPower;
+                _liveCanvas.ShowAmbient = _osd.TrendAmbient;
+                _liveCanvas.ShowApuRpm = _osd.TrendApuFan;
+                _liveCanvas.ShowSysRpm = _osd.TrendSysFan;
+                _liveCanvas.Invalidate();
             }
 
             if (_osdOpacitySlider != null && _osdOpacitySlider.Value != _osd.OpacityPct)
@@ -1392,6 +1428,7 @@ namespace MiniFanControl
             if (_osdShowFpsGraphCb != null) _osdShowFpsGraphCb.Checked = _osd.ShowFpsGraph;
             if (_osdPlotFpsOnTrendCb != null) _osdPlotFpsOnTrendCb.Checked = _osd.PlotFpsOnTrend;
             if (_osdDfGraphStyleCb != null) _osdDfGraphStyleCb.Checked = _osd.DfGraphStyle;
+            if (_osdDfCornerInsetCb != null) _osdDfCornerInsetCb.Checked = _osd.DfCornerInset;
             if (_osdDfGraphFirstCb != null) _osdDfGraphFirstCb.Checked = _osd.DfGraphFirst;
             if (_osdShowRamTempCb != null) _osdShowRamTempCb.Checked = _osd.ShowRamTemp;
             if (_osdShowRamDualSticksCb != null) _osdShowRamDualSticksCb.Checked = _osd.ShowRamDualSticks;
@@ -1403,7 +1440,13 @@ namespace MiniFanControl
             if (_osdShowNvmeIoCb != null) _osdShowNvmeIoCb.Checked = _osd.ShowNvmeIo;
             if (_osdShowNvmeDualCb != null) _osdShowNvmeDualCb.Checked = _osd.ShowNvmeDual;
             if (_osdShowCpuLoadCb != null) _osdShowCpuLoadCb.Checked = _osd.ShowCpuLoad;
-            if (_osdShowGpuHotspotCb != null) _osdShowGpuHotspotCb.Checked = _osd.ShowGpuHotspot;
+            if (_osdShowGpuHotspotCb != null)
+            {
+                bool hasHotspot = _demoMode || _lastStatus.GpuHotspotTemp > 0;
+                _osdShowGpuHotspotCb.Checked = _osd.ShowGpuHotspot && hasHotspot;
+                _osdShowGpuHotspotCb.Enabled = hasHotspot;
+                _osdShowGpuHotspotCb.Text = hasHotspot ? "iGPU Hotspot (🔥°C)" : "iGPU Hotspot (N/A)";
+            }
             if (_osdShowPowerLimitCb != null) _osdShowPowerLimitCb.Checked = _osd.ShowPowerLimit;
             if (_osdShowFclkSyncCb != null) _osdShowFclkSyncCb.Checked = _osd.ShowFclkSync;
             if (_osdShowFrametimeMsCb != null) _osdShowFrametimeMsCb.Checked = _osd.ShowFrametimeMs;
@@ -1504,9 +1547,9 @@ namespace MiniFanControl
             if (_calibBadgeLabel != null) _calibBadgeLabel.Visible = visible;
             if (_fanCardPanel != null) _fanCardPanel.Visible = visible;
 
-            int cardHeight = visible ? 632 : 762;
-            int canvasHeight = visible ? 560 : 690;
-            int hintY = visible ? 608 : 738;
+            int cardHeight = visible ? 590 : 720;
+            int canvasHeight = visible ? 518 : 648;
+            int hintY = visible ? 566 : 696;
 
             if (_modeCardPanel != null && _modeCardPanel.Height != cardHeight)
             {
@@ -1532,6 +1575,10 @@ namespace MiniFanControl
             {
                 _osdConfigPanel.Location = new Point(8, 41);
                 _osdConfigPanel.Size = new Size(1056, canvasHeight);
+            }
+            if (_osdMetricsScrollPanel != null)
+            {
+                _osdMetricsScrollPanel.Size = new Size(1048, Math.Max(260, canvasHeight - 200));
             }
         }
 
@@ -1589,7 +1636,7 @@ namespace MiniFanControl
                     if (_curveCanvas != null)
                     {
                         _curveCanvas.Location = new Point(8, 108);
-                        _curveCanvas.Size = new Size(1056, 496);
+                        _curveCanvas.Size = new Size(1056, 454);
                         _curveCanvas.Visible = true;
                         _curveCanvas.Invalidate();
                     }
@@ -1877,7 +1924,7 @@ namespace MiniFanControl
             sb.AppendLine("  • Maintenance Tip : Re-calibrate every ~6 months or after dusting heatsink fins.");
             sb.AppendLine();
             sb.AppendLine("Global In-Game Hotkeys (" + (_enableGlobalHotkeys ? "✓ Enabled" : "Disabled") + "):");
-            sb.AppendLine("  • Ctrl + Alt + F9  : Show / Hide CapFrameX-Style OSD Overlay");
+            sb.AppendLine("  • Ctrl + Alt + F9  : Show / Hide In-Game OSD Overlay");
             sb.AppendLine("  • Ctrl + Alt + F10 : Cycle Mode (Balanced → Performance → Silent)");
             sb.AppendLine("  • Ctrl + Alt + F11 : Lock / Unlock OSD Overlay (Click-Through)");
             sb.AppendLine("  • Ctrl + Alt + F12 : Reset Both Fans to BIOS Auto (Balanced)");
@@ -2038,38 +2085,43 @@ namespace MiniFanControl
 
             if (_fan1Box != null && _fan2Box != null)
             {
+                const int boxW = 257;
+                const int boxH = 108;
+                const int boxGapX = 6;
+                const int row2Y = 122;
                 if (_hasDualFans)
                 {
-                    _fan1Box.Location = new Point(798, 8);
-                    _fan1Box.Size = new Size(125, 70);
-                    if (_fan1BoxTitle != null) { _fan1BoxTitle.Location = new Point(1, 2); _fan1BoxTitle.Size = new Size(123, 13); }
+                    _fan1Box.Location = new Point(12 + (boxW + boxGapX) * 2, row2Y);
+                    _fan1Box.Size = new Size(boxW, boxH);
+                    if (_fan1BoxTitle != null) { _fan1BoxTitle.Location = new Point(7, 3); _fan1BoxTitle.Size = new Size(boxW - 14, 14); }
                     if (_fan1RpmLabel != null)
                     {
-                        _fan1RpmLabel.Location = new Point(1, 15);
-                        _fan1RpmLabel.Size = new Size(123, 33);
+                        _fan1RpmLabel.Location = new Point(7, 18);
+                        _fan1RpmLabel.Size = new Size(boxW - 14, 33);
                         _fan1RpmLabel.Font = new Font("Segoe UI", 11.5f, FontStyle.Bold);
                     }
-                    _fan2Box.Location = new Point(929, 8);
-                    _fan2Box.Size = new Size(125, 70);
-                    if (_fan2BoxTitle != null) { _fan2BoxTitle.Location = new Point(1, 2); _fan2BoxTitle.Size = new Size(123, 13); }
+                    _fan2Box.Location = new Point(12 + (boxW + boxGapX) * 3, row2Y);
+                    _fan2Box.Size = new Size(boxW, boxH);
+                    if (_fan2BoxTitle != null) { _fan2BoxTitle.Location = new Point(7, 3); _fan2BoxTitle.Size = new Size(boxW - 14, 14); }
                     if (_fan2RpmLabel != null)
                     {
-                        _fan2RpmLabel.Location = new Point(1, 15);
-                        _fan2RpmLabel.Size = new Size(123, 33);
+                        _fan2RpmLabel.Location = new Point(7, 18);
+                        _fan2RpmLabel.Size = new Size(boxW - 14, 33);
                         _fan2RpmLabel.Font = new Font("Segoe UI", 11.5f, FontStyle.Bold);
                     }
                     _fan2Box.Visible = true;
                 }
                 else
                 {
+                    int spanW = boxW * 2 + boxGapX;
                     _fan2Box.Visible = false;
-                    _fan1Box.Location = new Point(798, 8);
-                    _fan1Box.Size = new Size(256, 70);
-                    if (_fan1BoxTitle != null) { _fan1BoxTitle.Location = new Point(1, 2); _fan1BoxTitle.Size = new Size(254, 13); }
+                    _fan1Box.Location = new Point(12 + (boxW + boxGapX) * 2, row2Y);
+                    _fan1Box.Size = new Size(spanW, boxH);
+                    if (_fan1BoxTitle != null) { _fan1BoxTitle.Location = new Point(7, 3); _fan1BoxTitle.Size = new Size(spanW - 14, 14); }
                     if (_fan1RpmLabel != null)
                     {
-                        _fan1RpmLabel.Location = new Point(1, 15);
-                        _fan1RpmLabel.Size = new Size(254, 33);
+                        _fan1RpmLabel.Location = new Point(7, 18);
+                        _fan1RpmLabel.Size = new Size(spanW - 14, 33);
                         _fan1RpmLabel.Font = new Font("Segoe UI", 14.0f, FontStyle.Bold);
                     }
                 }
@@ -2098,7 +2150,7 @@ namespace MiniFanControl
                 : "Fan Layout: 1 Fan (APU Only) — Click for 2-Fan Mode";
             menu.MenuItems.Add(layoutLabel, (s, e) => ToggleDualFanMode());
             menu.MenuItems.Add("-");
-            string osdToggleLabel = _showOverlay ? "Hide CapFrameX-Style OSD Overlay" : "Show CapFrameX-Style OSD Overlay";
+            string osdToggleLabel = _showOverlay ? "Hide In-Game OSD Overlay" : "Show In-Game OSD Overlay";
             menu.MenuItems.Add(osdToggleLabel, (s, e) =>
             {
                 if (_showOverlayCb != null) _showOverlayCb.Checked = !_showOverlayCb.Checked;
@@ -2416,10 +2468,19 @@ namespace MiniFanControl
             FanCurveProfile sysProf = FindProfileByName(_settings.SysModeName) ?? FindProfileByName(_settings.LegacyCustomName);
             if (apuProf != null) _apuProfile = apuProf;
             if (sysProf != null) _sysProfile = sysProf;
+            if (_controller != null && _settings.BiosPowerMode >= 0 && _settings.BiosPowerMode <= 2)
+            {
+                _controller.BiosPowerModeOverride = _settings.BiosPowerMode;
+                _lastActiveBiosModeCode = _settings.BiosPowerMode;
+            }
         }
 
         private void SaveSettings()
         {
+            if (_controller != null)
+            {
+                _settings.BiosPowerMode = _controller.BiosPowerModeOverride;
+            }
             _settings.Save(_apuProfile, _sysProfile, _customProfiles);
             RebuildTrayContextMenus();
         }
@@ -2503,7 +2564,7 @@ namespace MiniFanControl
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.Add("Show Window", null, (s, e) => RestoreFromTray());
             menu.Items.Add(
-                _showOverlay ? "Hide CapFrameX OSD Overlay" : "Show CapFrameX OSD Overlay",
+                _showOverlay ? "Hide In-Game OSD Overlay" : "Show In-Game OSD Overlay",
                 null,
                 (s, e) =>
                 {
@@ -2977,25 +3038,27 @@ namespace MiniFanControl
             }
         }
 
+        private void SetMetricDetail(int chartKind, string peakText, string subText, string detailText, string detailText2, Color subColor, Color detail2Color = default(Color))
+        {
+            MetricBoxDetail d;
+            if (!_metricDetails.TryGetValue(chartKind, out d))
+            {
+                d = new MetricBoxDetail();
+                _metricDetails[chartKind] = d;
+            }
+            d.PeakText = peakText ?? "";
+            d.SubText = subText ?? "";
+            d.DetailText = detailText ?? "";
+            d.DetailText2 = detailText2 ?? "";
+            d.SubColor = subColor;
+            d.Detail2Color = detail2Color;
+        }
+
         private void PaintMetricBoxSparkline(Graphics g, Panel box, Label titleLbl, Label valLbl, List<int> samples, int chartKind)
         {
             if (box == null) return;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-
-            if (titleLbl != null && !string.IsNullOrEmpty(titleLbl.Text))
-            {
-                Rectangle titleRect = new Rectangle(1, 2, box.ClientSize.Width - 2, 13);
-                TextRenderer.DrawText(g, titleLbl.Text, titleLbl.Font, titleRect, titleLbl.ForeColor,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
-            }
-
-            if (valLbl != null && !string.IsNullOrEmpty(valLbl.Text))
-            {
-                Rectangle valRect = new Rectangle(1, 15, box.ClientSize.Width - 2, 33);
-                TextRenderer.DrawText(g, valLbl.Text, valLbl.Font, valRect, valLbl.ForeColor,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            }
 
             bool isRadeon = (_themePref == ThemePreference.Radeon);
             Color lineCol;
@@ -3029,9 +3092,79 @@ namespace MiniFanControl
                     lineCol = isRadeon ? RadeonAccent : DarkAccent;
                     break;
             }
+
+            int cw = box.ClientSize.Width;
+            int ch = box.ClientSize.Height;
+            Color dimCol = isRadeon ? RadeonTextDim : (IsAb ? AbTextDim : (_isDarkMode ? DarkTextDim : LightTextDim));
+            Color textCol = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
+
+            // Sleek 3px left accent strip matching the metric series color
+            using (SolidBrush accentBrush = new SolidBrush(lineCol))
+            {
+                g.FillRectangle(accentBrush, 0, 0, 3, ch);
+            }
+
+            MetricBoxDetail detail;
+            _metricDetails.TryGetValue(chartKind, out detail);
+
+            // Row 1 (y = 3..17): Title (left) + Peak tracker (right)
+            int peakW = 0;
+            if (detail != null && !string.IsNullOrEmpty(detail.PeakText))
+            {
+                Size peakSz = TextRenderer.MeasureText(g, detail.PeakText, MetricPeakFont, new Size(cw - 14, 15), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                peakW = Math.Min(cw - 54, peakSz.Width + 4);
+                Rectangle peakRect = new Rectangle(cw - 6 - peakW, 3, peakW, 14);
+                TextRenderer.DrawText(g, detail.PeakText, MetricPeakFont, peakRect, dimCol,
+                    TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+            }
+            if (titleLbl != null && !string.IsNullOrEmpty(titleLbl.Text))
+            {
+                int titleMaxW = Math.Max(40, cw - 14 - peakW);
+                Rectangle titleRect = new Rectangle(7, 3, titleMaxW, 14);
+                TextRenderer.DrawText(g, titleLbl.Text, titleLbl.Font, titleRect, titleLbl.ForeColor,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+            }
+
+            // Row 2 (y = 17..44): Hero Value (left) + Primary Live Sub-Stat (right)
+            int valRight = 8;
+            if (valLbl != null && !string.IsNullOrEmpty(valLbl.Text))
+            {
+                Size valSz = TextRenderer.MeasureText(g, valLbl.Text, valLbl.Font, new Size(cw - 14, 27), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                int valW = Math.Min(cw - 14, valSz.Width + 2);
+                Rectangle valRect = new Rectangle(7, 17, valW, 27);
+                TextRenderer.DrawText(g, valLbl.Text, valLbl.Font, valRect, valLbl.ForeColor,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                valRight = 7 + valW + 6;
+            }
+            if (detail != null && !string.IsNullOrEmpty(detail.SubText) && cw - 6 - valRight >= 28)
+            {
+                Rectangle subRect = new Rectangle(valRight, 19, cw - 6 - valRight, 24);
+                Color subFg = detail.SubColor.IsEmpty ? textCol : detail.SubColor;
+                TextRenderer.DrawText(g, detail.SubText, MetricSubFont, subRect, subFg,
+                    TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+            }
+
+            // Row 3 (y = 44..60): Full-width Detail Line 1 (range / secondary live telemetry)
+            if (detail != null && !string.IsNullOrEmpty(detail.DetailText))
+            {
+                Rectangle detailRect = new Rectangle(7, 44, Math.Max(20, cw - 13), 16);
+                TextRenderer.DrawText(g, detail.DetailText, MetricDetailFont, detailRect, dimCol,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+            }
+
+            // Row 4 (y = 60..76): Full-width Detail Line 2 (hardware / tuning profile / features)
+            if (detail != null && !string.IsNullOrEmpty(detail.DetailText2))
+            {
+                Rectangle detailRect2 = new Rectangle(7, 60, Math.Max(20, cw - 13), 16);
+                Color d2Fg = detail.Detail2Color.IsEmpty ? dimCol : detail.Detail2Color;
+                TextRenderer.DrawText(g, detail.DetailText2, MetricDetailFont, detailRect2, d2Fg,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+            }
+
+            // Row 5 (y = 77..ch-2): Wide, tall live sparkline
             if (samples != null && samples.Count > 0)
             {
-                Rectangle sparkRect = new Rectangle(1, 49, box.ClientSize.Width - 2, Math.Max(8, box.ClientSize.Height - 51));
+                Rectangle sparkRect = new Rectangle(4, 77, Math.Max(20, cw - 6), Math.Max(14, ch - 79));
                 bool isDeciWatts = (samples == _sessionStats.RamPowerHistory);
                 DrawMiniSparklineChart(g, sparkRect, samples, lineCol, "", false, isDeciWatts);
             }
@@ -3039,7 +3172,7 @@ namespace MiniFanControl
             {
                 using (Pen activePen = new Pen(lineCol, 2f))
                 {
-                    g.DrawRectangle(activePen, 1, 1, box.ClientSize.Width - 2, box.ClientSize.Height - 2);
+                    g.DrawRectangle(activePen, 1, 1, cw - 2, ch - 2);
                 }
             }
         }
@@ -3096,7 +3229,7 @@ namespace MiniFanControl
                 if (_perfCanvas != null)
                 {
                     _perfCanvas.Location = new Point(8, 42);
-                    _perfCanvas.Size = new Size(1056, 690);
+                    _perfCanvas.Size = new Size(1056, 648);
                     _perfCanvas.Visible = true;
                     _perfCanvas.Invalidate();
                 }
@@ -3108,7 +3241,7 @@ namespace MiniFanControl
                 if (_liveCanvas != null)
                 {
                     _liveCanvas.Location = new Point(8, 42);
-                    _liveCanvas.Size = new Size(1056, 690);
+                    _liveCanvas.Size = new Size(1056, 648);
                     _liveCanvas.HighlightMetric = _highlightedMetric;
                     _liveCanvas.Visible = true;
                     _liveCanvas.Invalidate();
@@ -3121,7 +3254,7 @@ namespace MiniFanControl
                 if (_curveCanvas != null)
                 {
                     _curveCanvas.Location = new Point(8, 108);
-                    _curveCanvas.Size = new Size(1056, 496);
+                    _curveCanvas.Size = new Size(1056, 454);
                     _curveCanvas.Visible = true;
                     _curveCanvas.Invalidate();
                 }
@@ -3190,10 +3323,10 @@ namespace MiniFanControl
             // 0. Dedicated Top Header Row (Logo, Model Info, Drivers Menu, Theme Toggle)
             _headerLogoBox = new PictureBox
             {
-                Location = new Point(14, 8),
-                Size = new Size(46, 46),
+                Location = new Point(10, 4),
+                Size = new Size(72, 72),
                 SizeMode = PictureBoxSizeMode.Zoom,
-                Image = AppLogoRenderer.RenderConcept(1, 192),
+                Image = AppLogoRenderer.RenderConcept(1, 256),
                 Cursor = Cursors.Hand
             };
             _headerLogoBox.Click += (s, e) => ShowAboutDialog();
@@ -3208,9 +3341,9 @@ namespace MiniFanControl
             _hwBadgeLabel = new Label
             {
                 Text = topHeaderTitle,
-                Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
-                Location = new Point(68, 10),
-                Size = new Size(580, 22),
+                Font = new Font("Segoe UI", 11.0f, FontStyle.Bold),
+                Location = new Point(88, 16),
+                Size = new Size(360, 24),
                 AutoEllipsis = true,
                 Cursor = Cursors.Hand,
                 UseMnemonic = false
@@ -3226,14 +3359,64 @@ namespace MiniFanControl
             {
                 Text = string.Format("EC Map: {0} • Driver: {1} • Global\\Access_EC Mutex • 64-bit", _sysInfo.MatchedProfile.DisplayName, initialDrv),
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Regular),
-                Location = new Point(68, 32),
-                Size = new Size(580, 18),
+                Location = new Point(88, 42),
+                Size = new Size(360, 18),
                 AutoEllipsis = true,
                 Cursor = Cursors.Hand,
                 UseMnemonic = false
             };
             _hwSubLabel.Click += (s, e) => ShowHardwareCompatibilityDialog();
             Controls.Add(_hwSubLabel);
+
+            // Explicit BIOS Power Mode (TDP) Switcher — independent of Custom Fan Curves (EC 0x31/0x32)
+            bool showBiosPowerBar = (_demoMode || _hw == null || _hw.SuperIoBaseAddr == 0);
+            string biosPowerTip =
+                "BIOS Power Mode (EC 0x31/0x32) — Live APU TDP Preset!\r\n" +
+                "• 🌙 Silent (~35W)  |  ⚖ Balanced (~48W)  |  ⚡ Perf (~60W+ Peak)\r\n" +
+                "• When ✨ Auto-Tuned is active, switching BIOS Power also adapts your Auto-Tuned fan knee automatically.\r\n" +
+                "• When using a manual Custom Curve or 🔒 preset, switching BIOS Power changes TDP without replacing your curve.";
+            _biosPowerLabel = new Label
+            {
+                Text = "BIOS:",
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
+                Location = new Point(452, 27),
+                Size = new Size(42, 18),
+                TextAlign = ContentAlignment.MiddleRight,
+                Visible = showBiosPowerBar,
+                UseMnemonic = false
+            };
+            Controls.Add(_biosPowerLabel);
+            _biosPowerLabel.BringToFront();
+            _uiToolTip.SetToolTip(_biosPowerLabel, biosPowerTip);
+
+            int[] biosOrder = new int[] { 2, 0, 1 }; // Visual order: Silent | Balanced | Perf
+            string[] biosLabels = new string[] { "⚖ Balanced", "⚡ Perf", "🌙 Silent" };
+            int[] biosWidths = new int[] { 102, 82, 88 };
+            int biosX = 498;
+            for (int k = 0; k < biosOrder.Length; k++)
+            {
+                int code = biosOrder[k];
+                int w = biosWidths[code];
+                Button b = new Button
+                {
+                    Text = biosLabels[code],
+                    FlatStyle = FlatStyle.Flat,
+                    Font = BiosModeFontRegular,
+                    Location = new Point(biosX, 22),
+                    Size = new Size(w, 28),
+                    Padding = new Padding(0),
+                    Cursor = Cursors.Hand,
+                    Visible = showBiosPowerBar,
+                    UseMnemonic = false
+                };
+                b.FlatAppearance.BorderSize = 0;
+                b.Click += (s, e) => ApplyBiosPowerMode(code);
+                Controls.Add(b);
+                b.BringToFront();
+                _uiToolTip.SetToolTip(b, biosPowerTip);
+                _biosModeButtons[code] = b;
+                biosX += w + 4;
+            }
 
             _driversMenu = CreateDriversAndToolsMenu();
 
@@ -3242,7 +3425,7 @@ namespace MiniFanControl
                 Text = "Tools && Drivers ▾",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(788, 14),
+                Location = new Point(788, 22),
                 Size = new Size(136, 28),
                 Cursor = Cursors.Hand
             };
@@ -3259,7 +3442,7 @@ namespace MiniFanControl
                 Text = GetThemeButtonLabel(),
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
-                Location = new Point(930, 14),
+                Location = new Point(930, 22),
                 Size = new Size(156, 28),
                 Cursor = Cursors.Hand
             };
@@ -3268,32 +3451,39 @@ namespace MiniFanControl
             Controls.Add(_themeToggleBtn);
             _themeToggleBtn.BringToFront();
 
-            // 1. Hardware & Live Telemetry Section (top = 60, card = 80..218, height = 138)
-            Panel statusCard = CreateSectionCard("System Telemetry & Live Hardware Sensors", 60, 138);
+            // 1. Hardware & Live Telemetry Section (top = 78, card = 98..358, height = 260) — 2x4 Expanded Metric Grid
+            Panel statusCard = CreateSectionCard("System Telemetry & Live Hardware Sensors", 78, 260);
 
+            const int boxW = 257;
+            const int boxH = 108;
+            const int boxGapX = 6;
+            const int row1Y = 8;
+            const int row2Y = 122;
+
+            // Row 1 (Core Silicon & Memory/Storage): CPU | iGPU | RAM | NVMe
             _cpuTempBox = new DoubleBufferedPanel
             {
-                Location = new Point(12, 8),
-                Size = new Size(125, 70),
+                Location = new Point(12, row1Y),
+                Size = new Size(boxW, boxH),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
             _cpuBoxTitle = new Label
             {
-                Text = "CPU TEMP",
-                Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 2),
-                Size = new Size(123, 13),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Text = "CPU",
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                Location = new Point(7, 3),
+                Size = new Size(boxW - 14, 14),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _cpuTempLabel = new Label
             {
                 Text = "--°C",
                 Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
-                Location = new Point(1, 15),
-                Size = new Size(123, 33),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(7, 18),
+                Size = new Size(boxW - 14, 33),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _cpuTempBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _cpuTempBox, _cpuBoxTitle, _cpuTempLabel, _sessionStats.CpuHistory, 1);
@@ -3302,32 +3492,42 @@ namespace MiniFanControl
             _cpuTempBox.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(1);
             statusCard.Controls.Add(_cpuTempBox);
 
-            string cpuTip = "APU / CPU Package Temperature (EC Register 0x70 • Tctl/Tdie)\r\nLeft-click to highlight CPU Trend on the big graph • Right-click to reset peaks.";
+            bool isIt5570eEc = (_hw == null || _hw.SuperIoBaseAddr == 0);
+            string cpuTip = isIt5570eEc
+                ? "APU / CPU Package Temperature (EC Register 0x70 • Tctl/Tdie)\r\n" +
+                  "• Emergency Thermal Override: Forces both fans to 100% at ≥90°C and holds until ≤75°C (15°C cooldown hysteresis).\r\n" +
+                  "• BIOS Power Modes (EC 0x31/0x32): Silent, Balanced (~47–53W), and Performance (~59W+) are the native BIOS TDP presets.\r\n" +
+                  "• EC Slew-Rate Limiting: IT5570E firmware ramps fan speed smoothly (~4–5%/s, ~15–20s to max) in both BIOS Auto and Custom Curves.\r\n" +
+                  "• Tip: Use the BIOS Power bar at the top (Silent / Balanced / Perf) to change TDP independently of any Custom Fan Curve.\r\n" +
+                  "Left-click to highlight CPU Trend on the big graph • Right-click to reset peaks."
+                : "APU / CPU Package Temperature (Tctl/Tdie)\r\n" +
+                  "• Emergency Thermal Override: Forces both fans to 100% at ≥90°C and holds until ≤75°C (15°C cooldown hysteresis).\r\n" +
+                  "Left-click to highlight CPU Trend on the big graph • Right-click to reset peaks.";
             _uiToolTip.SetToolTip(_cpuTempBox, cpuTip);
 
             _gpuTempBox = new DoubleBufferedPanel
             {
-                Location = new Point(143, 8),
-                Size = new Size(125, 70),
+                Location = new Point(12 + (boxW + boxGapX) * 1, row1Y),
+                Size = new Size(boxW, boxH),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
             _gpuBoxTitle = new Label
             {
-                Text = "iGPU TEMP",
-                Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 2),
-                Size = new Size(123, 13),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Text = "iGPU",
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                Location = new Point(7, 3),
+                Size = new Size(boxW - 14, 14),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _gpuTempLabel = new Label
             {
                 Text = "--°C",
                 Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
-                Location = new Point(1, 15),
-                Size = new Size(123, 33),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(7, 18),
+                Size = new Size(boxW - 14, 33),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _gpuTempBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _gpuTempBox, _gpuBoxTitle, _gpuTempLabel, _sessionStats.GpuHistory, 2);
@@ -3341,27 +3541,27 @@ namespace MiniFanControl
 
             _ramPowerBox = new DoubleBufferedPanel
             {
-                Location = new Point(274, 8),
-                Size = new Size(125, 70),
+                Location = new Point(12 + (boxW + boxGapX) * 2, row1Y),
+                Size = new Size(boxW, boxH),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
             _ramBoxTitle = new Label
             {
-                Text = "RAM TEMP",
-                Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 2),
-                Size = new Size(123, 13),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Text = "RAM (DDR5)",
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                Location = new Point(7, 3),
+                Size = new Size(boxW - 14, 14),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _ramPowerLabel = new Label
             {
                 Text = "--°C",
                 Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
-                Location = new Point(1, 15),
-                Size = new Size(123, 33),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(7, 18),
+                Size = new Size(boxW - 14, 33),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _ramPowerBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _ramPowerBox, _ramBoxTitle, _ramPowerLabel,
@@ -3371,32 +3571,32 @@ namespace MiniFanControl
             _ramPowerBox.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(7);
             statusCard.Controls.Add(_ramPowerBox);
 
-            string ramPwrTip = "DDR5 Memory Temperature, Dual-Stick Delta & Utilization\r\nLeft-click to highlight RAM Trend on the big graph • Right-click to reset peaks.";
+            string ramPwrTip = "DDR5 Memory Temperature, Dual-Stick Delta, Capacity & Speed\r\nLeft-click to highlight RAM Trend on the big graph • Right-click to reset peaks.";
             _uiToolTip.SetToolTip(_ramPowerBox, ramPwrTip);
 
             _nvmeTempBox = new DoubleBufferedPanel
             {
-                Location = new Point(405, 8),
-                Size = new Size(125, 70),
+                Location = new Point(12 + (boxW + boxGapX) * 3, row1Y),
+                Size = new Size(boxW, boxH),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
             _nvmeBoxTitle = new Label
             {
-                Text = "NVMe TEMP",
-                Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 2),
-                Size = new Size(123, 13),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Text = "NVMe",
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                Location = new Point(7, 3),
+                Size = new Size(boxW - 14, 14),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _nvmeTempLabel = new Label
             {
                 Text = "--°C",
                 Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
-                Location = new Point(1, 15),
-                Size = new Size(123, 33),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(7, 18),
+                Size = new Size(boxW - 14, 33),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _nvmeTempBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _nvmeTempBox, _nvmeBoxTitle, _nvmeTempLabel, _sessionStats.NvmeHistory, 6);
@@ -3405,32 +3605,33 @@ namespace MiniFanControl
             _nvmeTempBox.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(6);
             statusCard.Controls.Add(_nvmeTempBox);
 
-            string nvmeTip = "NVMe Storage Temperature & Health\r\nLeft-click to highlight NVMe Trend on the big graph • Right-click to reset peaks.";
+            string nvmeTip = "NVMe Storage Temperature, Health, Power & I/O Throughput\r\nLeft-click to highlight NVMe Trend on the big graph • Right-click to reset peaks.";
             _uiToolTip.SetToolTip(_nvmeTempBox, nvmeTip);
 
+            // Row 2 (Power, Platform & Cooling): Power | Chassis / FCLK | APU Fan | Sys Fan
             _pwrBox = new DoubleBufferedPanel
             {
-                Location = new Point(536, 8),
-                Size = new Size(125, 70),
+                Location = new Point(12, row2Y),
+                Size = new Size(boxW, boxH),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
             _pwrBoxTitle = new Label
             {
-                Text = "POWER ⓘ",
-                Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 2),
-                Size = new Size(123, 13),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Text = "POWER",
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                Location = new Point(7, 3),
+                Size = new Size(boxW - 14, 14),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _pwrLabel = new Label
             {
                 Text = "--W",
                 Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
-                Location = new Point(1, 15),
-                Size = new Size(123, 33),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(7, 18),
+                Size = new Size(boxW - 14, 33),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _pwrBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _pwrBox, _pwrBoxTitle, _pwrLabel, _sessionStats.PowerHistory, 3);
@@ -3439,32 +3640,32 @@ namespace MiniFanControl
             _pwrBox.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(3);
             statusCard.Controls.Add(_pwrBox);
 
-            string pwrTip = "APU Package Power (CPU + iGPU + SoC Telemetry)\r\nLeft-click to highlight Power Trend on the big graph • Right-click to reset peaks.";
+            string pwrTip = "APU Package Power (CPU + iGPU + SoC Telemetry & VRM Limits)\r\nLeft-click to highlight Power Trend on the big graph • Right-click to reset peaks.";
             _uiToolTip.SetToolTip(_pwrBox, pwrTip);
 
             _ambientBox = new DoubleBufferedPanel
             {
-                Location = new Point(667, 8),
-                Size = new Size(125, 70),
+                Location = new Point(12 + (boxW + boxGapX) * 1, row2Y),
+                Size = new Size(boxW, boxH),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
             _ambientBoxTitle = new Label
             {
-                Text = "Chassis",
-                Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 2),
-                Size = new Size(123, 13),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Text = "CHASSIS",
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                Location = new Point(7, 3),
+                Size = new Size(boxW - 14, 14),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _ambientLabel = new Label
             {
                 Text = "--°C",
                 Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
-                Location = new Point(1, 15),
-                Size = new Size(123, 33),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(7, 18),
+                Size = new Size(boxW - 14, 33),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _ambientBox.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _ambientBox, _ambientBoxTitle, _ambientLabel, _sessionStats.AmbientHistory, 9);
@@ -3473,32 +3674,32 @@ namespace MiniFanControl
             _ambientBox.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(9);
             statusCard.Controls.Add(_ambientBox);
 
-            string ambTip = "Motherboard Chassis Ambient Temperature (IT8613 Sensor 4)\r\nLeft-click to toggle Live Trend • Right-click to reset peaks.";
+            string ambTip = "Motherboard Chassis Ambient Temperature, Infinity Fabric (FCLK) & Live FPS\r\nLeft-click to toggle Live Trend • Right-click to reset peaks.";
             _uiToolTip.SetToolTip(_ambientBox, ambTip);
 
             _fan1Box = new DoubleBufferedPanel
             {
-                Location = new Point(798, 8),
-                Size = new Size(125, 70),
+                Location = new Point(12 + (boxW + boxGapX) * 2, row2Y),
+                Size = new Size(boxW, boxH),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
             _fan1BoxTitle = new Label
             {
                 Text = "APU FAN",
-                Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 2),
-                Size = new Size(123, 13),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                Location = new Point(7, 3),
+                Size = new Size(boxW - 14, 14),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _fan1RpmLabel = new Label
             {
                 Text = "-- RPM",
                 Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
-                Location = new Point(1, 15),
-                Size = new Size(123, 33),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(7, 18),
+                Size = new Size(boxW - 14, 33),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _fan1Box.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _fan1Box, _fan1BoxTitle, _fan1RpmLabel, _sessionStats.Fan1RpmHistory, 4);
@@ -3507,32 +3708,32 @@ namespace MiniFanControl
             _fan1Box.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(4);
             statusCard.Controls.Add(_fan1Box);
 
-            string fan1Tip = "APU / CPU Fan Tachometer\r\nLeft-click to highlight APU Fan on the big graph • Right-click to reset peaks.";
+            string fan1Tip = "APU / CPU Fan Tachometer & Active Duty\r\nLeft-click to highlight APU Fan on the big graph • Right-click to reset peaks.";
             _uiToolTip.SetToolTip(_fan1Box, fan1Tip);
 
             _fan2Box = new DoubleBufferedPanel
             {
-                Location = new Point(929, 8),
-                Size = new Size(125, 70),
+                Location = new Point(12 + (boxW + boxGapX) * 3, row2Y),
+                Size = new Size(boxW, boxH),
                 BorderStyle = BorderStyle.FixedSingle,
                 Cursor = Cursors.Hand
             };
             _fan2BoxTitle = new Label
             {
                 Text = "SYS FAN",
-                Font = new Font("Segoe UI", 7.0f, FontStyle.Bold),
-                Location = new Point(1, 2),
-                Size = new Size(123, 13),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+                Location = new Point(7, 3),
+                Size = new Size(boxW - 14, 14),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _fan2RpmLabel = new Label
             {
                 Text = "-- RPM",
                 Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
-                Location = new Point(1, 15),
-                Size = new Size(123, 33),
-                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(7, 18),
+                Size = new Size(boxW - 14, 33),
+                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
             _fan2Box.Paint += (s, e) => PaintMetricBoxSparkline(e.Graphics, _fan2Box, _fan2BoxTitle, _fan2RpmLabel, _sessionStats.Fan2RpmHistory, 5);
@@ -3541,80 +3742,62 @@ namespace MiniFanControl
             _fan2Box.KeyboardActivated += (s, e) => OnMetricBoxKeyboardActivate(5);
             statusCard.Controls.Add(_fan2Box);
 
-            string fan2Tip = "System RAM / NVMe Fan Tachometer\r\nLeft-click to highlight Sys Fan on the big graph • Right-click to reset peaks.";
+            string fan2Tip = "System RAM / NVMe Fan Tachometer & Active Duty\r\nLeft-click to highlight Sys Fan on the big graph • Right-click to reset peaks.";
             _uiToolTip.SetToolTip(_fan2Box, fan2Tip);
 
-            // Row 2: Secondary Telemetry Row (System RAM & Installed NVMe Drive)
+            // Legacy RAM/SSD banner folded into the wider RAM & NVMe telemetry boxes above
             _ramCard = new DoubleBufferedPanel
             {
-                Location = new Point(12, 84),
-                Size = new Size(1046, 25),
-                BorderStyle = BorderStyle.FixedSingle,
-                Cursor = Cursors.Hand
+                Location = new Point(12, 200),
+                Size = new Size(1046, 1),
+                Visible = false
             };
             _ramLabel = new Label
             {
-                Text = "🧠 RAM: Initializing...",
+                Text = "",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(6, 3),
-                Size = new Size(1034, 18),
-                TextAlign = ContentAlignment.MiddleLeft,
                 Visible = false
             };
-            _ramCard.Paint += (s, e) =>
-            {
-                if (_ramLabel != null && !string.IsNullOrEmpty(_ramLabel.Text))
-                {
-                    e.Graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-                    Rectangle rRect = new Rectangle(6, 3, _ramCard.ClientSize.Width - 12, 18);
-                    TextRenderer.DrawText(e.Graphics, _ramLabel.Text, _ramLabel.Font, rRect, _ramLabel.ForeColor,
-                        TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
-                }
-            };
-            statusCard.Controls.Add(_ramCard);
-
-            string ramTip = "System Physical Memory & Storage Drive Status\r\nLive RAM allocation, memory load %, and installed drive health.";
-            _uiToolTip.SetToolTip(_ramCard, ramTip);
 
             // Row 3: Active Fan Modes & Duty Status
-            Label modeStaticLbl = AddStaticLabel(statusCard, "Mode:", 12, 114, 52, 20);
+            Label modeStaticLbl = AddStaticLabel(statusCard, "Mode:", 12, 236, 52, 20);
             modeStaticLbl.Font = new Font("Segoe UI", 8.75f, FontStyle.Regular);
             _modeLabel = new Label
             {
                 Text = "--",
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Bold),
-                Location = new Point(62, 114),
+                Location = new Point(62, 236),
                 Size = new Size(266, 20),
                 AutoEllipsis = true
             };
             statusCard.Controls.Add(_modeLabel);
 
-            Label apuStaticLbl = AddStaticLabel(statusCard, "APU Fan:", 332, 114, 68, 20);
+            Label apuStaticLbl = AddStaticLabel(statusCard, "APU Fan:", 332, 236, 68, 20);
             apuStaticLbl.Font = new Font("Segoe UI", 8.75f, FontStyle.Regular);
             _pct1Label = new Label
             {
                 Text = "--",
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Bold),
-                Location = new Point(400, 114),
+                Location = new Point(400, 236),
                 Size = new Size(226, 20),
                 AutoEllipsis = true
             };
             statusCard.Controls.Add(_pct1Label);
 
-            Label sysStaticLbl = AddStaticLabel(statusCard, "Sys Fan:", 630, 114, 64, 20);
+            Label sysStaticLbl = AddStaticLabel(statusCard, "Sys Fan:", 630, 236, 64, 20);
             sysStaticLbl.Font = new Font("Segoe UI", 8.75f, FontStyle.Regular);
             _pct2Label = new Label
             {
                 Text = "--",
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Bold),
-                Location = new Point(694, 114),
+                Location = new Point(694, 236),
                 Size = new Size(248, 20),
                 AutoEllipsis = true
             };
             statusCard.Controls.Add(_pct2Label);
 
-            // 2. Modes & Fan Curve Section (top = 226, card = 246..686, height = 440)
-            Panel modeCard = CreateSectionCard("Modes, Fan Curves & Live Telemetry Graph", 226, 440);
+            // 2. Modes & Fan Curve Section (top = 366, card = 386..976, height = 590)
+            Panel modeCard = CreateSectionCard("Modes, Fan Curves & Live Telemetry Graph", 366, 590);
             _modeCardPanel = modeCard;
 
             // Row 1 (y=8): Tab Selector Row (📈 Live Trend | 🎮 Live Perf | ● APU Fan | ● Sys Fan | 🖥 OSD Studio)
@@ -3726,14 +3909,14 @@ namespace MiniFanControl
             }
 
             // Row 3 (y=76): Custom Modes Row for the currently selected fan tab
-            _customLabel = AddStaticLabel(modeCard, "Custom:", 8, 79, 58, 22);
+            _customLabel = AddStaticLabel(modeCard, "Custom:", 8, 79, 68, 22);
 
             _customModeCombo = new ComboBox
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 9f, FontStyle.Regular),
-                Location = new Point(68, 77),
-                Size = new Size(420, 24)
+                Location = new Point(78, 77),
+                Size = new Size(380, 24)
             };
             _customModeCombo.SelectedIndexChanged += OnCustomComboSelected;
             modeCard.Controls.Add(_customModeCombo);
@@ -3743,8 +3926,8 @@ namespace MiniFanControl
                 Text = "Use Curve",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-                Location = new Point(496, 76),
-                Size = new Size(104, 26),
+                Location = new Point(466, 76),
+                Size = new Size(106, 26),
                 Cursor = Cursors.Hand
             };
             _activateCustomBtn.FlatAppearance.BorderSize = 0;
@@ -3763,23 +3946,23 @@ namespace MiniFanControl
                 Text = "✨ Auto-Tune",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-                Location = new Point(608, 76),
-                Size = new Size(112, 26),
+                Location = new Point(580, 76),
+                Size = new Size(146, 26),
                 Cursor = Cursors.Hand
             };
             _autoTuneCustomBtn.FlatAppearance.BorderSize = 0;
             _autoTuneCustomBtn.Click += (s, e) => RunAutoTuneCurve();
             modeCard.Controls.Add(_autoTuneCustomBtn);
             _uiToolTip.SetToolTip(_autoTuneCustomBtn,
-                "Synthesizes an optimal 5-point APU + Sys fan curve tailored to your calibrated anti-stall floor,\r\nobserved idle baseline (anti-hunting), and APU power envelope (TDP acoustic knee).");
+                "Synthesizes an optimal 5-point APU + Sys fan curve tailored to your calibrated anti-stall floor,\r\nobserved idle baseline (anti-hunting), and active BIOS Power Mode TDP envelope.\r\nApplies to both APU Fan and Sys Fan automatically.");
 
             _addCustomBtn = new Button
             {
                 Text = "+ New",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-                Location = new Point(728, 76),
-                Size = new Size(98, 26),
+                Location = new Point(734, 76),
+                Size = new Size(96, 26),
                 Cursor = Cursors.Hand
             };
             _addCustomBtn.FlatAppearance.BorderSize = 0;
@@ -3791,19 +3974,19 @@ namespace MiniFanControl
                 Text = "Del",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),
-                Location = new Point(834, 76),
-                Size = new Size(102, 26),
+                Location = new Point(838, 76),
+                Size = new Size(100, 26),
                 Cursor = Cursors.Hand
             };
             _deleteCustomBtn.FlatAppearance.BorderSize = 0;
             _deleteCustomBtn.Click += (s, e) => DeleteSelectedCustomMode();
             modeCard.Controls.Add(_deleteCustomBtn);
 
-            // Row 4 (y=108): Large Interactive Fan Curve Graph + Combined Live Telemetry Graph (1056 x 496)
+            // Row 4 (y=108): Large Interactive Fan Curve Graph + Combined Live Telemetry Graph (1056 x 454)
             _curveCanvas = new FanCurveCanvas
             {
                 Location = new Point(8, 108),
-                Size = new Size(1056, 496),
+                Size = new Size(1056, 454),
                 ApuProfile = _apuProfile,
                 SysProfile = _sysProfile
             };
@@ -3864,9 +4047,17 @@ namespace MiniFanControl
             _liveCanvas = new LiveTelemetryCanvas
             {
                 Location = new Point(8, 42),
-                Size = new Size(1056, 690),
+                Size = new Size(1056, 648),
                 Stats = _sessionStats,
                 HasDualFans = _hasDualFans,
+                ShowCpu = _osd.TrendCpu,
+                ShowGpu = _osd.TrendGpu,
+                ShowRam = _osd.TrendRam,
+                ShowNvme = _osd.TrendNvme,
+                ShowPower = _osd.TrendPower,
+                ShowAmbient = _osd.TrendAmbient,
+                ShowApuRpm = _osd.TrendApuFan,
+                ShowSysRpm = _osd.TrendSysFan,
                 Visible = false
             };
             _liveCanvas.ResetPeaksRequested += (s, e) => ResetSessionPeaks();
@@ -3876,12 +4067,24 @@ namespace MiniFanControl
                 UpdateCurveHint();
                 InvalidateAllMetricBoxes();
             };
+            _liveCanvas.TrendVisibilityChanged += (s, e) =>
+            {
+                _osd.TrendCpu = _liveCanvas.ShowCpu;
+                _osd.TrendGpu = _liveCanvas.ShowGpu;
+                _osd.TrendRam = _liveCanvas.ShowRam;
+                _osd.TrendNvme = _liveCanvas.ShowNvme;
+                _osd.TrendPower = _liveCanvas.ShowPower;
+                _osd.TrendAmbient = _liveCanvas.ShowAmbient;
+                _osd.TrendApuFan = _liveCanvas.ShowApuRpm;
+                _osd.TrendSysFan = _liveCanvas.ShowSysRpm;
+                SyncOverlayFromStudio();
+            };
             modeCard.Controls.Add(_liveCanvas);
 
             _perfCanvas = new LivePerformanceCanvas
             {
                 Location = new Point(8, 42),
-                Size = new Size(1056, 690),
+                Size = new Size(1056, 648),
                 Stats = _sessionStats,
                 Status = _lastStatus,
                 Visible = false
@@ -3893,7 +4096,7 @@ namespace MiniFanControl
             _osdConfigPanel = new Panel
             {
                 Location = new Point(8, 41),
-                Size = new Size(1056, 690),
+                Size = new Size(1056, 648),
                 Visible = false
             };
             BuildOsdStudioPanel(_osdConfigPanel);
@@ -3903,14 +4106,14 @@ namespace MiniFanControl
             {
                 Text = "",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
-                Location = new Point(8, 416),
+                Location = new Point(8, 566),
                 Size = new Size(1056, 18),
                 TextAlign = ContentAlignment.MiddleCenter
             };
             modeCard.Controls.Add(_curveHintLabel);
 
-            // 3. Manual Fan Control Section (top = 894, card = 914..1008, height = 94)
-            Panel fanCard = CreateSectionCard("Manual Fan Control", 894, 94);
+            // 3. Manual Fan Control Section (top = 992, card = 1012..1106, height = 94)
+            Panel fanCard = CreateSectionCard("Manual Fan Control", 992, 94);
             _fanCardPanel = fanCard;
             _manualFanHeaderLabel = _sectionHeaders.Count > 0 ? _sectionHeaders[_sectionHeaders.Count - 1] : null;
 
@@ -3918,7 +4121,7 @@ namespace MiniFanControl
             {
                 Text = "",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(544, 892),
+                Location = new Point(544, 990),
                 Size = new Size(540, 18),
                 TextAlign = ContentAlignment.MiddleRight,
                 Cursor = Cursors.Hand
@@ -4057,8 +4260,8 @@ namespace MiniFanControl
             _fan2AutoBtn.Click += (s, e) => ApplyFan(2, 0);
             fanCard.Controls.Add(_fan2AutoBtn);
 
-            // 4. Options Section (top = 854, card = 874..960, height = 86)
-            Panel optCard = CreateSectionCard("Options", 1014, 86);
+            // 4. Options Section (top = 1112, card = 1132..1218, height = 86)
+            Panel optCard = CreateSectionCard("Options", 1112, 86);
 
             _samplingLabel = new Label
             {
@@ -4137,7 +4340,7 @@ namespace MiniFanControl
 
             _showOverlayCb = new CheckBox
             {
-                Text = "Show CapFrameX OSD overlay",
+                Text = "Show In-Game OSD overlay",
                 Location = new Point(12, 32),
                 Size = new Size(216, 24),
                 Checked = _showOverlay
@@ -4243,7 +4446,7 @@ namespace MiniFanControl
             _errorBanner = new Label
             {
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
-                Location = new Point(14, 1034),
+                Location = new Point(14, 1132),
                 Size = new Size(1072, 82),
                 Padding = new Padding(8),
                 Visible = false
@@ -4251,12 +4454,12 @@ namespace MiniFanControl
             Controls.Add(_errorBanner);
             _errorBanner.BringToFront();
 
-            // 5. Status Bar (y = 1120..1150)
+            // 5. Status Bar (y = 1220..1248)
             _statusBarLabel = new Label
             {
                 Text = "⏳ Initializing…",
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Regular),
-                Location = new Point(14, 1125),
+                Location = new Point(14, 1223),
                 Size = new Size(820, 22)
             };
             Controls.Add(_statusBarLabel);
@@ -4265,7 +4468,7 @@ namespace MiniFanControl
             {
                 Text = "Reset Auto",
                 FlatStyle = FlatStyle.Flat,
-                Location = new Point(850, 1122),
+                Location = new Point(850, 1220),
                 Size = new Size(106, 28),
                 Cursor = Cursors.Hand
             };
@@ -4277,7 +4480,7 @@ namespace MiniFanControl
             {
                 Text = "Close",
                 FlatStyle = FlatStyle.Flat,
-                Location = new Point(966, 1122),
+                Location = new Point(966, 1220),
                 Size = new Size(106, 28),
                 Cursor = Cursors.Hand
             };
@@ -4377,7 +4580,7 @@ namespace MiniFanControl
                     if (!_showingOsdConfig && _curveCanvas != null)
                     {
                         _curveCanvas.Location = new Point(8, 108);
-                        _curveCanvas.Size = new Size(1056, 496);
+                        _curveCanvas.Size = new Size(1056, 454);
                         _curveCanvas.Visible = true;
                     }
                     UpdateCurveTabStyles();
@@ -4408,7 +4611,10 @@ namespace MiniFanControl
             else
             {
                 if (_wideRightPanel.Visible) _wideRightPanel.Visible = false;
-                int canvasH = _manualFanControlVisible ? 560 : 690;
+                // Collapse hidden wide panel bounds and reset scroll state so un-maximizing from full-screen
+                // never leaves lingering horizontal or vertical scrollbars.
+                _wideRightPanel.Bounds = new Rectangle(0, 0, 0, 0);
+                int canvasH = _manualFanControlVisible ? 518 : 648;
 
                 if (_liveCanvas.Parent != _modeCardPanel) _liveCanvas.Parent = _modeCardPanel;
                 _liveCanvas.Location = new Point(8, 42);
@@ -4419,6 +4625,12 @@ namespace MiniFanControl
                 _perfCanvas.Location = new Point(8, 42);
                 _perfCanvas.Size = new Size(1056, canvasH);
                 _perfCanvas.Visible = _showingPerfGraph;
+
+                if (AutoScroll)
+                {
+                    AutoScrollPosition = Point.Empty;
+                    PerformLayout();
+                }
             }
         }
 
@@ -4501,20 +4713,20 @@ namespace MiniFanControl
             {
                 Text = "Combined Live Graph Height:",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(476, 38),
+                Location = new Point(492, 38),
                 Size = new Size(300, 16),
                 UseMnemonic = false
             };
             p.Controls.Add(_osdGraphHeightLabel);
 
-            // Row 2 Buttons (y=56, h=26, w=108):
+            // Row 2 Buttons (y=56, h=26): 5 modes across x=8..482
             _osdBtnBothGraphs = new Button
             {
                 Text = "Both (All)",
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
                 Location = new Point(8, 56),
-                Size = new Size(108, 26),
+                Size = new Size(88, 26),
                 Cursor = Cursors.Hand
             };
             _osdBtnBothGraphs.FlatAppearance.BorderSize = 0;
@@ -4526,9 +4738,9 @@ namespace MiniFanControl
             {
                 Text = "Combined",
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(124, 56),
-                Size = new Size(108, 26),
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
+                Location = new Point(100, 56),
+                Size = new Size(88, 26),
                 Cursor = Cursors.Hand
             };
             _osdBtnCombinedGraph.FlatAppearance.BorderSize = 0;
@@ -4540,9 +4752,9 @@ namespace MiniFanControl
             {
                 Text = "Sparklines",
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(240, 56),
-                Size = new Size(108, 26),
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
+                Location = new Point(192, 56),
+                Size = new Size(88, 26),
                 Cursor = Cursors.Hand
             };
             _osdBtnSparklines.FlatAppearance.BorderSize = 0;
@@ -4554,9 +4766,9 @@ namespace MiniFanControl
             {
                 Text = "Text Only",
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(356, 56),
-                Size = new Size(108, 26),
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
+                Location = new Point(284, 56),
+                Size = new Size(86, 26),
                 Cursor = Cursors.Hand
             };
             _osdBtnTextOnly.FlatAppearance.BorderSize = 0;
@@ -4564,13 +4776,37 @@ namespace MiniFanControl
             _uiToolTip.SetToolTip(_osdBtnTextOnly, "Display metrics as text only without live graphs");
             p.Controls.Add(_osdBtnTextOnly);
 
+            _osdBtnGraphsOnly = new Button
+            {
+                Text = "Graphs Only",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
+                Location = new Point(374, 56),
+                Size = new Size(108, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnGraphsOnly.FlatAppearance.BorderSize = 0;
+            _osdBtnGraphsOnly.Click += (s, e) =>
+            {
+                _osd.GraphMode = 4;
+                if (!_osd.ShowFpsGraph && !_osd.ShowLiveTrend)
+                {
+                    _osd.ShowFpsGraph = true;
+                    if (_osdShowFpsGraphCb != null) _osdShowFpsGraphCb.Checked = true;
+                }
+                SyncOverlayFromStudio();
+                UpdateOsdStudioStyles();
+            };
+            _uiToolTip.SetToolTip(_osdBtnGraphsOnly, "Hide all metric text rows and display ONLY the enabled graphs (toggle FPS & Frametime Graph and/or Live Trend Graph below).");
+            p.Controls.Add(_osdBtnGraphsOnly);
+
             // Right side: Height buttons
             _osdBtnHeightCompact = new Button
             {
                 Text = "75px Compact",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
-                Location = new Point(476, 56),
+                Location = new Point(492, 56),
                 Size = new Size(108, 26),
                 Cursor = Cursors.Hand
             };
@@ -4583,7 +4819,7 @@ namespace MiniFanControl
                 Text = "105px Medium",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
-                Location = new Point(592, 56),
+                Location = new Point(608, 56),
                 Size = new Size(108, 26),
                 Cursor = Cursors.Hand
             };
@@ -4596,7 +4832,7 @@ namespace MiniFanControl
                 Text = "140px Large",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
-                Location = new Point(708, 56),
+                Location = new Point(724, 56),
                 Size = new Size(108, 26),
                 Cursor = Cursors.Hand
             };
@@ -4609,7 +4845,7 @@ namespace MiniFanControl
                 Text = "180px XL",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
-                Location = new Point(820, 56),
+                Location = new Point(840, 56),
                 Size = new Size(108, 26),
                 Cursor = Cursors.Hand
             };
@@ -4632,7 +4868,7 @@ namespace MiniFanControl
             {
                 Text = "Layout Direction:",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(476, 88),
+                Location = new Point(492, 88),
                 Size = new Size(300, 16),
                 UseMnemonic = false
             };
@@ -4696,8 +4932,8 @@ namespace MiniFanControl
                 Text = "▬ Horizontal Bar",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(476, 106),
-                Size = new Size(222, 26),
+                Location = new Point(492, 106),
+                Size = new Size(224, 26),
                 Cursor = Cursors.Hand
             };
             _osdBtnLayoutH.FlatAppearance.BorderSize = 0;
@@ -4709,8 +4945,8 @@ namespace MiniFanControl
                 Text = "▮ Vertical Stack",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(706, 106),
-                Size = new Size(222, 26),
+                Location = new Point(724, 106),
+                Size = new Size(224, 26),
                 Cursor = Cursors.Hand
             };
             _osdBtnLayoutV.FlatAppearance.BorderSize = 0;
@@ -4804,12 +5040,12 @@ namespace MiniFanControl
             _uiToolTip.SetToolTip(_osdQuickPosBr, "Snap OSD to Bottom-Right screen corner");
             p.Controls.Add(_osdQuickPosBr);
 
-            // Row 5 (y=188): Section 4 - Telemetry Metrics & Overlay Parts Header + Select All / Defaults Buttons
+            // Row 5 (y=174): Section 4 - Telemetry Metrics & Overlay Parts Header + Select All / Defaults Buttons
             _osdMetricsHeaderLabel = new Label
             {
                 Text = "Visible Telemetry Metrics & Overlay Parts:",
                 Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-                Location = new Point(8, 188),
+                Location = new Point(8, 174),
                 Size = new Size(460, 20),
                 UseMnemonic = false
             };
@@ -4820,7 +5056,7 @@ namespace MiniFanControl
                 Text = "Select All",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
-                Location = new Point(712, 184),
+                Location = new Point(712, 170),
                 Size = new Size(104, 25),
                 Cursor = Cursors.Hand
             };
@@ -4838,7 +5074,7 @@ namespace MiniFanControl
                 Text = "Deselect All",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
-                Location = new Point(824, 184),
+                Location = new Point(824, 170),
                 Size = new Size(108, 25),
                 Cursor = Cursors.Hand
             };
@@ -4856,7 +5092,7 @@ namespace MiniFanControl
                 Text = "Defaults",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
-                Location = new Point(940, 184),
+                Location = new Point(940, 170),
                 Size = new Size(108, 25),
                 Cursor = Cursors.Hand
             };
@@ -4869,11 +5105,11 @@ namespace MiniFanControl
             };
             p.Controls.Add(_osdResetDefaultsBtn);
 
-            // Row 6+ (y=214..686): Per-Metric Configuration Sections (scrollable at higher DPI)
+            // Row 6+ (y=200..648): Per-Metric Configuration Sections (fits cleanly without scrollbar)
             _osdMetricsScrollPanel = new Panel
             {
-                Location = new Point(4, 214),
-                Size = new Size(1048, 472),
+                Location = new Point(4, 200),
+                Size = new Size(1048, 448),
                 AutoScroll = true
             };
             p.Controls.Add(_osdMetricsScrollPanel);
@@ -4881,8 +5117,8 @@ namespace MiniFanControl
 
             int[] colX = new[] { 8, 260, 512, 764 };
             const int colW = 246;
-            const int cbH = 24;
-            const int rowStep = 23;
+            const int cbH = 22;
+            const int rowStep = 21;
             int curY = 0;
 
             // 1. CPU (left) & Power & VRM (right)
@@ -5035,6 +5271,18 @@ namespace MiniFanControl
             };
             _uiToolTip.SetToolTip(_osdTrackerModeCombo, "Choose whether the right-hand tracker column displays Peaks (▲), Lows (▼), Min/Max (▼▲), or Session Average (~).");
             _osdMetricsScrollPanel.Controls.Add(_osdTrackerModeCombo);
+            _osdDfCornerInsetCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY + rowStep * 2, colW, cbH, "DF Corner Inset", _osd.DfCornerInset, v =>
+            {
+                _osd.DfCornerInset = v;
+                if (v)
+                {
+                    _osd.ShowFpsGraph = true;
+                    _osd.DfGraphStyle = true;
+                    if (_osdShowFpsGraphCb != null) _osdShowFpsGraphCb.Checked = true;
+                    if (_osdDfGraphStyleCb != null) _osdDfGraphStyleCb.Checked = true;
+                }
+                SyncOverlayFromStudio();
+            }, "Render a compact 30-sample Digital Foundry Frame-Time box tucked inside the top-left corner of the FPS graph.");
             curY += rowStep * 3 + 4;
 
             _osdTipLabel = new Label
@@ -5141,21 +5389,34 @@ namespace MiniFanControl
             }
         }
 
-        public void RunAutoTuneCurve()
+        private int GetActiveBiosPowerModeCode()
         {
-            string summary;
-            FanCurveProfile tuned = FanCurveProfile.SynthesizeAutoTunedCurve(_lastStatus, _sessionStats, out summary);
+            if (_controller != null && _controller.BiosPowerModeOverride >= 0 && _controller.BiosPowerModeOverride <= 2)
+                return _controller.BiosPowerModeOverride;
+            if (_lastStatus.ModeCode >= 0 && _lastStatus.ModeCode <= 2)
+                return _lastStatus.ModeCode;
+            if (_lastActiveBiosModeCode >= 0 && _lastActiveBiosModeCode <= 2)
+                return _lastActiveBiosModeCode;
+            return -1;
+        }
 
-            FanCurveProfile target = null;
+        private FanCurveProfile FindAutoTunedProfile()
+        {
             foreach (FanCurveProfile cp in _customProfiles)
             {
                 if (!cp.IsProtectedExample && cp.Name.StartsWith("✨ Auto-Tuned", StringComparison.OrdinalIgnoreCase))
-                {
-                    target = cp;
-                    break;
-                }
+                    return cp;
             }
+            return null;
+        }
 
+        public void RunAutoTuneCurve()
+        {
+            string summary;
+            int biosCode = GetActiveBiosPowerModeCode();
+            FanCurveProfile tuned = FanCurveProfile.SynthesizeAutoTunedCurve(_lastStatus, _sessionStats, out summary, biosCode);
+
+            FanCurveProfile target = FindAutoTunedProfile();
             if (target != null)
             {
                 target.Name = tuned.Name;
@@ -5173,7 +5434,26 @@ namespace MiniFanControl
                 SetGraphViewMode(false, false, 0);
             }
 
-            ActivateCustomProfile(target);
+            // Apply Auto-Tuned curve to BOTH APU Fan and Sys Fan automatically
+            if (_controller != null)
+            {
+                _controller.SetProfileTarget(target, false);
+                if (_hasDualFans)
+                    _controller.SetProfileTarget(target, true);
+            }
+            if (_curveCanvas != null)
+            {
+                _curveCanvas.ApuProfile = _apuProfile;
+                _curveCanvas.SysProfile = _sysProfile;
+                _curveCanvas.Invalidate();
+            }
+            PopulateCustomCombo();
+            UpdateCurveTabStyles();
+            UpdateModeButtonStyles(_lastSelectedModeCode);
+            UpdateCurveHint();
+            SaveSettings();
+            StartRampIndication(_hasDualFans ? "APU + Sys Fans → " + target.Name : "APU Fan → " + target.Name, 0);
+
             if (_statusBarLabel != null)
             {
                 _statusBarLabel.Text = summary;
@@ -5186,19 +5466,12 @@ namespace MiniFanControl
 
         private void RefreshAutoTunedCurveAfterCalibration()
         {
-            FanCurveProfile target = null;
-            foreach (FanCurveProfile cp in _customProfiles)
-            {
-                if (!cp.IsProtectedExample && cp.Name.StartsWith("✨ Auto-Tuned", StringComparison.OrdinalIgnoreCase))
-                {
-                    target = cp;
-                    break;
-                }
-            }
+            FanCurveProfile target = FindAutoTunedProfile();
             if (target == null) return;
 
             string summary;
-            FanCurveProfile tuned = FanCurveProfile.SynthesizeAutoTunedCurve(_lastStatus, _sessionStats, out summary);
+            int biosCode = GetActiveBiosPowerModeCode();
+            FanCurveProfile tuned = FanCurveProfile.SynthesizeAutoTunedCurve(_lastStatus, _sessionStats, out summary, biosCode);
             target.Name = tuned.Name;
             target.ApuPoints = FanCurveProfile.ClonePoints(tuned.ApuPoints);
             target.SysPoints = FanCurveProfile.ClonePoints(tuned.SysPoints);
@@ -5206,6 +5479,7 @@ namespace MiniFanControl
             PopulateCustomCombo();
             if (_apuProfile == target || _sysProfile == target)
             {
+                if (_controller != null) _controller.InvalidateAppliedCache();
                 if (_curveCanvas != null)
                     _curveCanvas.Invalidate();
                 if (_statusBarLabel != null)
@@ -5534,7 +5808,7 @@ namespace MiniFanControl
             _osdConfigPanel.BackColor = surface;
 
             // Highlight active Graph Mode button
-            Button[] modeBtns = new[] { _osdBtnTextOnly, _osdBtnSparklines, _osdBtnCombinedGraph, _osdBtnBothGraphs };
+            Button[] modeBtns = new[] { _osdBtnTextOnly, _osdBtnSparklines, _osdBtnCombinedGraph, _osdBtnBothGraphs, _osdBtnGraphsOnly };
             for (int i = 0; i < modeBtns.Length; i++)
             {
                 if (modeBtns[i] == null) continue;
@@ -5684,7 +5958,7 @@ namespace MiniFanControl
                 _osdShowFpsCb, _osdShowLowsCb,
                 _osdShowModeCb, _osdShowPeaksCb, _osdShowRadeonCb, _osdShowRadeonExtTagsCb, _osdShowDriverVerCb,
                 _osdShowClocksCb, _osdShowGameNameCb, _osdSparklineBgCb, _osdMatchThemeCb,
-                _osdShowLiveTrendCb, _osdShowFpsGraphCb, _osdPlotFpsOnTrendCb, _osdDfGraphStyleCb, _osdDfGraphFirstCb,
+                _osdShowLiveTrendCb, _osdShowFpsGraphCb, _osdPlotFpsOnTrendCb, _osdDfGraphStyleCb, _osdDfCornerInsetCb, _osdDfGraphFirstCb,
                 _osdShowRamTempCb, _osdShowRamDualSticksCb, _osdShowRamSpreadCb, _osdShowRamLoadCb,
                 _osdShowRamPowerCb, _osdShowRamClockCb, _osdShowNvmePowerCb,
                 _osdShowNvmeIoCb, _osdShowNvmeDualCb, _osdShowCpuLoadCb, _osdShowGpuHotspotCb,
@@ -5871,6 +6145,13 @@ namespace MiniFanControl
                 _hwSubLabel.BackColor = bg;
                 _hwSubLabel.ForeColor = textDim;
             }
+
+            if (_biosPowerLabel != null)
+            {
+                _biosPowerLabel.BackColor = bg;
+                _biosPowerLabel.ForeColor = textDim;
+            }
+            UpdateBiosPowerModeStyles(_lastActiveBiosModeCode);
 
             if (_driversMenuBtn != null)
             {
@@ -6151,6 +6432,74 @@ namespace MiniFanControl
             }
         }
 
+        private static readonly Font BiosModeFontBold = new Font("Segoe UI", 8.0f, FontStyle.Bold);
+        private static readonly Font BiosModeFontRegular = new Font("Segoe UI", 8.0f, FontStyle.Regular);
+
+        private void UpdateBiosPowerModeStyles(int activeCode)
+        {
+            if (activeCode >= 0 && activeCode <= 2)
+                _lastActiveBiosModeCode = activeCode;
+
+            bool isRadeon = (_themePref == ThemePreference.Radeon);
+            Color surface2 = isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2));
+            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
+            Color activeBg = isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent));
+            Color activeFg = isRadeon ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
+
+            for (int i = 0; i < _biosModeButtons.Length; i++)
+            {
+                Button b = _biosModeButtons[i];
+                if (b == null) continue;
+                bool isActive = (i == _lastActiveBiosModeCode);
+                if (b.BackColor != (isActive ? activeBg : surface2))
+                    b.BackColor = isActive ? activeBg : surface2;
+                if (b.ForeColor != (isActive ? activeFg : text))
+                    b.ForeColor = isActive ? activeFg : text;
+                Font targetFont = isActive ? BiosModeFontBold : BiosModeFontRegular;
+                if (b.Font != targetFont)
+                    b.Font = targetFont;
+            }
+        }
+
+        private void ApplyBiosPowerMode(int code)
+        {
+            if (code < 0 || code > 2) return;
+            string[] names = { "Balanced (~48W)", "Performance (~60W+)", "Silent (~35W)" };
+            try
+            {
+                bool ok = _controller != null && _controller.SetBiosPowerMode(code);
+                UpdateBiosPowerModeStyles(code);
+
+                // If Auto-Tuned is active on either fan, adapt its TDP knee automatically for the new BIOS Power Mode
+                // while leaving hand-edited custom curves and protected reference presets untouched.
+                FanCurveProfile autoTuned = FindAutoTunedProfile();
+                if (autoTuned != null && (_apuProfile == autoTuned || _sysProfile == autoTuned))
+                {
+                    string summary;
+                    FanCurveProfile adapted = FanCurveProfile.SynthesizeAutoTunedCurve(_lastStatus, _sessionStats, out summary, code);
+                    autoTuned.Name = adapted.Name;
+                    autoTuned.ApuPoints = FanCurveProfile.ClonePoints(adapted.ApuPoints);
+                    autoTuned.SysPoints = FanCurveProfile.ClonePoints(adapted.SysPoints);
+                    if (_controller != null) _controller.InvalidateAppliedCache();
+                    PopulateCustomCombo();
+                    UpdateCurveTabStyles();
+                    if (_curveCanvas != null) _curveCanvas.Invalidate();
+                    if (_curveHintLabel != null) _curveHintLabel.Text = summary;
+                }
+
+                SaveSettings();
+                if (ok)
+                {
+                    StartRampIndication("BIOS Power Mode → " + names[code], 0);
+                }
+            }
+            catch (Exception ex)
+            {
+                _errorBanner.Text = "⚠ " + ex.Message;
+                _errorBanner.Visible = true;
+            }
+        }
+
         private string FormatRpmText(int rpm, bool manualSliderOverride, int manualPct, bool isRamping)
         {
             if (isRamping)
@@ -6277,9 +6626,17 @@ namespace MiniFanControl
             int apuTemp = Math.Max(st.CpuTemp, st.GpuTemp);
             if (_curveCanvas != null)
             {
+                int sysThermalSource = (st.NvmeTemp > 0) ? Math.Max(apuTemp, st.NvmeTemp) : apuTemp;
+                string apuSrc = (st.GpuTemp > st.CpuTemp) ? "iGPU" : "CPU";
+                string sysSrc = (st.NvmeTemp > apuTemp) ? "NVMe" : apuSrc;
                 _curveCanvas.ApuProfile = _apuProfile;
                 _curveCanvas.SysProfile = _sysProfile;
                 _curveCanvas.CurrentApuTemp = apuTemp;
+                _curveCanvas.CurrentSysTemp = sysThermalSource;
+                _curveCanvas.CurrentApuSource = apuSrc;
+                _curveCanvas.CurrentSysSource = sysSrc;
+                _curveCanvas.CurrentFan1Rpm = st.Fan1Rpm;
+                _curveCanvas.CurrentFan2Rpm = st.Fan2Rpm;
                 if (!_showingLiveTelemetry && !_showingPerfGraph && !_showingOsdConfig)
                     _curveCanvas.Invalidate();
             }
@@ -6297,9 +6654,14 @@ namespace MiniFanControl
             }
             if (_perfCanvas != null)
             {
+                _perfCanvas.SampleIntervalMs = _refreshIntervalMs;
                 _perfCanvas.UpdateStatus(st);
                 if (_perfCanvas.Visible)
                     _perfCanvas.Invalidate();
+            }
+            if (_overlayForm != null)
+            {
+                _overlayForm.SampleIntervalMs = _refreshIntervalMs;
             }
 
             Color tempFg = _isDarkMode ? DarkText : LightText;
@@ -6307,80 +6669,82 @@ namespace MiniFanControl
             Color rampColor = _isDarkMode ? Color.FromArgb(0xFA, 0xB3, 0x87) : Color.FromArgb(0xEA, 0x58, 0x0C);
             bool isRadeon = (_themePref == ThemePreference.Radeon);
 
+            Color autoColor = _isDarkMode ? Color.FromArgb(0xA6, 0xE3, 0xA1) : Color.FromArgb(0x15, 0x80, 0x3D);
+            Color manColor = isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (_isDarkMode ? DarkAccent : LightAccent);
+            Color warnRose = Color.FromArgb(0xFB, 0x71, 0x85);
+
+            // 1. CPU Box (Row 1, Col 0)
             string cpuValTxt = st.CpuTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.CpuTemp, _useFahrenheit), tUnit) : "N/A";
             if (_cpuTempLabel.Text != cpuValTxt) _cpuTempLabel.Text = cpuValTxt;
             if (_cpuTempLabel.ForeColor != tempFg) _cpuTempLabel.ForeColor = tempFg;
-            if (_cpuBoxTitle != null)
-            {
-                string clkPart = st.CpuClockMhz > 0 ? string.Format(" • {0:0.0}G", st.CpuClockMhz / 1000.0) : "";
-                string cpuHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxCpuTemp > 0)
-                    ? string.Format("CPU • MAX {0}°{1}", TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxCpuTemp, _useFahrenheit), clkPart)
-                    : (st.CpuClockMhz > 0 ? string.Format("CPU • {0:0.0} GHz", st.CpuClockMhz / 1000.0) : "CPU TEMP");
-                if (_cpuBoxTitle.Text != cpuHeader) _cpuBoxTitle.Text = cpuHeader;
-            }
+            if (_cpuBoxTitle != null && _cpuBoxTitle.Text != "CPU") _cpuBoxTitle.Text = "CPU";
+            string cpuPeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxCpuTemp > 0)
+                ? string.Format("▼{0}° ~{1:0}° ▲{2}°",
+                    TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinCpuTemp, _useFahrenheit),
+                    TelemetrySessionStats.ToDisplayTemp((int)Math.Round(_sessionStats.AvgCpuTemp), _useFahrenheit),
+                    TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxCpuTemp, _useFahrenheit))
+                : "";
+            string cpuSubTxt = "";
+            if (st.CpuClockMhz > 0 && st.CpuLoadPct >= 0)
+                cpuSubTxt = string.Format("{0}% • {1} MHz", st.CpuLoadPct, st.CpuClockMhz);
+            else if (st.CpuClockMhz > 0)
+                cpuSubTxt = string.Format("{0} MHz", st.CpuClockMhz);
+            else if (st.CpuLoadPct > 0)
+                cpuSubTxt = string.Format("{0}% Load", st.CpuLoadPct);
+            string cpuLoadRange = (_sessionStats.SampleCount > 0 && _sessionStats.MaxCpuLoad > 0)
+                ? string.Format("Load ▼{0}% ~{1:0}% ▲{2}%", _sessionStats.MinCpuLoad, _sessionStats.AvgCpuLoad, _sessionStats.MaxCpuLoad)
+                : string.Format("Load {0}%", st.CpuLoadPct);
+            string cpuRailPart = st.CpuPowerWatts > 0 ? string.Format(" • CPU ~{0}W", st.CpuPowerWatts) : "";
+            string cpuDetail1 = cpuLoadRange + cpuRailPart;
+            string cpuDetail2 = st.IsThermalThrottling
+                ? "⚠ THERMAL THROTTLING ACTIVE"
+                : (st.NpuActivityPct > 0 || st.NpuClockMhz > 0
+                    ? string.Format("Tctl/Tdie • NPU {0}% ({1} MHz)", st.NpuActivityPct, st.NpuClockMhz)
+                    : "Ryzen Package • Tctl/Tdie");
+            SetMetricDetail(1, cpuPeakTxt, cpuSubTxt, cpuDetail1, cpuDetail2,
+                st.IsThermalThrottling ? warnRose : Color.Empty,
+                st.IsThermalThrottling ? warnRose : Color.Empty);
             if (_cpuTempBox != null)
             {
                 _cpuTempBox.AccessibleName = string.Format("CPU Temperature: {0}", cpuValTxt);
                 _cpuTempBox.Invalidate();
             }
 
+            // 2. iGPU Box (Row 1, Col 1)
             string gpuValTxt = st.GpuTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.GpuTemp, _useFahrenheit), tUnit) : "N/A";
             if (_gpuTempLabel.Text != gpuValTxt) _gpuTempLabel.Text = gpuValTxt;
             if (_gpuTempLabel.ForeColor != tempFg) _gpuTempLabel.ForeColor = tempFg;
-            if (_gpuBoxTitle != null)
-            {
-                string hotPart = st.GpuHotspotTemp > 0 ? string.Format(" • 🔥{0}°", TelemetrySessionStats.ToDisplayTemp(st.GpuHotspotTemp, _useFahrenheit)) : "";
-                string gpuHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxGpuTemp > 0)
-                    ? string.Format("iGPU • MAX {0}°{1}", TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxGpuTemp, _useFahrenheit), hotPart)
-                    : (st.GpuHotspotTemp > 0 ? string.Format("iGPU • 🔥{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.GpuHotspotTemp, _useFahrenheit), tUnit) : "iGPU TEMP");
-                if (_gpuBoxTitle.Text != gpuHeader) _gpuBoxTitle.Text = gpuHeader;
-            }
+            if (_gpuBoxTitle != null && _gpuBoxTitle.Text != "iGPU") _gpuBoxTitle.Text = "iGPU";
+            string gpuPeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxGpuTemp > 0)
+                ? string.Format("▼{0}° ~{1:0}° ▲{2}°",
+                    TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinGpuTemp, _useFahrenheit),
+                    TelemetrySessionStats.ToDisplayTemp((int)Math.Round(_sessionStats.AvgGpuTemp), _useFahrenheit),
+                    TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxGpuTemp, _useFahrenheit))
+                : "";
+            string gpuSubTxt = "";
+            if (st.GfxClockMhz > 0)
+                gpuSubTxt = string.Format("{0}% • {1} MHz", st.GfxActivityPct, st.GfxClockMhz);
+            else if (st.GfxActivityPct > 0)
+                gpuSubTxt = string.Format("{0}% Load", st.GfxActivityPct);
+            else
+                gpuSubTxt = "0% • Idle";
+            string gpuLoadRange = (_sessionStats.SampleCount > 0 && _sessionStats.MaxGpuLoad > 0)
+                ? string.Format("Load ▼{0}% ~{1:0}% ▲{2}%", _sessionStats.MinGpuLoad, _sessionStats.AvgGpuLoad, _sessionStats.MaxGpuLoad)
+                : string.Format("Load {0}%", st.GfxActivityPct);
+            string gpuExtraPart = st.GpuHotspotTemp > 0
+                ? string.Format(" • 🔥{0}°", TelemetrySessionStats.ToDisplayTemp(st.GpuHotspotTemp, _useFahrenheit))
+                : (st.GfxPowerWatts > 0 ? string.Format(" • GFX ~{0}W", st.GfxPowerWatts) : "");
+            string gpuDetail1 = gpuLoadRange + gpuExtraPart;
+            string gpuDrvPart = !string.IsNullOrEmpty(st.RadeonSoftwareVer) ? ("Adrenalin " + st.RadeonSoftwareVer) : "Radeon 780M";
+            string gpuFeatPart = !string.IsNullOrEmpty(st.RadeonFeaturesSummary) ? (" • " + st.RadeonFeaturesSummary) : "";
+            SetMetricDetail(2, gpuPeakTxt, gpuSubTxt, gpuDetail1, gpuDrvPart + gpuFeatPart, Color.Empty);
             if (_gpuTempBox != null)
             {
                 _gpuTempBox.AccessibleName = string.Format("iGPU Temperature: {0}", gpuValTxt);
                 _gpuTempBox.Invalidate();
             }
 
-            if (_nvmeTempLabel != null)
-            {
-                string nvmeValTxt = st.NvmeTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.NvmeTemp, _useFahrenheit), tUnit) : "N/A";
-                if (_nvmeTempLabel.Text != nvmeValTxt) _nvmeTempLabel.Text = nvmeValTxt;
-                Color nvmeFg = (st.NvmeTemp >= 70) ? Color.FromArgb(0xFB, 0x71, 0x85) : tempFg;
-                if (_nvmeTempLabel.ForeColor != nvmeFg) _nvmeTempLabel.ForeColor = nvmeFg;
-                if (_nvmeBoxTitle != null)
-                {
-                    string nvmeHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxNvmeTemp > 0)
-                        ? string.Format("NVMe • MAX {0}°", TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxNvmeTemp, _useFahrenheit))
-                        : "NVMe TEMP";
-                    if (_nvmeBoxTitle.Text != nvmeHeader) _nvmeBoxTitle.Text = nvmeHeader;
-                }
-                if (_nvmeTempBox != null)
-                {
-                    _nvmeTempBox.AccessibleName = string.Format("NVMe Temperature: {0}", nvmeValTxt);
-                    _nvmeTempBox.Invalidate();
-                }
-            }
-
-            if (_pwrLabel != null)
-            {
-                string pwrValTxt = st.ApuPowerWatts > 0 ? string.Format("{0}W", st.ApuPowerWatts) : "--W";
-                if (_pwrLabel.Text != pwrValTxt) _pwrLabel.Text = pwrValTxt;
-                if (_pwrLabel.ForeColor != tempFg) _pwrLabel.ForeColor = tempFg;
-                if (_pwrBoxTitle != null)
-                {
-                    string limPart = st.ApuPowerLimitWatts > 0 ? string.Format("/{0}W", st.ApuPowerLimitWatts) : "";
-                    string pwrHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxPowerWatts > 0)
-                        ? string.Format("PWR • MAX {0}W{1}", _sessionStats.MaxPowerWatts, limPart)
-                        : (st.ApuPowerLimitWatts > 0 ? string.Format("PWR • {0}W LIMIT", st.ApuPowerLimitWatts) : "POWER •");
-                    if (_pwrBoxTitle.Text != pwrHeader) _pwrBoxTitle.Text = pwrHeader;
-                }
-                if (_pwrBox != null)
-                {
-                    _pwrBox.AccessibleName = string.Format("APU Power: {0}", pwrValTxt);
-                    _pwrBox.Invalidate();
-                }
-            }
-
+            // 3. RAM (DDR5) Box (Row 1, Col 2) — memory + dual-stick + FCLK (where Fabric syncs with DDR5)
             if (_ramPowerLabel != null)
             {
                 string ramValTxt = st.DdrTemp > 0
@@ -6388,29 +6752,50 @@ namespace MiniFanControl
                     : (st.RamPowerWatts > 0 ? string.Format("~{0:F1}W", st.RamPowerWatts) : ("--" + tUnit));
                 if (_ramPowerLabel.Text != ramValTxt) _ramPowerLabel.Text = ramValTxt;
                 if (_ramPowerLabel.ForeColor != tempFg) _ramPowerLabel.ForeColor = tempFg;
-                if (_ramBoxTitle != null)
+                if (_ramBoxTitle != null && _ramBoxTitle.Text != "RAM (DDR5)") _ramBoxTitle.Text = "RAM (DDR5)";
+
+                string ramPeakTxt = "";
+                if (st.DdrTemp > 0 && _sessionStats.SampleCount > 0 && _sessionStats.MaxDdrTemp > 0)
                 {
-                    string ramHeader;
-                    if (st.DdrTemp > 0)
-                    {
-                        if (st.DdrStickCount == 2 && st.DdrTemp1 > 0 && st.DdrTemp2 > 0)
-                            ramHeader = string.Format("RAM • {0}/{1}° Δ{2}°",
-                                TelemetrySessionStats.ToDisplayTemp(st.DdrTemp1, _useFahrenheit),
-                                TelemetrySessionStats.ToDisplayTemp(st.DdrTemp2, _useFahrenheit),
-                                TelemetrySessionStats.ToDisplayTempDelta(st.DdrTempSpread, _useFahrenheit));
-                        else if (_sessionStats.SampleCount > 0 && _sessionStats.MaxDdrTemp > 0)
-                            ramHeader = string.Format("RAM • MAX {0}° • {1}%", TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxDdrTemp, _useFahrenheit), st.RamLoadPct);
-                        else
-                            ramHeader = "RAM TEMP";
-                    }
-                    else
-                    {
-                        ramHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxRamPowerWatts > 0)
-                            ? string.Format("RAM • MAX {0:F1}W", _sessionStats.MaxRamPowerWatts)
-                            : "RAM POWER";
-                    }
-                    if (_ramBoxTitle.Text != ramHeader) _ramBoxTitle.Text = ramHeader;
+                    ramPeakTxt = string.Format("▼{0}° ~{1:0}° ▲{2}°",
+                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinDdrTemp, _useFahrenheit),
+                        TelemetrySessionStats.ToDisplayTemp((int)Math.Round(_sessionStats.AvgDdrTemp), _useFahrenheit),
+                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxDdrTemp, _useFahrenheit));
                 }
+                else if (_sessionStats.SampleCount > 0 && _sessionStats.MaxRamPowerWatts > 0)
+                {
+                    ramPeakTxt = string.Format("▼{0:F1}W ~{1:F1}W ▲{2:F1}W",
+                        _sessionStats.MinRamPowerWatts, _sessionStats.AvgRamPowerWatts, _sessionStats.MaxRamPowerWatts);
+                }
+
+                string ramSubTxt = st.RamTotalGb > 0
+                    ? string.Format("{0:F1}/{1:F1}G ({2}%)", st.RamUsedGb, st.RamTotalGb, st.RamLoadPct)
+                    : "N/A";
+                string ramStickPart = (st.DdrStickCount == 2 && st.DdrTemp1 > 0 && st.DdrTemp2 > 0)
+                    ? string.Format("Sticks {0}/{1}° Δ{2}°",
+                        TelemetrySessionStats.ToDisplayTemp(st.DdrTemp1, _useFahrenheit),
+                        TelemetrySessionStats.ToDisplayTemp(st.DdrTemp2, _useFahrenheit),
+                        TelemetrySessionStats.ToDisplayTempDelta(st.DdrTempSpread, _useFahrenheit))
+                    : (_sessionStats.SampleCount > 0 && _sessionStats.MaxRamLoad > 0
+                        ? string.Format("Load ▼{0}% ▲{1}%", _sessionStats.MinRamLoad, _sessionStats.MaxRamLoad)
+                        : "DDR5");
+                string ramPwrPart = st.RamPowerWatts > 0 ? string.Format(" • ~{0:0.0}W", st.RamPowerWatts) : "";
+                string ramLoadPkPart = (st.DdrStickCount == 2 && _sessionStats.MaxRamLoad > 0)
+                    ? string.Format(" • ▲{0}%", _sessionStats.MaxRamLoad)
+                    : "";
+                string ramDetail1 = ramStickPart + ramPwrPart + ramLoadPkPart;
+
+                int ddrSpeed = st.RamSpeedMhz;
+                string ramSpdPart = ddrSpeed > 0 ? string.Format("{0} MHz", ddrSpeed) : "DDR5";
+                string fclkPart = st.FabricClockMhz > 0
+                    ? string.Format(" • FCLK {0} MHz{1}", st.FabricClockMhz, st.IsFabricSynced ? " (1:1)" : "")
+                    : "";
+                string ramEstPart = st.IsDdrEstimated ? " [Est]" : "";
+                string ramDetail2 = ramSpdPart + fclkPart + ramEstPart;
+
+                Color ramSubCol = (st.RamLoadPct >= 90) ? warnRose : Color.Empty;
+                SetMetricDetail(7, ramPeakTxt, ramSubTxt, ramDetail1, ramDetail2, ramSubCol);
+
                 if (_ramPowerBox != null)
                 {
                     _ramPowerBox.AccessibleName = string.Format("RAM Sensor: {0}", ramValTxt);
@@ -6418,104 +6803,148 @@ namespace MiniFanControl
                 }
             }
 
+            // 4. NVMe Storage Box (Row 1, Col 3)
+            if (_nvmeTempLabel != null)
+            {
+                string nvmeValTxt = st.NvmeTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.NvmeTemp, _useFahrenheit), tUnit) : "N/A";
+                if (_nvmeTempLabel.Text != nvmeValTxt) _nvmeTempLabel.Text = nvmeValTxt;
+                Color nvmeFg = (st.NvmeTemp >= 70) ? warnRose : tempFg;
+                if (_nvmeTempLabel.ForeColor != nvmeFg) _nvmeTempLabel.ForeColor = nvmeFg;
+                if (_nvmeBoxTitle != null && _nvmeBoxTitle.Text != "NVMe") _nvmeBoxTitle.Text = "NVMe";
+
+                string nvmePeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxNvmeTemp > 0)
+                    ? string.Format("▼{0}° ~{1:0}° ▲{2}°",
+                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinNvmeTemp, _useFahrenheit),
+                        TelemetrySessionStats.ToDisplayTemp((int)Math.Round(_sessionStats.AvgNvmeTemp), _useFahrenheit),
+                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxNvmeTemp, _useFahrenheit))
+                    : "";
+
+                string nvmePwrTxt = st.NvmePowerWatts > 0 ? string.Format("~{0:0.0}W", st.NvmePowerWatts) : "";
+                string nvmeIoTxt = (st.NvmeReadMBs > 0.1 || st.NvmeWriteMBs > 0.1)
+                    ? string.Format("{0:0.#}R/{1:0.#}W MB/s", st.NvmeReadMBs, st.NvmeWriteMBs)
+                    : (st.NvmeTemp > 0 ? "Idle I/O" : "");
+                string nvmeSubTxt = (!string.IsNullOrEmpty(nvmePwrTxt) && !string.IsNullOrEmpty(nvmeIoTxt))
+                    ? (nvmePwrTxt + " • " + nvmeIoTxt)
+                    : (!string.IsNullOrEmpty(nvmePwrTxt) ? nvmePwrTxt : nvmeIoTxt);
+
+                string nvmeHealthPart = st.NvmeHealthPct > 0 ? string.Format("Health {0}%", st.NvmeHealthPct) : "SMART OK";
+                string nvmeQdPart = string.Format(" • QD {0}", st.NvmeQueueDepth);
+                string nvmeSsd2Part = st.Nvme2Temp > 0
+                    ? string.Format(" • SSD2 {0}{1}", TelemetrySessionStats.ToDisplayTemp(st.Nvme2Temp, _useFahrenheit), tUnit)
+                    : "";
+                string nvmeDetail1 = nvmeHealthPart + nvmeQdPart + nvmeSsd2Part;
+                string nvmeDetail2 = !string.IsNullOrEmpty(st.NvmeModel) ? st.NvmeModel : "NVMe SSD";
+                SetMetricDetail(6, nvmePeakTxt, nvmeSubTxt, nvmeDetail1, nvmeDetail2, Color.Empty);
+
+                if (_nvmeTempBox != null)
+                {
+                    _nvmeTempBox.AccessibleName = string.Format("NVMe Temperature: {0}", nvmeValTxt);
+                    _nvmeTempBox.Invalidate();
+                }
+            }
+
+            // 5. APU Power Box (Row 2, Col 0)
+            if (_pwrLabel != null)
+            {
+                string pwrValTxt = st.ApuPowerWatts > 0 ? string.Format("{0}W", st.ApuPowerWatts) : "--W";
+                if (_pwrLabel.Text != pwrValTxt) _pwrLabel.Text = pwrValTxt;
+                if (_pwrLabel.ForeColor != tempFg) _pwrLabel.ForeColor = tempFg;
+                if (_pwrBoxTitle != null && _pwrBoxTitle.Text != "POWER") _pwrBoxTitle.Text = "POWER";
+
+                string pwrPeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxPowerWatts > 0)
+                    ? string.Format("▼{0}W ~{1:0}W ▲{2}W", _sessionStats.MinPowerWatts, _sessionStats.AvgPowerWatts, _sessionStats.MaxPowerWatts)
+                    : "";
+                string pwrSubTxt = st.ApuPowerLimitWatts > 0
+                    ? string.Format("/ {0}W Limit", st.ApuPowerLimitWatts)
+                    : (st.VrmTemp > 0 ? string.Format("VRM {0}{1}", TelemetrySessionStats.ToDisplayTemp(st.VrmTemp, _useFahrenheit), tUnit) : "Package");
+
+                string pwrDetail1 = (st.CpuPowerWatts > 0 || st.GfxPowerWatts > 0 || st.SocPowerWatts > 0)
+                    ? string.Format("CPU {0}W • GFX {1}W • SoC {2}W", st.CpuPowerWatts, st.GfxPowerWatts, st.SocPowerWatts)
+                    : (st.ApuPowerWatts > 0 && st.ApuPowerLimitWatts > 0
+                        ? string.Format("{0}% of {1}W TDP Budget", Math.Min(999, (int)Math.Round(st.ApuPowerWatts * 100.0 / st.ApuPowerLimitWatts)), st.ApuPowerLimitWatts)
+                        : (st.IsApuPowerEstimated ? "Estimated TDP Envelope" : "APU Package Rail"));
+                string pwrDetail2;
+                if (st.VddTdcCurrentAmps > 0.1 || st.VddEdcCurrentAmps > 0.1)
+                {
+                    string vrmPart = st.VrmTemp > 0 ? string.Format(" • VRM {0}°", TelemetrySessionStats.ToDisplayTemp(st.VrmTemp, _useFahrenheit)) : "";
+                    pwrDetail2 = string.Format("TDC {0:0.#}A • EDC {1:0.#}A{2}", st.VddTdcCurrentAmps, st.VddEdcCurrentAmps, vrmPart);
+                }
+                else if (st.VrmTemp > 0)
+                {
+                    pwrDetail2 = string.Format("VRM {0}{1}{2}", TelemetrySessionStats.ToDisplayTemp(st.VrmTemp, _useFahrenheit), tUnit, st.IsVrmEstimated ? " [Est]" : "");
+                }
+                else if (st.DcInputVolts > 0.1)
+                {
+                    pwrDetail2 = string.Format("DC Input Rail {0:0.0}V", st.DcInputVolts);
+                }
+                else
+                {
+                    pwrDetail2 = st.PowerSource ?? "AC Power";
+                }
+                SetMetricDetail(3, pwrPeakTxt, pwrSubTxt, pwrDetail1, pwrDetail2, Color.Empty);
+
+                if (_pwrBox != null)
+                {
+                    _pwrBox.AccessibleName = string.Format("APU Power: {0}", pwrValTxt);
+                    _pwrBox.Invalidate();
+                }
+            }
+
+            // 6. Chassis / VRM / Live FPS Box (Row 2, Col 1) — clean board thermals (no FCLK here)
             if (_ambientLabel != null)
             {
                 string ambValTxt = st.AmbientTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.AmbientTemp, _useFahrenheit), tUnit) : "N/A";
                 if (_ambientLabel.Text != ambValTxt) _ambientLabel.Text = ambValTxt;
                 if (_ambientLabel.ForeColor != tempFg) _ambientLabel.ForeColor = tempFg;
-                if (_ambientBoxTitle != null)
+                if (_ambientBoxTitle != null && _ambientBoxTitle.Text != "CHASSIS") _ambientBoxTitle.Text = "CHASSIS";
+
+                string ambPeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxAmbientTemp > 0)
+                    ? string.Format("▼{0}° ~{1:0}° ▲{2}°",
+                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinAmbientTemp, _useFahrenheit),
+                        TelemetrySessionStats.ToDisplayTemp((int)Math.Round(_sessionStats.AvgAmbientTemp), _useFahrenheit),
+                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxAmbientTemp, _useFahrenheit))
+                    : "";
+                string ambSubTxt = st.RtssFps > 0
+                    ? string.Format("{0} FPS ({1:0.0}ms)", st.RtssFps, st.RtssFrametimeMs)
+                    : (st.VrmTemp > 0
+                        ? string.Format("VRM {0}{1}", TelemetrySessionStats.ToDisplayTemp(st.VrmTemp, _useFahrenheit), tUnit)
+                        : (st.IsAmbientEstimated ? "Ambient [Est]" : "Board Ambient"));
+
+                string ambDetail1;
+                if (st.RtssFps > 0)
                 {
-                    string ambHeader = (_sessionStats.SampleCount > 0 && _sessionStats.MaxAmbientTemp > 0)
-                        ? string.Format("Chassis • MAX {0}°", TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxAmbientTemp, _useFahrenheit))
-                        : "Chassis";
-                    if (_ambientBoxTitle.Text != ambHeader) _ambientBoxTitle.Text = ambHeader;
+                    string lowPart = st.RtssP01LowFps > 0 ? string.Format(" • 0.1% {0}", st.RtssP01LowFps) : "";
+                    ambDetail1 = string.Format("FPS ▼{0} ~{1:0} ▲{2}{3}", _sessionStats.MinFps, _sessionStats.AvgFps, _sessionStats.MaxFps, lowPart);
                 }
+                else if (st.VrmTemp > 0 && _sessionStats.MaxVrmTemp > 0)
+                {
+                    ambDetail1 = string.Format("VRM ▼{0}° ~{1:0}° ▲{2}°{3}",
+                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinVrmTemp, _useFahrenheit),
+                        TelemetrySessionStats.ToDisplayTemp((int)Math.Round(_sessionStats.AvgVrmTemp), _useFahrenheit),
+                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxVrmTemp, _useFahrenheit),
+                        st.IsVrmEstimated ? " [Est]" : "");
+                }
+                else if (st.CpuTemp > 0 && st.AmbientTemp > 0)
+                {
+                    int delta = Math.Max(0, st.CpuTemp - st.AmbientTemp);
+                    ambDetail1 = string.Format("CPU Δ+{0}{1} over Ambient", TelemetrySessionStats.ToDisplayTempDelta(delta, _useFahrenheit), tUnit);
+                }
+                else
+                {
+                    ambDetail1 = st.IsAmbientEstimated ? "Modeled Chassis Ambient" : "Motherboard Thermistor";
+                }
+
+                string ambDeltaPart = (st.CpuTemp > 0 && st.AmbientTemp > 0)
+                    ? string.Format(" • CPU Δ+{0}°", TelemetrySessionStats.ToDisplayTempDelta(Math.Max(0, st.CpuTemp - st.AmbientTemp), _useFahrenheit))
+                    : "";
+                string ambDcPart = st.DcInputVolts > 0.1 ? string.Format(" • {0:0.0}V DC", st.DcInputVolts) : "";
+                string ambDetail2 = (st.IsAmbientEstimated ? "Board Ambient [Est]" : "Board Ambient") + ambDeltaPart + ambDcPart;
+                SetMetricDetail(9, ambPeakTxt, ambSubTxt, ambDetail1, ambDetail2, Color.Empty);
+
                 if (_ambientBox != null)
                 {
                     _ambientBox.AccessibleName = string.Format("Chassis Ambient Temperature: {0}", ambValTxt);
                     _ambientBox.Invalidate();
-                }
-            }
-
-            string f1ValTxt = string.Format("{0} RPM •", st.Fan1Rpm);
-            if (_fan1RpmLabel.Text != f1ValTxt) _fan1RpmLabel.Text = f1ValTxt;
-            if (_fan1RpmLabel.ForeColor != tempFg) _fan1RpmLabel.ForeColor = tempFg;
-            if (_fan2RpmLabel != null)
-            {
-                string f2ValTxt = !_hasDualFans ? "N/A" : (st.Fan2Rpm > 0 ? string.Format("{0} RPM •", st.Fan2Rpm) : "-- RPM");
-                if (_fan2RpmLabel.Text != f2ValTxt) _fan2RpmLabel.Text = f2ValTxt;
-                if (_fan2RpmLabel.ForeColor != tempFg) _fan2RpmLabel.ForeColor = tempFg;
-            }
-            if (_fan1Box != null)
-            {
-                if (_fan1BoxTitle != null)
-                {
-                    string fan1Header = (_sessionStats.SampleCount > 0 && _sessionStats.MaxFan1Rpm > 0)
-                        ? string.Format("APU • MAX {0}", _sessionStats.MaxFan1Rpm)
-                        : "APU FAN";
-                    if (_fan1BoxTitle.Text != fan1Header) _fan1BoxTitle.Text = fan1Header;
-                }
-                _fan1Box.AccessibleName = string.Format("APU Fan Speed: {0} RPM", st.Fan1Rpm);
-                _fan1Box.Invalidate();
-            }
-
-            if (_fan2Box != null)
-            {
-                if (_fan2BoxTitle != null)
-                {
-                    string fan2Header = !_hasDualFans
-                        ? "SYS FAN"
-                        : ((_sessionStats.SampleCount > 0 && _sessionStats.MaxFan2Rpm > 0)
-                            ? string.Format("SYS • MAX {0}", _sessionStats.MaxFan2Rpm)
-                            : "SYS FAN");
-                    if (_fan2BoxTitle.Text != fan2Header) _fan2BoxTitle.Text = fan2Header;
-                }
-                _fan2Box.AccessibleName = !_hasDualFans ? "System Fan: Disabled" : string.Format("System Fan Speed: {0} RPM", st.Fan2Rpm);
-                _fan2Box.Invalidate();
-            }
-
-            if (_ramCard != null && _ramLabel != null)
-            {
-                int ddrSpeed = st.RamSpeedMhz;
-                string memSpeedPart = ddrSpeed > 0 ? string.Format(" @ {0}MHz", ddrSpeed) : "";
-                string fclkPart = st.FabricClockMhz > 0 ? string.Format(" • FCLK {0}MHz", st.FabricClockMhz) : "";
-                string ddrEstSuffix = st.IsDdrEstimated ? " [Est]" : "";
-                string ddrTempPart = (st.DdrStickCount == 2 && st.DdrTemp1 > 0 && st.DdrTemp2 > 0)
-                    ? string.Format(" • DDR5: {0}°/{1}{2}{3}", TelemetrySessionStats.ToDisplayTemp(st.DdrTemp1, _useFahrenheit), TelemetrySessionStats.ToDisplayTemp(st.DdrTemp2, _useFahrenheit), tUnit, ddrEstSuffix)
-                    : (st.DdrTemp > 0 ? string.Format(" • DDR5: {0}{1}{2}", TelemetrySessionStats.ToDisplayTemp(st.DdrTemp, _useFahrenheit), tUnit, ddrEstSuffix) : "");
-                string ramPwrPart = st.RamPowerWatts > 0 ? string.Format(" • ~{0:0.0}W", st.RamPowerWatts) : "";
-                string ramPart = st.RamTotalGb > 0
-                    ? string.Format("🧠 RAM: {0:F1} / {1:F1} GB ({2}% Load{3}{4}{5}{6})", st.RamUsedGb, st.RamTotalGb, st.RamLoadPct, memSpeedPart, fclkPart, ddrTempPart, ramPwrPart)
-                    : "🧠 RAM: N/A";
-
-                string nvmePart = "";
-                if (st.NvmeTemp > 0)
-                {
-                    string modelDisplay = !string.IsNullOrEmpty(st.NvmeModel) ? st.NvmeModel : "NVMe SSD";
-                    if (modelDisplay.Length > 24) modelDisplay = modelDisplay.Substring(0, 22).Trim() + "…";
-                    string nvmePwrPart = st.NvmePowerWatts > 0 ? string.Format(" • ~{0:0.0}W", st.NvmePowerWatts) : "";
-                    string ioSpeedPart = (st.NvmeReadMBs > 0.1 || st.NvmeWriteMBs > 0.1)
-                        ? string.Format(" • {0:0.0} R / {1:0.0} W MB/s", st.NvmeReadMBs, st.NvmeWriteMBs)
-                        : "";
-                    nvmePart = string.Format(" • 💾 SSD: {0} ({1}% Health{2}{3})", modelDisplay, st.NvmeHealthPct, nvmePwrPart, ioSpeedPart);
-                    if (st.Nvme2Temp > 0 || !string.IsNullOrEmpty(st.Nvme2Model))
-                    {
-                        string m2 = !string.IsNullOrEmpty(st.Nvme2Model) ? st.Nvme2Model : "NVMe 2";
-                        if (m2.Length > 16) m2 = m2.Substring(0, 14).Trim() + "…";
-                        nvmePart += string.Format(" • SSD 2: {0} ({1}{2})", m2, TelemetrySessionStats.ToDisplayTemp(st.Nvme2Temp, _useFahrenheit), tUnit);
-                    }
-                }
-
-                string ambPart = st.AmbientTemp > 0 ? string.Format(" • 🌡️ Amb: {0}{1}{2}", TelemetrySessionStats.ToDisplayTemp(st.AmbientTemp, _useFahrenheit), tUnit, st.IsAmbientEstimated ? " [Est]" : "") : "";
-                string vrmPart = st.VrmTemp > 0 ? string.Format(" • ⚡ VRM: {0}{1}{2}", TelemetrySessionStats.ToDisplayTemp(st.VrmTemp, _useFahrenheit), tUnit, st.IsVrmEstimated ? " [Est]" : "") : "";
-
-                string newRamTxt = ramPart + nvmePart + ambPart + vrmPart;
-                Color ramFg = (st.RamLoadPct >= 90) ? Color.FromArgb(0xFB, 0x71, 0x85) : tempFg;
-                if (_ramLabel.Text != newRamTxt || _ramLabel.ForeColor != ramFg)
-                {
-                    _ramLabel.Text = newRamTxt;
-                    _ramLabel.ForeColor = ramFg;
-                    _ramCard.Invalidate();
                 }
             }
 
@@ -6526,11 +6955,17 @@ namespace MiniFanControl
 
             UpdateCurveTabStyles();
             UpdateModeButtonStyles(st.ModeCode);
+            int liveBiosCode = (st.ModeCode >= 0 && st.ModeCode <= 2)
+                ? st.ModeCode
+                : (_controller != null ? _controller.BiosPowerModeOverride : -1);
+            UpdateBiosPowerModeStyles(liveBiosCode);
 
-            Color autoColor = _isDarkMode ? Color.FromArgb(0xA6, 0xE3, 0xA1) : Color.FromArgb(0x15, 0x80, 0x3D);
-            Color manColor = isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (_isDarkMode ? DarkAccent : LightAccent);
-
-            if (_apuManualOverride)
+            if (_emergencyThermalActive)
+            {
+                _pct1Label.Text = "100% (Emergency)";
+                _pct1Label.ForeColor = warnRose;
+            }
+            else if (_apuManualOverride)
             {
                 _pct1Label.Text = string.Format("{0}% (Man)", st.Fan1Pct);
                 _pct1Label.ForeColor = manColor;
@@ -6547,6 +6982,11 @@ namespace MiniFanControl
                 _pct2Label.Text = "Disabled";
                 _pct2Label.ForeColor = dimText;
             }
+            else if (_emergencyThermalActive)
+            {
+                _pct2Label.Text = "100% (Emergency)";
+                _pct2Label.ForeColor = warnRose;
+            }
             else if (_sysManualOverride)
             {
                 _pct2Label.Text = string.Format("{0}% (Man)", st.Fan2Pct);
@@ -6561,6 +7001,53 @@ namespace MiniFanControl
                     : "";
                 _pct2Label.Text = (st.Fan2Manual == 0) ? string.Format("Auto ({0}{1})", ShortModeTag(sysModeName), nvmeTag) : string.Format("{0}% ({1}{2})", sysEval, ShortModeTag(sysModeName), nvmeTag);
                 _pct2Label.ForeColor = autoColor;
+            }
+
+            // 7. APU Fan Box (Row 2, Col 2) — Low/Avg/High RPM + Tuning Profile on its own full line
+            string f1ValTxt = string.Format("{0} RPM", st.Fan1Rpm);
+            if (_fan1RpmLabel.Text != f1ValTxt) _fan1RpmLabel.Text = f1ValTxt;
+            if (_fan1RpmLabel.ForeColor != tempFg) _fan1RpmLabel.ForeColor = tempFg;
+            if (_fan1Box != null)
+            {
+                if (_fan1BoxTitle != null && _fan1BoxTitle.Text != "APU FAN") _fan1BoxTitle.Text = "APU FAN";
+                string fan1PeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxFan1Rpm > 0)
+                    ? string.Format("▼{0} ~{1:0} ▲{2}", _sessionStats.MinFan1Rpm, _sessionStats.AvgFan1Rpm, _sessionStats.MaxFan1Rpm)
+                    : "";
+                string fan1Detail1 = _emergencyThermalActive
+                    ? "APU / CPU Cooler • Emergency Override"
+                    : (_apuManualOverride
+                        ? "APU / CPU Cooler • Manual Override"
+                        : (st.Fan1Manual == 0 ? "APU / CPU Cooler • BIOS Auto" : "APU / CPU Cooler • Active Curve"));
+                string fan1Detail2 = apuModeName;
+                SetMetricDetail(4, fan1PeakTxt, _pct1Label.Text, fan1Detail1, fan1Detail2, _pct1Label.ForeColor, tempFg);
+                _fan1Box.AccessibleName = string.Format("APU Fan Speed: {0} RPM", st.Fan1Rpm);
+                _fan1Box.Invalidate();
+            }
+
+            // 8. Sys Fan Box (Row 2, Col 3) — Low/Avg/High RPM + Tuning Profile on its own full line
+            if (_fan2RpmLabel != null)
+            {
+                string f2ValTxt = !_hasDualFans ? "N/A" : (st.Fan2Rpm > 0 ? string.Format("{0} RPM", st.Fan2Rpm) : "-- RPM");
+                if (_fan2RpmLabel.Text != f2ValTxt) _fan2RpmLabel.Text = f2ValTxt;
+                if (_fan2RpmLabel.ForeColor != tempFg) _fan2RpmLabel.ForeColor = tempFg;
+            }
+            if (_fan2Box != null)
+            {
+                if (_fan2BoxTitle != null && _fan2BoxTitle.Text != "SYS FAN") _fan2BoxTitle.Text = "SYS FAN";
+                string fan2PeakTxt = (_hasDualFans && _sessionStats.SampleCount > 0 && _sessionStats.MaxFan2Rpm > 0)
+                    ? string.Format("▼{0} ~{1:0} ▲{2}", _sessionStats.MinFan2Rpm, _sessionStats.AvgFan2Rpm, _sessionStats.MaxFan2Rpm)
+                    : "";
+                string fan2Detail1 = !_hasDualFans
+                    ? "Single-Fan Chassis"
+                    : (_emergencyThermalActive
+                        ? "RAM / NVMe Cooler • Emergency Override"
+                        : (_sysManualOverride
+                            ? "RAM / NVMe Cooler • Manual Override"
+                            : (st.Fan2Manual == 0 ? "RAM / NVMe Cooler • BIOS Auto" : "RAM / NVMe Cooler • Active Curve")));
+                string fan2Detail2 = !_hasDualFans ? "Disabled" : sysModeName;
+                SetMetricDetail(5, fan2PeakTxt, _pct2Label.Text, fan2Detail1, fan2Detail2, _pct2Label.ForeColor, !_hasDualFans ? Color.Empty : tempFg);
+                _fan2Box.AccessibleName = !_hasDualFans ? "System Fan: Disabled" : string.Format("System Fan Speed: {0} RPM", st.Fan2Rpm);
+                _fan2Box.Invalidate();
             }
 
             if (_emergencyThermalActive)

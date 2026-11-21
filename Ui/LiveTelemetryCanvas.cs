@@ -40,7 +40,7 @@ namespace MiniFanControl
         public bool ShowCpu = true;
         public bool ShowGpu = true;
         public bool ShowRam = true;
-        public bool ShowFabricClock = true;
+        public bool ShowFabricClock = false;
         public bool ShowNvme = true;
         public bool ShowPower = true;
         public bool ShowAmbient = true;
@@ -52,6 +52,7 @@ namespace MiniFanControl
 
         public event EventHandler ResetPeaksRequested;
         public event EventHandler HighlightMetricChanged;
+        public event EventHandler TrendVisibilityChanged;
 
         private int _hoverSampleIdx = -1;
         private int _hoverMouseX = -1;
@@ -163,6 +164,29 @@ namespace MiniFanControl
             if (e.Button == MouseButtons.Right)
             {
                 ContextMenu cm = new ContextMenu();
+                cm.MenuItems.Add("Show All Trends", (s, args) =>
+                {
+                    ShowCpu = ShowGpu = ShowRam = ShowNvme = ShowPower = ShowAmbient = ShowApuRpm = true;
+                    ShowSysRpm = HasDualFans;
+                    Invalidate();
+                    if (TrendVisibilityChanged != null) TrendVisibilityChanged(this, EventArgs.Empty);
+                });
+                cm.MenuItems.Add("Temps Only (CPU / iGPU / RAM / NVMe / Chas)", (s, args) =>
+                {
+                    ShowCpu = ShowGpu = ShowRam = ShowNvme = ShowAmbient = true;
+                    ShowPower = ShowApuRpm = ShowSysRpm = false;
+                    Invalidate();
+                    if (TrendVisibilityChanged != null) TrendVisibilityChanged(this, EventArgs.Empty);
+                });
+                cm.MenuItems.Add("Power && Fans Only (PWR / APU / SYS)", (s, args) =>
+                {
+                    ShowCpu = ShowGpu = ShowRam = ShowNvme = ShowAmbient = false;
+                    ShowPower = ShowApuRpm = true;
+                    ShowSysRpm = HasDualFans;
+                    Invalidate();
+                    if (TrendVisibilityChanged != null) TrendVisibilityChanged(this, EventArgs.Empty);
+                });
+                cm.MenuItems.Add("-");
                 cm.MenuItems.Add("Save Live Graph Snapshot as PNG...", (s, args) =>
                 {
                     using (SaveFileDialog sfd = new SaveFileDialog())
@@ -200,65 +224,58 @@ namespace MiniFanControl
                 return;
             }
 
-            // 2. Metric Pills (0..8)
+            // 2. Metric Pills (0..8) — Left-click toggles the trend ON/OFF directly (synced with Overlay Live Trend)
             for (int i = 0; i < 9; i++)
             {
                 if (_pillRects[i].Width > 0 && _pillRects[i].Contains(e.Location))
                 {
                     if (i == 0)
                     {
-                        if (HighlightMetric == 1) ShowCpu = !ShowCpu;
-                        else { HighlightMetric = 1; ShowCpu = true; }
-                        if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                        ShowCpu = !ShowCpu;
+                        HighlightMetric = ShowCpu ? 1 : (HighlightMetric == 1 ? 0 : HighlightMetric);
                     }
                     else if (i == 1)
                     {
-                        if (HighlightMetric == 2) ShowGpu = !ShowGpu;
-                        else { HighlightMetric = 2; ShowGpu = true; }
-                        if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                        ShowGpu = !ShowGpu;
+                        HighlightMetric = ShowGpu ? 2 : (HighlightMetric == 2 ? 0 : HighlightMetric);
                     }
                     else if (i == 2)
                     {
-                        if (HighlightMetric == 7) ShowRam = !ShowRam;
-                        else { HighlightMetric = 7; ShowRam = true; }
-                        if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                        ShowRam = !ShowRam;
+                        HighlightMetric = ShowRam ? 7 : (HighlightMetric == 7 ? 0 : HighlightMetric);
                     }
                     else if (i == 3)
                     {
-                        if (HighlightMetric == 8) ShowFabricClock = !ShowFabricClock;
-                        else { HighlightMetric = 8; ShowFabricClock = true; }
-                        if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                        ShowFabricClock = !ShowFabricClock;
+                        HighlightMetric = ShowFabricClock ? 8 : (HighlightMetric == 8 ? 0 : HighlightMetric);
                     }
                     else if (i == 4)
                     {
-                        if (HighlightMetric == 6) ShowNvme = !ShowNvme;
-                        else { HighlightMetric = 6; ShowNvme = true; }
-                        if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                        ShowNvme = !ShowNvme;
+                        HighlightMetric = ShowNvme ? 6 : (HighlightMetric == 6 ? 0 : HighlightMetric);
                     }
                     else if (i == 5)
                     {
-                        if (HighlightMetric == 3) ShowPower = !ShowPower;
-                        else { HighlightMetric = 3; ShowPower = true; }
-                        if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                        ShowPower = !ShowPower;
+                        HighlightMetric = ShowPower ? 3 : (HighlightMetric == 3 ? 0 : HighlightMetric);
                     }
                     else if (i == 6)
                     {
-                        if (HighlightMetric == 9) ShowAmbient = !ShowAmbient;
-                        else { HighlightMetric = 9; ShowAmbient = true; }
-                        if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                        ShowAmbient = !ShowAmbient;
+                        HighlightMetric = ShowAmbient ? 9 : (HighlightMetric == 9 ? 0 : HighlightMetric);
                     }
                     else if (i == 7)
                     {
-                        if (HighlightMetric == 4) ShowApuRpm = !ShowApuRpm;
-                        else { HighlightMetric = 4; ShowApuRpm = true; }
-                        if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                        ShowApuRpm = !ShowApuRpm;
+                        HighlightMetric = ShowApuRpm ? 4 : (HighlightMetric == 4 ? 0 : HighlightMetric);
                     }
                     else if (i == 8)
                     {
-                        if (HighlightMetric == 5) ShowSysRpm = !ShowSysRpm;
-                        else { HighlightMetric = 5; ShowSysRpm = true; }
-                        if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                        ShowSysRpm = !ShowSysRpm;
+                        HighlightMetric = ShowSysRpm ? 5 : (HighlightMetric == 5 ? 0 : HighlightMetric);
                     }
+                    if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                    if (TrendVisibilityChanged != null) TrendVisibilityChanged(this, EventArgs.Empty);
                     Invalidate();
                     return;
                 }
@@ -447,6 +464,8 @@ namespace MiniFanControl
 
         private void DrawFlowPill(Graphics g, int idx, ref int curX, ref int curY, int actionRightLimit, string text, Color seriesColor, bool active, bool highlighted)
         {
+            if (!active && text != null && text.StartsWith("●"))
+                text = "○" + text.Substring(1);
             Font f = highlighted ? PillFontBold : PillFontReg;
             Size sz = TextRenderer.MeasureText(g, text, f, new Size(200, 20), TextFormatFlags.NoPadding);
             int w = sz.Width + 12;
@@ -581,7 +600,7 @@ namespace MiniFanControl
             DrawFlowPill(g, 0, ref curX, ref curY, actionLimit, string.Format("● CPU {0}{1}", TelemetrySessionStats.ToDisplayTemp(lastCpu, UseFahrenheit), tUnit), cpuColor, ShowCpu, HighlightMetric == 1);
             DrawFlowPill(g, 1, ref curX, ref curY, actionLimit, string.Format("● iGPU {0}{1}", TelemetrySessionStats.ToDisplayTemp(lastGpu, UseFahrenheit), tUnit), gpuColor, ShowGpu, HighlightMetric == 2);
             DrawFlowPill(g, 2, ref curX, ref curY, actionLimit, ramPillText, ramColor, ShowRam, HighlightMetric == 7);
-            if (lastFclk > 0)
+            if (ShowFabricClock && lastFclk > 0)
             {
                 DrawFlowPill(g, 3, ref curX, ref curY, actionLimit, string.Format("● FCLK {0}M", lastFclk), fclkColor, ShowFabricClock, HighlightMetric == 8);
             }
@@ -1003,7 +1022,7 @@ namespace MiniFanControl
                         ? (memClock > 0 ? string.Format("RAM {0} {1}% @ {2}MHz{3}", hTempPart, hRamLoad, memClock, hPwrPart) : string.Format("RAM {0} {1}%{2}", hTempPart, hRamLoad, hPwrPart))
                         : (memClock > 0 ? string.Format("RAM {0}% @ {1}MHz{2}", hRamLoad, memClock, hPwrPart) : string.Format("RAM {0}%{1}", hRamLoad, hPwrPart));
 
-                    string fclkPart = hFclk > 0 ? string.Format(" • FCLK {0}MHz", hFclk) : "";
+                    string fclkPart = (ShowFabricClock && hFclk > 0) ? string.Format(" • FCLK {0}MHz", hFclk) : "";
                     string ambPart = hAmb > 0 ? string.Format(" • Chas {0}{1}", TelemetrySessionStats.ToDisplayTemp(hAmb, UseFahrenheit), tUnit) : "";
                     string sysPart = (HasDualFans && hF2 > 0) ? string.Format(" • Sys {0} RPM", hF2) : "";
 

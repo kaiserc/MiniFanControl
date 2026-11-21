@@ -107,9 +107,29 @@ namespace MiniFanControl
         private string _lastGameTitle = null;
         public bool ShowRadeonSettings = true;
         public bool ShowLiveTrend = true;
+        public bool TrendCpu = true;
+        public bool TrendGpu = true;
+        public bool TrendRam = true;
+        public bool TrendNvme = true;
+        public bool TrendPower = true;
+        public bool TrendAmbient = true;
+        public bool TrendApuFan = true;
+        public bool TrendSysFan = true;
         public bool PlotFpsOnTrend = true;
         public bool ShowFpsGraph = true;
         public bool DfGraphStyle = true;
+        public bool DfCornerInset = false;
+        public int SampleIntervalMs = 1000;
+
+        private string FormatSampleTimeAgo(int samplesAgo)
+        {
+            if (samplesAgo <= 0) return "Now";
+            double secPerSample = Math.Max(0.1, SampleIntervalMs / 1000.0);
+            double secs = samplesAgo * secPerSample;
+            if (secPerSample < 0.95)
+                return string.Format("-{0:0.0}s", secs);
+            return string.Format("-{0:0}s", secs);
+        }
         public bool DfGraphFirst = true;
         public bool ClampToScreen = true;
         public string ProcessorBadgeText = null;
@@ -143,6 +163,7 @@ namespace MiniFanControl
         public event EventHandler RequestToggleLock;
         public event EventHandler RequestOpenOsdConfig;
         public event EventHandler<int> RequestSnapLocation;
+        public event EventHandler<int> RequestSamplingInterval;
 
         private FanStatus _status;
         private string _modeSummary = "Balanced";
@@ -530,6 +551,7 @@ namespace MiniFanControl
             graphMenu.DropDownItems.Add("Combined Live Graph Only", null, (s, e) => SetGraphModeFromMenu(2));
             graphMenu.DropDownItems.Add("Mini Sparklines per Metric Only", null, (s, e) => SetGraphModeFromMenu(1));
             graphMenu.DropDownItems.Add("Text Only (No Graphs)", null, (s, e) => SetGraphModeFromMenu(0));
+            graphMenu.DropDownItems.Add("Graphs Only (No Metric Rows)", null, (s, e) => SetGraphModeFromMenu(4));
             graphMenu.DropDownItems.Add(new ToolStripSeparator());
             ToolStripMenuItem heightMenu = new ToolStripMenuItem("Graph Height");
             heightMenu.DropDownItems.Add("75px Compact", null, (s, e) => SetGraphHeightFromMenu(75));
@@ -539,12 +561,80 @@ namespace MiniFanControl
             graphMenu.DropDownItems.Add(heightMenu);
             graphMenu.DropDownItems.Add(new ToolStripSeparator());
             AddMetricToggleMenuItem(graphMenu, "Live Trend Graph (Multi-Sensor)", () => ShowLiveTrend, v => ShowLiveTrend = v);
+            ToolStripMenuItem trendSeriesMenu = new ToolStripMenuItem("Live Trend Series (Show / Hide)");
+            AddMetricToggleMenuItem(trendSeriesMenu, "CPU Temp", () => TrendCpu, v => TrendCpu = v);
+            AddMetricToggleMenuItem(trendSeriesMenu, "iGPU Temp", () => TrendGpu, v => TrendGpu = v);
+            AddMetricToggleMenuItem(trendSeriesMenu, "RAM Temp / Power", () => TrendRam, v => TrendRam = v);
+            AddMetricToggleMenuItem(trendSeriesMenu, "NVMe Temp", () => TrendNvme, v => TrendNvme = v);
+            AddMetricToggleMenuItem(trendSeriesMenu, "APU Power (W)", () => TrendPower, v => TrendPower = v);
+            AddMetricToggleMenuItem(trendSeriesMenu, "Chassis Ambient", () => TrendAmbient, v => TrendAmbient = v);
+            AddMetricToggleMenuItem(trendSeriesMenu, "APU Fan RPM", () => TrendApuFan, v => TrendApuFan = v);
+            if (HasDualFans)
+                AddMetricToggleMenuItem(trendSeriesMenu, "Sys Fan RPM", () => TrendSysFan, v => TrendSysFan = v);
+            trendSeriesMenu.DropDownItems.Add(new ToolStripSeparator());
+            trendSeriesMenu.DropDownItems.Add("Show All Trends", null, (s, e) =>
+            {
+                TrendCpu = TrendGpu = TrendRam = TrendNvme = TrendPower = TrendAmbient = TrendApuFan = true;
+                TrendSysFan = HasDualFans;
+                Invalidate();
+                if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
+            });
+            trendSeriesMenu.DropDownItems.Add("Temps Only (CPU / iGPU / RAM / NVMe / Chas)", null, (s, e) =>
+            {
+                TrendCpu = TrendGpu = TrendRam = TrendNvme = TrendAmbient = true;
+                TrendPower = TrendApuFan = TrendSysFan = false;
+                Invalidate();
+                if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
+            });
+            trendSeriesMenu.DropDownItems.Add("Power & Fans Only (PWR / APU / SYS)", null, (s, e) =>
+            {
+                TrendCpu = TrendGpu = TrendRam = TrendNvme = TrendAmbient = false;
+                TrendPower = TrendApuFan = true;
+                TrendSysFan = HasDualFans;
+                Invalidate();
+                if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
+            });
+            graphMenu.DropDownItems.Add(trendSeriesMenu);
             AddMetricToggleMenuItem(graphMenu, "FPS & Frametime Graph", () => ShowFpsGraph, v => ShowFpsGraph = v);
             AddMetricToggleMenuItem(graphMenu, "Plot FPS on Live Trend", () => PlotFpsOnTrend, v => PlotFpsOnTrend = v);
             AddMetricToggleMenuItem(graphMenu, "Digital Foundry (DF) Style Graphs", () => DfGraphStyle, v => DfGraphStyle = v);
+            AddMetricToggleMenuItem(graphMenu, "DF Corner Inset (Frame-Time in FPS Corner)", () => DfCornerInset, v => { DfCornerInset = v; if (v) DfGraphStyle = true; });
             AddMetricToggleMenuItem(graphMenu, "Show DF Graphs Before Live Trend", () => DfGraphFirst, v => DfGraphFirst = v);
             AddMetricToggleMenuItem(graphMenu, "Background Sparklines (Underlay)", () => SparklinesAsBackground, v => { SparklinesAsBackground = v; Invalidate(); });
             menu.Items.Add(graphMenu);
+
+            ToolStripMenuItem samplingMenu = new ToolStripMenuItem("Sampling Rate");
+            int[] sampleRates = new int[] { 100, 250, 500, 1000, 1500, 2000, 3000 };
+            string[] sampleLabels = new string[]
+            {
+                "100 ms (Extreme • 10 Hz)",
+                "250 ms (Ultra • 4 Hz)",
+                "500 ms (Fast • 2 Hz)",
+                "1000 ms (Standard • 1.0s)",
+                "1500 ms (Balanced • 1.5s)",
+                "2000 ms (Relaxed • 2.0s)",
+                "3000 ms (Low CPU • 3.0s)"
+            };
+            ToolStripMenuItem[] sampleItems = new ToolStripMenuItem[sampleRates.Length];
+            for (int i = 0; i < sampleRates.Length; i++)
+            {
+                int msVal = sampleRates[i];
+                ToolStripMenuItem item = new ToolStripMenuItem(sampleLabels[i]) { Checked = (SampleIntervalMs == msVal) };
+                item.Click += (s, e) =>
+                {
+                    SampleIntervalMs = msVal;
+                    if (RequestSamplingInterval != null) RequestSamplingInterval(this, msVal);
+                    Invalidate();
+                };
+                sampleItems[i] = item;
+                samplingMenu.DropDownItems.Add(item);
+            }
+            samplingMenu.DropDownOpening += (s, e) =>
+            {
+                for (int i = 0; i < sampleRates.Length; i++)
+                    sampleItems[i].Checked = (SampleIntervalMs == sampleRates[i]);
+            };
+            menu.Items.Add(samplingMenu);
 
             ToolStripMenuItem metricsMenu = new ToolStripMenuItem("Visible Telemetry Metrics");
             AddMetricToggleMenuItem(metricsMenu, "Active Game Title", () => ShowGameName, v => { ShowGameName = v; UpdateDimensions(); Invalidate(); });
@@ -639,7 +729,7 @@ namespace MiniFanControl
 
             ToolStripMenuItem themeMenu = new ToolStripMenuItem("OSD Theme Palette");
             themeMenu.DropDownItems.Add("Match Application Theme", null, (s, e) => { MatchAppTheme = true; Invalidate(); });
-            themeMenu.DropDownItems.Add("Classic CapFrameX Dark (Cyan/Amber)", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = false; Invalidate(); });
+            themeMenu.DropDownItems.Add("Classic MiniFanControl Dark (Cyan/Amber)", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = false; Invalidate(); });
             themeMenu.DropDownItems.Add("AMD Radeon Ruby Red", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = true; IsAfterburnerTheme = false; Invalidate(); });
             themeMenu.DropDownItems.Add("MSI Afterburner Toxic Green", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = true; Invalidate(); });
             menu.Items.Add(themeMenu);
@@ -1325,10 +1415,11 @@ namespace MiniFanControl
         public void UpdateDimensions()
         {
             float baseSc = GetScaleMultiplier();
+            bool graphsOnly = (GraphMode == 4);
             bool showSpark = (GraphMode == 1 || GraphMode == 3);
             bool showCombined = ShowLiveTrend;
             bool hasFpsGraph = ShowFpsGraph;
-            int cols = CountVisibleMetrics();
+            int cols = graphsOnly ? 0 : CountVisibleMetrics();
 
             List<string> tags = (ShowRadeonSettings && _status.RadeonFeaturesAvailable && _status.GetActiveRadeonTags(ShowRadeonExtendedTags) != null)
                 ? new List<string>(_status.GetActiveRadeonTags(ShowRadeonExtendedTags))
@@ -1370,17 +1461,18 @@ namespace MiniFanControl
                 float sc = baseSc;
                 int baseGraphH = (int)Math.Round(GraphHeight * sc);
                 int rowH = (int)Math.Round((showSpark ? 25 : 21) * sc);
-                int topH = (int)Math.Round(24 * sc);
-                int rowsH = (cols > 0 ? cols * rowH + (int)Math.Round(4 * sc) : (int)Math.Round(2 * sc));
+                int topH = graphsOnly ? (int)Math.Round(6 * sc) : (int)Math.Round(24 * sc);
+                int rowsH = graphsOnly ? 0 : (cols > 0 ? cols * rowH + (int)Math.Round(4 * sc) : (int)Math.Round(2 * sc));
 
-                int dfFtH = DfGraphStyle ? GetDfFrametimeHeight(sc, baseGraphH) : baseGraphH;
-                int dfFpsH = DfGraphStyle ? GetDfFramerateHeight(sc, baseGraphH) : 0;
+                int dfFtH = (DfGraphStyle && !DfCornerInset) ? GetDfFrametimeHeight(sc, baseGraphH) : baseGraphH;
+                int dfFpsH = DfGraphStyle ? (DfCornerInset ? GetDfFramerateHeight(sc, baseGraphH) + (int)Math.Round(22 * sc) : GetDfFramerateHeight(sc, baseGraphH)) : 0;
 
                 int graphH = 0;
                 if (showCombined) graphH += baseGraphH + (int)Math.Round(10 * sc);
                 if (hasFpsGraph)
                 {
-                    if (DfGraphStyle) graphH += dfFtH + dfFpsH + (int)Math.Round(16 * sc);
+                    if (DfGraphStyle && DfCornerInset) graphH += dfFpsH + (int)Math.Round(10 * sc);
+                    else if (DfGraphStyle) graphH += dfFtH + dfFpsH + (int)Math.Round(16 * sc);
                     else graphH += baseGraphH + (int)Math.Round(10 * sc);
                 }
 
@@ -1398,14 +1490,15 @@ namespace MiniFanControl
                         int minGraphH = (int)Math.Max(35, Math.Round(40 * sc));
                         float compressRatio = Math.Max(0.40f, (float)(graphH - excess) / Math.Max(1, graphH));
                         baseGraphH = Math.Max(minGraphH, (int)Math.Round(baseGraphH * compressRatio));
-                        dfFtH = DfGraphStyle ? GetDfFrametimeHeight(sc, baseGraphH) : baseGraphH;
-                        dfFpsH = DfGraphStyle ? GetDfFramerateHeight(sc, baseGraphH) : 0;
+                        dfFtH = (DfGraphStyle && !DfCornerInset) ? GetDfFrametimeHeight(sc, baseGraphH) : baseGraphH;
+                        dfFpsH = DfGraphStyle ? (DfCornerInset ? GetDfFramerateHeight(sc, baseGraphH) + (int)Math.Round(22 * sc) : GetDfFramerateHeight(sc, baseGraphH)) : 0;
 
                         graphH = 0;
                         if (showCombined) graphH += baseGraphH + (int)Math.Round(10 * sc);
                         if (hasFpsGraph)
                         {
-                            if (DfGraphStyle) graphH += dfFtH + dfFpsH + (int)Math.Round(16 * sc);
+                            if (DfGraphStyle && DfCornerInset) graphH += dfFpsH + (int)Math.Round(10 * sc);
+                            else if (DfGraphStyle) graphH += dfFtH + dfFpsH + (int)Math.Round(16 * sc);
                             else graphH += baseGraphH + (int)Math.Round(10 * sc);
                         }
                         totalH = topH + rowsH + graphH;
@@ -1420,14 +1513,15 @@ namespace MiniFanControl
                         rowH = (int)Math.Max(16, Math.Round(rowH * fitFactor));
                         topH = (int)Math.Round(24 * sc);
                         rowsH = (cols > 0 ? cols * rowH + (int)Math.Round(4 * sc) : (int)Math.Round(2 * sc));
-                        dfFtH = DfGraphStyle ? GetDfFrametimeHeight(sc, baseGraphH) : baseGraphH;
-                        dfFpsH = DfGraphStyle ? GetDfFramerateHeight(sc, baseGraphH) : 0;
+                        dfFtH = (DfGraphStyle && !DfCornerInset) ? GetDfFrametimeHeight(sc, baseGraphH) : baseGraphH;
+                        dfFpsH = DfGraphStyle ? (DfCornerInset ? GetDfFramerateHeight(sc, baseGraphH) + (int)Math.Round(22 * sc) : GetDfFramerateHeight(sc, baseGraphH)) : 0;
 
                         graphH = 0;
                         if (showCombined) graphH += baseGraphH + (int)Math.Round(10 * sc);
                         if (hasFpsGraph)
                         {
-                            if (DfGraphStyle) graphH += dfFtH + dfFpsH + (int)Math.Round(16 * sc);
+                            if (DfGraphStyle && DfCornerInset) graphH += dfFpsH + (int)Math.Round(10 * sc);
+                            else if (DfGraphStyle) graphH += dfFtH + dfFpsH + (int)Math.Round(16 * sc);
                             else graphH += baseGraphH + (int)Math.Round(10 * sc);
                         }
                         totalH = topH + rowsH + graphH;
@@ -1480,21 +1574,23 @@ namespace MiniFanControl
 
                 float sc = baseSc;
                 int scaledGraphH = _effectiveGraphHeight;
-                int topH = (cols > 0) ? (int)Math.Round((showSpark ? 58 : 42) * sc) : (int)Math.Round(24 * sc);
+                int topH = graphsOnly ? (int)Math.Round(6 * sc) : ((cols > 0) ? (int)Math.Round((showSpark ? 58 : 42) * sc) : (int)Math.Round(24 * sc));
                 int h = topH;
                 if (showCombined) h += scaledGraphH + (int)Math.Round(10 * sc);
                 if (hasFpsGraph)
                 {
-                    if (DfGraphStyle)
+                    if (DfGraphStyle && DfCornerInset)
+                        h += GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(32 * sc);
+                    else if (DfGraphStyle)
                         h += GetDfFrametimeHeight(sc, scaledGraphH) + GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(16 * sc);
                     else
                         h += scaledGraphH + (int)Math.Round(10 * sc);
                 }
 
-                int numGraphs = (showCombined ? 1 : 0) + (hasFpsGraph ? (DfGraphStyle ? 2 : 1) : 0);
-                int minW = (int)Math.Round((numGraphs > 0 ? 420 : 180) * sc);
+                int numGraphs = (showCombined ? 1 : 0) + (hasFpsGraph ? ((DfGraphStyle && !DfCornerInset) ? 2 : 1) : 0);
+                int minW = (int)Math.Round((graphsOnly ? 640 : (numGraphs > 0 ? 420 : 180)) * sc);
 
-                float requiredColsW = MeasureHorizontalRequiredWidth(sc, showSpark);
+                float requiredColsW = graphsOnly ? 0f : MeasureHorizontalRequiredWidth(sc, showSpark);
                 int w = Math.Max(minW, (int)Math.Ceiling(requiredColsW + (16f * sc)));
 
                 if (ClampToScreen && wa.Width > 0 && w > wa.Width - 16)
@@ -1967,46 +2063,62 @@ namespace MiniFanControl
 
             int tMin = int.MaxValue, tMax = int.MinValue;
             int rMin = int.MaxValue, rMax = int.MinValue;
+            bool ramHasTemp = (Stats.RamTempHistory != null && Stats.RamTempHistory.Count > 0 && Stats.RamTempHistory[Stats.RamTempHistory.Count - 1] > 0);
             for (int i = 0; i < take; i++)
             {
                 int idx = start + i;
-                if (ShowCpu && idx < Stats.CpuHistory.Count)
+                if (TrendCpu && idx < Stats.CpuHistory.Count)
                 {
                     int v = Stats.CpuHistory[idx];
                     if (v < tMin) tMin = v;
                     if (v > tMax) tMax = v;
                 }
-                if (ShowGpu && idx < Stats.GpuHistory.Count && Stats.GpuHistory[idx] > 0)
+                if (TrendGpu && idx < Stats.GpuHistory.Count && Stats.GpuHistory[idx] > 0)
                 {
                     int v = Stats.GpuHistory[idx];
                     if (v < tMin) tMin = v;
                     if (v > tMax) tMax = v;
                 }
-                if (ShowNvme && idx < Stats.NvmeHistory.Count && Stats.NvmeHistory[idx] > 0)
+                if (TrendNvme && idx < Stats.NvmeHistory.Count && Stats.NvmeHistory[idx] > 0)
                 {
                     int v = Stats.NvmeHistory[idx];
                     if (v < tMin) tMin = v;
                     if (v > tMax) tMax = v;
                 }
-                if (ShowPower && idx < Stats.PowerHistory.Count && Stats.PowerHistory[idx] > 0)
+                if (TrendPower && idx < Stats.PowerHistory.Count && Stats.PowerHistory[idx] > 0)
                 {
                     int v = Stats.PowerHistory[idx];
                     if (v < tMin) tMin = v;
                     if (v > tMax) tMax = v;
                 }
-                if (ShowRam && idx < Stats.RamPowerHistory.Count && Stats.RamPowerHistory[idx] > 0)
+                if (TrendAmbient && idx < Stats.AmbientHistory.Count && Stats.AmbientHistory[idx] > 0)
                 {
-                    int v = (int)Math.Round(Stats.RamPowerHistory[idx] / 10.0);
+                    int v = Stats.AmbientHistory[idx];
                     if (v < tMin) tMin = v;
                     if (v > tMax) tMax = v;
                 }
-                if (ShowApuFan && idx < Stats.Fan1RpmHistory.Count)
+                if (TrendRam)
+                {
+                    if (ramHasTemp && idx < Stats.RamTempHistory.Count && Stats.RamTempHistory[idx] > 0)
+                    {
+                        int v = Stats.RamTempHistory[idx];
+                        if (v < tMin) tMin = v;
+                        if (v > tMax) tMax = v;
+                    }
+                    else if (idx < Stats.RamPowerHistory.Count && Stats.RamPowerHistory[idx] > 0)
+                    {
+                        int v = (int)Math.Round(Stats.RamPowerHistory[idx] / 10.0);
+                        if (v < tMin) tMin = v;
+                        if (v > tMax) tMax = v;
+                    }
+                }
+                if (TrendApuFan && idx < Stats.Fan1RpmHistory.Count)
                 {
                     int v = Stats.Fan1RpmHistory[idx];
                     if (v < rMin) rMin = v;
                     if (v > rMax) rMax = v;
                 }
-                if (HasDualFans && ShowSysFan && idx < Stats.Fan2RpmHistory.Count)
+                if (HasDualFans && TrendSysFan && idx < Stats.Fan2RpmHistory.Count)
                 {
                     int v = Stats.Fan2RpmHistory[idx];
                     if (v < rMin) rMin = v;
@@ -2043,13 +2155,51 @@ namespace MiniFanControl
                 rpmHi = rpmLo + 400f;
             }
 
-            int topPad = (int)Math.Round(14f * sc);
+            // Build active legend items upfront so we know whether the legend wraps to a 2nd line
+            string tUnitHdr = TelemetrySessionStats.TempUnit(UseFahrenheit);
+            string unitSuffix = (plotFpsHere && (ShowFps || ShowLows) && Stats.FpsHistory.Count > 0 && Stats.FpsHistory[Stats.FpsHistory.Count - 1] > 0) ? (tUnitHdr + "/W/FPS") : (tUnitHdr + "/W");
+            string hdr = (tMin <= tMax)
+                ? string.Format("LIVE TREND ({0}–{1}{2})", TelemetrySessionStats.ToDisplayTemp(tMin, UseFahrenheit), TelemetrySessionStats.ToDisplayTemp(tMax, UseFahrenheit), unitSuffix)
+                : (rMin <= rMax ? string.Format("LIVE TREND ({0}–{1} RPM)", rMin, rMax) : "LIVE TREND");
+
+            List<KeyValuePair<string, Color>> legendItems = new List<KeyValuePair<string, Color>>();
+            if (TrendCpu) legendItems.Add(new KeyValuePair<string, Color>("● CPU", cpuCol));
+            if (TrendGpu) legendItems.Add(new KeyValuePair<string, Color>("● iGPU", gpuCol));
+            if (TrendRam && _status.RamTotalGb > 0) legendItems.Add(new KeyValuePair<string, Color>("● RAM", Color.FromArgb(0x81, 0x8C, 0xF8)));
+            if (TrendNvme && _status.NvmeTemp > 0) legendItems.Add(new KeyValuePair<string, Color>("● NVMe", CfxTeal));
+            if (TrendPower) legendItems.Add(new KeyValuePair<string, Color>("● PWR", pwrCol));
+            if (TrendAmbient && _status.AmbientTemp > 0) legendItems.Add(new KeyValuePair<string, Color>("● CHAS", Color.FromArgb(0xE2, 0xE8, 0xF0)));
+            if (TrendApuFan) legendItems.Add(new KeyValuePair<string, Color>("● APU", apuCol));
+            if (HasDualFans && TrendSysFan) legendItems.Add(new KeyValuePair<string, Color>("● SYS", sysCol));
+
+            int hdrLeftX = rect.X + (int)Math.Round(4 * sc);
+            int hdrW = TextRenderer.MeasureText(g, hdr, _fontChart, new Size(260, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+            int simX = hdrLeftX + hdrW + (int)Math.Round(6 * sc);
+            int maxLegX = rect.Right - 4;
+            int legRows = 1;
+            int legGap = Math.Max(3, (int)Math.Round(4 * sc));
+            for (int li = 0; li < legendItems.Count; li++)
+            {
+                int iw = TextRenderer.MeasureText(g, legendItems[li].Key, _fontTrace, new Size(90, 14), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+                if (simX + iw > maxLegX && simX > hdrLeftX)
+                {
+                    legRows = 2;
+                    simX = hdrLeftX + iw + legGap;
+                }
+                else
+                {
+                    simX += iw + legGap;
+                }
+            }
+
+            int rowH = Math.Max(11, (int)Math.Round(12f * sc));
+            int topPad = (legRows > 1) ? (int)Math.Round(25f * sc) : (int)Math.Round(14f * sc);
             int rightPad = (int)Math.Round(38f * sc);
             Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - 2));
 
             List<EndpointBadge> badges = new List<EndpointBadge>();
 
-            if (HasDualFans && ShowSysFan)
+            if (HasDualFans && TrendSysFan)
             {
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.Fan2RpmHistory, start, take, rpmLo, rpmHi, sysCol, false, true, sc);
                 if (pt.HasValue && Stats.Fan2RpmHistory.Count > 0)
@@ -2058,7 +2208,7 @@ namespace MiniFanControl
                     if (v > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = string.Format("{0:0.0}k", v / 1000.0), Color = sysCol, Dashed = true });
                 }
             }
-            if (ShowApuFan)
+            if (TrendApuFan)
             {
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.Fan1RpmHistory, start, take, rpmLo, rpmHi, apuCol, false, true, sc);
                 if (pt.HasValue && Stats.Fan1RpmHistory.Count > 0)
@@ -2082,15 +2232,15 @@ namespace MiniFanControl
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.FpsHistory, start, take, leftLo, leftHi, Color.FromArgb(0x38, 0xBD, 0xF8), false, false, sc);
                 if (pt.HasValue) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = Stats.FpsHistory[Stats.FpsHistory.Count - 1].ToString(), Color = Color.FromArgb(0x38, 0xBD, 0xF8) });
             }
-            if (ShowAmbient && _status.AmbientTemp > 0)
+            if (TrendAmbient && _status.AmbientTemp > 0)
             {
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.AmbientHistory, start, take, leftLo, leftHi, Color.FromArgb(0xE2, 0xE8, 0xF0), false, false, sc);
                 if (pt.HasValue && Stats.AmbientHistory.Count > 0 && Stats.AmbientHistory[Stats.AmbientHistory.Count - 1] > 0)
                     badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.AmbientHistory[Stats.AmbientHistory.Count - 1], UseFahrenheit) + "°", Color = Color.FromArgb(0xE2, 0xE8, 0xF0) });
             }
-            if (ShowRam && _status.RamTotalGb > 0)
+            if (TrendRam && _status.RamTotalGb > 0)
             {
-                if (Stats.RamTempHistory != null && Stats.RamTempHistory.Count > 0 && Stats.RamTempHistory[Stats.RamTempHistory.Count - 1] > 0)
+                if (ramHasTemp)
                 {
                     PointF? pt = DrawCombinedSubSeries(g, plot, Stats.RamTempHistory, start, take, leftLo, leftHi, Color.FromArgb(0x81, 0x8C, 0xF8), false, false, sc);
                     if (pt.HasValue) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.RamTempHistory[Stats.RamTempHistory.Count - 1], UseFahrenheit) + "°", Color = Color.FromArgb(0x81, 0x8C, 0xF8) });
@@ -2101,22 +2251,22 @@ namespace MiniFanControl
                     if (pt.HasValue && Stats.RamPowerHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = string.Format("{0:0}W", Stats.RamPowerHistory[Stats.RamPowerHistory.Count - 1] / 10.0), Color = Color.FromArgb(0x81, 0x8C, 0xF8), Dashed = true });
                 }
             }
-            if (ShowPower)
+            if (TrendPower)
             {
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.PowerHistory, start, take, leftLo, leftHi, pwrCol, false, false, sc);
                 if (pt.HasValue && Stats.PowerHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = Stats.PowerHistory[Stats.PowerHistory.Count - 1] + "W", Color = pwrCol });
             }
-            if (ShowNvme && _status.NvmeTemp > 0)
+            if (TrendNvme && _status.NvmeTemp > 0)
             {
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.NvmeHistory, start, take, leftLo, leftHi, CfxTeal, false, false, sc);
                 if (pt.HasValue && Stats.NvmeHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.NvmeHistory[Stats.NvmeHistory.Count - 1], UseFahrenheit) + "°", Color = CfxTeal });
             }
-            if (ShowGpu)
+            if (TrendGpu)
             {
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.GpuHistory, start, take, leftLo, leftHi, gpuCol, false, false, sc);
                 if (pt.HasValue && Stats.GpuHistory.Count > 0 && Stats.GpuHistory[Stats.GpuHistory.Count - 1] > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.GpuHistory[Stats.GpuHistory.Count - 1], UseFahrenheit) + "°", Color = gpuCol });
             }
-            if (ShowCpu)
+            if (TrendCpu)
             {
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.CpuHistory, start, take, leftLo, leftHi, cpuCol, true, false, sc);
                 if (pt.HasValue && Stats.CpuHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.CpuHistory[Stats.CpuHistory.Count - 1], UseFahrenheit) + "°", Color = cpuCol });
@@ -2124,24 +2274,24 @@ namespace MiniFanControl
 
             DrawEndpointBadges(g, plot, rect, badges, _fontTrace, sc);
 
-            // Compact Legend & Scale Header inside the top of the Combined OSD Graph
-            string tUnitHdr = TelemetrySessionStats.TempUnit(UseFahrenheit);
-            string unitSuffix = (plotFpsHere && (ShowFps || ShowLows) && Stats.FpsHistory.Count > 0 && Stats.FpsHistory[Stats.FpsHistory.Count - 1] > 0) ? (tUnitHdr + "/W/FPS") : (tUnitHdr + "/W");
-            string hdr = (tMin <= tMax)
-                ? string.Format("LIVE TREND ({0}–{1}{2})", TelemetrySessionStats.ToDisplayTemp(tMin, UseFahrenheit), TelemetrySessionStats.ToDisplayTemp(tMax, UseFahrenheit), unitSuffix)
-                : "LIVE TREND";
-            TextRenderer.DrawText(g, hdr, _fontChart, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + 1), Color.FromArgb(200, 226, 232, 240), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            // Compact Wrapping Legend & Scale Header inside the top of the Combined OSD Graph
+            TextRenderer.DrawText(g, hdr, _fontChart, new Point(hdrLeftX, rect.Y + 1), Color.FromArgb(200, 226, 232, 240), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
-            int legX = rect.X + (int)Math.Round(4 * sc) + TextRenderer.MeasureText(g, hdr, _fontChart, new Size(240, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width + (int)Math.Round(6 * sc);
-            DrawLegendDot(g, ref legX, rect.Right - 4, rect.Y + 1, "● CPU", cpuCol, _fontTrace);
-            if (ShowGpu) DrawLegendDot(g, ref legX, rect.Right - 4, rect.Y + 1, "● iGPU", gpuCol, _fontTrace);
-            if (ShowRam) DrawLegendDot(g, ref legX, rect.Right - 4, rect.Y + 1, "● RAM", Color.FromArgb(0x81, 0x8C, 0xF8), _fontTrace);
-            if (ShowFabricClock && _status.FabricClockMhz > 0) DrawLegendDot(g, ref legX, rect.Right - 4, rect.Y + 1, "● FCLK", Color.FromArgb(0x10, 0xB9, 0x81), _fontTrace);
-            if (ShowNvme && _status.NvmeTemp > 0) DrawLegendDot(g, ref legX, rect.Right - 4, rect.Y + 1, "● NVMe", CfxTeal, _fontTrace);
-            if (ShowPower) DrawLegendDot(g, ref legX, rect.Right - 4, rect.Y + 1, "● PWR", pwrCol, _fontTrace);
-            if (ShowAmbient && _status.AmbientTemp > 0) DrawLegendDot(g, ref legX, rect.Right - 4, rect.Y + 1, "● CHAS", Color.FromArgb(0xE2, 0xE8, 0xF0), _fontTrace);
-            if (ShowApuFan) DrawLegendDot(g, ref legX, rect.Right - 4, rect.Y + 1, "● APU", apuCol, _fontTrace);
-            if (HasDualFans && ShowSysFan) DrawLegendDot(g, ref legX, rect.Right - 4, rect.Y + 1, "● SYS", sysCol, _fontTrace);
+            int legX = hdrLeftX + hdrW + (int)Math.Round(6 * sc);
+            int legY = rect.Y + 1;
+            for (int li = 0; li < legendItems.Count; li++)
+            {
+                string ltxt = legendItems[li].Key;
+                Color lcol = legendItems[li].Value;
+                int iw = TextRenderer.MeasureText(g, ltxt, _fontTrace, new Size(90, 14), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+                if (legX + iw > maxLegX && legX > hdrLeftX)
+                {
+                    legX = hdrLeftX;
+                    legY = rect.Y + 1 + rowH;
+                }
+                TextRenderer.DrawText(g, ltxt, _fontTrace, new Point(legX, legY), lcol, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                legX += iw + legGap;
+            }
 
             // Interactive Hover Scrubbing Crosshair & Readout Card
             if (_hoverMouseX >= plot.Left && _hoverMouseX <= plot.Right && rect.Contains(_hoverMouseX, _hoverMouseY))
@@ -2155,7 +2305,7 @@ namespace MiniFanControl
                 int sampleIdx = start + (int)Math.Round(norm * (take - 1));
                 sampleIdx = Math.Max(0, Math.Min(total - 1, sampleIdx));
 
-                int secAgo = (int)Math.Round((take - 1 - (sampleIdx - start)) * 1.5);
+                int samplesAgo = take - 1 - (sampleIdx - start);
                 int c = sampleIdx < Stats.CpuHistory.Count ? Stats.CpuHistory[sampleIdx] : 0;
                 int g_ = (sampleIdx < Stats.GpuHistory.Count) ? Stats.GpuHistory[sampleIdx] : 0;
                 int n = (Stats.NvmeHistory != null && sampleIdx < Stats.NvmeHistory.Count) ? Stats.NvmeHistory[sampleIdx] : 0;
@@ -2164,7 +2314,6 @@ namespace MiniFanControl
                 int f2 = (sampleIdx < Stats.Fan2RpmHistory.Count) ? Stats.Fan2RpmHistory[sampleIdx] : 0;
                 int rTemp = (Stats.RamTempHistory != null && sampleIdx < Stats.RamTempHistory.Count) ? Stats.RamTempHistory[sampleIdx] : 0;
                 int rLoad = (Stats.RamLoadHistory != null && sampleIdx < Stats.RamLoadHistory.Count) ? Stats.RamLoadHistory[sampleIdx] : _status.RamLoadPct;
-                int fclk = (Stats.FabricClockHistory != null && sampleIdx < Stats.FabricClockHistory.Count) ? Stats.FabricClockHistory[sampleIdx] : _status.FabricClockMhz;
                 int amb = (Stats.AmbientHistory != null && sampleIdx < Stats.AmbientHistory.Count) ? Stats.AmbientHistory[sampleIdx] : 0;
 
                 string rTempStr = (_status.DdrStickCount == 2 && _status.DdrTemp1 > 0 && _status.DdrTemp2 > 0)
@@ -2175,11 +2324,11 @@ namespace MiniFanControl
                     ? (ddrSpd > 0 ? string.Format("{0} {1}%@{2}M", rTempStr, rLoad, ddrSpd) : string.Format("{0} {1}%", rTempStr, rLoad))
                     : (ddrSpd > 0 ? string.Format("{0}%@{1}M", rLoad, ddrSpd) : string.Format("{0}%", rLoad));
 
-                string hud = string.Format("{0} | CPU {1}° • iGPU {2}° • RAM {3} • FCLK {4}M • NVMe {5}° • PWR {6}W",
-                    secAgo == 0 ? "Now" : "-" + secAgo + "s",
+                string hud = string.Format("{0} | CPU {1}° • iGPU {2}° • RAM {3} • NVMe {4}° • PWR {5}W",
+                    FormatSampleTimeAgo(samplesAgo),
                     TelemetrySessionStats.ToDisplayTemp(c, UseFahrenheit),
                     TelemetrySessionStats.ToDisplayTemp(g_, UseFahrenheit),
-                    rStr, fclk,
+                    rStr,
                     TelemetrySessionStats.ToDisplayTemp(n, UseFahrenheit), p);
                 if (ShowAmbient && amb > 0) hud += string.Format(" • CHAS {0}°", TelemetrySessionStats.ToDisplayTemp(amb, UseFahrenheit));
                 if (f1 > 0) hud += string.Format(" • APU {0}", f1);
@@ -2431,12 +2580,14 @@ namespace MiniFanControl
             }
         }
 
-        private void DrawDfFrametimeGraph(Graphics g, Rectangle rect, float sc)
+        private void DrawDfFrametimeGraph(Graphics g, Rectangle rect, float sc, bool compactCorner = false)
         {
             if (rect.Width <= 10 || rect.Height <= 10) return;
 
-            using (SolidBrush bgBr = new SolidBrush(Color.FromArgb(195, 10, 14, 20)))
-            using (Pen borderPen = new Pen(Color.FromArgb(220, 255, 255, 255), 1.2f))
+            Color bgCol = compactCorner ? Color.FromArgb(232, 10, 14, 22) : Color.FromArgb(195, 10, 14, 20);
+            Color brdCol = compactCorner ? Color.FromArgb(195, 0x22, 0xD3, 0xEE) : Color.FromArgb(220, 255, 255, 255);
+            using (SolidBrush bgBr = new SolidBrush(bgCol))
+            using (Pen borderPen = new Pen(brdCol, 1.2f))
             {
                 g.FillRectangle(bgBr, rect);
                 g.DrawRectangle(borderPen, rect.X, rect.Y, rect.Width - 1, rect.Height - 1);
@@ -2451,14 +2602,16 @@ namespace MiniFanControl
                         : 0));
 
             // Bold Header: FRAME-TIME (MS) with live readout
-            string ftHdr = (curFt > 0)
-                ? string.Format("FRAME-TIME (MS)  •  NOW: {0:0.0} ms", curFt)
-                : "FRAME-TIME (MS)";
-            TextRenderer.DrawText(g, ftHdr, _fontDfHdr, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + (int)Math.Round(1.5f * sc)), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            string ftHdr = compactCorner
+                ? ((curFt > 0) ? string.Format("FT {0:0.0}ms", curFt) : "FRAME-TIME")
+                : ((curFt > 0)
+                    ? string.Format("FRAME-TIME (MS)  •  NOW: {0:0.0} ms", curFt)
+                    : "FRAME-TIME (MS)");
+            TextRenderer.DrawText(g, ftHdr, _fontDfHdr, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + (int)Math.Round(1.5f * sc)), compactCorner ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
-            int topPad = (int)Math.Round(14 * sc);
-            int btmPad = (int)Math.Round(8 * sc);
-            int rightPad = (int)Math.Round(32 * sc);
+            int topPad = (int)Math.Round((compactCorner ? 12 : 14) * sc);
+            int btmPad = (int)Math.Round((compactCorner ? 4 : 8) * sc);
+            int rightPad = (int)Math.Round((compactCorner ? 24 : 32) * sc);
             Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - btmPad));
 
             int targetFtCeiling = CalculateDfFrametimeCeiling(curFt, (Stats != null) ? Stats.FrametimeHistory : null);
@@ -2517,14 +2670,17 @@ namespace MiniFanControl
             int y100 = Math.Min(rect.Bottom - 2 - sz100.Height, (int)Math.Round(plot.Bottom - sz100.Height / 2f));
 
             TextRenderer.DrawText(g, lbl0, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y0), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            TextRenderer.DrawText(g, lblMid, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y50), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            if (!compactCorner || plot.Height >= (int)Math.Round(34 * sc))
+            {
+                TextRenderer.DrawText(g, lblMid, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y50), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            }
             TextRenderer.DrawText(g, lblMax, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y100), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             if (Stats == null || Stats.FrametimeHistory == null || Stats.FrametimeHistory.Count == 0)
                 return;
 
             int total = Stats.FrametimeHistory.Count;
-            int take = Math.Min(total, 60);
+            int take = Math.Min(total, compactCorner ? 30 : 60);
             int start = total - take;
 
             PointF[] pts = new PointF[Math.Max(2, take)];
@@ -2570,31 +2726,36 @@ namespace MiniFanControl
                     g.FillEllipse(dotBr, last.X - 2.5f * sc, last.Y - 2.5f * sc, 5f * sc, 5f * sc);
                 }
 
-                // High-visibility live endpoint badge on the frametime line
-                string ftBadge = string.Format("{0:0.0} ms", curFt);
-                Size ftBadgeSz = TextRenderer.MeasureText(g, ftBadge, _fontDfAxis, new Size(80, 16), TextFormatFlags.NoPadding);
-                int ftBw = ftBadgeSz.Width + (int)Math.Round(6 * sc);
-                int ftBh = (int)Math.Round(12 * sc);
-                int ftBx = (int)Math.Round(last.X - ftBw - 6 * sc);
-                if (ftBx < plot.Left + 2) ftBx = plot.Left + 2;
-                int ftBy = (int)Math.Round(last.Y - ftBh / 2f);
-                if (ftBy < plot.Top + 1) ftBy = plot.Top + 1;
-                if (ftBy + ftBh > plot.Bottom - 1) ftBy = plot.Bottom - 1 - ftBh;
-                Rectangle ftBadgeRect = new Rectangle(ftBx, ftBy, ftBw, ftBh);
+                // In compact corner mode the header already displays "FT XX.Xms", so skip the floating pill
+                // to keep small-scale / short-height traces completely unobstructed.
+                if (!compactCorner)
+                {
+                    // High-visibility live endpoint badge on the frametime line
+                    string ftBadge = string.Format("{0:0.0} ms", curFt);
+                    Size ftBadgeSz = TextRenderer.MeasureText(g, ftBadge, _fontDfAxis, new Size(80, 16), TextFormatFlags.NoPadding);
+                    int ftBw = ftBadgeSz.Width + (int)Math.Round(6 * sc);
+                    int ftBh = (int)Math.Round(12 * sc);
+                    int ftBx = (int)Math.Round(last.X - ftBw - 6 * sc);
+                    if (ftBx < plot.Left + 2) ftBx = plot.Left + 2;
+                    int ftBy = (int)Math.Round(last.Y - ftBh / 2f);
+                    if (ftBy < plot.Top + 1) ftBy = plot.Top + 1;
+                    if (ftBy + ftBh > plot.Bottom - 1) ftBy = plot.Bottom - 1 - ftBh;
+                    Rectangle ftBadgeRect = new Rectangle(ftBx, ftBy, ftBw, ftBh);
 
-                using (Pen tickPen = new Pen(Color.FromArgb(180, ftCol), 1f))
-                {
-                    g.DrawLine(tickPen, last.X, last.Y, ftBx + ftBw, ftBy + ftBh / 2f);
+                    using (Pen tickPen = new Pen(Color.FromArgb(180, ftCol), 1f))
+                    {
+                        g.DrawLine(tickPen, last.X, last.Y, ftBx + ftBw, ftBy + ftBh / 2f);
+                    }
+                    using (SolidBrush bgPill = new SolidBrush(Color.FromArgb(225, 10, 14, 20)))
+                    {
+                        g.FillRectangle(bgPill, ftBadgeRect);
+                    }
+                    using (Pen borderPill = new Pen(ftCol, 1.2f))
+                    {
+                        g.DrawRectangle(borderPill, ftBadgeRect);
+                    }
+                    TextRenderer.DrawText(g, ftBadge, _fontDfAxis, new Point(ftBx + (int)Math.Round(3 * sc), ftBy + (int)Math.Round(1.5f * sc)), ftCol, TextFormatFlags.NoPadding);
                 }
-                using (SolidBrush bgPill = new SolidBrush(Color.FromArgb(225, 10, 14, 20)))
-                {
-                    g.FillRectangle(bgPill, ftBadgeRect);
-                }
-                using (Pen borderPill = new Pen(ftCol, 1.2f))
-                {
-                    g.DrawRectangle(borderPill, ftBadgeRect);
-                }
-                TextRenderer.DrawText(g, ftBadge, _fontDfAxis, new Point(ftBx + (int)Math.Round(3 * sc), ftBy + (int)Math.Round(1.5f * sc)), ftCol, TextFormatFlags.NoPadding);
             }
 
             // Hover scrubbing tooltip
@@ -2609,11 +2770,11 @@ namespace MiniFanControl
                 int sampleIdx = start + (int)Math.Round(normX * (take - 1));
                 sampleIdx = Math.Max(0, Math.Min(total - 1, sampleIdx));
 
-                int secAgo = (int)Math.Round((take - 1 - (sampleIdx - start)) * 1.5);
+                int samplesAgo = take - 1 - (sampleIdx - start);
                 double ft = (sampleIdx < Stats.FrametimeHistory.Count && Stats.FrametimeHistory[sampleIdx] > 0)
                     ? Stats.FrametimeHistory[sampleIdx] / 10.0
                     : 16.6;
-                string hud = string.Format("{0} | Frametime: {1:0.0} ms", secAgo == 0 ? "Now" : "-" + secAgo + "s", ft);
+                string hud = string.Format("{0} | Frametime: {1:0.0} ms", FormatSampleTimeAgo(samplesAgo), ft);
                 DrawHoverHudBox(g, rect, plot, hud, _fontTrace, _hoverMouseX, _hoverMouseY, sc);
             }
         }
@@ -2685,10 +2846,25 @@ namespace MiniFanControl
                 g.DrawRectangle(borderPen, rect.X, rect.Y, rect.Width - 1, rect.Height - 1);
             }
 
-            // Bold Header: FRAME-RATE (FPS) with live readout and average
-            string fpsHdr = (curLiveFps > 0)
-                ? string.Format("FRAME-RATE (FPS)  •  NOW: {0} FPS{1}", curLiveFps, sessionAvg > 0 ? string.Format("  •  AVG: {0}", sessionAvg) : "")
-                : "FRAME-RATE (FPS)";
+            int p1Low = _status.RtssP1LowFps > 0 ? _status.RtssP1LowFps : ((Stats != null && Stats.P1LowFps > 0) ? Stats.P1LowFps : 0);
+            int p01Low = _status.RtssP01LowFps > 0 ? _status.RtssP01LowFps : ((Stats != null && Stats.P01LowFps > 0) ? Stats.P01LowFps : 0);
+
+            // Bold Header: FRAME-RATE (FPS) with live readout, average, 1% and 0.1% lows
+            string lowsPart = "";
+            if (p1Low > 0) lowsPart += string.Format("  •  1%: {0}", p1Low);
+            if (p01Low > 0) lowsPart += string.Format("  •  0.1%: {0}", p01Low);
+            string fpsHdr;
+            if (curLiveFps > 0)
+            {
+                bool compactHdr = rect.Width < (int)Math.Round(340 * sc);
+                fpsHdr = compactHdr
+                    ? string.Format("FPS: {0}{1}{2}", curLiveFps, sessionAvg > 0 ? string.Format("  •  AVG: {0}", sessionAvg) : "", lowsPart)
+                    : string.Format("FRAME-RATE (FPS)  •  NOW: {0}{1}{2}", curLiveFps, sessionAvg > 0 ? string.Format("  •  AVG: {0}", sessionAvg) : "", lowsPart);
+            }
+            else
+            {
+                fpsHdr = "FRAME-RATE (FPS)";
+            }
             TextRenderer.DrawText(g, fpsHdr, _fontDfHdr, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + (int)Math.Round(1.5f * sc)), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             int topPad = (int)Math.Round(14 * sc);
@@ -2728,6 +2904,54 @@ namespace MiniFanControl
 
             if (total == 0)
                 return;
+
+            // 0.1% Low shaded floor band (Rose / Coral — matches Live Perf tab)
+            if (Stats.P01LowHistory != null && Stats.P01LowHistory.Count > 0)
+            {
+                PointF[] lowPts = new PointF[Math.Max(2, take)];
+                bool hasAnyLow = false;
+                if (take == 1)
+                {
+                    int lowVal = (start < Stats.P01LowHistory.Count && Stats.P01LowHistory[start] > 0) ? Stats.P01LowHistory[start] : p01Low;
+                    if (lowVal > 0) hasAnyLow = true;
+                    float norm = Math.Max(0f, Math.Min(1f, lowVal / (float)fpsCeiling));
+                    float y = plot.Bottom - norm * plot.Height;
+                    lowPts[0] = new PointF(plot.Left, y);
+                    lowPts[1] = new PointF(plot.Right, y);
+                }
+                else
+                {
+                    for (int i = 0; i < take; i++)
+                    {
+                        int idx = start + i;
+                        int lowVal = (idx < Stats.P01LowHistory.Count && Stats.P01LowHistory[idx] > 0) ? Stats.P01LowHistory[idx] : p01Low;
+                        if (lowVal > 0) hasAnyLow = true;
+                        float norm = Math.Max(0f, Math.Min(1f, lowVal / (float)fpsCeiling));
+                        float x = plot.Left + (plot.Width * i) / (float)(take - 1);
+                        float y = plot.Bottom - norm * plot.Height;
+                        lowPts[i] = new PointF(x, y);
+                    }
+                }
+                if (hasAnyLow)
+                {
+                    using (GraphicsPath lowPath = new GraphicsPath())
+                    {
+                        lowPath.AddLine(plot.Left, plot.Bottom, lowPts[0].X, lowPts[0].Y);
+                        lowPath.AddLines(lowPts);
+                        lowPath.AddLine(lowPts[lowPts.Length - 1].X, lowPts[lowPts.Length - 1].Y, plot.Right, plot.Bottom);
+                        lowPath.CloseFigure();
+                        using (SolidBrush lowFill = new SolidBrush(Color.FromArgb(42, 0xFB, 0x71, 0x85)))
+                        {
+                            g.FillPath(lowFill, lowPath);
+                        }
+                    }
+                    using (Pen lowPen = new Pen(Color.FromArgb(170, 0xFB, 0x71, 0x85), 1.1f * Math.Max(1f, sc * 0.85f)))
+                    {
+                        lowPen.DashStyle = DashStyle.Dot;
+                        g.DrawLines(lowPen, lowPts);
+                    }
+                }
+            }
 
             // Session Avg line (Smooth Blue / Cyan)
             if (Stats.AvgFpsHistory != null && Stats.AvgFpsHistory.Count > 0)
@@ -2877,8 +3101,9 @@ namespace MiniFanControl
                 }
             }
 
-            // Hover scrubbing tooltip
-            if (_hoverMouseX >= plot.Left && _hoverMouseX <= plot.Right && rect.Contains(_hoverMouseX, _hoverMouseY))
+            // Hover scrubbing tooltip (suppressed when mouse is over the DF Corner inset box)
+            bool mouseOverFtInset = (DfGraphStyle && DfCornerInset && !_dfFtRect.IsEmpty && _dfFtRect.Contains(_hoverMouseX, _hoverMouseY));
+            if (!mouseOverFtInset && _hoverMouseX >= plot.Left && _hoverMouseX <= plot.Right && rect.Contains(_hoverMouseX, _hoverMouseY))
             {
                 using (Pen crossPen = new Pen(Color.FromArgb(160, 255, 255, 255), 1f) { DashStyle = DashStyle.Dot })
                 {
@@ -2889,13 +3114,13 @@ namespace MiniFanControl
                 int sampleIdx = start + (int)Math.Round(normX * (take - 1));
                 sampleIdx = Math.Max(0, Math.Min(total - 1, sampleIdx));
 
-                int secAgo = (int)Math.Round((take - 1 - (sampleIdx - start)) * 1.5);
+                int samplesAgo = take - 1 - (sampleIdx - start);
                 int f = (sampleIdx < Stats.FpsHistory.Count) ? Stats.FpsHistory[sampleIdx] : 0;
                 int avg = (sampleIdx < Stats.AvgFpsHistory.Count) ? Stats.AvgFpsHistory[sampleIdx] : 0;
-                int low = (sampleIdx < Stats.P01LowHistory.Count) ? Stats.P01LowHistory[sampleIdx] : 0;
+                int low01 = (sampleIdx < Stats.P01LowHistory.Count) ? Stats.P01LowHistory[sampleIdx] : 0;
 
-                string hud = string.Format("{0} | FPS: {1} • Avg: {2} • 0.1%: {3}",
-                    secAgo == 0 ? "Now" : "-" + secAgo + "s", f, avg, low > 0 ? low.ToString() : "--");
+                string hud = string.Format("{0} | FPS: {1} • Avg: {2} • 1%: {3} • 0.1%: {4}",
+                    FormatSampleTimeAgo(samplesAgo), f, avg, p1Low > 0 ? p1Low.ToString() : "--", low01 > 0 ? low01.ToString() : "--");
                 DrawHoverHudBox(g, rect, plot, hud, _fontTrace, _hoverMouseX, _hoverMouseY, sc);
             }
         }
@@ -2962,10 +3187,13 @@ namespace MiniFanControl
             {
                 if (!VerticalLayout)
                 {
+                    bool graphsOnly = (GraphMode == 4);
                     Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8);
                     Color lowCol = Color.FromArgb(0xFB, 0x71, 0x85);
                     Color loadCol = radeon ? CfxCyan : Color.FromArgb(0xC0, 0x84, 0xFC);
 
+                    if (!graphsOnly)
+                    {
                     using (Brush bFps = new SolidBrush(fpsCol))
                     using (Brush bLow = new SolidBrush(lowCol))
                     using (Brush bLoad = new SolidBrush(loadCol))
@@ -3019,8 +3247,9 @@ namespace MiniFanControl
                             }
                         }
                     }
+                    }
 
-                    int curY = (CountVisibleMetrics() > 0) ? (int)Math.Round((showSpark ? 58 : 42) * sc) : (int)Math.Round(24 * sc);
+                    int curY = graphsOnly ? (int)Math.Round(6 * sc) : ((CountVisibleMetrics() > 0) ? (int)Math.Round((showSpark ? 58 : 42) * sc) : (int)Math.Round(24 * sc));
 
                     Action drawHorizTrend = () =>
                     {
@@ -3041,13 +3270,30 @@ namespace MiniFanControl
                     {
                         if (ShowFpsGraph)
                         {
-                            if (DfGraphStyle)
+                            if (DfGraphStyle && DfCornerInset)
+                            {
+                                int dfFpsH = GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(22 * sc);
+                                Rectangle fpsRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(14 * sc), dfFpsH);
+                                _dfFpsRect = fpsRect;
+                                DrawDfFramerateGraph(g, fpsRect, sc);
+
+                                int insetW = Math.Max((int)Math.Round(130 * sc), Math.Min((int)Math.Round(240 * sc), (int)(fpsRect.Width * 0.24)));
+                                int availH = Math.Max((int)Math.Round(36 * sc), fpsRect.Height - (int)Math.Round(20 * sc));
+                                int insetH = Math.Min(availH, Math.Max((int)Math.Round(46 * sc), (int)(fpsRect.Height * (fpsRect.Height < 100 * sc ? 0.68 : 0.52))));
+                                Rectangle insetRect = new Rectangle(fpsRect.X + (int)Math.Round(6 * sc), fpsRect.Y + (int)Math.Round(16 * sc), insetW, insetH);
+                                _dfFtRect = insetRect;
+                                DrawDfFrametimeGraph(g, insetRect, sc, true);
+
+                                curY += dfFpsH + (int)Math.Round(6 * sc);
+                                _fpsRect = Rectangle.Empty;
+                            }
+                            else if (DfGraphStyle)
                             {
                                 int dfFtH = GetDfFrametimeHeight(sc, scaledGraphH);
                                 int dfFpsH = GetDfFramerateHeight(sc, scaledGraphH);
                                 Rectangle ftRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(14 * sc), dfFtH);
                                 _dfFtRect = ftRect;
-                                DrawDfFrametimeGraph(g, ftRect, sc);
+                                DrawDfFrametimeGraph(g, ftRect, sc, false);
                                 curY += dfFtH + (int)Math.Round(6 * sc);
 
                                 Rectangle fpsRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(14 * sc), dfFpsH);
@@ -3087,14 +3333,16 @@ namespace MiniFanControl
                 }
                 else
                 {
+                    bool graphsOnly = (GraphMode == 4);
+                    int row = 0;
+                    if (!graphsOnly)
+                    {
                     string gameTitle = ShowGameName ? FormatGameName(_status.RtssProcessName) : null;
                     string headerText = !string.IsNullOrEmpty(gameTitle)
                         ? "GAME: " + gameTitle
                         : (afterburner ? "AFTERBURNER OSD" : (radeon ? "RADEON TELEMETRY OSD" : "MINIFANCONTROL OSD"));
                     g.DrawString(headerText, _fontHdr, bLabel, 10f * sc, 6f * sc);
                     g.DrawLine(sepPen, (int)Math.Round(10 * sc), (int)Math.Round(24 * sc), Width - (int)Math.Round(10 * sc), (int)Math.Round(24 * sc));
-
-                    int row = 0;
                     if (ShowCpu)
                         DrawVertRow(g, row++, rowH, "CPU", cpuVal, cpuPeak, bLabel, bCpu, bPeak, showSpark ? (Stats != null ? Stats.CpuHistory : null) : null, cpuCol, sc);
                     if (ShowGpu || ShowGpuLoad)
@@ -3262,8 +3510,11 @@ namespace MiniFanControl
                             DrawRadeonTagsRow(g, row++, rowH, radTags, sc);
                         }
                     }
+                    }
 
-                    int curY = (int)Math.Round(24 * sc) + (row > 0 ? row * rowH + (int)Math.Round(4 * sc) : (int)Math.Round(4 * sc));
+                    int curY = graphsOnly
+                        ? (int)Math.Round(6 * sc)
+                        : ((int)Math.Round(24 * sc) + (row > 0 ? row * rowH + (int)Math.Round(4 * sc) : (int)Math.Round(4 * sc)));
 
                     Action drawTrend = () =>
                     {
@@ -3284,13 +3535,30 @@ namespace MiniFanControl
                     {
                         if (ShowFpsGraph)
                         {
-                            if (DfGraphStyle)
+                            if (DfGraphStyle && DfCornerInset)
+                            {
+                                int dfFpsH = GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(22 * sc);
+                                Rectangle fpsRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(16 * sc), dfFpsH);
+                                _dfFpsRect = fpsRect;
+                                DrawDfFramerateGraph(g, fpsRect, sc);
+
+                                int insetW = Math.Max((int)Math.Round(112 * sc), Math.Min((int)Math.Round(195 * sc), (int)(fpsRect.Width * 0.44)));
+                                int availH = Math.Max((int)Math.Round(36 * sc), fpsRect.Height - (int)Math.Round(20 * sc));
+                                int insetH = Math.Min(availH, Math.Max((int)Math.Round(46 * sc), (int)(fpsRect.Height * (fpsRect.Height < 100 * sc ? 0.68 : 0.52))));
+                                Rectangle insetRect = new Rectangle(fpsRect.X + (int)Math.Round(6 * sc), fpsRect.Y + (int)Math.Round(16 * sc), insetW, insetH);
+                                _dfFtRect = insetRect;
+                                DrawDfFrametimeGraph(g, insetRect, sc, true);
+
+                                curY += dfFpsH + (int)Math.Round(6 * sc);
+                                _fpsRect = Rectangle.Empty;
+                            }
+                            else if (DfGraphStyle)
                             {
                                 int dfFtH = GetDfFrametimeHeight(sc, scaledGraphH);
                                 int dfFpsH = GetDfFramerateHeight(sc, scaledGraphH);
                                 Rectangle ftRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(16 * sc), dfFtH);
                                 _dfFtRect = ftRect;
-                                DrawDfFrametimeGraph(g, ftRect, sc);
+                                DrawDfFrametimeGraph(g, ftRect, sc, false);
                                 curY += dfFtH + (int)Math.Round(6 * sc);
 
                                 Rectangle fpsRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(16 * sc), dfFpsH);

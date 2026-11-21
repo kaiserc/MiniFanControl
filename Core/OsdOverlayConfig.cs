@@ -11,7 +11,7 @@ namespace MiniFanControl
         public int OverlayX = 24;
         public int OverlayY = 24;
         public int ScaleTier = 1; // 0 = 100%, 1 = 125%, 2 = 150%, 3 = 185%
-        public int GraphMode = 3; // 0=None, 1=Sparklines, 2=Combined, 3=Both
+        public int GraphMode = 3; // 0=Text Only, 1=Sparklines, 2=Combined, 3=Both, 4=Graphs Only
         public int GraphHeight = 140; // 75=Compact, 105=Medium, 140=Large, 180=XL
         public int OpacityPct = 80; // 35..100
         public bool MatchTheme = true;
@@ -43,6 +43,7 @@ namespace MiniFanControl
         public bool ShowFpsGraph = true;
         public bool PlotFpsOnTrend = true;
         public bool DfGraphStyle = true;
+        public bool DfCornerInset = false;
         public bool DfGraphFirst = true;
 
         public bool ShowRamTemp = true;
@@ -60,6 +61,16 @@ namespace MiniFanControl
         public bool ShowFclkSync = true;
         public bool ShowFrametimeMs = true;
         public bool ShowFpsAvg = true;
+
+        // Per-series toggles for Live Trend graph (shared between app Live Trend tab & OSD Live Trend graph)
+        public bool TrendCpu = true;
+        public bool TrendGpu = true;
+        public bool TrendRam = true;
+        public bool TrendNvme = true;
+        public bool TrendPower = true;
+        public bool TrendAmbient = true;
+        public bool TrendApuFan = true;
+        public bool TrendSysFan = true;
 
         public void ResetDefaults(bool hasDualFans)
         {
@@ -106,6 +117,14 @@ namespace MiniFanControl
             ShowFclkSync = true;
             ShowFrametimeMs = true;
             ShowFpsAvg = true;
+            TrendCpu = true;
+            TrendGpu = true;
+            TrendRam = true;
+            TrendNvme = true;
+            TrendPower = true;
+            TrendAmbient = true;
+            TrendApuFan = true;
+            TrendSysFan = hasDualFans;
             MatchTheme = true;
             ScaleTier = 1;
             GraphMode = 3;
@@ -200,6 +219,7 @@ namespace MiniFanControl
             overlay.ShowFpsGraph = ShowFpsGraph;
             overlay.PlotFpsOnTrend = PlotFpsOnTrend;
             overlay.DfGraphStyle = DfGraphStyle;
+            overlay.DfCornerInset = DfCornerInset;
             overlay.DfGraphFirst = DfGraphFirst;
             overlay.ShowRamTemp = ShowRamTemp;
             overlay.ShowRamDualSticks = ShowRamDualSticks;
@@ -217,6 +237,14 @@ namespace MiniFanControl
             overlay.ShowFrametimeMs = ShowFrametimeMs;
             overlay.ShowFpsAvg = ShowFpsAvg;
             overlay.ShowRadeonExtendedTags = ShowRadeonExtTags;
+            overlay.TrendCpu = TrendCpu;
+            overlay.TrendGpu = TrendGpu;
+            overlay.TrendRam = TrendRam;
+            overlay.TrendNvme = TrendNvme;
+            overlay.TrendPower = TrendPower;
+            overlay.TrendAmbient = TrendAmbient;
+            overlay.TrendApuFan = TrendApuFan;
+            overlay.TrendSysFan = TrendSysFan;
             overlay.UseFahrenheit = useFahrenheit;
             overlay.ApplyOpacity(OpacityPct);
         }
@@ -258,6 +286,7 @@ namespace MiniFanControl
             ShowFpsGraph = overlay.ShowFpsGraph;
             PlotFpsOnTrend = overlay.PlotFpsOnTrend;
             DfGraphStyle = overlay.DfGraphStyle;
+            DfCornerInset = overlay.DfCornerInset;
             DfGraphFirst = overlay.DfGraphFirst;
             ShowRamTemp = overlay.ShowRamTemp;
             ShowRamDualSticks = overlay.ShowRamDualSticks;
@@ -274,6 +303,14 @@ namespace MiniFanControl
             ShowFclkSync = overlay.ShowFclkSync;
             ShowFrametimeMs = overlay.ShowFrametimeMs;
             ShowFpsAvg = overlay.ShowFpsAvg;
+            TrendCpu = overlay.TrendCpu;
+            TrendGpu = overlay.TrendGpu;
+            TrendRam = overlay.TrendRam;
+            TrendNvme = overlay.TrendNvme;
+            TrendPower = overlay.TrendPower;
+            TrendAmbient = overlay.TrendAmbient;
+            TrendApuFan = overlay.TrendApuFan;
+            TrendSysFan = overlay.TrendSysFan;
         }
 
         private static bool ParseBool(string v)
@@ -288,7 +325,7 @@ namespace MiniFanControl
             if (k == "OverlayX" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) { OverlayX = Math.Max(0, Math.Min(3800, intVal)); return true; }
             if (k == "OverlayY" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) { OverlayY = Math.Max(0, Math.Min(2100, intVal)); return true; }
             if (k == "OsdScaleTier" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) { ScaleTier = Math.Max(0, Math.Min(3, intVal)); return true; }
-            if (k == "OsdGraphMode" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) { GraphMode = Math.Max(0, Math.Min(3, intVal)); return true; }
+            if (k == "OsdGraphMode" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) { GraphMode = Math.Max(0, Math.Min(4, intVal)); return true; }
             if (k == "OsdGraphHeight" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal))
             {
                 if (intVal <= 85) GraphHeight = 75;
@@ -325,6 +362,7 @@ namespace MiniFanControl
             if (k == "OsdShowFpsGraph") { ShowFpsGraph = ParseBool(v); return true; }
             if (k == "OsdPlotFpsOnTrend") { PlotFpsOnTrend = ParseBool(v); return true; }
             if (k == "OsdDfGraphStyle") { DfGraphStyle = ParseBool(v); return true; }
+            if (k == "OsdDfCornerInset") { DfCornerInset = ParseBool(v); return true; }
             if (k == "OsdDfGraphFirst") { DfGraphFirst = ParseBool(v); return true; }
             if (k == "OsdShowRamTemp") { ShowRamTemp = ParseBool(v); return true; }
             if (k == "OsdShowRamDualSticks") { ShowRamDualSticks = ParseBool(v); return true; }
@@ -342,6 +380,14 @@ namespace MiniFanControl
             if (k == "OsdShowFrametimeMs") { ShowFrametimeMs = ParseBool(v); return true; }
             if (k == "OsdShowFpsAvg") { ShowFpsAvg = ParseBool(v); return true; }
             if (k == "OsdShowRadeonExtTags") { ShowRadeonExtTags = ParseBool(v); return true; }
+            if (k == "TrendCpu") { TrendCpu = ParseBool(v); return true; }
+            if (k == "TrendGpu") { TrendGpu = ParseBool(v); return true; }
+            if (k == "TrendRam") { TrendRam = ParseBool(v); return true; }
+            if (k == "TrendNvme") { TrendNvme = ParseBool(v); return true; }
+            if (k == "TrendPower") { TrendPower = ParseBool(v); return true; }
+            if (k == "TrendAmbient") { TrendAmbient = ParseBool(v); return true; }
+            if (k == "TrendApuFan") { TrendApuFan = ParseBool(v); return true; }
+            if (k == "TrendSysFan") { TrendSysFan = ParseBool(v); return true; }
             return false;
         }
 
@@ -381,6 +427,7 @@ namespace MiniFanControl
             lines.Add("OsdShowFpsGraph=" + (ShowFpsGraph ? "1" : "0"));
             lines.Add("OsdPlotFpsOnTrend=" + (PlotFpsOnTrend ? "1" : "0"));
             lines.Add("OsdDfGraphStyle=" + (DfGraphStyle ? "1" : "0"));
+            lines.Add("OsdDfCornerInset=" + (DfCornerInset ? "1" : "0"));
             lines.Add("OsdDfGraphFirst=" + (DfGraphFirst ? "1" : "0"));
             lines.Add("OsdShowRamTemp=" + (ShowRamTemp ? "1" : "0"));
             lines.Add("OsdShowRamDualSticks=" + (ShowRamDualSticks ? "1" : "0"));
@@ -398,6 +445,14 @@ namespace MiniFanControl
             lines.Add("OsdShowFrametimeMs=" + (ShowFrametimeMs ? "1" : "0"));
             lines.Add("OsdShowFpsAvg=" + (ShowFpsAvg ? "1" : "0"));
             lines.Add("OsdShowRadeonExtTags=" + (ShowRadeonExtTags ? "1" : "0"));
+            lines.Add("TrendCpu=" + (TrendCpu ? "1" : "0"));
+            lines.Add("TrendGpu=" + (TrendGpu ? "1" : "0"));
+            lines.Add("TrendRam=" + (TrendRam ? "1" : "0"));
+            lines.Add("TrendNvme=" + (TrendNvme ? "1" : "0"));
+            lines.Add("TrendPower=" + (TrendPower ? "1" : "0"));
+            lines.Add("TrendAmbient=" + (TrendAmbient ? "1" : "0"));
+            lines.Add("TrendApuFan=" + (TrendApuFan ? "1" : "0"));
+            lines.Add("TrendSysFan=" + (TrendSysFan ? "1" : "0"));
         }
     }
 }

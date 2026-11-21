@@ -31,10 +31,13 @@ namespace MiniFanControl
 
     public class FanCalibrationResult
     {
-        public static readonly int[] CalibrationSteps = new int[] { 20, 22, 24, 26, 28, 30, 32, 35, 40, 45, 50, 55, 60, 70, 80, 90, 100 };
+        public static readonly int[] CalibrationSteps = new int[] { 12, 15, 18, 20, 22, 24, 26, 28, 30, 32, 35, 40, 45, 50, 55, 60, 70, 80, 90, 100 };
+        public const int CALIBRATION_THERMAL_ABORT_C = 88;
 
         public bool HasDualFans = true;
         public bool WasCanceled = false;
+        public bool WasThermalAborted = false;
+        public int ThermalAbortTempC = 0;
         public int PassesCompleted = 0;
         public int ApuBareSpinPct = 28;
         public int SysBareSpinPct = 28;
@@ -100,8 +103,8 @@ namespace MiniFanControl
                         passHeader, new FanStatus());
 
                     // 1. Command 1% manual (0x81 = manual stop) and wait until rotors coast to 0 RPM.
-                    // Coming off 100% PWM (~3350 RPM) or BIOS Auto, the K12 EC slews down slowly (~80-140 RPM/s),
-                    // requiring up to ~30-35 seconds to reach 0 RPM.
+                    // Reset tachometer debounce state so 0 RPM coast-down detection has zero filter lag on any EC/Super I/O.
+                    HardwareBackend.ResetTachometerFilterState();
                     if (demoMode) { demo.SetFan(1, 1); demo.SetFan(2, 1); }
                     else { hw.SetFan(1, 1); hw.SetFan(2, 1); }
 
@@ -131,6 +134,15 @@ namespace MiniFanControl
                         }
 
                         lastSt = demoMode ? demo.GetStatus() : hw.GetStatus();
+                        int coastHotTemp = Math.Max(lastSt.CpuTemp, lastSt.GpuTemp);
+                        if (coastHotTemp >= CALIBRATION_THERMAL_ABORT_C && coastHotTemp <= 115 && coastHotTemp != 127)
+                        {
+                            res.WasThermalAborted = true;
+                            res.ThermalAbortTempC = coastHotTemp;
+                            if (demoMode) { demo.SetFan(1, 100); demo.SetFan(2, 100); }
+                            else { hw.SetFan(1, 100); hw.SetFan(2, 100); }
+                            break;
+                        }
                         if (lastSt.Fan1Rpm == 0) apuCanStopToZero = true;
                         if (lastSt.Fan2Rpm == 0) sysCanStopToZero = true;
 
@@ -169,7 +181,7 @@ namespace MiniFanControl
                             null, lastSt);
                     }
 
-                    if (res.WasCanceled) break;
+                    if (res.WasCanceled || res.WasThermalAborted) break;
                     completedUnits += 2;
 
                     string spinDownMsg = string.Format("  [Pass {0}] Baseline Stop (1% PWM) -> APU: {1,4} RPM | Sys: {2,4} RPM (after {3:0.0}s)",
@@ -206,9 +218,13 @@ namespace MiniFanControl
                         else
                         {
                             int targetStepMs = stepDelayMs;
-                            int maxExtraSettleMs = (!demoMode && stepDelayMs >= 1000) ? 2500 : 0;
-                            int prevTickF1 = lastSt.Fan1Rpm;
-                            int prevTickF2 = lastSt.Fan2Rpm;
+                            // Allow longer settle on 100% (up to +6s) and intermediate steps (+3s) to accommodate
+                            // both fast Super I/O blowers and slow-slewing laptop/mini-PC EC firmware.
+                            int maxExtraSettleMs = (!demoMode && stepDelayMs >= 1000) ? (pct >= 100 ? 6000 : 3000) : 0;
+                            Queue<int> f1SlewWindow = new Queue<int>();
+                            Queue<int> f2SlewWindow = new Queue<int>();
+                            f1SlewWindow.Enqueue(lastSt.Fan1Rpm);
+                            f2SlewWindow.Enqueue(lastSt.Fan2Rpm);
 
                             while (elapsedStep < targetStepMs)
                             {
@@ -218,13 +234,27 @@ namespace MiniFanControl
                                 elapsedStep += sleepChunk;
 
                                 lastSt = demoMode ? demo.GetStatus() : hw.GetStatus();
+                                int stepHotTemp = Math.Max(lastSt.CpuTemp, lastSt.GpuTemp);
+                                if (stepHotTemp >= CALIBRATION_THERMAL_ABORT_C && stepHotTemp <= 115 && stepHotTemp != 127)
+                                {
+                                    res.WasThermalAborted = true;
+                                    res.ThermalAbortTempC = stepHotTemp;
+                                    if (demoMode) { demo.SetFan(1, 100); demo.SetFan(2, 100); }
+                                    else { hw.SetFan(1, 100); hw.SetFan(2, 100); }
+                                    break;
+                                }
 
-                                // If at the end of the nominal step window the rotor is still actively accelerating or decelerating,
-                                // extend stabilization up to +2.5s so the reading reflects true steady-state RPM.
+                                f1SlewWindow.Enqueue(lastSt.Fan1Rpm);
+                                f2SlewWindow.Enqueue(lastSt.Fan2Rpm);
+                                while (f1SlewWindow.Count > 5) f1SlewWindow.Dequeue(); // ~1.0s window at 250ms tick
+                                while (f2SlewWindow.Count > 5) f2SlewWindow.Dequeue();
+
+                                // If at the end of the nominal step window the rotor is still accelerating/decelerating
+                                // (> 40 RPM change over the last ~1.0 second), extend stabilization for true steady-state RPM.
                                 if (maxExtraSettleMs > 0 && elapsedStep >= targetStepMs && targetStepMs < stepDelayMs + maxExtraSettleMs)
                                 {
-                                    bool f1Moving = Math.Abs(lastSt.Fan1Rpm - prevTickF1) > 30;
-                                    bool f2Moving = Math.Abs(lastSt.Fan2Rpm - prevTickF2) > 30;
+                                    bool f1Moving = (f1SlewWindow.Count >= 4 && Math.Abs(lastSt.Fan1Rpm - f1SlewWindow.Peek()) > 40);
+                                    bool f2Moving = (f2SlewWindow.Count >= 4 && Math.Abs(lastSt.Fan2Rpm - f2SlewWindow.Peek()) > 40);
                                     if (f1Moving || f2Moving)
                                     {
                                         targetStepMs += tickMs * 2;
@@ -232,8 +262,6 @@ namespace MiniFanControl
                                         f2Samples.Clear();
                                     }
                                 }
-                                prevTickF1 = lastSt.Fan1Rpm;
-                                prevTickF2 = lastSt.Fan2Rpm;
 
                                 // Collect readings during the final 35% of the step window after rotor stabilizes
                                 if (elapsedStep >= (targetStepMs * 65) / 100 || elapsedStep >= targetStepMs)
@@ -250,7 +278,7 @@ namespace MiniFanControl
                             }
                         }
 
-                        if (res.WasCanceled) break;
+                        if (res.WasCanceled || res.WasThermalAborted) break;
                         completedUnits++;
 
                         int avgF1 = ComputeRobustStepRpm(f1Samples, lastSt.Fan1Rpm);
@@ -286,7 +314,7 @@ namespace MiniFanControl
                             stepLine, lastSt);
                     }
 
-                    if (res.WasCanceled) break;
+                    if (res.WasCanceled || res.WasThermalAborted) break;
 
                     res.PassApuMin[pass - 1] = passApuMin;
                     res.PassSysMin[pass - 1] = passSysMin;
@@ -311,14 +339,20 @@ namespace MiniFanControl
             res.SysBareSpinPct = worstSysBare > 0 ? worstSysBare : 28;
 
             // Add +2% safety margin above the highest bare spin-up threshold across all passes
-            res.ApuMinSpinPct = worstApuBare > 0 ? Math.Max(20, Math.Min(45, worstApuBare + 2)) : 30;
-            res.SysMinSpinPct = worstSysBare > 0 ? Math.Max(20, Math.Min(45, worstSysBare + 2)) : 30;
+            res.ApuMinSpinPct = worstApuBare > 0 ? Math.Max(14, Math.Min(45, worstApuBare + 2)) : 30;
+            res.SysMinSpinPct = worstSysBare > 0 ? Math.Max(14, Math.Min(45, worstSysBare + 2)) : 30;
             res.ApuMaxRpm = maxApu > 0 ? maxApu : 3150;
             res.SysMaxRpm = maxSys > 0 ? maxSys : (res.HasDualFans ? 1940 : 0);
             res.CalibratedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 
             sb.AppendLine("----------------------------------------------------------------------");
-            if (res.WasCanceled)
+            if (res.WasThermalAborted)
+            {
+                sb.AppendFormat("  STATUS                : THERMAL SAFETY ABORT (APU hit {0}°C >= {1}°C — Fans restored to Auto)\r\n",
+                    res.ThermalAbortTempC, CALIBRATION_THERMAL_ABORT_C);
+                sb.AppendLine("  ACTION                : Close background CPU/GPU workloads and re-run calibration at idle.");
+            }
+            else if (res.WasCanceled)
             {
                 sb.AppendLine("  STATUS                : CANCELED BY USER (Fans restored to Auto)");
             }

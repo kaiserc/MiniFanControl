@@ -146,11 +146,11 @@ namespace MiniFanControl
             return list;
         }
 
-        public static FanCurveProfile SynthesizeAutoTunedCurve(FanStatus status, TelemetrySessionStats stats, out string summary)
+        public static FanCurveProfile SynthesizeAutoTunedCurve(FanStatus status, TelemetrySessionStats stats, out string summary, int biosPowerModeCode = -1)
         {
             // 1. Calibrated Anti-Stall Floor
-            int apuFloor = Math.Max(18, Math.Min(45, ApuMinSpinPct));
-            int sysFloor = Math.Max(18, Math.Min(45, SysMinSpinPct));
+            int apuFloor = Math.Max(14, Math.Min(45, ApuMinSpinPct));
+            int sysFloor = Math.Max(14, Math.Min(45, SysMinSpinPct));
 
             // 2. Idle Baseline Anchor (Anti-Hunting)
             int rawIdle = 42;
@@ -164,14 +164,35 @@ namespace MiniFanControl
             int spinUpTemp = Math.Min(56, idleTemp + 6);
             int spinUpPct = Math.Min(50, apuFloor + 2);
 
-            // 3. Power Envelope & Acoustic Efficiency Knee
-            int tdpWatts = 45;
-            if (status.ApuPowerLimitWatts > 0)
-                tdpWatts = status.ApuPowerLimitWatts;
+            // 3. Power Envelope & Acoustic Efficiency Knee (clamped to realistic mini-PC APU 15..120W range)
+            int observedTdp = 45;
+            if (status.ApuPowerLimitWatts >= 15 && status.ApuPowerLimitWatts <= 120)
+                observedTdp = status.ApuPowerLimitWatts;
             else if (stats != null && stats.MaxPowerWatts > 0)
-                tdpWatts = Math.Max(28, stats.MaxPowerWatts);
+                observedTdp = Math.Max(28, Math.Min(120, stats.MaxPowerWatts));
             else if (status.ApuPowerWatts > 0)
-                tdpWatts = Math.Max(28, status.ApuPowerWatts);
+                observedTdp = Math.Max(28, Math.Min(120, status.ApuPowerWatts));
+
+            int tdpWatts = observedTdp;
+            string modeTag = "";
+            if (biosPowerModeCode == 2)
+            {
+                // Silent BIOS TDP mode: prioritize quiet acoustics (~35W target)
+                tdpWatts = 35;
+                modeTag = "Silent ";
+            }
+            else if (biosPowerModeCode == 0)
+            {
+                // Balanced BIOS TDP mode (~48W target, or observed 38..53W)
+                tdpWatts = (observedTdp >= 38 && observedTdp <= 53) ? observedTdp : 48;
+                modeTag = "Balanced ";
+            }
+            else if (biosPowerModeCode == 1)
+            {
+                // Performance BIOS TDP mode (~60W+ target)
+                tdpWatts = Math.Max(60, Math.Min(120, observedTdp));
+                modeTag = "Perf ";
+            }
 
             int kneeTemp;
             int kneePct;
@@ -242,9 +263,9 @@ namespace MiniFanControl
                 new CurvePoint(maxTemp, sysP4)
             };
 
-            string curveName = string.Format("✨ Auto-Tuned ({0}W • Min {1}%)", tdpWatts, apuFloor);
-            summary = string.Format("✓ Auto-Tuned for {0}W TDP (Idle ≤{1}°C @ {2}%, Knee {3}% @ {4}°C, 100% @ {5}°C)",
-                tdpWatts, idleTemp, apuFloor, kneePct, kneeTemp, maxTemp);
+            string curveName = string.Format("✨ Auto-Tuned ({0}{1}W • Min {2}%)", modeTag, tdpWatts, apuFloor);
+            summary = string.Format("✓ Auto-Tuned for {0}{1}W TDP (Idle ≤{2}°C @ {3}%, Knee {4}% @ {5}°C, 100% @ {6}°C)",
+                modeTag, tdpWatts, idleTemp, apuFloor, kneePct, kneeTemp, maxTemp);
 
             return new FanCurveProfile(curveName, false, -1, apuPts, sysPts, false);
         }
@@ -272,7 +293,7 @@ namespace MiniFanControl
             if (points == null || points.Length == 0)
                 return 40;
 
-            if (minSpinFloor < 15 || minSpinFloor > 50)
+            if (minSpinFloor < 14 || minSpinFloor > 50)
                 minSpinFloor = MIN_SPIN_PCT;
 
             int rawPct;
@@ -310,9 +331,9 @@ namespace MiniFanControl
             if (rawPct == 0)
                 return 0;
 
-            // Fan motors stall below minSpinFloor (default 30% PWM on K12).
+            // Fan motors stall below minSpinFloor (default 30% PWM on K12, or down to 14% after calibration).
             // On a 0%->spin ramp, stay at 0% (Idle) until past midpoint, then step to >= minSpinFloor so the fan spins cleanly.
-            int stepThreshold = Math.Max(12, (minSpinFloor * 3) / 5);
+            int stepThreshold = Math.Max(8, (minSpinFloor * 3) / 5);
             if (fromZeroSegment && rawPct < stepThreshold)
                 return 0;
             if (rawPct > 0 && rawPct < minSpinFloor)

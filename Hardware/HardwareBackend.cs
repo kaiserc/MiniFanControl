@@ -174,6 +174,91 @@ namespace MiniFanControl
 
         private static readonly object _filterLock = new object();
 
+        private static int _lastValidFan1Rpm = 0;
+        private static int _fan1ZeroStreak = 0;
+        private static int _fan1SpikeStreak = 0;
+        private static int _lastValidFan2Rpm = 0;
+        private static int _fan2ZeroStreak = 0;
+        private static int _fan2SpikeStreak = 0;
+
+        public static void ResetTachometerFilterState()
+        {
+            lock (_filterLock)
+            {
+                _lastValidFan1Rpm = 0;
+                _fan1ZeroStreak = 0;
+                _fan1SpikeStreak = 0;
+                _lastValidFan2Rpm = 0;
+                _fan2ZeroStreak = 0;
+                _fan2SpikeStreak = 0;
+                _fan1FilterWindow.Clear();
+                _fan2FilterWindow.Clear();
+            }
+        }
+
+        /// <summary>
+        /// Stabilizes EC/Super-I/O tachometer readings against two common hardware glitches:
+        /// 1) Implausible instant upward RPM spikes (> +2000 RPM in a single poll, e.g. 965 -> 5023 RPM EC spin-up glitch):
+        ///    holds last valid RPM for up to 20 polls (~10s at 2 Hz) until the counter settles back into a plausible range.
+        /// 2) Transient zero-glitches (e.g. high-RPM counter rollover or ACPI EC register contention):
+        ///    holds last valid RPM for up to 3 polls (~1.5s) at normal speeds or 8 polls (~4s) at high load
+        ///    (PWM >= 50% or >= 1500 RPM), while reporting genuine stalls or intentional Zero-RPM (0% duty) immediately.
+        /// </summary>
+        public static int DebounceTachometerZero(int fanIndex, int rawRpm, bool zeroDutyCommanded, int commandedPct = -1)
+        {
+            lock (_filterLock)
+            {
+                if (fanIndex == 1)
+                {
+                    if (rawRpm > 0)
+                    {
+                        _fan1ZeroStreak = 0;
+                        if (_lastValidFan1Rpm >= 400 && (rawRpm - _lastValidFan1Rpm) > 2000 && _fan1SpikeStreak < 20)
+                        {
+                            _fan1SpikeStreak++;
+                            return _lastValidFan1Rpm;
+                        }
+                        _fan1SpikeStreak = 0;
+                        _lastValidFan1Rpm = rawRpm;
+                        return rawRpm;
+                    }
+                    _fan1SpikeStreak = 0;
+                    _fan1ZeroStreak++;
+                    int maxHoldPolls = (commandedPct >= 50 || _lastValidFan1Rpm >= 1500) ? 8 : 3;
+                    if (!zeroDutyCommanded && _lastValidFan1Rpm >= 600 && _fan1ZeroStreak <= maxHoldPolls)
+                    {
+                        return _lastValidFan1Rpm;
+                    }
+                    _lastValidFan1Rpm = 0;
+                    return 0;
+                }
+                else
+                {
+                    if (rawRpm > 0)
+                    {
+                        _fan2ZeroStreak = 0;
+                        if (_lastValidFan2Rpm >= 400 && (rawRpm - _lastValidFan2Rpm) > 2000 && _fan2SpikeStreak < 20)
+                        {
+                            _fan2SpikeStreak++;
+                            return _lastValidFan2Rpm;
+                        }
+                        _fan2SpikeStreak = 0;
+                        _lastValidFan2Rpm = rawRpm;
+                        return rawRpm;
+                    }
+                    _fan2SpikeStreak = 0;
+                    _fan2ZeroStreak++;
+                    int maxHoldPolls = (commandedPct >= 50 || _lastValidFan2Rpm >= 1500) ? 8 : 3;
+                    if (!zeroDutyCommanded && _lastValidFan2Rpm >= 600 && _fan2ZeroStreak <= maxHoldPolls)
+                    {
+                        return _lastValidFan2Rpm;
+                    }
+                    _lastValidFan2Rpm = 0;
+                    return 0;
+                }
+            }
+        }
+
         public const int EMERGENCY_TEMP_TRIP_C = 90;
 
         public const int EMERGENCY_TEMP_RECOVER_C = 75;
@@ -978,6 +1063,7 @@ namespace MiniFanControl
         {
             if (_isSimulatedMode) return;
             _isInitialized = false;
+            ResetTachometerFilterState();
             try
             {
                 EnsureOpen();
@@ -2023,9 +2109,16 @@ namespace MiniFanControl
 
             }
 
-            int fan1Rpm = (resolvedSio1 > 0) ? resolvedSio1 : f1Ec;
-
-            int fan2Rpm = (resolvedSio2 > 0) ? resolvedSio2 : f2Ec;
+            int rawFan1Rpm = (resolvedSio1 > 0) ? resolvedSio1 : f1Ec;
+            int rawFan2Rpm = (resolvedSio2 > 0) ? resolvedSio2 : f2Ec;
+            bool f1ManualActive = (f1Ctrl != 0xFF && (f1Ctrl & 0x80) != 0);
+            bool f2ManualActive = (f2Ctrl != 0xFF && (f2Ctrl & 0x80) != 0);
+            int f1CmdPct = f1ManualActive ? (f1Ctrl & 0x7F) : -1;
+            int f2CmdPct = f2ManualActive ? (f2Ctrl & 0x7F) : -1;
+            bool f1ZeroCmd = f1ManualActive && (f1CmdPct == 0);
+            bool f2ZeroCmd = f2ManualActive && (f2CmdPct == 0);
+            int fan1Rpm = DebounceTachometerZero(1, rawFan1Rpm, f1ZeroCmd, f1CmdPct);
+            int fan2Rpm = DebounceTachometerZero(2, rawFan2Rpm, f2ZeroCmd, f2CmdPct);
 
             int apuPower = adlPowerWatts > 0
 

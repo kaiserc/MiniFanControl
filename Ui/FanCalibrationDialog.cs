@@ -314,9 +314,11 @@ namespace MiniFanControl
                 return;
             }
 
-            if (res == null || res.WasCanceled)
+            if (res == null || res.WasCanceled || res.WasThermalAborted)
             {
-                _phaseLabel.Text = "Calibration canceled — Fans restored to Auto.";
+                _phaseLabel.Text = (res != null && res.WasThermalAborted)
+                    ? string.Format("⚠ Thermal safety abort (APU hit {0}°C) — Fans restored to Auto. Close background load and retry.", res.ThermalAbortTempC)
+                    : "Calibration canceled — Fans restored to Auto.";
                 if (res != null) _logBox.AppendText("\r\n" + res.SummaryReport);
                 return;
             }

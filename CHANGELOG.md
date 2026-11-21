@@ -4,6 +4,25 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.1.0] - 2026-11-21
+
+### 🖥️ Dashboard, BIOS Power Mode & Fan Curve Polish
+- **Expanded 2×4 Telemetry Dashboard & Scrollbar-Free OSD Studio (`Ui/MainForm.cs`)**: Upgraded the 8 hardware sensor cards to `257×108 px` with `▼Low ~Avg ▲High` session ranges, dedicated 2-line detail rows, full profile names, a prominent `72×72` top-left header logo, and an expanded main card height (`590px` / `720px`) so all 7 OSD Studio metric sections fit cleanly without an inner scrollbar.
+- **Explicit Independent `BIOS:` Power Mode Bar (`Ui/MainForm.cs`, `Core/FanControllerService.cs`, `Core/AppSettings.cs`)**: Added an always-visible **`BIOS: [🌙 Silent] [⚖ Balanced] [⚡ Perf]`** switcher in the top header (EC `0x31`/`0x32`, persisted as `BiosPowerMode`) so users can switch live factory BIOS TDP limits independently without overwriting Custom Fan Curves.
+- **Dual-Fan Mode-Aware `✨ Auto-Tune` (`Ui/MainForm.cs`, `Curves/CurvePoint.cs`)**: Running Auto-Tune now applies to **both** APU Fan and Sys Fan automatically on dual-fan systems, clamps bogus TDP readings to `15..120W`, and dynamically adapts its acoustic knee (`Silent 35W` / `Balanced 48W` / `Perf 60W+`) whenever you switch the top `BIOS:` power mode while `✨ Auto-Tuned` is active.
+- **Live Curve Operating Callout Badge (`Ui/FanCurveCanvas.cs`, `Ui/MainForm.cs`)**: Fixed the curve operating point to use calibrated stall floors (`ApuMinSpinPct`/`SysMinSpinPct`) and replaced the bare dot with a live **`Source Temp • Duty % • RPM`** callout pill (e.g., `CPU 45°C • 26% • 972 RPM` or `NVMe 49°C • 26% • 539 RPM`).
+- **Tachometer Glitch Stabilization & Emergency Display (`Hardware/HardwareBackend.cs`, `Ui/MainForm.cs`)**: Added high-load zero-tach debounce (up to 8 polls at `≥50%` PWM / `≥1500 RPM`) and implausible upward-spike rejection (`> +2000 RPM` single-poll jumps), plus `100% (Emergency)` badges on both fan cards during thermal override and rich EC/slew-rate info in the CPU card tooltip.
+- **Un-Maximize Scrollbar Fix (`Ui/MainForm.cs`)**: Collapsing `_wideRightPanel` bounds and resetting `AutoScrollPosition` when restoring down from wide/full-screen mode eliminates lingering horizontal/vertical scrollbars.
+
+### 🛡️ Universal Laptop / Handheld / Mini-PC Calibration Upgrades
+- **Thermal Safety Abort (`Curves/FanCalibrationResult.cs`, `Ui/FanCalibrationDialog.cs`)**: Added a live `≥ 88°C` thermal tripwire during both coast-down and step sweeps that pulses 100% cooling, aborts safely, and restores BIOS Auto if background load heats the APU.
+- **Adaptive 1-Second Steady-State Settle & `12%` Sweep Floor (`Curves/FanCalibrationResult.cs`, `Core/AppSettings.cs`, `Curves/CurvePoint.cs`)**: Lowered the calibration sweep start from `20%` to `12%` (safe floor clamp `14%`), fixed `EvaluateCurve()` to honor calibrated `14%` floors end-to-end instead of snapping back to `30%`, replaced single-tick movement detection with a 1-second rolling RPM window (`> 40 RPM/s`, up to `+6s` settle on `100%`), and reset tachometer debounce state at each pass start.
+
+### 🎮 Digital Foundry Layouts & In-Game OSD Enhancements
+- **`🔍 DF Zoom` & `◰ DF Corner` Views (`Ui/LivePerformanceCanvas.cs`, `Telemetry/CapFrameXOverlayForm.cs`, `Core/OsdOverlayConfig.cs`, `Ui/MainForm.cs`)**: Added a zoomed 30-sample Frame-Time mode (`DF Zoom`) and an authentic compact corner-inset layout (`DF Corner` / OSD **`DF Corner Inset`**) across both Vertical Stack and Horizontal Bar overlays.
+- **`Graphs Only` OSD Mode, Per-Series Live Trend Toggles & `Sampling Rate` Right-Click Menu (`Telemetry/CapFrameXOverlayForm.cs`, `Ui/LiveTelemetryCanvas.cs`, `Ui/MainForm.cs`, `Core/OsdOverlayConfig.cs`)**: Added `Graphs Only` (`GraphMode = 4`) under Live Graph Display Mode, added synced per-series Live Trend toggles (left-click pills on the Live Trend tab or right-click **`Live Trend Series`** on the overlay, with `Show All` / `Temps Only` / `Power & Fans Only` presets), wrapped the overlay Live Trend legend onto 2 rows so `CHAS` / `APU` / `SYS` are never clipped, and added a `Sampling Rate` submenu directly to the overlay right-click menu.
+- **`1%` & `0.1%` Lows Parity, Sample-Rate Timestamps & Cleanups (`Telemetry/CapFrameXOverlayForm.cs`, `Ui/LivePerformanceCanvas.cs`, `Ui/LiveTelemetryCanvas.cs`, `Ui/MainForm.cs`)**: Added `1%` & `0.1%` lows + shaded rose `0.1%` floor band to the overlay FPS chart, synchronized hover & timeline timestamps to the live `SampleIntervalMs`, removed FCLK from Live Trend charts, auto-disabled `iGPU Hotspot (N/A)` when unsupported, replaced user-facing `CapFrameX` labels with **In-Game OSD** / **MiniFanControl**, and expanded the automated test suite to **77/77 passing** (Test #77).
+
 ## [1.0.6] - 2026-11-19
 
 ### 🛡️ Fail-Closed Hardware Matching & Probe Diagnostics

@@ -286,7 +286,7 @@ Click the **`Live Trend`** tab at the top of the curve card to switch to the ful
 Click the **`Perf`** tab to switch to the dedicated Digital Foundry twin-graph stutter analysis view:
 
 <p align="center">
-  <img src="assets/ui-digital-foundry-perf.png" alt="Digital Foundry Frametime and Framerate Analysis in Star Citizen" width="90%" />
+  <img src="assets/ui-digital-foundry-perf.png" alt="Digital Foundry DF Zoom Frametime and Framerate Analysis (The Witcher 3)" width="90%" />
 </p>
 
 - **Twin Visualizers**: Simultaneous real-time graphs for `FRAME-TIME (MS)` (jitter and frame pacing) and `FRAME-RATE (FPS)` (dynamic ceiling ladder).
@@ -384,7 +384,7 @@ MiniFanControl incorporates a completely non-invasive, zero-dependency gaming te
   - Vertical stack: `FPS: 144 (98%)` or `GPU Load: 98% @ 2600MHz`
 
 <p align="center">
-  <img src="assets/ingame-osd-overlay.jpg" alt="MiniFanControl Real In-Game CapFrameX OSD Overlay (Ori and the Blind Forest)" width="95%" />
+  <img src="assets/ingame-osd-overlay.jpg" alt="MiniFanControl In-Game Horizontal DF Corner OSD Overlay (Everspace 2)" width="95%" />
 </p>
 
 ### Advanced Gaming & Hardware Metrics
@@ -394,12 +394,15 @@ MiniFanControl incorporates a completely non-invasive, zero-dependency gaming te
 - **Multi-NVMe I/O Throughput**: Displays active disk transfer rates (e.g. `NVMe 41°C (R: 120MB/s, W: 45MB/s)`), allowing you to correlate gaming stutter or thermal spikes with background storage activity.
 - **VRM Power Stage Current & MOSFET Peak**: Displays current delivered to the APU power stage (e.g. `VRM 3.8A (32°C) ▲37°C`) to monitor power delivery limits under boost.
 
-### Display Modes (Graph, Sparklines, Text)
-Choose from 4 presentation styles:
-1. **`✦ Both (Lines + Graph)`**: Numerical telemetry lines at the top, accompanied by the multi-series live trendline graph below.
-2. **`📈 Combined Graph`**: A pure graphical HUD showing live temperature, power, and fan curves in real time.
-3. **`〰 Mini Sparklines`**: Inline mini waveforms next to each metric reading for a compact footprint.
+### Display Modes (Graph, Sparklines, Text, Graphs Only)
+Choose from 5 presentation styles (or right-click the overlay to switch **OSD Live Graphs**, **DF Corner Inset**, or **Sampling Rate** on the fly):
+1. **`Both (All)`**: Numerical telemetry rows with inline sparklines plus live trend / DF charts below.
+2. **`Combined`**: Clean numeric rows accompanied by the multi-series live trend / DF charts.
+3. **`Sparklines`**: Inline mini waveforms next to each metric row for a compact footprint.
 4. **`Text Only`**: Classic ultra-clean numeric readout with minimal screen impact.
+5. **`Graphs Only`**: Hides all metric text rows non-destructively and renders **only** the enabled charts (`DF Corner Inset` / `FPS & Frametime Graph` and/or `Live Trend Graph`).
+
+> **Tip for DirectX 11 Exclusive Fullscreen Games (e.g., *Metro Redux*):** Because MiniFanControl's overlay is hook-free (zero DLL injection / zero anti-cheat risk), use **Borderless Windowed** mode or ensure Windows 11 **Fullscreen Optimizations** and **Optimizations for windowed games** are enabled so the overlay composites on top of DX11 games.
 
 ### Scale Tiers (100% Std to 185% 4K)
 Optimized font sizes and graph dimensions for any display resolution:

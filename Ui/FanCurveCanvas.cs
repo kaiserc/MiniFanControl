@@ -28,6 +28,11 @@ namespace MiniFanControl
         public bool EditSysFan = false; // false = APU Fan (Fan 1), true = Sys Fan (Fan 2: RAM/NVMe)
         public bool ShowSecondaryCurve = true;
         public int CurrentApuTemp = 45;
+        public int CurrentSysTemp = 45;
+        public string CurrentApuSource = "CPU";
+        public string CurrentSysSource = "CPU";
+        public int CurrentFan1Rpm = 0;
+        public int CurrentFan2Rpm = 0;
         public bool IsDarkMode = true;
         public bool IsRadeonTheme = false;
         public bool IsAfterburnerTheme = false;
@@ -395,9 +400,11 @@ namespace MiniFanControl
                     g.DrawLines(curvePen, pts.ToArray());
                 }
 
-                // Live Temperature vertical marker + operating point dot
-                int clampedTemp = Math.Max(MIN_TEMP, Math.Min(MAX_TEMP, CurrentApuTemp));
-                int evalPct = FanCurveProfile.EvaluateCurve(activePts, CurrentApuTemp);
+                // Live Temperature vertical marker + operating point on curve (using calibrated minSpinFloor)
+                int activeTemp = EditSysFan ? CurrentSysTemp : CurrentApuTemp;
+                int clampedTemp = Math.Max(MIN_TEMP, Math.Min(MAX_TEMP, activeTemp));
+                int minFloor = EditSysFan ? FanCurveProfile.SysMinSpinPct : FanCurveProfile.ApuMinSpinPct;
+                int evalPct = FanCurveProfile.EvaluateCurve(activePts, activeTemp, minFloor);
                 PointF livePt = PointToScreen(new CurvePoint(clampedTemp, evalPct), plot);
 
                 using (Pen liveDash = new Pen(Color.FromArgb(140, liveColor.R, liveColor.G, liveColor.B), 1.2f))
@@ -407,7 +414,40 @@ namespace MiniFanControl
                 }
                 using (Brush liveBrush = new SolidBrush(liveColor))
                 {
-                    g.FillEllipse(liveBrush, livePt.X - 4.5f, livePt.Y - 4.5f, 9f, 9f);
+                    g.FillEllipse(liveBrush, livePt.X - 3.5f, livePt.Y - 3.5f, 7f, 7f);
+                }
+
+                // Live operating badge: Source Temp • Target Duty % • Live RPM (hidden while dragging/hovering a control point)
+                if (_dragIndex < 0 && _hoverIndex < 0)
+                {
+                    int liveRpm = EditSysFan ? CurrentFan2Rpm : CurrentFan1Rpm;
+                    string srcTag = EditSysFan
+                        ? (string.IsNullOrEmpty(CurrentSysSource) ? "Sys" : CurrentSysSource)
+                        : (string.IsNullOrEmpty(CurrentApuSource) ? "CPU" : CurrentApuSource);
+                    string tempTxt = string.Format("{0} {1}{2}",
+                        srcTag,
+                        TelemetrySessionStats.ToDisplayTemp(activeTemp, UseFahrenheit),
+                        TelemetrySessionStats.TempUnit(UseFahrenheit));
+                    string badgeTxt = liveRpm > 0
+                        ? string.Format("{0} • {1}% • {2} RPM", tempTxt, evalPct, liveRpm)
+                        : string.Format("{0} • {1}%", tempTxt, evalPct);
+
+                    SizeF bSz = g.MeasureString(badgeTxt, PointTipFont);
+                    float bw = bSz.Width + 10f;
+                    float bh = bSz.Height + 4f;
+                    float bx = Math.Max(plot.Left + 2f, Math.Min(plot.Right - bw - 2f, livePt.X - bw / 2f));
+                    float by = livePt.Y - bh - 9f;
+                    if (by < plot.Top + 2f) by = livePt.Y + 9f;
+
+                    Color badgeBg = IsDarkMode ? Color.FromArgb(228, 0x18, 0x18, 0x25) : Color.FromArgb(235, 0xFF, 0xFF, 0xFF);
+                    using (Brush bFill = new SolidBrush(badgeBg))
+                    using (Pen bBorder = new Pen(Color.FromArgb(210, liveColor.R, liveColor.G, liveColor.B), 1.2f))
+                    using (Brush bText = new SolidBrush(liveColor))
+                    {
+                        g.FillRectangle(bFill, bx, by, bw, bh);
+                        g.DrawRectangle(bBorder, bx, by, bw, bh);
+                        g.DrawString(badgeTxt, PointTipFont, bText, bx + 5f, by + 2f);
+                    }
                 }
 
                 // Draggable control points

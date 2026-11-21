@@ -1713,7 +1713,7 @@ namespace MiniFanControl
                     }
                     bool osdStudioValid = (mf.TestOsdOpacityLabel != null && mf.TestOsdOpacityLabel.Width >= 60) &&
                                           (mf.TestOsdSnapLabel != null && mf.TestOsdSnapLabel.Width >= 85) &&
-                                          (mf.TestOsdMetricsHeaderLabel != null && mf.TestOsdMetricsHeaderLabel.Location.Y >= 186) &&
+                                          (mf.TestOsdMetricsHeaderLabel != null && mf.TestOsdMetricsHeaderLabel.Location.Y >= 170) &&
                                           (mf.TestOsdQuickPosBc != null && mf.TestOsdQuickPosBc.Width >= 100) &&
                                           (mf.TestOsdQuickPosBr != null && mf.TestOsdQuickPosBr.Width >= 96);
                     bool optionsCardValid = (mf.TestAutostartCb != null && mf.TestAutostartCb.Width >= 300) &&
@@ -2716,22 +2716,22 @@ namespace MiniFanControl
                                    (mf.TestTabSysCurveBtn.Text.IndexOf("Fan", StringComparison.OrdinalIgnoreCase) >= 0);
 
                     // 3. Verify Dynamic Manual Fan Control Visibility & Canvas Expansion
-                    // On Live Trend: Manual Fan Control hidden, canvas expanded to 690px
+                    // On Live Trend: Manual Fan Control hidden, canvas expanded to 648px (fits all OSD Studio metrics without inner scrollbar)
                     mf.TestSetGraphViewMode(true, false, 1);
                     bool liveHiddenOk = (!mf.TestManualFanControlVisible) &&
-                                        (mf.TestModeCardPanel != null && mf.TestModeCardPanel.Height == 762) &&
-                                        (mf.TestLiveCanvas != null && mf.TestLiveCanvas.Height == 690);
+                                        (mf.TestModeCardPanel != null && mf.TestModeCardPanel.Height == 720) &&
+                                        (mf.TestLiveCanvas != null && mf.TestLiveCanvas.Height == 648);
 
-                    // On Live Perf: Manual Fan Control hidden, perf canvas expanded to 690px
+                    // On Live Perf: Manual Fan Control hidden, perf canvas expanded to 648px
                     mf.TestSetGraphViewMode(false, true, 0);
                     bool perfHiddenOk = (!mf.TestManualFanControlVisible) &&
-                                        (mf.TestModeCardPanel != null && mf.TestModeCardPanel.Height == 762) &&
-                                        (mf.TestPerfCanvas != null && mf.TestPerfCanvas.Height == 690);
+                                        (mf.TestModeCardPanel != null && mf.TestModeCardPanel.Height == 720) &&
+                                        (mf.TestPerfCanvas != null && mf.TestPerfCanvas.Height == 648);
 
-                    // On APU Fan: Manual Fan Control visible, card height fills space above Manual Fan Control (632px)
+                    // On APU Fan: Manual Fan Control visible, card height fills space above Manual Fan Control (590px)
                     mf.TestSetGraphViewMode(false, false, 0);
                     int curCardH = mf.TestModeCardPanel != null ? mf.TestModeCardPanel.Height : 0;
-                    bool fanShownOk = mf.TestManualFanControlVisible && (curCardH == 632);
+                    bool fanShownOk = mf.TestManualFanControlVisible && (curCardH == 590);
 
                     // 4. Verify CapFrameX Overlay 1440p / High-DPI Auto-Fit Scaling & Taskbar Clamping
                     using (CapFrameXOverlayForm ov = new CapFrameXOverlayForm())
@@ -4120,6 +4120,65 @@ namespace MiniFanControl
             Check(probeJsonOk,
                 "Hardware Probe JSON Export & Super I/O Chip Identification (IT5570E / IT8613E / NCT67xx)",
                 probeJsonDetail);
+
+            // 77. Calibrated 14% Floor Evaluation, BIOS-Mode Auto-Tune & OSD Graphs-Only / DF Corner Persistence
+            bool v110FeaturesOk = false;
+            string v110Detail = "";
+            int savedMinApu = FanCurveProfile.ApuMinSpinPct;
+            int savedMinSys = FanCurveProfile.SysMinSpinPct;
+            try
+            {
+                FanCurveProfile.ApuMinSpinPct = 14;
+                FanCurveProfile.SysMinSpinPct = 20;
+
+                // 1. EvaluateCurve must honor calibrated 14% floor (never snap 14% back up to 30%)
+                CurvePoint[] lowPts = new CurvePoint[] { new CurvePoint(40, 14), new CurvePoint(60, 40), new CurvePoint(85, 100) };
+                int eval14 = FanCurveProfile.EvaluateCurve(lowPts, 40, 14);
+                int evalClamp14 = FanCurveProfile.EvaluateCurve(new CurvePoint[] { new CurvePoint(40, 10), new CurvePoint(80, 100) }, 40, 14);
+                bool floor14Ok = (eval14 == 14 && evalClamp14 == 14);
+
+                // 2. Mode-aware Auto-Tune adapts TDP & knee across Silent (2), Balanced (0), Perf (1)
+                FanStatus st = new FanStatus { CpuTemp = 44, GpuTemp = 40, NvmeTemp = 45, ApuPowerLimitWatts = 48 };
+                string sumS, sumB, sumP;
+                FanCurveProfile profS = FanCurveProfile.SynthesizeAutoTunedCurve(st, null, out sumS, 2);
+                FanCurveProfile profB = FanCurveProfile.SynthesizeAutoTunedCurve(st, null, out sumB, 0);
+                FanCurveProfile profP = FanCurveProfile.SynthesizeAutoTunedCurve(st, null, out sumP, 1);
+                bool autoTuneModesOk = profS.ApuPoints[0].Pct == 14 && profS.SysPoints[0].Pct == 20
+                    && profS.Name.Contains("Silent 35W")
+                    && profB.Name.Contains("Balanced 48W")
+                    && profP.Name.Contains("Perf 60W")
+                    && profS.ApuPoints[2].Pct <= profB.ApuPoints[2].Pct
+                    && profB.ApuPoints[2].Pct <= profP.ApuPoints[2].Pct;
+
+                // 3. OSD GraphMode=4 (Graphs Only), DfCornerInset & per-series Live Trend toggles round-trip
+                OsdOverlayConfig cfg = new OsdOverlayConfig();
+                cfg.GraphMode = 4;
+                cfg.DfCornerInset = true;
+                cfg.TrendPower = false;
+                cfg.TrendApuFan = false;
+                List<string> lines = new List<string>();
+                cfg.AppendSettings(lines);
+                OsdOverlayConfig cfg2 = new OsdOverlayConfig();
+                foreach (string ln in lines)
+                {
+                    int eq = ln.IndexOf('=');
+                    if (eq > 0) cfg2.TryParseSetting(ln.Substring(0, eq), ln.Substring(eq + 1));
+                }
+                bool osdV110Ok = (cfg2.GraphMode == 4 && cfg2.DfCornerInset && !cfg2.TrendPower && !cfg2.TrendApuFan && cfg2.TrendCpu);
+
+                v110FeaturesOk = floor14Ok && autoTuneModesOk && osdV110Ok;
+                v110Detail = string.Format("Floor14={0} (eval={1}/{2}), AutoTuneModes={3}, OsdV110={4}",
+                    floor14Ok, eval14, evalClamp14, autoTuneModesOk, osdV110Ok);
+            }
+            catch (Exception ex) { v110Detail = ex.Message; }
+            finally
+            {
+                FanCurveProfile.ApuMinSpinPct = savedMinApu;
+                FanCurveProfile.SysMinSpinPct = savedMinSys;
+            }
+            Check(v110FeaturesOk,
+                "Calibrated 14% Floor Evaluation, BIOS-Mode Auto-Tune & OSD Graphs-Only / DF Corner Config",
+                v110Detail);
 
             Console.WriteLine("----------------------------------------------------------------------");
 

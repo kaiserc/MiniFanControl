@@ -1,6 +1,6 @@
 # MiniFanControl — Native EC Fan Control & Thermal Monitor for AMD Ryzen Mini PCs
 
-![Tests](https://img.shields.io/badge/tests-76%2F76%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-77%2F77%20passing-brightgreen)
 ![Security](https://img.shields.io/badge/Security-Fail--Closed%20%7C%20Least--Privilege-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
@@ -10,14 +10,14 @@
 </p>
 
 <p align="center">
-  <img src="assets/ui-main-osd.jpg" alt="MiniFanControl Dashboard and CapFrameX-Style OSD HUD" width="85%" />
+  <img src="assets/ui-main-osd.jpg" alt="MiniFanControl AMD Radeon Dashboard, DF Corner Performance View, and In-Game OSD" width="85%" />
 </p>
 
-[![Release: v1.0.6](https://img.shields.io/badge/Release-v1.0.6-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
+[![Release: v1.1.0](https://img.shields.io/badge/Release-v1.1.0-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 76 Passed](https://img.shields.io/badge/Automated%20Tests-76%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-7676-passing)
+[![Automated Tests: 77 Passed](https://img.shields.io/badge/Automated%20Tests-77%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-7777-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 [![Ko-fi: Support](https://img.shields.io/badge/Ko--fi-Support%20Project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/kaiser76)
 
@@ -72,7 +72,7 @@ MiniFanControl/
 ├── Telemetry/          # RTSS/CapFrameX shared memory reader & transparent OSD HUD
 │   ├── CapFrameXOverlayForm.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 76-point automated hardware safety & regression test suite
+├── Tests/              # 77-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
 ├── Ui/                 # Double-buffered canvases, accessible WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
@@ -132,25 +132,24 @@ For the quietest acoustics and 100% anti-stall safety, follow this recommended 2
      - *Calibrated*: Auto-Tune starts at your true 22% floor (**~750 RPM, whisper-quiet idle with >50% acoustic noise reduction**).
 3. **Step 3 — Activate Curve & Monitor**:
    - Click **Use Curve** to apply your synthesized curve to hardware EC registers.
-   - Toggle **Show CapFrameX OSD** to monitor temps, APU power, fan RPM, and in-game frametimes in real time.
+   - Toggle **Show In-Game OSD overlay** to monitor temps, APU power, fan RPM, and in-game frametimes in real time.
    - Click **Reset Auto** anytime to return full control back to native BIOS.
 
 ---
 
 ## ✨ Key Features
 
-### 🖥️ Modern High-DPI Interface (980×960)
+### 🖥️ Modern High-DPI Interface & Wide 2-Column Mode
 <p align="center">
-  <img src="assets/ui-live-telemetry.png" alt="MiniFanControl Live Telemetry Dashboard" width="85%" />
+  <img src="assets/ui-live-telemetry.png" alt="MiniFanControl Wide 2-Column Live Telemetry Dashboard" width="85%" />
 </p>
 
-- **Dedicated Hardware Badge Header**: Displays detected product model and APU (e.g., `TOPC TS-12C • Ryzen AI 9 HX 370 w/ Radeon 890M`), active EC profile map, system mutex state, animated glowing fan activity badge, quick **Tools & Drivers ▾** menu, and theme switcher.
-- **5 Wide Telemetry Boxes with Real-Time Sparklines**:
-  1. **CPU Temp**: Reads direct silicon core temperature (Tctl) via official AMD PMLOG (`atiadlxx.dll`) and EC/Super I/O with session peak tracking and zero raw PCI bus collisions.
-  2. **iGPU Temp**: Reads integrated Radeon graphics telemetry via AMD Display Library (`atiadlxx.dll`).
-  3. **APU Power (W)**: Reads total package power (PPT) directly from AMD silicon telemetry via ADL2 PMLOG (`atiadlxx.dll`). Hovering over the power box reveals the rail breakdown (measured or flagged with `[Est]` when synthesized).
-  4. **APU Fan RPM**: Live tachometer speed of the primary APU cooler with stall filtering.
-  5. **Sys Fan RPM**: Live tachometer speed of the secondary DDR5 RAM and NVMe SSD chassis fan.
+- **Dedicated Hardware Header & Live `BIOS:` Power Mode Bar**: Displays detected product model and APU, an independent **`BIOS: [🌙 Silent] [⚖ Balanced] [⚡ Perf]`** TDP switcher (EC `0x31`/`0x32`, decoupled from your Custom Fan Curves), quick **Tools & Drivers ▾** menu, and theme switcher.
+- **Expanded 2×4 Telemetry Grid with `▼Low ~Avg ▲High` & Sparklines**:
+  1. **CPU & iGPU Temps**: Direct silicon junction (`Tctl/Tdie`) + Radeon iGPU telemetry via AMD ADL2 PMLOG (`atiadlxx.dll`), with load %, clock MHz, and session ranges.
+  2. **RAM (DDR5) & NVMe SSD**: Dual-stick DDR5 temps/spread/power/FCLK and NVMe temp/health/throughput (`MB/s`).
+  3. **APU Power (W) & Chassis Ambient**: Package PPT, CPU/GFX/SoC rail split, TDC/EDC VRM currents, board ambient, and live RTSS FPS/lows.
+  4. **APU Fan & Sys Fan RPM**: Live tachometer speeds with high-load zero-glitch debounce, implausible spike filtering, active curve status, and `100% (Emergency)` override indicators.
 - **Telemetry Safety & Storage Integration**:
   - **PCIe & NVMe Bus Safety**: Uses thread-safe AMD kernel driver APIs (`atiadlxx.dll`) for telemetry rather than uncoordinated raw `0xCF8/0xCFC` I/O ports, guaranteeing your NVMe SSD storage controller remains uninterrupted.
   - **Thermal History & CSV Export**: Record up to ~10,000 live telemetry samples with 1-click CSV export under **Tools & Drivers ▾** for benchmarking and temperature analysis. Modeled metrics are explicitly flagged with `[Est]`.
@@ -165,40 +164,46 @@ For the quietest acoustics and 100% anti-stall safety, follow this recommended 2
 - **Interactive Spotlighting**: Click any legend pill or status box to highlight that metric while dimming others.
 - **Independent Dual-Fan Curves (`APU Fan` + `Sys Fan`)**: Assign built-in modes (`Balanced`, `Performance`, `Silent`, `AI Workload`) or custom user-defined curves to each fan independently.
 - **4 Protected Reference Example Curves (`🔒`)**: Includes `🔒 Zero-RPM Desktop Idle`, `🔒 Gaming Sweet-Spot (Acoustic Knee)`, `🔒 24/7 Server / Local LLM Sustained`, and `🔒 Max Cooling / Benchmark`—editable on the graph with a 1-click **Reset** button (replacing `Del`) that restores factory points without ever losing the reference templates.
-- **`✨ Auto-Tune` Curve Synthesizer**: One-click synthesis of a custom 5-point APU + Sys fan curve tailored to your calibrated anti-stall motor floor (`ApuMinSpinPct`/`SysMinSpinPct`), observed idle baseline (anti-hunting deadband), and APU power envelope (35W Eco vs 54W/65W+ TDP acoustic knee).
-- **Hardware-Safe 2°C Hysteresis**: Cooldown hysteresis buffer eliminates fan speed oscillation during bursty workloads.
+- **`✨ Auto-Tune` Curve Synthesizer**: One-click synthesis of a calibrated 5-point curve applied to **both** APU Fan and Sys Fan automatically, dynamically adapting its acoustic knee (`Silent 35W` / `Balanced 48W` / `Perf 60W+`) whenever you switch the top `BIOS:` power mode.
+- **Live Curve Operating Callout**: Displays the live driving sensor, target duty %, and real-time RPM directly on the curve (`CPU 45°C • 26% • 972 RPM` / `NVMe 49°C • 26% • 539 RPM`).
+- **Hardware-Safe 4°C Asymmetric Hysteresis**: Cooldown hysteresis buffer eliminates fan speed oscillation during bursty workloads.
 
-### 🎮 CapFrameX-Style OSD Overlay & Dedicated OSD Studio
+### 🎮 Hook-Free In-Game OSD Overlay & Dedicated OSD Studio
 <p align="center">
   <img src="assets/ui-osd-studio.png" alt="MiniFanControl Dedicated OSD Studio Configuration" width="85%" />
 </p>
 <p align="center">
-  <img src="assets/ingame-osd-overlay.jpg" alt="MiniFanControl Real In-Game CapFrameX OSD Overlay (Ori and the Blind Forest)" width="85%" />
+  <img src="assets/ingame-osd-overlay.jpg" alt="MiniFanControl In-Game Horizontal DF Corner OSD Overlay (Everspace 2)" width="85%" />
 </p>
-
-- **On-Screen Display HUD**: Floating, translucent, always-on-top overlay for gaming and benchmarking.
-- **Dedicated OSD Studio Tab**: Configure all overlay parameters directly inside the main window:
-  - **4 Live Graph Display Modes**: `✦ Both (Lines + Graph)`, `📈 Combined Graph`, `〰 Mini Sparklines`, or `Text Only`.
-  - **4 Scale Tiers**: `100% Std`, `125% Lg`, `150% XL` (ideal for 1440p), and `185% 4K` (large bold readouts for 4K TV couch gaming).
-  - **Layout Directions**: `▬ Horiz Bar` or `▮ Vert Stack`.
-  - **Adjustable Graph Heights**: 45px Compact, 65px Medium, 95px Large, 130px Extra Large.
-  - **Quick Corner Snaps**: One-click snap to `↖ TL`, `↗ TR`, `↙ BL`, or `↘ BR`.
-  - **Click-Through Lock (`WS_EX_TRANSPARENT`)**: Mouse clicks pass straight through to full-screen games without stealing focus.
-  - **Low-Impact FPS & iGPU Load**: Passively reads in-game FPS from RTSS/CapFrameX shared memory with zero DLL injection and zero anti-cheat risk; automatically displays live Radeon 3D engine load % and clock MHz directly from AMD ADL2.
-- **Global Keyboard Hotkeys**: Toggle the overlay (`Ctrl+Alt+F9`) or switch thermal modes (`Ctrl+Alt+F10..F12`) anytime without leaving full-screen games.
-
-### ⏱️ Digital Foundry Twin-Graph Frametime & Stutter Analysis
 <p align="center">
-  <img src="assets/ui-digital-foundry-perf.png" alt="Digital Foundry Frametime & Framerate Stutter Analysis (Star Citizen)" width="85%" />
+  <strong>▶ <a href="assets/osd-demo.mp4">Watch 1080p Live In-Game OSD Demo Clip (Ori and the Will of the Wisps — Vertical OSD, DF Twin Graphs &amp; Filtered Live Trend)</a></strong>
 </p>
 
-- **Digital Foundry Style Twin Visualizers**: Simultaneous real-time graphs for `FRAME-TIME (MS)` (0–50–100ms jitter/stutter spike detector) and `FRAME-RATE (FPS)` (0–40–80–120 dynamic FPS ceiling ladder).
-- **Anti-Poisoning Startup Protection**: Rejects initial loading hitches and hitch spikes so 0.1% low calculations reflect true gameplay pacing.
-- **One-Click Timeline Snapshot & Export**: Export high-resolution PNG reports or scrub back 180 seconds across the live gameplay history directly from the `Perf` tab.
+- **On-Screen Display HUD**: Floating, translucent, always-on-top hook-free overlay for gaming and benchmarking (use Borderless Windowed or Windows 11 Fullscreen Optimizations for DX11 Exclusive Fullscreen titles).
+- **Dedicated OSD Studio Tab**: Configure all overlay parameters directly inside the main window:
+  - **5 Live Graph Display Modes**: `Both (All)`, `Combined`, `Sparklines`, `Text Only`, or **`Graphs Only`** (hides all metric text rows non-destructively while letting you toggle individual DF / Live Trend graphs).
+  - **Digital Foundry `DF Corner Inset`**: Compact 30-sample inverted Frame-Time stutter box tucked inside the top-left corner of the panoramic FPS chart (with `1%` & `0.1%` lows and shaded `0.1%` floor band).
+  - **4 Scale Tiers**: `100% Std`, `125% Lg`, `150% XL` (ideal for 1440p), and `185% 4K` (large bold readouts for 4K TV couch gaming).
+  - **Layout Directions**: `▬ Horizontal Bar` or `▮ Vertical Stack`, plus right-click **`Sampling Rate`** (`100 ms` – `3000 ms`) directly on the overlay.
+  - **Adjustable Graph Heights**: 75px Compact, 105px Medium, 140px Large, 180px XL.
+  - **Quick Corner Snaps**: One-click snap to `Top-Left`, `Center-Top`, `Top-Right`, `Bottom-Left`, `Center-Bottom`, or `Bottom-Right`.
+  - **Click-Through Lock (`WS_EX_TRANSPARENT`)**: Mouse clicks pass straight through to full-screen games without stealing focus.
+  - **Low-Impact FPS & iGPU Load**: Passively reads in-game FPS from RTSS shared memory with zero DLL injection and zero anti-cheat risk; automatically displays live Radeon 3D engine load % and clock MHz directly from AMD ADL2.
+- **Global Keyboard Hotkeys**: Toggle the overlay (`Ctrl+Alt+F9`) or switch thermal modes (`Ctrl+Alt+F10..F12`) anytime without leaving games.
 
-### 🛡️ Motor Stall Protection & Automated 3-Pass Calibration
-- **Physical Stall Dead-Zone Prevention**: Brushless blower fans stall if driven below their physical spin-up threshold. MiniFanControl's automated calibration engine measures each motor's exact minimum spin-up % (`ApuMinSpinPct` / `SysMinSpinPct`) and enforces a safe minimum PWM floor outside 0% idle.
-- **1-Fan vs 2-Fan Auto Detection**: Detects single-fan vs dual-fan Mini PCs during calibration, automatically tailoring the UI and OSD layout.
+### ⏱️ Digital Foundry Frametime & Stutter Analysis (`Split (DF)` / `DF Zoom` / `DF Corner`)
+<p align="center">
+  <img src="assets/ui-digital-foundry-perf.png" alt="Digital Foundry DF Zoom Frametime & Framerate Stutter Analysis (The Witcher 3)" width="85%" />
+</p>
+
+- **4 Performance Views**: Cycle **`Split (DF)`**, **`🔍 DF Zoom`** (30-sample zoomed Frame-Time + full FPS), **`◰ DF Corner`** (compact top-left Frame-Time inset inside panoramic FPS), and **`Combined`** with live `AVG`, `1% Low`, and shaded `0.1% Low` floor.
+- **Anti-Poisoning Startup Protection**: Rejects initial loading hitches and alt-tab drops so `1%` / `0.1%` low calculations reflect true gameplay pacing.
+- **One-Click Timeline Snapshot & Export**: Export high-resolution PNG reports or scrub across the live gameplay history with sample-rate-accurate timestamps directly from the `Perf` tab.
+
+### 🛡️ Motor Stall Protection & Universal Laptop / Handheld / Mini-PC 3-Pass Calibration
+- **Physical Stall Dead-Zone Prevention**: Brushless blower fans stall if driven below their physical spin-up threshold. MiniFanControl sweeps from `12%` to `100%` with a 1-second rolling steady-state settle window (`> 40 RPM/s`) and adds a `+2%` safety margin.
+- **Live Thermal Safety Abort (`≥ 88°C`)**: Protects compact mini-PC, laptop, and handheld coolers by automatically pulsing 100% cooling and aborting calibration safely if a background load heats the APU during coast-down or low-PWM steps.
+- **1-Fan vs 2-Fan Auto Detection**: Detects single-fan vs dual-fan systems during calibration, automatically tailoring the UI and OSD layout.
 - **Fail-Safe Exit Handler**: Automatically restores fan control registers to native BIOS EC Auto (`0x00`) on process exit or crash.
 
 ### 🔄 Multi-Tool Coexistence (`Global\Access_EC` Mutex)
@@ -350,13 +355,13 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Export supported hardware profiles & probed Super I/O chip ID prefixes as JSON
 .\minifan-helper.exe export-profiles --json
 
-# Execute the 76-point automated hardware safety & curve test suite
+# Execute the 77-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (76/76 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (77/77 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -436,6 +441,7 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 74. **`FanControllerService` Decoupled Control & Tripwire**: Verifies decoupled curve evaluation, manual override, BIOS Auto reset transitions, and emergency thermal tripwire clamping.
 75. **`DeviceProfile` CLI Export**: Verifies `export-profiles` JSON and summary table outputs include verified profiles and probed Super I/O chip-ID families.
 76. **Hardware Probe JSON Export & Super I/O Chip Identification**: Verifies `dump --json` structured DMI/profile/Super I/O output and chip-ID naming for `ITE IT5570E` (`0x5570`), `ITE IT8613E` (`0x8613`), and `Nuvoton NCT67xx`.
+77. **Calibrated 14% Floor, BIOS-Mode Auto-Tune & OSD v1.1.0 Config**: Verifies `EvaluateCurve()` honors calibrated `14%` minimum spin floors end-to-end, `SynthesizeAutoTunedCurve()` adapts TDP and acoustic knees across `Silent` (`35W`), `Balanced` (`48W`), and `Perf` (`60W+`), and `OsdOverlayConfig` round-trips `GraphMode = 4` (`Graphs Only`), `DfCornerInset`, and per-series Live Trend toggles (`TrendCpu`..`TrendSysFan`).
 
 ---
 

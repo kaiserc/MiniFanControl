@@ -25,6 +25,7 @@ namespace MiniFanControl
         private int _lastAppliedApuPct = -1;
         private int _lastAppliedSysPct = -1;
         private int _lastAppliedEcMode = -1;
+        private int _biosPowerModeOverride = -1;
         private int _lastCustomEvalTemp = -100;
         private bool _emergencyThermalActive = false;
 
@@ -99,6 +100,11 @@ namespace MiniFanControl
         public int LastAppliedApuPct { get { lock (_stateLock) return _lastAppliedApuPct; } }
         public int LastAppliedSysPct { get { lock (_stateLock) return _lastAppliedSysPct; } }
         public int LastAppliedEcMode { get { lock (_stateLock) return _lastAppliedEcMode; } }
+        public int BiosPowerModeOverride
+        {
+            get { lock (_stateLock) return _biosPowerModeOverride; }
+            set { lock (_stateLock) { _biosPowerModeOverride = (value >= 0 && value <= 2) ? value : -1; _lastAppliedEcMode = -1; } }
+        }
         public string LastHardwareWriteError { get { lock (_stateLock) return _lastHardwareWriteError; } }
         public int ConsecutiveWriteFailures { get { lock (_stateLock) return _consecutiveWriteFailures; } }
         public bool ReadOnlyFailsafeLatched { get { lock (_stateLock) return _readOnlyFailsafeLatched; } }
@@ -216,8 +222,47 @@ namespace MiniFanControl
                     _apuManualOverride = false;
                     _lastAppliedApuPct = -1;
                 }
+                if (profile.IsBuiltIn)
+                {
+                    _biosPowerModeOverride = (profile.BuiltInCode == 3) ? 1 : profile.BuiltInCode;
+                }
                 _lastAppliedEcMode = -1;
             }
+        }
+
+        /// <summary>
+        /// Changes the live BIOS/EC TDP Power Mode (0=Balanced, 1=Performance, 2=Silent via EC 0x32)
+        /// independently without replacing active Custom Fan Curves or manual fan overrides.
+        /// </summary>
+        public bool SetBiosPowerMode(int modeCode)
+        {
+            if (modeCode < 0 || modeCode > 2) return false;
+            bool demo;
+            lock (_stateLock)
+            {
+                if (_readOnlyFailsafeLatched) return false;
+                demo = _demoMode;
+                _biosPowerModeOverride = modeCode;
+                _lastAppliedEcMode = -1;
+            }
+
+            if (!demo && _hw != null && _hw.SuperIoBaseAddr != 0)
+            {
+                return false;
+            }
+
+            bool ok = demo ? _demo.SetMode(modeCode) : _hw.SetMode(modeCode);
+            if (ok)
+            {
+                lock (_stateLock) { _lastAppliedEcMode = modeCode; }
+                ClearHardwareWriteError();
+                RequestImmediateRefresh();
+            }
+            else
+            {
+                RecordHardwareWriteError(string.Format("BIOS Power Mode change ({0}) verification failed", modeCode));
+            }
+            return ok;
         }
 
         public void OnProfileRemoved(FanCurveProfile removed)
@@ -294,6 +339,7 @@ namespace MiniFanControl
                 _lastAppliedApuPct = -1;
                 _lastAppliedSysPct = -1;
                 _lastAppliedEcMode = -1;
+                _biosPowerModeOverride = 0;
                 if (_builtInProfiles != null && _builtInProfiles.Length > 0)
                 {
                     _apuProfile = _builtInProfiles[0];
@@ -371,6 +417,7 @@ namespace MiniFanControl
             int lastApuPct;
             int lastSysPct;
             int lastEcMode;
+            int biosOverride;
             int lastEvalTemp;
 
             lock (_stateLock)
@@ -389,6 +436,7 @@ namespace MiniFanControl
                 lastApuPct = _lastAppliedApuPct;
                 lastSysPct = _lastAppliedSysPct;
                 lastEcMode = _lastAppliedEcMode;
+                biosOverride = _biosPowerModeOverride;
                 lastEvalTemp = _lastCustomEvalTemp;
             }
 
@@ -458,6 +506,13 @@ namespace MiniFanControl
                 if (sysUsesNativeEcAuto && (snapshot.NvmeTemp >= 65 || snapshot.NpuActivityPct >= 15))
                 {
                     sysUsesNativeEcAuto = false;
+                }
+
+                // Explicit BIOS Power Mode override (0=Balanced, 1=Performance, 2=Silent) applies independently
+                // even when driving fans via a Custom Curve or Auto-Tuned profile.
+                if (biosOverride >= 0 && biosOverride <= 2)
+                {
+                    desiredEcMode = biosOverride;
                 }
             }
 

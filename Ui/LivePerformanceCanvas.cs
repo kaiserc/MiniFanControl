@@ -27,6 +27,10 @@ namespace MiniFanControl
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool SplitView { get; set; }
+        public bool DfZoomedFrametime { get; set; }
+        public bool DfCornerInset { get; set; }
+        public int SampleIntervalMs { get; set; }
+        private Rectangle _lastCornerInsetRect = Rectangle.Empty;
 
         public event EventHandler ResetPeaksRequested;
 
@@ -59,7 +63,46 @@ namespace MiniFanControl
             AccessibleRole = AccessibleRole.Chart;
             IsDarkMode = true;
             SplitView = true; // Default to Digital Foundry split twin graph view
+            DfZoomedFrametime = false;
+            DfCornerInset = false;
+            SampleIntervalMs = 1000;
             Cursor = Cursors.Cross;
+        }
+
+        private string FormatTimeAgo(int samplesAgo)
+        {
+            if (samplesAgo <= 0) return "Now";
+            double secPerSample = Math.Max(0.1, SampleIntervalMs / 1000.0);
+            double secs = samplesAgo * secPerSample;
+            if (secPerSample < 0.95)
+                return string.Format("-{0:0.0}s", secs);
+            return string.Format("-{0:0}s", secs);
+        }
+
+        private void CycleViewMode()
+        {
+            if (SplitView && !DfZoomedFrametime && !DfCornerInset)
+            {
+                DfZoomedFrametime = true; // Split (DF) -> DF Zoom
+            }
+            else if (SplitView && DfZoomedFrametime && !DfCornerInset)
+            {
+                DfZoomedFrametime = true;
+                DfCornerInset = true; // DF Zoom -> DF Corner Inset
+            }
+            else if (SplitView && DfCornerInset)
+            {
+                SplitView = false;
+                DfZoomedFrametime = false;
+                DfCornerInset = false; // DF Corner -> Combined
+            }
+            else
+            {
+                SplitView = true;
+                DfZoomedFrametime = false;
+                DfCornerInset = false; // Combined -> Split (DF)
+            }
+            Invalidate();
         }
 
         protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
@@ -69,8 +112,7 @@ namespace MiniFanControl
             base.OnKeyDown(e);
             if (e.KeyCode == Keys.V)
             {
-                SplitView = !SplitView;
-                Invalidate();
+                CycleViewMode();
                 e.Handled = true;
             }
             else if (e.KeyCode == Keys.R && ResetPeaksRequested != null)
@@ -161,9 +203,32 @@ namespace MiniFanControl
             if (e.Button == MouseButtons.Right)
             {
                 ContextMenu cm = new ContextMenu();
-                cm.MenuItems.Add(SplitView ? "Switch to Combined Graph View" : "Switch to Digital Foundry Twin Split View", (s, args) =>
+                cm.MenuItems.Add("Split (DF — Full 120-Sample Timeline)", (s, args) =>
                 {
-                    SplitView = !SplitView;
+                    SplitView = true;
+                    DfZoomedFrametime = false;
+                    DfCornerInset = false;
+                    Invalidate();
+                });
+                cm.MenuItems.Add("DF Zoom (Zoomed 30-Sample Frame-Time + Full FPS)", (s, args) =>
+                {
+                    SplitView = true;
+                    DfZoomedFrametime = true;
+                    DfCornerInset = false;
+                    Invalidate();
+                });
+                cm.MenuItems.Add("DF Corner (Compact Frame-Time Inset in Top-Left of FPS)", (s, args) =>
+                {
+                    SplitView = true;
+                    DfZoomedFrametime = true;
+                    DfCornerInset = true;
+                    Invalidate();
+                });
+                cm.MenuItems.Add("Combined Unified Timeline", (s, args) =>
+                {
+                    SplitView = false;
+                    DfZoomedFrametime = false;
+                    DfCornerInset = false;
                     Invalidate();
                 });
                 cm.MenuItems.Add("-");
@@ -194,10 +259,9 @@ namespace MiniFanControl
             {
                 if (_pillRects[i].Width > 0 && _pillRects[i].Contains(e.Location))
                 {
-                    if (i == 0) // View Toggle
+                    if (i == 0) // View Toggle (Split DF -> DF Zoom -> Combined)
                     {
-                        SplitView = !SplitView;
-                        Invalidate();
+                        CycleViewMode();
                     }
                     else if (i == 1) // Reset Peaks
                     {
@@ -262,13 +326,27 @@ namespace MiniFanControl
             DrawTopRibbon(g);
 
             // 2. Draw Graphs
-            if (SplitView)
+            if (SplitView && DfCornerInset)
             {
+                // Authentic Digital Foundry Corner-Inset Layout:
+                // Full panoramic FRAME-RATE (FPS) graph with compact un-stretched FRAME-TIME (MS) box in top-left corner
+                Rectangle fullFpsRect = new Rectangle(4, 36, Width - 8, Height - 56);
+                int insetW = Math.Max(220, Math.Min(340, (int)(fullFpsRect.Width * 0.30)));
+                int insetH = Math.Max(110, Math.Min(168, (int)(fullFpsRect.Height * 0.34)));
+                Rectangle insetRect = new Rectangle(fullFpsRect.X + 12, fullFpsRect.Y + 24, insetW, insetH);
+                _lastCornerInsetRect = insetRect;
+
+                DrawDfFramerateSection(g, fullFpsRect);
+                DrawDfFrametimeSection(g, insetRect, true);
+            }
+            else if (SplitView)
+            {
+                _lastCornerInsetRect = Rectangle.Empty;
                 // Top Half: FRAME-TIME (MS)
                 int ftTop = 36;
                 int ftH = (Height - 56) / 2;
                 Rectangle ftRect = new Rectangle(4, ftTop, Width - 8, ftH);
-                DrawDfFrametimeSection(g, ftRect);
+                DrawDfFrametimeSection(g, ftRect, false);
 
                 // Bottom Half: FRAME-RATE (FPS)
                 int fpsTop = ftTop + ftH + 4;
@@ -399,12 +477,13 @@ namespace MiniFanControl
 
             // 3. View Mode Toggle Pill
             rightX -= 6;
-            string viewTxt = SplitView ? "◫ Split (DF)" : "◰ Combined";
-            Size viewSz = TextRenderer.MeasureText(g, viewTxt, FontPill, new Size(140, 20), TextFormatFlags.NoPadding);
+            string viewTxt = !SplitView ? "◰ Combined" : (DfCornerInset ? "◰ DF Corner" : (DfZoomedFrametime ? "🔍 DF Zoom" : "◫ Split (DF)"));
+            Size viewSz = TextRenderer.MeasureText(g, viewTxt, FontPill, new Size(150, 20), TextFormatFlags.NoPadding);
             int viewW = viewSz.Width + 14;
             rightX -= viewW;
             _pillRects[0] = new Rectangle(rightX, pillY, viewW, pillH);
-            DrawActionPill(g, _pillRects[0], viewTxt, true, Color.FromArgb(0x38, 0xBD, 0xF8));
+            Color viewAccent = (SplitView && (DfZoomedFrametime || DfCornerInset)) ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.FromArgb(0x38, 0xBD, 0xF8);
+            DrawActionPill(g, _pillRects[0], viewTxt, true, viewAccent);
         }
 
         private void DrawActionPill(Graphics g, Rectangle rect, string text, bool isHighlighted, Color accent)
@@ -425,10 +504,16 @@ namespace MiniFanControl
             TextRenderer.DrawText(g, text, FontPill, rect, pillText, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
         }
 
-        private void DrawDfFrametimeSection(Graphics g, Rectangle rect)
+        private void DrawDfFrametimeSection(Graphics g, Rectangle rect, bool compactCorner = false)
         {
-            using (SolidBrush cardBr = new SolidBrush(IsDarkMode ? Color.FromArgb(0x14, 0x14, 0x20) : Color.FromArgb(0xFA, 0xFA, 0xFC)))
-            using (Pen bPen = new Pen(IsDarkMode ? Color.FromArgb(0x28, 0x2A, 0x36) : Color.FromArgb(0xE2, 0xE8, 0xF0), 1f))
+            Color cardFill = compactCorner
+                ? (IsDarkMode ? Color.FromArgb(232, 0x10, 0x12, 0x1C) : Color.FromArgb(240, 0xFA, 0xFA, 0xFC))
+                : (IsDarkMode ? Color.FromArgb(0x14, 0x14, 0x20) : Color.FromArgb(0xFA, 0xFA, 0xFC));
+            Color cardBorder = compactCorner
+                ? (IsDarkMode ? Color.FromArgb(170, 0x22, 0xD3, 0xEE) : Color.FromArgb(180, 0x02, 0x84, 0xC7))
+                : (IsDarkMode ? Color.FromArgb(0x28, 0x2A, 0x36) : Color.FromArgb(0xE2, 0xE8, 0xF0));
+            using (SolidBrush cardBr = new SolidBrush(cardFill))
+            using (Pen bPen = new Pen(cardBorder, compactCorner ? 1.2f : 1f))
             {
                 g.FillRectangle(cardBr, rect);
                 g.DrawRectangle(bPen, rect);
@@ -437,12 +522,17 @@ namespace MiniFanControl
             double curFt = Status.RtssFrametimeMs > 0 ? Status.RtssFrametimeMs : (Status.RtssFps > 0 ? (1000.0 / Status.RtssFps) : ((Stats != null && Stats.FrametimeHistory.Count > 0) ? Stats.FrametimeHistory[Stats.FrametimeHistory.Count - 1] / 10.0 : 0.0));
 
             // Section Header
-            string ftHdr = curFt > 0
-                ? string.Format("FRAME-TIME (MS)  •  NOW: {0:0.0} ms  •  JITTER / STUTTER ANALYSIS", curFt)
-                : "FRAME-TIME (MS)  •  DIGITAL FOUNDRY STYLE INVERTED JITTER SCALE";
+            string ftScope = DfZoomedFrametime ? "DF ZOOM (LAST 30 SAMPLES)" : "JITTER / STUTTER ANALYSIS";
+            string ftHdr = compactCorner
+                ? (curFt > 0 ? string.Format("FRAME-TIME (MS)  •  {0:0.0} ms", curFt) : "FRAME-TIME (MS)")
+                : (curFt > 0
+                    ? string.Format("FRAME-TIME (MS)  •  NOW: {0:0.0} ms  •  {1}", curFt, ftScope)
+                    : "FRAME-TIME (MS)  •  DIGITAL FOUNDRY STYLE INVERTED JITTER SCALE");
             TextRenderer.DrawText(g, ftHdr, FontHeader, new Point(rect.X + 8, rect.Y + 4), Color.FromArgb(0x22, 0xD3, 0xEE), TextFormatFlags.NoPadding);
 
-            Rectangle plot = new Rectangle(rect.X + 38, rect.Y + 20, Math.Max(20, rect.Width - 84), Math.Max(10, rect.Height - 26));
+            Rectangle plot = compactCorner
+                ? new Rectangle(rect.X + 34, rect.Y + 20, Math.Max(20, rect.Width - 78), Math.Max(10, rect.Height - 26))
+                : new Rectangle(rect.X + 38, rect.Y + 20, Math.Max(20, rect.Width - 84), Math.Max(10, rect.Height - 26));
 
             // Dynamic ceiling tracking
             int targetFtCeiling = CapFrameXOverlayForm.CalculateDfFrametimeCeiling(curFt, (Stats != null) ? Stats.FrametimeHistory : null);
@@ -480,9 +570,13 @@ namespace MiniFanControl
                 if (16.6f <= ftCeiling)
                 {
                     float y16 = plot.Top + (16.6f / ftCeiling) * plot.Height;
-                    using (Pen p16 = new Pen(Color.FromArgb(45, 0x22, 0xC5, 0x5E), 1f) { DashStyle = DashStyle.Dot })
+                    using (Pen p16 = new Pen(Color.FromArgb(DfZoomedFrametime ? 75 : 45, 0x22, 0xC5, 0x5E), 1f) { DashStyle = DashStyle.Dot })
                     {
                         g.DrawLine(p16, plot.Left, y16, plot.Right, y16);
+                    }
+                    if (DfZoomedFrametime)
+                    {
+                        TextRenderer.DrawText(g, "16.6", FontAxis, new Point(rect.X + 4, (int)Math.Round(y16) - 6), Color.FromArgb(160, 0x22, 0xC5, 0x5E), TextFormatFlags.NoPadding);
                     }
                 }
 
@@ -490,9 +584,13 @@ namespace MiniFanControl
                 if (33.3f <= ftCeiling)
                 {
                     float y33 = plot.Top + (33.3f / ftCeiling) * plot.Height;
-                    using (Pen p33 = new Pen(Color.FromArgb(45, 0xF5, 0x9E, 0x0B), 1f) { DashStyle = DashStyle.Dot })
+                    using (Pen p33 = new Pen(Color.FromArgb(DfZoomedFrametime ? 75 : 45, 0xF5, 0x9E, 0x0B), 1f) { DashStyle = DashStyle.Dot })
                     {
                         g.DrawLine(p33, plot.Left, y33, plot.Right, y33);
+                    }
+                    if (DfZoomedFrametime)
+                    {
+                        TextRenderer.DrawText(g, "33.3", FontAxis, new Point(rect.X + 4, (int)Math.Round(y33) - 6), Color.FromArgb(170, 0xF5, 0x9E, 0x0B), TextFormatFlags.NoPadding);
                     }
                 }
             }
@@ -510,7 +608,8 @@ namespace MiniFanControl
             }
 
             int total = Stats.FrametimeHistory.Count;
-            int take = Math.Min(total, 120);
+            int maxWindow = DfZoomedFrametime ? 30 : 120;
+            int take = Math.Min(total, maxWindow);
             int start = total - take;
 
             PointF[] pts = new PointF[Math.Max(2, take)];
@@ -592,12 +691,12 @@ namespace MiniFanControl
                 int sIdx = start + (int)Math.Round(normX * (take - 1));
                 sIdx = Math.Max(0, Math.Min(total - 1, sIdx));
 
-                int secAgo = (int)Math.Round((take - 1 - (sIdx - start)) * 1.0);
+                int samplesAgo = take - 1 - (sIdx - start);
                 double ft = (sIdx < Stats.FrametimeHistory.Count && Stats.FrametimeHistory[sIdx] > 0)
                     ? Stats.FrametimeHistory[sIdx] / 10.0
                     : 16.6;
                 int equivFps = ft > 0 ? (int)Math.Round(1000.0 / ft) : 0;
-                string hud = string.Format("{0} | Frametime: {1:0.0} ms (~{2} FPS)", secAgo == 0 ? "Now" : "-" + secAgo + "s", ft, equivFps);
+                string hud = string.Format("{0} | Frametime: {1:0.0} ms (~{2} FPS)", FormatTimeAgo(samplesAgo), ft, equivFps);
 
                 DrawHoverHud(g, plot, hud, _hoverMouseX, _hoverMouseY);
             }
@@ -618,12 +717,14 @@ namespace MiniFanControl
 
             int curFps = Status.RtssFps > 0 ? Status.RtssFps : ((total > 0 && Stats.FpsHistory[total - 1] > 0) ? Stats.FpsHistory[total - 1] : 0);
             int avgFps = ComputeRollingAvgFps(curFps);
+            int low1 = Status.RtssP1LowFps > 0 ? Status.RtssP1LowFps : ((Stats != null && Stats.P1LowFps > 0) ? Stats.P1LowFps : 0);
             int low01 = Status.RtssP01LowFps > 0 ? Status.RtssP01LowFps : ((Stats != null && Stats.P01LowFps > 0) ? Stats.P01LowFps : 0);
 
-            // Section Header
+            // Section Header (matches Overlay: Live, Avg, 1% Low, 0.1% Low)
             string fpsHdr = curFps > 0
-                ? string.Format("FRAME-RATE (FPS)  •  LIVE: {0} FPS  •  AVG: {1}  •  0.1% LOW: {2}", curFps, avgFps, low01 > 0 ? low01.ToString() : "--")
-                : "FRAME-RATE (FPS)  •  CAPFRAMEX STYLE RUNNING BENCHMARK HISTORY";
+                ? string.Format("FRAME-RATE (FPS)  •  LIVE: {0} FPS  •  AVG: {1}  •  1% LOW: {2}  •  0.1% LOW: {3}",
+                    curFps, avgFps, low1 > 0 ? low1.ToString() : "--", low01 > 0 ? low01.ToString() : "--")
+                : "FRAME-RATE (FPS)  •  RUNNING BENCHMARK HISTORY";
             TextRenderer.DrawText(g, fpsHdr, FontHeader, new Point(rect.X + 8, rect.Y + 4), Color.FromArgb(0x38, 0xBD, 0xF8), TextFormatFlags.NoPadding);
 
             Rectangle plot = new Rectangle(rect.X + 38, rect.Y + 20, Math.Max(20, rect.Width - 84), Math.Max(10, rect.Height - 26));
@@ -828,8 +929,9 @@ namespace MiniFanControl
                 TextRenderer.DrawText(g, badgeTxt, FontBadge, new Point(bx + 4, by + 1), fpsCol, TextFormatFlags.NoPadding);
             }
 
-            // Hover crosshair and HUD tooltip
-            if (_hoverMouseX >= plot.Left && _hoverMouseX <= plot.Right && rect.Contains(_hoverMouseX, _hoverMouseY))
+            // Hover crosshair and HUD tooltip (suppressed when mouse is over the DF Corner inset box)
+            bool mouseInCornerInset = (SplitView && DfCornerInset && !_lastCornerInsetRect.IsEmpty && _lastCornerInsetRect.Contains(_hoverMouseX, _hoverMouseY));
+            if (!mouseInCornerInset && _hoverMouseX >= plot.Left && _hoverMouseX <= plot.Right && rect.Contains(_hoverMouseX, _hoverMouseY))
             {
                 using (Pen crossPen = new Pen(Color.FromArgb(160, 255, 255, 255), 1f) { DashStyle = DashStyle.Dot })
                 {
@@ -840,11 +942,12 @@ namespace MiniFanControl
                 int sIdx = start + (int)Math.Round(normX * (take - 1));
                 sIdx = Math.Max(0, Math.Min(total - 1, sIdx));
 
-                int secAgo = (int)Math.Round((take - 1 - (sIdx - start)) * 1.0);
+                int samplesAgo = take - 1 - (sIdx - start);
                 int f = (sIdx < Stats.FpsHistory.Count) ? Stats.FpsHistory[sIdx] : 0;
                 int a = (sIdx < Stats.AvgFpsHistory.Count) ? Stats.AvgFpsHistory[sIdx] : 0;
-                int l = (sIdx < Stats.P01LowHistory.Count) ? Stats.P01LowHistory[sIdx] : 0;
-                string hud = string.Format("{0} | Live: {1} FPS • Avg: {2} • 0.1% Low: {3}", secAgo == 0 ? "Now" : "-" + secAgo + "s", f, a, l > 0 ? l.ToString() : "--");
+                int l01 = (sIdx < Stats.P01LowHistory.Count) ? Stats.P01LowHistory[sIdx] : 0;
+                string hud = string.Format("{0} | Live: {1} FPS • Avg: {2} • 1%: {3} • 0.1%: {4}",
+                    FormatTimeAgo(samplesAgo), f, a, low1 > 0 ? low1.ToString() : "--", l01 > 0 ? l01.ToString() : "--");
 
                 DrawHoverHud(g, plot, hud, _hoverMouseX, _hoverMouseY);
             }
@@ -971,10 +1074,10 @@ namespace MiniFanControl
                 int sIdx = start + (int)Math.Round(normX * (take - 1));
                 sIdx = Math.Max(0, Math.Min(total - 1, sIdx));
 
-                int secAgo = (int)Math.Round((take - 1 - (sIdx - start)) * 1.0);
+                int samplesAgo = take - 1 - (sIdx - start);
                 int f = (sIdx < Stats.FpsHistory.Count) ? Stats.FpsHistory[sIdx] : 0;
                 double ft = (sIdx < Stats.FrametimeHistory.Count && Stats.FrametimeHistory[sIdx] > 0) ? Stats.FrametimeHistory[sIdx] / 10.0 : 0.0;
-                string hud = string.Format("{0} | FPS: {1} • Frametime: {2:0.0} ms", secAgo == 0 ? "Now" : "-" + secAgo + "s", f, ft);
+                string hud = string.Format("{0} | FPS: {1} • Frametime: {2:0.0} ms", FormatTimeAgo(samplesAgo), f, ft);
 
                 DrawHoverHud(g, plot, hud, _hoverMouseX, _hoverMouseY);
             }
@@ -988,7 +1091,15 @@ namespace MiniFanControl
             int right = Width - 46;
             int span = right - left;
 
-            string[] markers = new string[] { "-120s", "-90s", "-60s", "-30s", "-15s", "Now" };
+            string[] markers = new string[]
+            {
+                FormatTimeAgo(120),
+                FormatTimeAgo(90),
+                FormatTimeAgo(60),
+                FormatTimeAgo(30),
+                FormatTimeAgo(15),
+                "Now"
+            };
             float[] pos = new float[] { 0f, 0.25f, 0.50f, 0.75f, 0.875f, 1f };
 
             for (int i = 0; i < markers.Length; i++)
