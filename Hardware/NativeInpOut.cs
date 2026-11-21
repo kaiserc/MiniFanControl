@@ -33,12 +33,121 @@ namespace MiniFanControl
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool FreeLibrary(IntPtr hModule);
 
+        private const uint LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR    = 0x00000100;
         private const uint LOAD_LIBRARY_SEARCH_APPLICATION_DIR = 0x00000200;
         private const uint LOAD_LIBRARY_SEARCH_SYSTEM32        = 0x00000800;
-        private const uint LOAD_WITH_ALTERED_SEARCH_PATH       = 0x00000008;
+        private const uint SAFE_DRIVER_LOAD_FLAGS              = LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32;
 
         public const ulong MIN_SAFE_PHYSICAL_ADDR = 0x000E0000;
         public const uint MAX_SAFE_MAP_SIZE = 16 * 1024 * 1024;
+        public const ulong DEFAULT_EC_MMIO_BASE = 0xFE0B0400UL;
+        public const uint DEFAULT_EC_MMIO_SIZE = 0x100;
+
+        private static readonly object _physWindowLock = new object();
+        private static ulong _registeredEcMmioBase = DEFAULT_EC_MMIO_BASE;
+        private static uint _registeredEcMmioSize = DEFAULT_EC_MMIO_SIZE;
+        private static ulong _registeredSmuPmTableBase = 0;
+        private static uint _registeredSmuPmTableSize = 0;
+
+        /// <summary>
+        /// Registers the active verified EC MMIO window (strictly within AMD FCH/EC MMIO space >= 0xFE000000, <= 4 KB).
+        /// </summary>
+        public static bool RegisterAllowedEcMmioWindow(ulong baseAddr, uint size)
+        {
+            if (baseAddr < 0xFE000000UL || size == 0 || size > 0x1000 || baseAddr > ulong.MaxValue - size)
+                return false;
+            lock (_physWindowLock)
+            {
+                _registeredEcMmioBase = baseAddr;
+                _registeredEcMmioSize = size;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Registers the read-only AMD SMU PM-Table DRAM window returned by the SMU mailbox (<= 16 KB).
+        /// </summary>
+        public static bool RegisterAllowedSmuPmTableWindow(ulong baseAddr, uint size)
+        {
+            if (baseAddr < 0x00100000UL || size == 0 || size > 0x4000 || baseAddr > ulong.MaxValue - size)
+                return false;
+            lock (_physWindowLock)
+            {
+                _registeredSmuPmTableBase = baseAddr;
+                _registeredSmuPmTableSize = size;
+            }
+            return true;
+        }
+
+        internal static void ResetRegisteredPhysicalWindowsForTest()
+        {
+            lock (_physWindowLock)
+            {
+                _registeredEcMmioBase = DEFAULT_EC_MMIO_BASE;
+                _registeredEcMmioSize = DEFAULT_EC_MMIO_SIZE;
+                _registeredSmuPmTableBase = 0;
+                _registeredSmuPmTableSize = 0;
+            }
+        }
+
+        private static bool IsWithinRange(ulong addr, uint size, ulong winBase, uint winSize)
+        {
+            if (winBase == 0 || winSize == 0) return false;
+            if (addr < winBase) return false;
+            ulong end = addr + size;
+            ulong winEnd = winBase + winSize;
+            return end >= addr && end <= winEnd;
+        }
+
+        /// <summary>
+        /// Strict fail-closed physical memory allowlist.
+        /// Writes are permitted ONLY inside the verified AMD FCH/EC MMIO register window.
+        /// Reads/maps are permitted ONLY inside EC MMIO, PCIe ECAM Bus 0:0:0 config space (4 KB),
+        /// or the runtime-registered read-only AMD SMU PM Table buffer.
+        /// </summary>
+        public static bool IsPhysicalMemoryRangeAllowed(ulong physAddr, uint size, bool isWrite)
+        {
+            if (size == 0 || size > MAX_SAFE_MAP_SIZE) return false;
+            if (physAddr < MIN_SAFE_PHYSICAL_ADDR) return false;
+            if (physAddr > ulong.MaxValue - size) return false;
+
+            ulong ecBase, smuBase;
+            uint ecSize, smuSize;
+            lock (_physWindowLock)
+            {
+                ecBase = _registeredEcMmioBase;
+                ecSize = _registeredEcMmioSize;
+                smuBase = _registeredSmuPmTableBase;
+                smuSize = _registeredSmuPmTableSize;
+            }
+
+            // 1. AMD FCH / ITE Embedded Controller MMIO window (default 0xFE0B0400..0xFE0B04FF or registered verified window)
+            if (IsWithinRange(physAddr, size, DEFAULT_EC_MMIO_BASE, DEFAULT_EC_MMIO_SIZE) ||
+                IsWithinRange(physAddr, size, ecBase, ecSize))
+            {
+                return true;
+            }
+
+            // Strict write barrier: NEVER permit physical memory writes outside the verified EC MMIO register window
+            if (isWrite) return false;
+
+            // 2. Standard PCIe ECAM Bus 0, Device 0, Function 0 config aperture (4 KB each, read/SMN probe)
+            if (IsWithinRange(physAddr, size, 0xC0000000UL, 0x1000) ||
+                IsWithinRange(physAddr, size, 0xE0000000UL, 0x1000) ||
+                IsWithinRange(physAddr, size, 0xF0000000UL, 0x1000) ||
+                IsWithinRange(physAddr, size, 0xF8000000UL, 0x1000))
+            {
+                return true;
+            }
+
+            // 3. Runtime-registered read-only AMD SMU PM Table DRAM window (<= 16 KB)
+            if (IsWithinRange(physAddr, size, smuBase, smuSize))
+            {
+                return true;
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// Verified SHA256 pin for bundled InpOut64 (inpoutx64.dll v1.5.0.0, Phillip Gibbons / Highresolution Enterprises).
@@ -339,7 +448,7 @@ namespace MiniFanControl
                                     continue;
                                 }
 
-                                IntPtr hDll = LoadLibraryEx(candidate, IntPtr.Zero, LOAD_WITH_ALTERED_SEARCH_PATH);
+                                IntPtr hDll = LoadLibraryEx(candidate, IntPtr.Zero, SAFE_DRIVER_LOAD_FLAGS);
                                 if (hDll != IntPtr.Zero)
                                 {
                                     _hDriverDll = hDll;
@@ -393,7 +502,7 @@ namespace MiniFanControl
                                     continue;
                                 }
 
-                                IntPtr hDll = LoadLibraryEx(candidate, IntPtr.Zero, LOAD_WITH_ALTERED_SEARCH_PATH);
+                                IntPtr hDll = LoadLibraryEx(candidate, IntPtr.Zero, SAFE_DRIVER_LOAD_FLAGS);
                                 if (hDll != IntPtr.Zero)
                                 {
                                     var initFn = GetProcDelegate<OlsInitializeDelegate>(hDll, "InitializeOls");
@@ -559,7 +668,7 @@ namespace MiniFanControl
         {
             pPhysicalMemoryHandle = IntPtr.Zero;
             ulong addr = unchecked((ulong)pbPhysAddr.ToInt64());
-            if (addr < MIN_SAFE_PHYSICAL_ADDR || dwPhysSize == 0 || dwPhysSize > MAX_SAFE_MAP_SIZE)
+            if (!IsPhysicalMemoryRangeAllowed(addr, dwPhysSize, isWrite: false))
             {
                 return IntPtr.Zero;
             }
@@ -588,7 +697,7 @@ namespace MiniFanControl
 
         public static byte ReadPhysicalByteSafe(ulong physAddr)
         {
-            if (physAddr < MIN_SAFE_PHYSICAL_ADDR) return 0xFF;
+            if (!IsPhysicalMemoryRangeAllowed(physAddr, 1, isWrite: false)) return 0xFF;
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
             if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringReadMem != null)
@@ -606,7 +715,7 @@ namespace MiniFanControl
 
         public static bool WritePhysicalByteSafe(ulong physAddr, byte value)
         {
-            if (physAddr < MIN_SAFE_PHYSICAL_ADDR) return false;
+            if (!IsPhysicalMemoryRangeAllowed(physAddr, 1, isWrite: true)) return false;
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
             if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringWriteMem != null)

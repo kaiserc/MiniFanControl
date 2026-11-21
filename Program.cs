@@ -77,21 +77,7 @@ namespace MiniFanControl
 
         public static int ClampCliFanDuty(int fanId, int requestedPct, bool force, out bool wasClamped, out int minFloor)
         {
-            minFloor = (fanId == 1) ? FanCurveProfile.ApuMinSpinPct : FanCurveProfile.SysMinSpinPct;
-            if (minFloor < 14 || minFloor > 50)
-                minFloor = FanCurveProfile.MIN_SPIN_PCT;
-
-            wasClamped = false;
-            if (requestedPct <= 0)
-                return 0;
-
-            int clamped = Math.Min(100, requestedPct);
-            if (!force && clamped < minFloor)
-            {
-                wasClamped = true;
-                return minFloor;
-            }
-            return clamped;
+            return FanControllerService.ClampManualFanDuty(fanId, requestedPct, force, out wasClamped, out minFloor);
         }
 
         [STAThread]
@@ -203,7 +189,7 @@ namespace MiniFanControl
                     Console.WriteLine("  diff-scan / ec-scan [--demo]          Run EC differential sensor scanner (Tier 2 discovery)");
                     Console.WriteLine("  calibrate [passes] [--demo]           Execute multi-pass fan calibration curve analysis");
 
-                    Console.WriteLine("  test                                  Run 85-point automated safety & regression suite");
+                    Console.WriteLine("  test                                  Run 87-point automated safety & regression suite");
                     Console.WriteLine("  hw-matrix                             Run multi-profile hardware validation matrix");
                     Console.WriteLine("  export-profiles [--json]              Export supported hardware profiles & Super I/O IDs");
 

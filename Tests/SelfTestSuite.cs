@@ -4483,6 +4483,98 @@ namespace MiniFanControl
                 "SetBiosPowerMode Rejects Super I/O Platforms Without Mutating Controller State",
                 biosPowerOrderDetail);
 
+            // 86. Unified FanControllerService.ApplyManualFan Anti-Stall Clamping (GUI + CLI Parity) & Explicit Override
+            bool unifiedManualClampOk = false;
+            string unifiedManualClampDetail = "";
+            int savedMinApu86 = FanCurveProfile.ApuMinSpinPct;
+            int savedMinSys86 = FanCurveProfile.SysMinSpinPct;
+            try
+            {
+                FanCurveProfile.ApuMinSpinPct = 24;
+                FanCurveProfile.SysMinSpinPct = 28;
+                var demo86 = new DemoBackend();
+                var pts86 = new CurvePoint[] { new CurvePoint(40, 30), new CurvePoint(80, 100) };
+                var builtIns86 = new FanCurveProfile[] { new FanCurveProfile("Balanced", true, 0, pts86, pts86) };
+
+                using (var svc = new FanControllerService(null, demo86, builtIns86, true))
+                {
+                    int app1, floor1;
+                    bool clamped1;
+                    bool ok1 = svc.ApplyManualFan(1, 5, false, out app1, out clamped1, out floor1);
+                    bool apuClampedOk = ok1 && clamped1 && app1 == 24 && floor1 == 24
+                        && svc.ApuManualPct == 24 && svc.LastAppliedApuPct == 24;
+
+                    bool ok2 = svc.ApplyManualFan(2, 10);
+                    bool sysClampedOk = ok2 && svc.SysManualPct == 28 && svc.LastAppliedSysPct == 28;
+
+                    bool okAuto = svc.ApplyManualFan(1, 0);
+                    bool autoNotClampedOk = okAuto && svc.ApuManualPct == 0 && !svc.ApuManualOverride;
+
+                    int appForce, floorForce;
+                    bool clampedForce;
+                    bool okForce = svc.ApplyManualFan(1, 5, true, out appForce, out clampedForce, out floorForce);
+                    bool explicitOverrideOk = okForce && !clampedForce && appForce == 5 && svc.ApuManualPct == 5;
+
+                    unifiedManualClampOk = apuClampedOk && sysClampedOk && autoNotClampedOk && explicitOverrideOk;
+                    unifiedManualClampDetail = string.Format("Apu5->{0}(clamped={1}), Sys10->{2}, Auto={3}, Override5->{4}",
+                        app1, clamped1, svc.SysManualPct, autoNotClampedOk, appForce);
+                }
+            }
+            catch (Exception ex) { unifiedManualClampDetail = ex.Message; }
+            finally
+            {
+                FanCurveProfile.ApuMinSpinPct = savedMinApu86;
+                FanCurveProfile.SysMinSpinPct = savedMinSys86;
+            }
+            Check(unifiedManualClampOk,
+                "Unified FanControllerService.ApplyManualFan Anti-Stall Clamping (GUI + CLI Parity) & Override",
+                unifiedManualClampDetail);
+
+            // 87. NativeInpOut Physical Memory Allowlist & Strict EC-Only Write Barrier
+            bool physAllowlistOk = false;
+            string physAllowlistDetail = "";
+            try
+            {
+                NativeInpOut.ResetRegisteredPhysicalWindowsForTest();
+
+                bool ecReadOk = NativeInpOut.IsPhysicalMemoryRangeAllowed(0xFE0B0400UL, 0x100, isWrite: false);
+                bool ecWriteOk = NativeInpOut.IsPhysicalMemoryRangeAllowed(0xFE0B0433UL, 1, isWrite: true);
+                bool ecamReadOk = NativeInpOut.IsPhysicalMemoryRangeAllowed(0xE0000000UL, 0x1000, isWrite: false);
+                bool ecamWriteBlocked = !NativeInpOut.IsPhysicalMemoryRangeAllowed(0xE0000000UL, 4, isWrite: true);
+
+                // Arbitrary physical RAM & unregistered regions MUST be blocked for both reads and writes
+                bool arbitraryRamReadBlocked = !NativeInpOut.IsPhysicalMemoryRangeAllowed(0x10000000UL, 4, isWrite: false);
+                bool arbitraryRamWriteBlocked = !NativeInpOut.IsPhysicalMemoryRangeAllowed(0x10000000UL, 1, isWrite: true);
+                IntPtr dummyH87;
+                bool mapArbitraryBlocked = (NativeInpOut.MapPhysToLinSafe(new IntPtr(0x10000000), 4096, out dummyH87) == IntPtr.Zero);
+                bool writeArbitraryBlocked = !NativeInpOut.WritePhysicalByteSafe(0x10000000UL, 0x55);
+
+                // Non-MMIO EC registration rejected fail-closed
+                bool badEcRegRejected = !NativeInpOut.RegisterAllowedEcMmioWindow(0x10000000UL, 0x100);
+
+                // Registered SMU PM Table window allows bounded reads only, never writes or out-of-bounds reads
+                bool smuRegOk = NativeInpOut.RegisterAllowedSmuPmTableWindow(0x30000000UL, 0x1000);
+                bool smuReadOk = NativeInpOut.IsPhysicalMemoryRangeAllowed(0x30000024UL, 4, isWrite: false);
+                bool smuWriteBlocked = !NativeInpOut.IsPhysicalMemoryRangeAllowed(0x30000024UL, 1, isWrite: true);
+                bool smuOobBlocked = !NativeInpOut.IsPhysicalMemoryRangeAllowed(0x30001000UL, 4, isWrite: false);
+
+                physAllowlistOk = ecReadOk && ecWriteOk && ecamReadOk && ecamWriteBlocked
+                    && arbitraryRamReadBlocked && arbitraryRamWriteBlocked && mapArbitraryBlocked && writeArbitraryBlocked
+                    && badEcRegRejected && smuRegOk && smuReadOk && smuWriteBlocked && smuOobBlocked;
+                physAllowlistDetail = string.Format("EcRW={0}/{1}, EcamR/WBlk={2}/{3}, ArbBlk={4}/{5}, BadEcRej={6}, SmuR/WBlk/Oob={7}/{8}/{9}",
+                    ecReadOk, ecWriteOk, ecamReadOk, ecamWriteBlocked,
+                    arbitraryRamReadBlocked && mapArbitraryBlocked, arbitraryRamWriteBlocked && writeArbitraryBlocked,
+                    badEcRegRejected, smuReadOk, smuWriteBlocked, smuOobBlocked);
+            }
+            catch (Exception ex) { physAllowlistDetail = ex.Message; }
+            finally
+            {
+                NativeInpOut.ResetRegisteredPhysicalWindowsForTest();
+            }
+            Check(physAllowlistOk,
+                "NativeInpOut Physical Memory Allowlist (EC MMIO / PCIe ECAM / SMU PM Table) & Write Barrier",
+                physAllowlistDetail);
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));

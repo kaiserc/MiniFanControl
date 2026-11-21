@@ -1978,11 +1978,29 @@ namespace MiniFanControl
             }
         }
 
-        private void ApplyFan(int fanId, int pct)
+        private void ApplyFan(int fanId, int pct, bool allowBelowFloor = false)
         {
             try
             {
-                bool ok = _controller != null && _controller.ApplyManualFan(fanId, pct);
+                int appliedPct = pct;
+                bool wasClamped = false;
+                int minFloor = FanCurveProfile.MIN_SPIN_PCT;
+                bool ok = _controller != null && _controller.ApplyManualFan(fanId, pct, allowBelowFloor, out appliedPct, out wasClamped, out minFloor);
+
+                // Keep manual slider UI synchronized when anti-stall clamping elevates sub-floor requests
+                if (wasClamped)
+                {
+                    if (fanId == 1 && _fan1Slider != null)
+                    {
+                        _fan1Slider.Value = Math.Max(_fan1Slider.Minimum, Math.Min(_fan1Slider.Maximum, appliedPct));
+                        if (_fan1SliderPct != null) _fan1SliderPct.Text = string.Format("{0}%", appliedPct);
+                    }
+                    else if (fanId == 2 && _fan2Slider != null)
+                    {
+                        _fan2Slider.Value = Math.Max(_fan2Slider.Minimum, Math.Min(_fan2Slider.Maximum, appliedPct));
+                        if (_fan2SliderPct != null) _fan2SliderPct.Text = string.Format("{0}%", appliedPct);
+                    }
+                }
 
                 UpdateCurveTabStyles();
                 UpdateModeButtonStyles(_lastSelectedModeCode);
@@ -1992,7 +2010,13 @@ namespace MiniFanControl
                 if (ok)
                 {
                     string fanLabel = fanId == 1 ? "APU Fan" : "Sys Fan";
-                    string desc = pct == 0 ? string.Format("{0} → {1}", fanLabel, (fanId == 1 ? _apuProfile : _sysProfile).Name) : string.Format("{0} → {1}%", fanLabel, pct);
+                    string desc;
+                    if (appliedPct == 0)
+                        desc = string.Format("{0} → {1}", fanLabel, (fanId == 1 ? _apuProfile : _sysProfile).Name);
+                    else if (wasClamped)
+                        desc = string.Format("{0} → {1}% (clamped from {2}% to min spin floor)", fanLabel, appliedPct, pct);
+                    else
+                        desc = string.Format("{0} → {1}%", fanLabel, appliedPct);
                     StartRampIndication(desc, fanId);
                 }
             }

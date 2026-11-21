@@ -1,6 +1,6 @@
 # MiniFanControl — Native EC Fan Control & Thermal Monitor for AMD Ryzen Mini PCs
 
-![Tests](https://img.shields.io/badge/tests-85%2F85%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-87%2F87%20passing-brightgreen)
 ![Security](https://img.shields.io/badge/Security-Fail--Closed%20%7C%20Least--Privilege-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
@@ -17,7 +17,7 @@
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 85 Passed](https://img.shields.io/badge/Automated%20Tests-85%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-8585-passing)
+[![Automated Tests: 87 Passed](https://img.shields.io/badge/Automated%20Tests-87%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-8787-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 [![Ko-fi: Support](https://img.shields.io/badge/Ko--fi-Support%20Project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/kaiser76)
 
@@ -75,8 +75,12 @@ MiniFanControl/
 │   └── WatchdogSupervisor.cs
 ├── Telemetry/          # RTSS/CapFrameX shared memory reader & transparent OSD HUD
 │   ├── CapFrameXOverlayForm.cs
+│   ├── CapFrameXOverlayForm.ContextMenu.cs
+│   ├── CapFrameXOverlayForm.Formatting.cs
+│   ├── CapFrameXOverlayForm.Graphs.cs
+│   ├── CapFrameXOverlayForm.Paint.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 85-point automated hardware safety & regression test suite
+├── Tests/              # 87-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
 ├── Ui/                 # Double-buffered canvases, accessible WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
@@ -287,7 +291,7 @@ MiniFanControl features a **unified multi-driver abstraction** in [`Hardware/Nat
 ### How MiniFanControl Hardens Driver Access (Defense-in-Depth)
 MiniFanControl wraps all ring-0 driver operations inside a strict user-mode defense layer in [`Hardware/NativeInpOut.cs`](Hardware/NativeInpOut.cs):
 - **Strict Fail-Closed Port Whitelist Enforcement**: `NativeInpOut.IsPortWhitelisted()` enforces a single fail-closed choke point directly inside `DlPortReadPortUchar`/`DlPortWritePortUchar` (`Inp32`/`Out32`) and `DlPortReadPortUlong`/`DlPortWritePortUlong`, permitting only documented ACPI EC (`0x62/0x66`, `0x68/0x6C`, `0x6A/0x6E`), Super I/O (`0x2E/0x2F`, `0x4E/0x4F`), hardware monitor / AMD SMBus ranges (`0x0290–0x0297`, `0x02A0–0x02A7`, `0x0A00–0x0A3F`, `0x0B00–0x0B3F`, `0x0E00–0x0E3F`), and PCI SMN (`0xCF8/0xCFC`). Arbitrary unlisted port reads/writes and sensitive system ports (e.g., RTC `0x70/0x71`, PIC `0x20/0x21`, PIT `0x40..0x43`, Fast A20/Reset `0x92`, PCI reset `0xCF9`) are blocked fail-closed before touching the driver.
-- **Strict Physical Memory Bounds**: `MapPhysToLinSafe()` and physical memory IOCTLs strictly enforce a minimum safe physical address boundary (≥ `0x000E0000`, protecting low memory and kernel tables) with a 16 MB maximum size ceiling. Linear mapping is restricted to live driver virtual mappings; disconnected heap snapshots are rejected.
+- **Strict Physical Memory Allowlist**: `NativeInpOut.IsPhysicalMemoryRangeAllowed()` restricts `MapPhysToLinSafe()`, `ReadPhysicalByteSafe()`, and `WritePhysicalByteSafe()` to explicit hardware windows: EC MMIO (`0xFE0B0400` or verified FCH MMIO ≥ `0xFE000000`, ≤ 4 KB), read-only PCIe ECAM Bus 0:0:0 (4 KB), and the runtime-registered read-only AMD SMU PM-table DRAM buffer (≤ 16 KB). Physical writes outside the verified EC MMIO register window and arbitrary physical RAM reads/maps are rejected fail-closed. Linear mapping is restricted to live driver virtual mappings; disconnected heap snapshots are rejected.
 - **Safe Driver Shutdown for Gamers**: Users playing competitive multiplayer titles can immediately unload active driver services (`WinRing0_1_2_0` or `inpoutx64`) without rebooting by running:
   ```powershell
   .\minifan-helper.exe driver-stop
@@ -365,13 +369,13 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Export supported hardware profiles & probed Super I/O chip ID prefixes as JSON
 .\minifan-helper.exe export-profiles --json
 
-# Execute the 85-point automated hardware safety & curve test suite
+# Execute the 87-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (85/85 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (87/87 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -460,6 +464,8 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 83. **`EvaluateCurve` Defensive Sorting & Monotonic Thermal Safety**: Verifies unsorted or malformed descending curve points are defensively sorted and clamped monotonically non-decreasing so higher temperatures never reduce fan speed.
 84. **Tachometer Spike Filter Bypass on 100% Emergency Spin-Up**: Verifies >2000 RPM single-poll glitches are held at moderate duty, while genuine emergency/100% spin-ups are reported immediately.
 85. **`SetBiosPowerMode` Platform Validation Order**: Verifies Super I/O platforms reject EC TDP mode changes without mutating `BiosPowerModeOverride` or cached EC mode state.
+86. **Unified `FanControllerService.ApplyManualFan` Anti-Stall Clamping (GUI + CLI Parity)**: Verifies both GUI sliders and CLI manual commands share one floor-clamping rule, snapping sub-floor manual requests to the calibrated spin floor unless explicitly overridden.
+87. **`NativeInpOut` Physical Memory Allowlist & EC-Only Write Barrier**: Verifies `IsPhysicalMemoryRangeAllowed()` permits only EC MMIO, read-only PCIe ECAM (4 KB), and registered read-only SMU PM-table buffers while rejecting arbitrary physical RAM reads/maps and all non-EC physical writes fail-closed.
 
 ---
 
@@ -562,4 +568,4 @@ If MiniFanControl has improved your Ryzen Mini PC experience with whisper-quiet 
 
 ## ⚠️ Hardware Safety Disclaimer
 
-Direct hardware communication with Embedded Controller physical registers (`0xFE0B0400`) is performed at your own risk. MiniFanControl enforces minimum spinning PWM thresholds, 2°C cooldown hysteresis, safe shutdown handlers, out-of-process watchdog supervision, register read-back verification, and the `Global\Access_EC` mutex to protect your hardware, but users should always ensure adequate airflow when configuring custom fan curves.
+Direct hardware communication with Embedded Controller physical registers (`0xFE0B0400`) is performed at your own risk. MiniFanControl enforces minimum spinning PWM thresholds, 4°C asymmetric cooldown hysteresis, safe shutdown handlers, out-of-process watchdog supervision, register read-back verification, and the `Global\Access_EC` mutex to protect your hardware, but users should always ensure adequate airflow when configuring custom fan curves.

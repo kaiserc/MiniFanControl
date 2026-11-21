@@ -297,8 +297,35 @@ namespace MiniFanControl
             lock (_stateLock) { _lastLatchedAutoRetryUtc = DateTime.MinValue; }
         }
 
-        public bool ApplyManualFan(int fanId, int pct)
+        public static int ClampManualFanDuty(int fanId, int requestedPct, bool allowBelowFloor, out bool wasClamped, out int minFloor)
         {
+            minFloor = (fanId == 1) ? FanCurveProfile.ApuMinSpinPct : FanCurveProfile.SysMinSpinPct;
+            if (minFloor < 14 || minFloor > 50)
+                minFloor = FanCurveProfile.MIN_SPIN_PCT;
+
+            wasClamped = false;
+            if (requestedPct <= 0)
+                return 0;
+
+            int clamped = Math.Min(100, requestedPct);
+            if (!allowBelowFloor && clamped < minFloor)
+            {
+                wasClamped = true;
+                return minFloor;
+            }
+            return clamped;
+        }
+
+        public bool ApplyManualFan(int fanId, int pct, bool allowBelowFloor = false)
+        {
+            int appliedPct, minFloor;
+            bool wasClamped;
+            return ApplyManualFan(fanId, pct, allowBelowFloor, out appliedPct, out wasClamped, out minFloor);
+        }
+
+        public bool ApplyManualFan(int fanId, int pct, bool allowBelowFloor, out int appliedPct, out bool wasClamped, out int minFloor)
+        {
+            appliedPct = ClampManualFanDuty(fanId, pct, allowBelowFloor, out wasClamped, out minFloor);
             bool demo;
             lock (_stateLock)
             {
@@ -306,26 +333,26 @@ namespace MiniFanControl
                 demo = _demoMode;
                 if (fanId == 1)
                 {
-                    _apuManualPct = Math.Max(0, Math.Min(100, pct));
+                    _apuManualPct = appliedPct;
                     _apuManualOverride = (_apuManualPct > 0);
                     _lastAppliedApuPct = -1;
                 }
                 else
                 {
-                    _sysManualPct = Math.Max(0, Math.Min(100, pct));
+                    _sysManualPct = appliedPct;
                     _sysManualOverride = (_sysManualPct > 0);
                     _lastAppliedSysPct = -1;
                 }
                 _lastAppliedEcMode = -1;
             }
 
-            bool ok = demo ? _demo.SetFan(fanId, pct) : _hw.SetFan(fanId, pct);
+            bool ok = demo ? _demo.SetFan(fanId, appliedPct) : _hw.SetFan(fanId, appliedPct);
             if (ok)
             {
                 lock (_stateLock)
                 {
-                    if (fanId == 1) _lastAppliedApuPct = pct;
-                    else _lastAppliedSysPct = pct;
+                    if (fanId == 1) _lastAppliedApuPct = appliedPct;
+                    else _lastAppliedSysPct = appliedPct;
                 }
                 if (fanId == 1 || (_hw == null || _hw.Profile == null || _hw.Profile.HasDualFans))
                 {
@@ -334,7 +361,7 @@ namespace MiniFanControl
             }
             else
             {
-                RecordHardwareWriteError(string.Format("Manual {0} write ({1}%) verification failed", fanId == 1 ? "APU Fan" : "Sys Fan", pct));
+                RecordHardwareWriteError(string.Format("Manual {0} write ({1}%) verification failed", fanId == 1 ? "APU Fan" : "Sys Fan", appliedPct));
             }
             return ok;
         }

@@ -254,6 +254,8 @@ namespace MiniFanControl
                     if (SendSmuMessage(SMU_MSG_GET_TABLE_ADDR, null, out argsOut))
                     {
                         _pmTablePhysAddr = ((ulong)argsOut[1] << 32) | argsOut[0];
+                        if (_pmTablePhysAddr >= 0x00100000UL)
+                            NativeInpOut.RegisterAllowedSmuPmTableWindow(_pmTablePhysAddr, 0x1000);
                         return;
                     }
                 }
@@ -266,6 +268,8 @@ namespace MiniFanControl
                     if (SendSmuMessage(SMU_MSG_GET_TABLE_ADDR, null, out argsOut))
                     {
                         _pmTablePhysAddr = argsOut[0];
+                        if (_pmTablePhysAddr >= 0x00100000UL)
+                            NativeInpOut.RegisterAllowedSmuPmTableWindow(_pmTablePhysAddr, 0x1000);
                     }
                 }
             }

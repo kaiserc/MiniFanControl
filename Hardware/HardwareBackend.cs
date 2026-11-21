@@ -428,6 +428,8 @@ namespace MiniFanControl
 
                 // 5. Try MMIO mapping (e.g. 0xFE0B0400)
                 ulong baseAddr = Profile != null ? Profile.EcBaseAddress : EC_BASE;
+                uint ecSize = Profile != null && Profile.EcSize > 0 ? Profile.EcSize : EC_SIZE;
+                NativeInpOut.RegisterAllowedEcMmioWindow(baseAddr, ecSize);
                 IntPtr handle;
                 IntPtr mapped = NativeInpOut.MapPhysToLinSafe(new IntPtr(unchecked((long)baseAddr)), EC_SIZE, out handle);
                 if (mapped != IntPtr.Zero)
