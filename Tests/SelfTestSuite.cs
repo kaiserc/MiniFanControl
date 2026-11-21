@@ -4575,6 +4575,82 @@ namespace MiniFanControl
                 "NativeInpOut Physical Memory Allowlist (EC MMIO / PCIe ECAM / SMU PM Table) & Write Barrier",
                 physAllowlistDetail);
 
+            // 88. Super I/O 0% Manual Stop, Tachometer Channel Latching (No Cross-Talk) & Non-Zero Floor Calibration
+            bool sioCalibFixOk = false;
+            string sioCalibFixDetail = "";
+            try
+            {
+                HardwareBackend.ResetTachometerFilterState();
+
+                // A. Super I/O uses true 0% stop (duty=0x00), ACPI EC uses 1% (0x81)
+                HardwareBackend sioHw = new HardwareBackend(DeviceProfile.FindProfile("ryzen-hx370-ec"));
+                sioHw.EnableSimulationMode();
+                sioHw.SuperIoBaseAddr = 0x0A30;
+                sioHw.AccessMethod = HardwareBackend.EcAccessMethod.SuperIo2E;
+                int sioStopPct = sioHw.GetManualStopPct();
+                bool sioSetZeroOk = sioHw.SetFan(1, sioStopPct) && sioHw.SetFan(2, sioStopPct);
+                bool sioZeroDutyWritten = (sioHw.ReadSuperIoHwReg(0x63) == 0 && sioHw.ReadSuperIoHwReg(0x6B) == 0 && sioHw.ReadSuperIoHwReg(0x73) == 0);
+
+                HardwareBackend ecHw = new HardwareBackend(DeviceProfile.FindProfile("gmktec-k12"));
+                ecHw.EnableSimulationMode();
+                ecHw.SuperIoBaseAddr = 0;
+                ecHw.AccessMethod = HardwareBackend.EcAccessMethod.Mmio;
+                int ecStopPct = ecHw.GetManualStopPct();
+
+                // B. Super I/O tachometer channel latching (TS-12C / KTHIN K8 layout: Ch1=0xFFFF, Ch2=APU, Ch3=Sys)
+                // Ch1 (0x0D/0x18) = 0xFFFF (unwired)
+                sioHw.WriteSuperIoHwReg(0x0D, 0xFF); sioHw.WriteSuperIoHwReg(0x18, 0xFF);
+                // Ch2 (0x0E/0x19) = 0x083D (2109 -> 320 RPM floor)
+                sioHw.WriteSuperIoHwReg(0x0E, 0x3D); sioHw.WriteSuperIoHwReg(0x19, 0x08);
+                // Ch3 (0x0F/0x1A) = 0x01C5 (453 -> 1490 RPM)
+                sioHw.WriteSuperIoHwReg(0x0F, 0xC5); sioHw.WriteSuperIoHwReg(0x1A, 0x01);
+
+                int f1Active = sioHw.ReadSuperIoFanRpm(1);
+                int f2Active = sioHw.ReadSuperIoFanRpm(2);
+
+                // Now Sys Fan (Ch3) stops to 0 RPM (0xFFFF) while APU Fan (Ch2) stays at 320 RPM floor
+                sioHw.WriteSuperIoHwReg(0x0F, 0xFF); sioHw.WriteSuperIoHwReg(0x1A, 0xFF);
+                int f1Floor = sioHw.ReadSuperIoFanRpm(1);
+                int f2Stopped = sioHw.ReadSuperIoFanRpm(2);
+
+                // Single-fan Ch2-only board must NEVER clone Fan 1 onto Fan 2
+                sioHw.ResetSuperIoChannelLatch();
+                HardwareBackend.ResetTachometerFilterState();
+                int singleF1 = sioHw.ReadSuperIoFanRpm(1);
+                int singleF2 = sioHw.ReadSuperIoFanRpm(2);
+
+                // C. Non-zero hardware floor plateau & ramp-up detection
+                List<int> flat320 = new List<int> { 320, 318, 322, 320, 321, 319, 320, 320, 321, 320 };
+                List<int> decel = new List<int> { 1200, 1120, 1050, 980, 910, 840, 770, 700, 640, 580 };
+                bool plateauFlatOk = FanCalibrationResult.IsRpmWindowSettled(flat320, 20);
+                bool plateauDecelRejected = !FanCalibrationResult.IsRpmWindowSettled(decel, 20);
+
+                bool noFalseTriggerAtFloor = !FanCalibrationResult.IsSpinUpDetected(320, 320, 320, 0);
+                bool noFalseTriggerSmallJitter = !FanCalibrationResult.IsSpinUpDetected(390, 320, 320, 0);
+                bool rampTriggerAboveFloor = FanCalibrationResult.IsSpinUpDetected(450, 320, 390, 0);
+                bool zeroBaselineStandardTrigger = FanCalibrationResult.IsSpinUpDetected(260, 0, 0, 0);
+
+                sioCalibFixOk = (sioStopPct == 0) && sioSetZeroOk && sioZeroDutyWritten && (ecStopPct == 1)
+                    && (f1Active >= 310 && f1Active <= 330) && (f2Active >= 1450 && f2Active <= 1530)
+                    && (f1Floor >= 310 && f1Floor <= 330) && (f2Stopped == 0)
+                    && (singleF1 >= 310 && singleF1 <= 330) && (singleF2 == 0)
+                    && plateauFlatOk && plateauDecelRejected
+                    && noFalseTriggerAtFloor && noFalseTriggerSmallJitter && rampTriggerAboveFloor && zeroBaselineStandardTrigger;
+
+                sioCalibFixDetail = string.Format("StopPct(SIO/EC)={0}/{1}, ZeroDuty={2}, Tach(F1/F2/F2Stop/SingleF2)={3}/{4}/{5}/{6}, Plateau={7}/{8}, Ramp={9}/{10}/{11}/{12}",
+                    sioStopPct, ecStopPct, sioZeroDutyWritten, f1Active, f2Active, f2Stopped, singleF2,
+                    plateauFlatOk, plateauDecelRejected,
+                    noFalseTriggerAtFloor, noFalseTriggerSmallJitter, rampTriggerAboveFloor, zeroBaselineStandardTrigger);
+            }
+            catch (Exception ex) { sioCalibFixDetail = ex.Message; }
+            finally
+            {
+                HardwareBackend.ResetTachometerFilterState();
+            }
+            Check(sioCalibFixOk,
+                "Super I/O 0% Stop Duty, Tachometer Channel Latching (No Ch2 Mirroring) & Non-Zero Floor Calibration",
+                sioCalibFixDetail);
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));

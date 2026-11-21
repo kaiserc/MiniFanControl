@@ -381,6 +381,15 @@ namespace MiniFanControl
             }
         }
 
+        private int _latchedSioFan1Channel = 0; // 0=auto, 1=Ch1 (0x0D/0x18), 2=Ch2 (0x0E/0x19)
+        private int _latchedSioFan2Channel = 0; // 0=auto, 3=Ch3 (0x0F/0x1A), 2=Ch2 (0x0E/0x19)
+
+        public void ResetSuperIoChannelLatch()
+        {
+            _latchedSioFan1Channel = 0;
+            _latchedSioFan2Channel = 0;
+        }
+
         public int ReadSuperIoFanRpm(int fanIndex)
 
         {
@@ -433,11 +442,27 @@ namespace MiniFanControl
                 int rawRpm = 0;
                 if (fanIndex == 1)
                 {
-                    // Primary APU blower: Channel 1 (0x0D / 0x18) = HWiNFO64 "CPU"
-                    rawRpm = evalTach16(0x0D, 0x18);
-                    // Fallback to Channel 2 (0x0E / 0x19) if Channel 1 is not routed
-                    if (rawRpm == 0)
-                        rawRpm = evalTach16(0x0E, 0x19);
+                    // Primary APU blower: Channel 1 (0x0D / 0x18) = HWiNFO64 "CPU".
+                    // Latch observed wiring so a stopped fan reports genuine 0 RPM instead of mirroring Channel 2.
+                    int ch1 = evalTach16(0x0D, 0x18);
+                    if (ch1 > 0)
+                    {
+                        _latchedSioFan1Channel = 1;
+                        rawRpm = ch1;
+                    }
+                    else if (_latchedSioFan1Channel == 1)
+                    {
+                        rawRpm = 0;
+                    }
+                    else if (_latchedSioFan2Channel != 2)
+                    {
+                        int ch2 = evalTach16(0x0E, 0x19);
+                        if (ch2 > 0)
+                        {
+                            _latchedSioFan1Channel = 2;
+                            rawRpm = ch2;
+                        }
+                    }
 
                     if (rawRpm > 0)
                     {
@@ -449,15 +474,36 @@ namespace MiniFanControl
                             return sorted[sorted.Count / 2]; // 3-sample median filter
                         }
                     }
+                    lock (_filterLock)
+                    {
+                        _fan1FilterWindow.Clear();
+                    }
                     return 0;
                 }
                 else if (fanIndex == 2)
                 {
-                    // Secondary Sys blower: Channel 3 (0x0F / 0x1A) = HWiNFO64 "Power"
-                    rawRpm = evalTach16(0x0F, 0x1A);
-                    // Fallback to Channel 2 (0x0E / 0x19) if Channel 3 is not routed
-                    if (rawRpm == 0)
-                        rawRpm = evalTach16(0x0E, 0x19);
+                    // Secondary Sys blower: Channel 3 (0x0F / 0x1A) = HWiNFO64 "Power".
+                    // Never fall back to Channel 2 if Channel 3 has been observed active or Channel 2 is owned by Fan 1
+                    // (e.g. TS-12C / KTHIN K8 where APU=Ch2 and Sys=Ch3).
+                    int ch3 = evalTach16(0x0F, 0x1A);
+                    if (ch3 > 0)
+                    {
+                        _latchedSioFan2Channel = 3;
+                        rawRpm = ch3;
+                    }
+                    else if (_latchedSioFan2Channel == 3)
+                    {
+                        rawRpm = 0;
+                    }
+                    else if (_latchedSioFan1Channel != 2)
+                    {
+                        int ch2 = evalTach16(0x0E, 0x19);
+                        if (ch2 > 0)
+                        {
+                            _latchedSioFan2Channel = 2;
+                            rawRpm = ch2;
+                        }
+                    }
 
                     if (rawRpm > 0)
                     {
@@ -468,6 +514,10 @@ namespace MiniFanControl
                             var sorted = new List<int>(_fan2FilterWindow); sorted.Sort();
                             return sorted[sorted.Count / 2]; // 3-sample median filter
                         }
+                    }
+                    lock (_filterLock)
+                    {
+                        _fan2FilterWindow.Clear();
                     }
                     return 0;
                 }

@@ -45,10 +45,47 @@ namespace MiniFanControl
         public int SysMinSpinPct = 30;
         public int ApuMaxRpm = 3150;
         public int SysMaxRpm = 1940;
+        public int ApuBaselineRpm = 0;
+        public int SysBaselineRpm = 0;
+        public bool ApuSupportsZeroRpm = true;
+        public bool SysSupportsZeroRpm = true;
         public int[] PassApuMin = new int[0];
         public int[] PassSysMin = new int[0];
         public string CalibratedAt = "";
         public string SummaryReport = "";
+
+        public static bool IsRpmWindowSettled(List<int> window, int maxSpanRpm)
+        {
+            if (window == null || window.Count < 8)
+                return false;
+            int minV = window[0];
+            int maxV = window[0];
+            for (int i = 1; i < window.Count; i++)
+            {
+                int v = window[i];
+                if (v < minV) minV = v;
+                if (v > maxV) maxV = v;
+            }
+            return (maxV - minV) <= maxSpanRpm;
+        }
+
+        public static bool IsSpinUpDetected(int avgRpm, int baselineRpm, int prevStepRpm, int currentPassMin)
+        {
+            if (currentPassMin != 0)
+                return false;
+
+            // Do not falsely mark a fan as "Spin-Up" if it never stopped at baseline AND is still decelerating
+            bool coastingDown = (prevStepRpm >= 250 && avgRpm < prevStepRpm - 50);
+            if (coastingDown)
+                return false;
+
+            // If hardware has a non-zero minimum RPM floor at stop PWM (e.g. ~320 RPM on IT8613E 4-pin blowers),
+            // detect the first PWM step where the rotor actively accelerates above its idle floor (+100 RPM).
+            if (baselineRpm >= 200)
+                return avgRpm >= Math.Max(250, baselineRpm + 100);
+
+            return avgRpm >= 250;
+        }
 
         public static FanCalibrationResult RunCalibration(
             HardwareBackend hw,
@@ -75,8 +112,13 @@ namespace MiniFanControl
             int worstSysBare = 0;
             int maxApu = 0;
             int maxSys = 0;
+            int minBaselineApu = int.MaxValue;
+            int minBaselineSys = int.MaxValue;
             bool apuCanStopToZero = false;
             bool sysCanStopToZero = false;
+
+            int stopPct = (!demoMode && hw != null) ? hw.GetManualStopPct() : 1;
+            bool isSuperIo = (!demoMode && hw != null && hw.IsSuperIoControlled);
 
             if (!demoMode && stepDelayMs > 0 && stepDelayMs < 5000)
             {
@@ -96,21 +138,57 @@ namespace MiniFanControl
                         break;
                     }
 
-                    string passHeader = string.Format("--- PASS {0} OF {1} (Spin-Down to 0 RPM + {2}-Step Sweep) ---", pass, numPasses, CalibrationSteps.Length);
+                    string passHeader = string.Format("--- PASS {0} OF {1} (Spin-Down to {2}% Stop + {3}-Step Sweep) ---", pass, numPasses, stopPct, CalibrationSteps.Length);
                     sb.AppendLine(passHeader);
                     EmitProgress(onProgress, pass, numPasses, 0, CalcPct(completedUnits, totalUnits),
-                        string.Format("Pass {0}/{1} • Stopping fans (waiting for 0 RPM coast-down)...", pass, numPasses),
+                        string.Format("Pass {0}/{1} • Stopping fans ({2}% PWM coast-down)...", pass, numPasses, stopPct),
                         passHeader, new FanStatus());
 
-                    // 1. Command 1% manual (0x81 = manual stop) and wait until rotors coast to 0 RPM.
+                    // 0. Optional pre-pass thermal cooldown: if APU is already warm (>= 72°C) when starting
+                    // a pass, pulse 100% PWM briefly so spin-down + low-PWM steps have safe thermal headroom.
+                    if (!demoMode && hw != null && stepDelayMs > 0)
+                    {
+                        FanStatus preSt = hw.GetStatus();
+                        int startHotTemp = Math.Max(preSt.CpuTemp, preSt.GpuTemp);
+                        if (startHotTemp >= 72 && startHotTemp <= 115 && startHotTemp != 127)
+                        {
+                            hw.SetFan(1, 100);
+                            hw.SetFan(2, 100);
+                            int elapsedCool = 0;
+                            int curHot = startHotTemp;
+                            while (elapsedCool < 12000 && curHot > 65)
+                            {
+                                if (checkCanceled != null && checkCanceled()) { res.WasCanceled = true; break; }
+                                Thread.Sleep(tickMs);
+                                elapsedCool += tickMs;
+                                preSt = hw.GetStatus();
+                                curHot = Math.Max(preSt.CpuTemp, preSt.GpuTemp);
+                                EmitProgress(onProgress, pass, numPasses, 100, CalcPct(completedUnits, totalUnits),
+                                    string.Format("Pass {0}/{1} • Pre-cooling hot APU ({2}°C -> ≤65°C, {3:0.0}s)...",
+                                        pass, numPasses, curHot, elapsedCool / 1000.0),
+                                    null, preSt);
+                            }
+                            if (res.WasCanceled) break;
+                            string coolMsg = string.Format("  [Pass {0}] Pre-Cool (100% PWM) -> APU {1}°C -> {2}°C (in {3:0.0}s)",
+                                pass, startHotTemp, curHot, elapsedCool / 1000.0);
+                            sb.AppendLine(coolMsg);
+                            EmitProgress(onProgress, pass, numPasses, 100, CalcPct(completedUnits, totalUnits),
+                                string.Format("Pass {0}/{1} • Pre-cool complete ({2}°C), starting spin-down...", pass, numPasses, curHot),
+                                coolMsg, preSt);
+                        }
+                    }
+
+                    // 1. Command lowest manual stop (0% on Super I/O IT8613E, 1% / 0x81 on ACPI EC) and wait for coast-down.
                     // Reset tachometer debounce state so 0 RPM coast-down detection has zero filter lag on any EC/Super I/O.
                     HardwareBackend.ResetTachometerFilterState();
                     if (demoMode) { demo.SetFan(1, 1); demo.SetFan(2, 1); }
-                    else { hw.SetFan(1, 1); hw.SetFan(2, 1); }
+                    else { hw.SetFan(1, stopPct); hw.SetFan(2, stopPct); }
 
                     int maxSpinDownMs = stepDelayMs > 0
                         ? (demoMode && stepDelayMs < 500 ? stepDelayMs * 2 : Math.Max(stepDelayMs * 7, 35000))
                         : 0;
+                    int minPlateauWaitMs = isSuperIo ? 5000 : 12000;
+                    int maxPlateauSpanRpm = isSuperIo ? 20 : 15;
 
                     int elapsedSpinDown = 0;
                     int zeroConsecutive = 0;
@@ -125,11 +203,11 @@ namespace MiniFanControl
                         Thread.Sleep(tickMs);
                         elapsedSpinDown += tickMs;
 
-                        // Re-assert 1% manual stop every 2s so EC slew/watchdog never reverts during long coast-down
+                        // Re-assert manual stop every 2s so EC slew/watchdog never reverts during long coast-down
                         if (!demoMode && elapsedSpinDown - lastKeepAliveMs >= 2000)
                         {
-                            hw.SetFan(1, 1);
-                            hw.SetFan(2, 1);
+                            hw.SetFan(1, stopPct);
+                            hw.SetFan(2, stopPct);
                             lastKeepAliveMs = elapsedSpinDown;
                         }
 
@@ -148,8 +226,8 @@ namespace MiniFanControl
 
                         recentF1.Add(lastSt.Fan1Rpm);
                         recentF2.Add(lastSt.Fan2Rpm);
-                        if (recentF1.Count > 8) recentF1.RemoveAt(0);
-                        if (recentF2.Count > 8) recentF2.RemoveAt(0);
+                        if (recentF1.Count > 10) recentF1.RemoveAt(0);
+                        if (recentF2.Count > 10) recentF2.RemoveAt(0);
 
                         if (lastSt.Fan1Rpm == 0 && lastSt.Fan2Rpm == 0)
                         {
@@ -161,42 +239,48 @@ namespace MiniFanControl
                         {
                             zeroConsecutive = 0;
 
-                            // If hardware has a non-zero minimum floor at 1% PWM, only stop waiting after >= 15s
-                            // if neither fan is still decelerating over a full 2-second (8-sample) window
-                            // and any fan known to support 0 RPM has already reached 0 RPM.
-                            if (!demoMode && elapsedSpinDown >= 15000 && recentF1.Count >= 8)
+                            // If hardware has a non-zero minimum floor (e.g. ~320 RPM on 4-pin Super I/O blowers),
+                            // exit as soon as RPMs are completely flat over a 2.5s window once past minPlateauWaitMs
+                            // (5s on instant-PWM Super I/O, 12s on slow-slewing ACPI EC).
+                            if (!demoMode && elapsedSpinDown >= minPlateauWaitMs && recentF1.Count >= 10)
                             {
-                                int dropF1 = recentF1[0] - lastSt.Fan1Rpm;
-                                int dropF2 = recentF2[0] - lastSt.Fan2Rpm;
-                                bool f1Settled = (lastSt.Fan1Rpm == 0) || (!apuCanStopToZero && Math.Abs(dropF1) <= 15);
-                                bool f2Settled = (lastSt.Fan2Rpm == 0) || (!sysCanStopToZero && Math.Abs(dropF2) <= 15);
+                                bool f1Settled = (lastSt.Fan1Rpm == 0) || (!apuCanStopToZero && IsRpmWindowSettled(recentF1, maxPlateauSpanRpm));
+                                bool f2Settled = (lastSt.Fan2Rpm == 0) || (!sysCanStopToZero && IsRpmWindowSettled(recentF2, maxPlateauSpanRpm));
                                 if (f1Settled && f2Settled)
                                     break;
                             }
                         }
 
                         EmitProgress(onProgress, pass, numPasses, 0, CalcPct(completedUnits + 1, totalUnits),
-                            string.Format("Pass {0}/{1} • Coasting to 0 RPM (APU: {2} RPM, Sys: {3} RPM, {4:0.0}s)...",
-                                pass, numPasses, lastSt.Fan1Rpm, lastSt.Fan2Rpm, elapsedSpinDown / 1000.0),
+                            string.Format("Pass {0}/{1} • Coasting at {2}% PWM (APU: {3} RPM, Sys: {4} RPM, {5:0.0}s)...",
+                                pass, numPasses, stopPct, lastSt.Fan1Rpm, lastSt.Fan2Rpm, elapsedSpinDown / 1000.0),
                             null, lastSt);
                     }
 
                     if (res.WasCanceled || res.WasThermalAborted) break;
                     completedUnits += 2;
 
-                    string spinDownMsg = string.Format("  [Pass {0}] Baseline Stop (1% PWM) -> APU: {1,4} RPM | Sys: {2,4} RPM (after {3:0.0}s)",
-                        pass, lastSt.Fan1Rpm, lastSt.Fan2Rpm, elapsedSpinDown / 1000.0);
+                    int baseApuRpm = lastSt.Fan1Rpm;
+                    int baseSysRpm = lastSt.Fan2Rpm;
+                    if (baseApuRpm < minBaselineApu) minBaselineApu = baseApuRpm;
+                    if (baseSysRpm < minBaselineSys) minBaselineSys = baseSysRpm;
+
+                    string spinDownMsg = string.Format("  [Pass {0}] Baseline Stop ({1}% PWM) -> APU: {2,4} RPM | Sys: {3,4} RPM (after {4:0.0}s)",
+                        pass, stopPct, baseApuRpm, baseSysRpm, elapsedSpinDown / 1000.0);
                     sb.AppendLine(spinDownMsg);
-                    EmitProgress(onProgress, pass, numPasses, 1, CalcPct(completedUnits, totalUnits),
-                        string.Format("Pass {0}/{1} • 0 RPM baseline ready", pass, numPasses),
+                    string baselineReadyMsg = (baseApuRpm == 0 && baseSysRpm == 0)
+                        ? string.Format("Pass {0}/{1} • 0 RPM baseline ready", pass, numPasses)
+                        : string.Format("Pass {0}/{1} • Baseline floor ready (APU: {2} RPM, Sys: {3} RPM)", pass, numPasses, baseApuRpm, baseSysRpm);
+                    EmitProgress(onProgress, pass, numPasses, stopPct, CalcPct(completedUnits, totalUnits),
+                        baselineReadyMsg,
                         spinDownMsg, lastSt);
 
                     int passApuMin = 0;
                     int passSysMin = 0;
-                    int prevStepApuRpm = lastSt.Fan1Rpm;
-                    int prevStepSysRpm = lastSt.Fan2Rpm;
+                    int prevStepApuRpm = baseApuRpm;
+                    int prevStepSysRpm = baseSysRpm;
 
-                    // 2. Step through CalibrationSteps (20%..100%) with stabilization polling
+                    // 2. Step through CalibrationSteps (12%..100%) with stabilization polling
                     for (int sIdx = 0; sIdx < CalibrationSteps.Length; sIdx++)
                     {
                         if (checkCanceled != null && checkCanceled()) { res.WasCanceled = true; break; }
@@ -284,12 +368,8 @@ namespace MiniFanControl
                         int avgF1 = ComputeRobustStepRpm(f1Samples, lastSt.Fan1Rpm);
                         int avgF2 = ComputeRobustStepRpm(f2Samples, lastSt.Fan2Rpm);
 
-                        // Do not falsely mark a fan as "Spin-Up" if it never stopped at baseline AND is still decelerating
-                        bool f1CoastingDown = (prevStepApuRpm >= 250 && avgF1 < prevStepApuRpm - 50);
-                        bool f2CoastingDown = (prevStepSysRpm >= 250 && avgF2 < prevStepSysRpm - 50);
-
-                        bool apuJustSpun = (avgF1 >= 250 && passApuMin == 0 && !f1CoastingDown);
-                        bool sysJustSpun = (avgF2 >= 250 && passSysMin == 0 && !f2CoastingDown);
+                        bool apuJustSpun = IsSpinUpDetected(avgF1, baseApuRpm, prevStepApuRpm, passApuMin);
+                        bool sysJustSpun = IsSpinUpDetected(avgF2, baseSysRpm, prevStepSysRpm, passSysMin);
 
                         prevStepApuRpm = avgF1;
                         prevStepSysRpm = avgF2;
@@ -300,9 +380,11 @@ namespace MiniFanControl
                         if (avgF2 > maxSys) maxSys = avgF2;
 
                         string note = "";
-                        if (apuJustSpun && sysJustSpun) note = "  <-- APU & Sys Spin-Up!";
-                        else if (apuJustSpun) note = "  <-- APU Fan Spin-Up!";
-                        else if (sysJustSpun) note = "  <-- Sys Fan Spin-Up!";
+                        string apuTag = baseApuRpm >= 200 ? "Ramp-Up" : "Spin-Up";
+                        string sysTag = baseSysRpm >= 200 ? "Ramp-Up" : "Spin-Up";
+                        if (apuJustSpun && sysJustSpun) note = string.Format("  <-- APU & Sys {0}!", apuTag);
+                        else if (apuJustSpun) note = string.Format("  <-- APU Fan {0}!", apuTag);
+                        else if (sysJustSpun) note = string.Format("  <-- Sys Fan {0}!", sysTag);
 
                         string stepLine = string.Format("  [Pass {0}] Step {1,3}% PWM -> APU Fan: {2,4} RPM | Sys Fan: {3,4} RPM{4}",
                             pass, pct, avgF1, avgF2, note);
@@ -335,6 +417,10 @@ namespace MiniFanControl
             }
 
             res.HasDualFans = (maxSys >= 250);
+            res.ApuBaselineRpm = (minBaselineApu < int.MaxValue) ? minBaselineApu : 0;
+            res.SysBaselineRpm = (minBaselineSys < int.MaxValue) ? minBaselineSys : 0;
+            res.ApuSupportsZeroRpm = (res.ApuBaselineRpm < 200);
+            res.SysSupportsZeroRpm = (res.SysBaselineRpm < 200);
             res.ApuBareSpinPct = worstApuBare > 0 ? worstApuBare : 28;
             res.SysBareSpinPct = worstSysBare > 0 ? worstSysBare : 28;
 
@@ -367,6 +453,10 @@ namespace MiniFanControl
                         sb.AppendFormat("  Sys Bare Spin-Up/Pass : [{0}]% PWM\r\n", string.Join("%, ", Array.ConvertAll(res.PassSysMin, x => x.ToString())));
                 }
                 sb.AppendFormat("  Detected Fan Layout   : {0}\r\n", res.HasDualFans ? "2 Fans (APU Fan + System RAM/NVMe Fan)" : "1 Fan (APU Fan Only)");
+                if (!res.ApuSupportsZeroRpm && res.ApuBaselineRpm > 0)
+                    sb.AppendFormat("  APU Hardware Floor    : {0} RPM @ {1}% PWM (does not stop to 0 RPM)\r\n", res.ApuBaselineRpm, stopPct);
+                if (res.HasDualFans && !res.SysSupportsZeroRpm && res.SysBaselineRpm > 0)
+                    sb.AppendFormat("  Sys Hardware Floor    : {0} RPM @ {1}% PWM (does not stop to 0 RPM)\r\n", res.SysBaselineRpm, stopPct);
                 sb.AppendFormat("  APU Safe Min / Max RPM: {0}% PWM (Bare {1}% + 2% margin) / {2} RPM\r\n",
                     res.ApuMinSpinPct, res.ApuBareSpinPct, res.ApuMaxRpm);
                 if (res.HasDualFans)

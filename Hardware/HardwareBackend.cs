@@ -231,11 +231,31 @@ namespace MiniFanControl
         }
 
 
+        public bool IsSuperIoControlled
+        {
+            get
+            {
+                return SuperIoBaseAddr != 0 || AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E;
+            }
+        }
+
+        /// <summary>
+        /// Returns the lowest manual PWM percentage supported without reverting to BIOS Auto.
+        /// Super I/O (IT8613E/IT87xx) supports true 0% manual PWM (duty=0x00, Bit 7=0);
+        /// ACPI EC (IT5570E) uses 1% (0x81) because 0x00 restores BIOS Auto.
+        /// </summary>
+        public int GetManualStopPct()
+        {
+            try { EnsureOpen(); } catch { }
+            return IsSuperIoControlled ? 0 : 1;
+        }
+
         public void ReinitializeHardwareAfterResume()
         {
             if (_isSimulatedMode) return;
             _isInitialized = false;
             ResetTachometerFilterState();
+            ResetSuperIoChannelLatch();
             try
             {
                 EnsureOpen();
@@ -1010,6 +1030,11 @@ namespace MiniFanControl
                         WritePortByte(dataPort, duty7);
                         WritePortByte(addrPort, 0x16);
                         WritePortByte(dataPort, duty7);
+                        if (_isSimulatedMode && !SimulateSuperIoWriteFailure)
+                        {
+                            _simulatedSioRegs[0x15] = duty7;
+                            _simulatedSioRegs[0x16] = duty7;
+                        }
 
                         // Primary 8-bit extended PWM duty registers (0x63 = Fan 1, sync 0x6B)
                         bool w63 = WriteSuperIoHwReg(0x63, duty);
@@ -1021,6 +1046,10 @@ namespace MiniFanControl
                         // Set manual mode (Bit 7 = 0) and 7-bit duty (Bits 6:0) on Channel 3 (0x17)
                         WritePortByte(addrPort, 0x17);
                         WritePortByte(dataPort, duty7);
+                        if (_isSimulatedMode && !SimulateSuperIoWriteFailure)
+                        {
+                            _simulatedSioRegs[0x17] = duty7;
+                        }
 
                         // Primary 8-bit extended PWM duty register (0x73 = Fan 3 / Power)
                         if (!WriteSuperIoHwReg(0x73, duty))

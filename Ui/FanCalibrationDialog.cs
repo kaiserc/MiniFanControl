@@ -148,9 +148,9 @@ namespace MiniFanControl
                 Location = new Point(14, 154),
                 Size = new Size(512, 214),
                 Text = "Click 'Start Calibration' below.\r\n" +
-                       "• Phase 1: Commands 1% PWM and waits up to 35s until rotors coast to a verified 0 RPM stop.\r\n" +
-                       "• Phase 2: Full curve sweep through 20%..35% (2% steps) and 40%..100% (5-10% steps).\r\n" +
-                       "• Holds each step for 5.0s+ (adaptive settle) and filters out tachometer rollover spikes.\r\n"
+                       "• Phase 1: Commands stop PWM (0% Super I/O / 1% EC) until rotors stop or settle at hardware floor.\r\n" +
+                       "• Phase 2: Full curve sweep through 12%..35% (2-3% steps) and 40%..100% (5-10% steps).\r\n" +
+                       "• Pre-cools if APU is hot (>=72°C), holds each step 5.0s+, and filters tach spikes.\r\n"
             };
             Controls.Add(_logBox);
 
@@ -198,6 +198,7 @@ namespace MiniFanControl
             _applyBtn = new Button
             {
                 Text = "✓ Apply & Save Calibration",
+                UseMnemonic = false,
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 9.0f, FontStyle.Bold),
                 Location = new Point(346, 378),
