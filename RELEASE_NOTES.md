@@ -1,3 +1,15 @@
+# Release Notes: MiniFanControl v1.1.2 (Unified Manual Floor Clamp, Physical Memory Allowlist & SHA-Pinned CI)
+
+**MiniFanControl v1.1.2** closes the final defense-in-depth hardening items: unified GUI + CLI anti-stall clamping inside `FanControllerService`, a strict physical-memory allowlist with an EC-only write barrier in `NativeInpOut`, hardened `LoadLibraryEx` search flags, SHA-pinned GitHub Actions, a 5-file modular split of `CapFrameXOverlayForm`, and **87/87 passing tests** on both `.NET 4.8` and `.NET 10.0-windows`.
+
+## 🔒 Highlights in v1.1.2
+- **Unified GUI + CLI Anti-Stall Floor Clamp**: `FanControllerService.ApplyManualFan()` now enforces the calibrated minimum spin floor identically across both GUI sliders and CLI `fan`/`fan1`/`fan2` (with an explicit override flag for `--force`), snapping GUI sliders cleanly to the floor when clamped (Test #86).
+- **Physical Memory Allowlist & EC-Only Write Barrier**: `NativeInpOut.IsPhysicalMemoryRangeAllowed()` restricts `MapPhysToLinSafe()`, `ReadPhysicalByteSafe()`, and `WritePhysicalByteSafe()` exclusively to verified EC MMIO (≤ 4 KB), read-only PCIe ECAM Bus `0:0:0` (4 KB), and runtime-registered read-only AMD SMU PM-table buffers (≤ 16 KB), blocking arbitrary physical RAM access and all non-EC physical writes fail-closed (Test #87).
+- **Hardened DLL Load Flags & SHA-Pinned CI**: Replaced `LOAD_WITH_ALTERED_SEARCH_PATH` with `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32`, and pinned every GitHub Action in `.github/workflows/ci.yml` by commit SHA.
+- **Modular Overlay Refactor & Doc Cleanup**: Split `CapFrameXOverlayForm` into 5 cohesive partial files (`.cs`, `.ContextMenu.cs`, `.Formatting.cs`, `.Graphs.cs`, `.Paint.cs`), corrected the final `2°C` → `4°C` hysteresis mention in `README.md`, and verified **87/87 passing** across `.NET 4.8` and `.NET 10.0-windows`.
+
+---
+
 # Release Notes: MiniFanControl v1.1.1 (Security Hardening, `.NET 10` Fix & Modular Refactor)
 
 **MiniFanControl v1.1.1** is a security, hardware-safety, and reliability release that implements runtime SHA256 driver pinning, binds custom profiles to source machine DMI fingerprints, moves the port whitelist directly into `NativeInpOut`, hardens CLI/failsafe edge cases, fixes `.NET 10` `ContextMenuStrip` runtime compatibility, fixes GitHub Release `Setup.exe` packaging, and expands the automated safety suite to **85/85 passing on both `.NET 4.8` and `.NET 10.0-windows`**.

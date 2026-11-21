@@ -4,6 +4,18 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.1.2] - 2026-11-21
+
+### 🔒 Defense-in-Depth Hardening & GUI/CLI Parity
+- **Unified GUI + CLI Anti-Stall Floor Enforcement (`Core/FanControllerService.cs`, `Ui/MainForm.cs`, `Program.cs`)**: Consolidated manual fan duty clamping into `FanControllerService.ClampManualFanDuty()` and enforced it inside `ApplyManualFan()` (with an explicit `allowBelowFloor` override). Both the GUI manual sliders and `minifan-helper.exe fan`/`fan1`/`fan2` now enforce identical anti-stall safety, snapping the GUI slider to the calibrated spin floor with a clear status callout when clamped (Test #86).
+- **Strict Physical Memory Allowlist & EC-Only Write Barrier (`Hardware/NativeInpOut.cs`, `Hardware/HardwareBackend.cs`, `Hardware/AmdSmuSiliconSensor.cs`)**: Added `IsPhysicalMemoryRangeAllowed()` restricting `MapPhysToLinSafe()`, `ReadPhysicalByteSafe()`, and `WritePhysicalByteSafe()` to explicit hardware windows: verified AMD FCH/EC MMIO (`0xFE0B0400` or verified FCH MMIO ≥ `0xFE000000`, ≤ 4 KB), read-only PCIe ECAM Bus `0:0:0` (4 KB), and the runtime-registered read-only AMD SMU PM-table DRAM buffer (≤ 16 KB). Arbitrary physical RAM reads/maps and all non-EC physical writes are blocked fail-closed (Test #87).
+- **Hardened `LoadLibraryEx` Search Flags (`Hardware/NativeInpOut.cs`)**: Replaced `LOAD_WITH_ALTERED_SEARCH_PATH` with `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32`.
+
+### 🏗️ CI Supply-Chain Hardening, Modular OSD Split & 87/87 Suite
+- **SHA-Pinned GitHub Actions (`.github/workflows/ci.yml`)**: Pinned all workflow actions (`actions/checkout`, `actions/setup-dotnet`, `actions/upload-artifact`, `actions/download-artifact`, `softprops/action-gh-release`) to verified commit SHAs.
+- **Modular Overlay Split (`Telemetry/CapFrameXOverlayForm*.cs`)**: Split the 3,960-line overlay form into 5 focused partial files (`CapFrameXOverlayForm.cs`, `.ContextMenu.cs`, `.Formatting.cs`, `.Graphs.cs`, `.Paint.cs`).
+- **Documentation & 87/87 Automated Tests (`README.md`, `GUIDE.md`, `Program.cs`, `Tests/SelfTestSuite.cs`)**: Fixed the remaining `2°C` → `4°C asymmetric` hysteresis note in `README.md`, documented the physical memory allowlist, and expanded the automated suite to **87/87 passing** on both `.NET 4.8` and `.NET 10.0-windows`.
+
 ## [1.1.1] - 2026-11-21
 
 ### 🔒 Security, Integrity & Hardware-Safety Hardening
