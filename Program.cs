@@ -185,7 +185,7 @@ namespace MiniFanControl
 
                 {
 
-                    Console.WriteLine("MiniFanControl v1.1.0 CLI Commands:");
+                    Console.WriteLine("MiniFanControl v" + MainForm.APP_VERSION + " CLI Commands:");
 
                     Console.WriteLine("  status [--demo]                       Query fan speeds, APU power, temperatures");
 

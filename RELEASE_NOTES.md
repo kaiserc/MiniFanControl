@@ -1,3 +1,15 @@
+# Release Notes: MiniFanControl v1.1.1 (Security Hardening, `.NET 10` Fix & Modular Refactor)
+
+**MiniFanControl v1.1.1** is a security, hardware-safety, and reliability release that implements runtime SHA256 driver pinning, binds custom profiles to source machine DMI fingerprints, moves the port whitelist directly into `NativeInpOut`, hardens CLI/failsafe edge cases, fixes `.NET 10` `ContextMenuStrip` runtime compatibility, fixes GitHub Release `Setup.exe` packaging, and expands the automated safety suite to **85/85 passing on both `.NET 4.8` and `.NET 10.0-windows`**.
+
+## 🔒 Highlights in v1.1.1
+- **Runtime SHA256 Driver Pinning & Single-Choke-Point Port Whitelist**: `NativeInpOut` now verifies the SHA256 digest of `inpoutx64.dll` (and optional `WinRing0x64.dll`) while holding a `FileShare.Read` lock across `LoadLibraryEx`, and enforces `IsPortWhitelisted()` directly inside `DlPortReadPortUchar`/`DlPortWritePortUchar` (`Inp32`/`Out32`).
+- **DMI-Bound Custom Profiles & Fail-Closed Parsing**: `custom-profile.json` is bound to source machine DMI (`boundManufacturer`/`boundProductName`/`boundBaseBoard`), defaults fail-closed to read-only/unverified on stray or truncated files, never bypasses hardware safety blocklists, and now parses single-line JSON via the unified `Core/SimpleJson.cs` tokenizer.
+- **Thermal Failsafe, CLI Anti-Stall & Locale Fixes**: The ≥90°C emergency thermal tripwire now executes *before* the read-only latch return with periodic `SetAuto()` retries while latched; CLI `fan`/`fan1`/`fan2` clamps sub-floor manual values to the calibrated spin floor unless `--force` is passed; CLI `status` JSON now formats decimals with `InvariantCulture` (fixing `de-DE`/`fr-FR`/`es-ES` locales); `EvaluateCurve()` defensively enforces sorted monotonic curves; and tach spike filtering bypasses at `≥95%` duty.
+- **`.NET 10` Compatibility, Installer Packaging & Modular Architecture**: Migrated legacy `ContextMenu` calls to `ContextMenuStrip` so `.NET 10.0-windows` runs cleanly without `PlatformNotSupportedException`, fixed the `dist/*-Setup-*.exe` CI release glob, split `MainForm` (6 partials) and `HardwareBackend` (4 partials), untracked compiled `.exe` binaries from git, and verified **85/85 passing tests** across both `.NET 4.8` and `.NET 10.0-windows`.
+
+---
+
 # Release Notes: MiniFanControl v1.1.0 (BIOS Power Bar, Digital Foundry OSD & Universal Calibration)
 
 **MiniFanControl v1.1.0** is a major feature release adding an independent **`BIOS:` Power Mode** switcher in the header, an expanded 2×4 telemetry dashboard with a scrollbar-free OSD Studio, Digital Foundry **`DF Zoom`** / **`DF Corner`** / **`Graphs Only`** overlay modes, universal `≥ 88°C` calibration thermal safety with full `14%` low-PWM floor support, and **77/77 passing** automated safety tests.

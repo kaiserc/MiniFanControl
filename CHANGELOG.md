@@ -4,6 +4,21 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.1.1] - 2026-11-21
+
+### 🔒 Security, Integrity & Hardware-Safety Hardening
+- **Runtime SHA256 Driver Pinning with TOCTOU Lock (`Hardware/NativeInpOut.cs`, `Ui/MainForm.MenusAndTray.cs`, `Program.cs`)**: Enforced fail-closed SHA256 verification before `LoadLibraryEx` for both `inpoutx64.dll` and optional `WinRing0x64.dll` while holding a `FileShare.Read` handle across hash + load to block DLL planting / TOCTOU swaps. The Security Status dialog and `minifan-helper.exe driver-status` now report live runtime hash verification and integrity alerts.
+- **Single-Choke-Point Port Whitelist (`Hardware/NativeInpOut.cs`, `Hardware/HardwareBackend.PortsAndEc.cs`)**: Moved `IsPortWhitelisted()` into `NativeInpOut` and enforced it directly inside `DlPortReadPortUchar` / `DlPortWritePortUchar` (`Inp32`/`Out32`) so no caller can bypass port restrictions.
+- **DMI-Bound Custom Profiles & Fail-Closed `FromJson()` (`Core/DeviceProfile.cs`)**: Added `boundManufacturer`/`boundProductName`/`boundBaseBoard` binding to `custom-profile.json`, defaulted `FromJson()` fail-closed to `IsReadOnly = true` / `IsVerified = false`, enforced hardware blocklists (`Recoreqich`/`KTHIN`/`HX PRO 370`) ahead of custom profile lookup, and prevented portable custom profiles from activating on mismatched hardware.
+- **Read-Only Failsafe Latch Thermal Protection (`Core/FanControllerService.cs`)**: Evaluated the ≥90°C emergency thermal tripwire *before* the read-only failsafe latch return, added periodic `SetAuto()` retries while latched if escalation `SetAuto()` failed, and validated Super I/O support in `SetBiosPowerMode()` before mutating controller state.
+- **True Read-Only Startup Probing & Tach Spike Bypass (`Hardware/HardwareBackend.cs`, `Hardware/HardwareBackend.SuperIo.cs`, `Hardware/HardwareBackend.PortsAndEc.cs`)**: Gated `VerifyIt87HwBase()` register `0x00` writes behind `allowConfigWrites`, skipped automatic Super I/O LPC config-mode probing in Safe Read-Only Mode, and bypassed the 20-poll upward tach spike hold when `≥95%` PWM is commanded.
+- **CLI Anti-Stall Floor Clamping & Locale-Safe JSON (`Program.cs`, `Curves/CurvePoint.cs`)**: `fan`/`fan1`/`fan2` now clamps sub-floor manual values (`1..floor-1`) to the calibrated anti-stall floor unless `--force` is passed (`0%` remains BIOS Auto); `status` and CLI JSON outputs now use `InvariantCulture` and RFC-8259 string escaping (fixing comma-decimal locales like `de-DE`/`fr-FR`); `EvaluateCurve()` defensively sorts unsorted points and enforces non-decreasing PWM monotonicity.
+
+### 🏗️ Architecture, `.NET 10` Runtime Compatibility & CI/Release Fixes
+- **`.NET 10.0-windows` WinForms Compatibility (`Ui/MainForm.MenusAndTray.cs`, `Ui/LivePerformanceCanvas.cs`, `Ui/LiveTelemetryCanvas.cs`)**: Migrated remaining legacy `ContextMenu`/`MenuItem` usages to `ContextMenuStrip`/`ToolStripMenuItem` (resolving runtime `PlatformNotSupportedException` on `.NET 10`), and updated Test #68 watchdog helper launching for `dotnet.exe` hosting.
+- **Unified `SimpleJson` Parser & Modular Partial Split (`Core/SimpleJson.cs`, `Hardware/HardwareBackend.*.cs`, `Ui/MainForm.*.cs`)**: Consolidated JSON tokenization and escaping across `Loc`, `DeviceProfile`, and CLI onto `SimpleJson` (adding single-line JSON support for `DeviceProfile.FromJson()`), split `HardwareBackend` into 4 partial files and `MainForm` into 6 partial files, and untracked compiled `.exe` binaries from git.
+- **CI, Installer Packaging & 85/85 Test Suite (`.github/workflows/ci.yml`, `Tests/SelfTestSuite.cs`, `app.manifest`, `SECURITY.md`, `GUIDE.md`, `README.md`)**: Fixed the `dist/*-Setup-*.exe` release glob so the Inno Setup installer uploads to GitHub Releases, scoped `contents: write` strictly to the tag-only `publish-release` job, added automated version-consistency validation and `.NET 10` test execution in CI, synced docs/manifests, and added Tests #78–#85 (**85/85 passing** on both `.NET 4.8` and `.NET 10.0-windows`).
+
 ## [1.1.0] - 2026-11-21
 
 ### 🖥️ Dashboard, BIOS Power Mode & Fan Curve Polish
