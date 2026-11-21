@@ -54,7 +54,7 @@ No Visual Studio installation required! Run the included batch script:
 ```cmd
 build-windows.bat
 ```
-This invokes the native Windows C# compiler (`csc.exe`), compiles `MiniFanControl.exe` and `minifan-helper.exe`, rotates live running `.exe` instances atomically, and automatically executes the 74-point automated safety test suite.
+This invokes the native Windows C# compiler (`csc.exe`), compiles `MiniFanControl.exe` and `minifan-helper.exe`, rotates live running `.exe` instances atomically, and automatically executes the 90-point automated safety test suite.
 
 ### Option B: Modern .NET SDK Multi-Target Build (.NET 4.8 & .NET 10.0-windows)
 If you have the .NET SDK installed:

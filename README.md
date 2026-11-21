@@ -1,6 +1,6 @@
 # MiniFanControl — Native EC Fan Control & Thermal Monitor for AMD Ryzen Mini PCs
 
-![Tests](https://img.shields.io/badge/tests-87%2F87%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-90%2F90%20passing-brightgreen)
 ![Security](https://img.shields.io/badge/Security-Fail--Closed%20%7C%20Least--Privilege-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
@@ -13,11 +13,11 @@
   <img src="assets/ui-main-osd.jpg" alt="MiniFanControl AMD Radeon Dashboard, DF Corner Performance View, and In-Game OSD" width="85%" />
 </p>
 
-[![Release: v1.1.2](https://img.shields.io/badge/Release-v1.1.2-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
+[![Release: v1.1.3](https://img.shields.io/badge/Release-v1.1.3-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 87 Passed](https://img.shields.io/badge/Automated%20Tests-87%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-8787-passing)
+[![Automated Tests: 90 Passed](https://img.shields.io/badge/Automated%20Tests-90%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-9090-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 [![Ko-fi: Support](https://img.shields.io/badge/Ko--fi-Support%20Project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/kaiser76)
 
@@ -56,7 +56,8 @@ MiniFanControl/
 │   ├── OsdOverlayConfig.cs
 │   ├── SimpleJson.cs
 │   ├── TelemetrySessionStats.cs
-│   └── ThemePreference.cs
+│   ├── ThemePreference.cs
+│   └── WindowsPowerMode.cs
 ├── Curves/             # Curve interpolation math & 3-pass automated calibration engine
 │   ├── CurvePoint.cs
 │   └── FanCalibrationResult.cs
@@ -80,7 +81,7 @@ MiniFanControl/
 │   ├── CapFrameXOverlayForm.Graphs.cs
 │   ├── CapFrameXOverlayForm.Paint.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 87-point automated hardware safety & regression test suite
+├── Tests/              # 90-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
 ├── Ui/                 # Double-buffered canvases, accessible WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
@@ -369,13 +370,13 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Export supported hardware profiles & probed Super I/O chip ID prefixes as JSON
 .\minifan-helper.exe export-profiles --json
 
-# Execute the 87-point automated hardware safety & curve test suite
+# Execute the 90-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (87/87 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (90/90 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -466,6 +467,9 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 85. **`SetBiosPowerMode` Platform Validation Order**: Verifies Super I/O platforms reject EC TDP mode changes without mutating `BiosPowerModeOverride` or cached EC mode state.
 86. **Unified `FanControllerService.ApplyManualFan` Anti-Stall Clamping (GUI + CLI Parity)**: Verifies both GUI sliders and CLI manual commands share one floor-clamping rule, snapping sub-floor manual requests to the calibrated spin floor unless explicitly overridden.
 87. **`NativeInpOut` Physical Memory Allowlist & EC-Only Write Barrier**: Verifies `IsPhysicalMemoryRangeAllowed()` permits only EC MMIO, read-only PCIe ECAM (4 KB), and registered read-only SMU PM-table buffers while rejecting arbitrary physical RAM reads/maps and all non-EC physical writes fail-closed.
+88. **Super I/O `0%` Stop Duty, Tach Channel Latching & Non-Zero Floor Calibration**: Verifies Super I/O calibration commands `0%` stop duty (keeping `1%` on EC boards), latches verified tachometer channels to prevent Channel 2 mirroring Channel 1 when stopped, and detects settled non-zero hardware blower floors and ramp-up cleanly.
+89. **Super I/O IT8613E Dynamic `Reg 0x14` Bit 7 PWM Polarity Tracking**: Verifies live duty encoding, status decoding, and 35% safe fallback across both Active-High/Direct (`Reg 0x14 = 0xC7`) and post-sleep Active-Low/Inverted (`Reg 0x14 = 0x47`) polarity states.
+90. **Native Windows Power Mode Overlay Mapping (`WindowsPowerMode`)**: Verifies GUID round-trip mapping, display names, invalid mode code rejection, and safe live query for Windows 11 `Best Power Efficiency`, `Balanced`, and `Best Performance` power overlays.
 
 ---
 

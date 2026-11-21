@@ -66,7 +66,7 @@ You can execute the hardware validation matrix directly from the command line:
 # Export supported hardware profiles & probed Super I/O ID prefixes (JSON or table)
 .\minifan-helper.exe export-profiles --json
 
-# Execute the 75-point automated hardware safety & regression test suite
+# Execute the 90-point automated hardware safety & regression test suite
 .\minifan-helper.exe test
 
 # Dump hardware registers & diagnostic report for new Mini PC qualification

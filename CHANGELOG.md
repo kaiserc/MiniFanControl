@@ -4,6 +4,16 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.1.3] - 2026-11-21
+
+### 🎛️ Super I/O IT8613E Dynamic Polarity & Native Windows Power Mode Bar
+- **Dynamic IT8613E `Reg 0x14` PWM Polarity Tracking (`Hardware/HardwareBackend.SuperIo.cs`, `Hardware/HardwareBackend.cs`, `Curves/FanCalibrationResult.cs`)**: Reads IT8613E `Reg 0x14` Bit 7 (`PWM_POL`) dynamically so both cold-boot Active-High (`0xC7`) and post-sleep/Modern Standby Active-Low (`0x40`/`0x47`) states map fan duty percentages and 35% safe fallback bytes accurately without mutating `Reg 0x14`. Includes a runtime Pass 1 calibration auto-flip safety net and diagnostic polarity logging (Test #89).
+- **Native Windows Power Mode Header Bar on Super I/O Boards (`Core/WindowsPowerMode.cs`, `Ui/MainForm.Layout.cs`, `Ui/MainForm.CurvesAndModes.cs`, `Hardware/HardwareBackend.cs`)**: Displays **`Power: [🌙 Silent] [⚖ Balanced] [⚡ Perf]`** on Super I/O boards (such as the TOPC TS-12C / Ryzen AI 9 HX 370) synced 1:1 with Windows 11 Power Modes (`Best Power Efficiency` / `Balanced` / `Best Performance`) via native `powrprof.dll` `PowerSetActiveOverlayScheme` / `PowerGetActualOverlayScheme`—while preserving the EC **`BIOS:`** bar on IT5570E boards like the GMKtec K12 and automatically adapting `✨ Auto-Tuned` curves (Test #90).
+
+### 🔧 Super I/O Calibration & Non-Zero Floor Blower Reliability
+- **True `0%` Super I/O Stop Duty & Tach Channel Latching (`Curves/FanCalibrationResult.cs`, `Hardware/HardwareBackend.SuperIo.cs`, `Hardware/HardwareBackend.cs`, `Ui/FanCalibrationDialog.cs`)**: Uses `0%` stop duty on Super I/O boards during calibration (keeping `1%` on EC boards where `0%` restores BIOS Auto), latches verified Super I/O tachometer channels so a stopped Sys fan never mirrors Fan 1's RPM, and detects settled non-zero hardware blower floors (e.g., ~320 RPM) for accurate ramp-up discovery without tripping the 88°C thermal safety abort (Test #88).
+- **90/90 Automated Self-Tests (`Tests/SelfTestSuite.cs`, `.github/workflows/ci.yml`, `README.md`)**: Expanded the automated hardware-safety and regression suite to **90/90 passing** across `.NET 4.8` and `.NET 10.0-windows`.
+
 ## [1.1.2] - 2026-11-21
 
 ### 🔒 Defense-in-Depth Hardening & GUI/CLI Parity

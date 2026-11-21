@@ -1,3 +1,15 @@
+# Release Notes: MiniFanControl v1.1.3 (Super I/O Dynamic PWM Polarity, Native Windows Power Mode Bar & Calibration Fix)
+
+**MiniFanControl v1.1.3** brings major reliability and control improvements for **ITE IT8613E Super I/O** Ryzen Mini PCs (such as the TOPC TS-12C / Ryzen AI 9 HX 370): live `Reg 0x14` Bit 7 (`PWM_POL`) polarity tracking across cold-boot and Modern Standby sleep/resume transitions, a native Windows 11 **`Power:`** mode bar (`Silent` / `Balanced` / `Perf`) synced via `powrprof.dll`, reliable 3-pass calibration for non-zero floor blowers, and **90/90 passing tests** on both `.NET 4.8` and `.NET 10.0-windows`.
+
+## ✨ Highlights in v1.1.3
+- **Dynamic IT8613E `Reg 0x14` PWM Polarity Tracking**: On IT8613E boards where cold BIOS POST sets `Reg 0x14 = 0xC7` (Active-High) while Modern Standby leaves `Reg 0x14 = 0x40` (Active-Low), MiniFanControl now reads Bit 7 dynamically on every duty encode/decode and 35% safe fallback—eliminating reversed fan speeds after sleep/resume—backed by a Pass 1 calibration auto-flip safety net (Test #89).
+- **Native Windows Power Mode Bar on Super I/O Platforms**: Super I/O boards now get a safe **`Power: [🌙 Silent] [⚖ Balanced] [⚡ Perf]`** header switcher bound 1:1 to Windows 11 `Best Power Efficiency`, `Balanced`, and `Best Performance` power overlays (`powrprof.dll`), keeping EC **`BIOS:`** switching intact on IT5570E boards and automatically adapting `✨ Auto-Tuned` curves (Test #90).
+- **Super I/O Calibration & Non-Zero Floor Blower Support**: Calibration now uses `0%` stop duty on Super I/O boards, latches verified tachometer channels so stopped secondary fans never mirror Fan 1's RPM, and recognizes settled non-zero hardware blower floors (e.g., ~320 RPM) cleanly without hitting thermal safety aborts (Test #88).
+- **90/90 Automated Tests & 6/6 Hardware Matrix**: Expanded the suite to **90/90 passing** across `.NET 4.8` and `.NET 10.0-windows` alongside `6/6` Hardware Validation Matrix coverage.
+
+---
+
 # Release Notes: MiniFanControl v1.1.2 (Unified Manual Floor Clamp, Physical Memory Allowlist & SHA-Pinned CI)
 
 **MiniFanControl v1.1.2** closes the final defense-in-depth hardening items: unified GUI + CLI anti-stall clamping inside `FanControllerService`, a strict physical-memory allowlist with an EC-only write barrier in `NativeInpOut`, hardened `LoadLibraryEx` search flags, SHA-pinned GitHub Actions, a 5-file modular split of `CapFrameXOverlayForm`, and **87/87 passing tests** on both `.NET 4.8` and `.NET 10.0-windows`.
