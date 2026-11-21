@@ -202,37 +202,37 @@ namespace MiniFanControl
 
             if (e.Button == MouseButtons.Right)
             {
-                ContextMenu cm = new ContextMenu();
-                cm.MenuItems.Add("Split (DF — Full 120-Sample Timeline)", (s, args) =>
+                ContextMenuStrip cm = new ContextMenuStrip();
+                cm.Items.Add("Split (DF — Full 120-Sample Timeline)", null, (s, args) =>
                 {
                     SplitView = true;
                     DfZoomedFrametime = false;
                     DfCornerInset = false;
                     Invalidate();
                 });
-                cm.MenuItems.Add("DF Zoom (Zoomed 30-Sample Frame-Time + Full FPS)", (s, args) =>
+                cm.Items.Add("DF Zoom (Zoomed 30-Sample Frame-Time + Full FPS)", null, (s, args) =>
                 {
                     SplitView = true;
                     DfZoomedFrametime = true;
                     DfCornerInset = false;
                     Invalidate();
                 });
-                cm.MenuItems.Add("DF Corner (Compact Frame-Time Inset in Top-Left of FPS)", (s, args) =>
+                cm.Items.Add("DF Corner (Compact Frame-Time Inset in Top-Left of FPS)", null, (s, args) =>
                 {
                     SplitView = true;
                     DfZoomedFrametime = true;
                     DfCornerInset = true;
                     Invalidate();
                 });
-                cm.MenuItems.Add("Combined Unified Timeline", (s, args) =>
+                cm.Items.Add("Combined Unified Timeline", null, (s, args) =>
                 {
                     SplitView = false;
                     DfZoomedFrametime = false;
                     DfCornerInset = false;
                     Invalidate();
                 });
-                cm.MenuItems.Add("-");
-                cm.MenuItems.Add("Save Performance Benchmark Snapshot as PNG...", (s, args) =>
+                cm.Items.Add(new ToolStripSeparator());
+                cm.Items.Add("Save Performance Benchmark Snapshot as PNG...", null, (s, args) =>
                 {
                     using (SaveFileDialog sfd = new SaveFileDialog())
                     {
@@ -244,11 +244,12 @@ namespace MiniFanControl
                         }
                     }
                 });
-                cm.MenuItems.Add("-");
-                cm.MenuItems.Add("Reset Session Peaks & Averages", (s, args) =>
+                cm.Items.Add(new ToolStripSeparator());
+                cm.Items.Add("Reset Session Peaks && Averages", null, (s, args) =>
                 {
                     if (ResetPeaksRequested != null) ResetPeaksRequested(this, EventArgs.Empty);
                 });
+                cm.Closed += (s, args) => { try { cm.Dispose(); } catch { } };
                 cm.Show(this, e.Location);
                 return;
             }

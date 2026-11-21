@@ -3776,9 +3776,22 @@ namespace MiniFanControl
             {
                 int testParentPid = Process.GetCurrentProcess().Id;
                 string helperPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "minifan-helper.exe");
+                string helperArgsPrefix = "";
                 if (!File.Exists(helperPath))
                 {
-                    helperPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MiniFanControl.exe");
+                    string managedDll = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MiniFanControl.dll");
+                    string currentExe = "";
+                    try { currentExe = Process.GetCurrentProcess().MainModule.FileName; } catch { }
+                    if (File.Exists(managedDll) && !string.IsNullOrEmpty(currentExe) &&
+                        Path.GetFileName(currentExe).Equals("dotnet.exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        helperPath = currentExe;
+                        helperArgsPrefix = string.Format("\"{0}\" ", managedDll);
+                    }
+                    else
+                    {
+                        helperPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MiniFanControl.exe");
+                    }
                 }
 
                 if (File.Exists(helperPath))
@@ -3793,7 +3806,7 @@ namespace MiniFanControl
                         ProcessStartInfo psi = new ProcessStartInfo
                         {
                             FileName = helperPath,
-                            Arguments = string.Format("watchdog --pid {0} --timeout 1500 --demo", testParentPid),
+                            Arguments = string.Format("{0}watchdog --pid {1} --timeout 1500 --demo", helperArgsPrefix, testParentPid),
                             CreateNoWindow = true,
                             UseShellExecute = false
                         };
@@ -4179,6 +4192,286 @@ namespace MiniFanControl
             Check(v110FeaturesOk,
                 "Calibrated 14% Floor Evaluation, BIOS-Mode Auto-Tune & OSD Graphs-Only / DF Corner Config",
                 v110Detail);
+
+            // 78. NativeInpOut SHA256 Pin Verification & Single-Choke-Point Port Whitelist Enforcement
+            bool shaAndWhitelistOk = false;
+            string shaAndWhitelistDetail = "";
+            string tempDllPath = Path.Combine(Path.GetTempPath(), "test-driver-pin-" + Guid.NewGuid().ToString("N") + ".dll");
+            try
+            {
+                File.WriteAllBytes(tempDllPath, Encoding.ASCII.GetBytes("tampered-kernel-driver-payload"));
+                string actualTamperedHash;
+                bool tamperedRejected = !NativeInpOut.VerifyFileSha256(tempDllPath, new string[] { NativeInpOut.INPOUTX64_SHA256 }, out actualTamperedHash);
+                bool matchingAccepted = !string.IsNullOrEmpty(actualTamperedHash)
+                    && NativeInpOut.VerifyFileSha256(tempDllPath, new string[] { actualTamperedHash }, out actualTamperedHash);
+
+                bool bundledPinOk = true;
+                string bundledDll = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "inpoutx64.dll");
+                if (File.Exists(bundledDll))
+                {
+                    string bundledHash;
+                    bundledPinOk = NativeInpOut.VerifyFileSha256(bundledDll, new string[] { NativeInpOut.INPOUTX64_SHA256 }, out bundledHash);
+                }
+
+                bool nativeBlocksCritical = !NativeInpOut.IsPortWhitelisted(0x70, false)
+                    && !NativeInpOut.IsPortWhitelisted(0xCF9, true)
+                    && !NativeInpOut.IsPortWhitelisted(0x1234, false)
+                    && NativeInpOut.IsPortWhitelisted(0x62, true)
+                    && NativeInpOut.IsPortWhitelisted(0x2E, false)
+                    && NativeInpOut.IsPortWhitelisted(0xCF8, false);
+                bool directReadBlocked = (NativeInpOut.DlPortReadPortUchar(0x70) == 0xFF)
+                    && (NativeInpOut.DlPortReadPortUchar(0x1234) == 0xFF);
+
+                shaAndWhitelistOk = tamperedRejected && matchingAccepted && bundledPinOk && nativeBlocksCritical && directReadBlocked;
+                shaAndWhitelistDetail = string.Format("TamperedRej={0}, MatchAcc={1}, BundledPin={2}, NativeWL={3}, DirectBlock={4}",
+                    tamperedRejected, matchingAccepted, bundledPinOk, nativeBlocksCritical, directReadBlocked);
+            }
+            catch (Exception ex) { shaAndWhitelistDetail = ex.Message; }
+            finally
+            {
+                try { if (File.Exists(tempDllPath)) File.Delete(tempDllPath); } catch { }
+            }
+            Check(shaAndWhitelistOk,
+                "NativeInpOut SHA256 Binary Pin Verification & Single-Choke-Point Port Whitelist",
+                shaAndWhitelistDetail);
+
+            // 79. Custom DeviceProfile Fail-Closed Defaults, DMI Fingerprint Binding & Blocklist Precedence
+            bool customBindingOk = false;
+            string customBindingDetail = "";
+            DeviceProfile savedCustom = DeviceProfile.CustomProfile;
+            try
+            {
+                // Stray/truncated JSON omitting flags & DMI binding MUST default fail-closed to ReadOnly/Unverified
+                DeviceProfile stray = DeviceProfile.FromJson("{\n  \"id\": \"stray\",\n  \"displayName\": \"Stray Profile\"\n}");
+                bool strayFailClosed = (stray != null && stray.IsReadOnly && !stray.IsVerified && !stray.MatchesDmi("NucBox K12", "K12", "GMKtec"));
+
+                // Empty/corrupt payload returns null
+                bool corruptNull = (DeviceProfile.FromJson("not-json") == null);
+
+                // Bound profile matches ONLY source machine DMI, never another Mini PC or a blocklisted machine
+                DeviceProfile bound = new DeviceProfile
+                {
+                    Id = "custom-bound",
+                    DisplayName = "Custom Bound Machine",
+                    BoundManufacturer = "Minisforum",
+                    BoundProductName = "UM890 Pro",
+                    BoundBaseBoard = "F7BSC",
+                    IsReadOnly = false,
+                    IsVerified = true
+                };
+                DeviceProfile.CustomProfile = bound;
+
+                DeviceProfile matchSame = SystemHardwareInfo.MatchProfile("UM890 Pro", "F7BSC", "AMD Ryzen 9 8945HS", "Minisforum");
+                DeviceProfile matchOther = SystemHardwareInfo.MatchProfile("UnknownBox X1", "OTHER-MB", "AMD Ryzen 7 7840HS", "OtherVendor");
+                DeviceProfile matchBlocklisted = SystemHardwareInfo.MatchProfile("KTHIN", "F7BSC", "AMD Ryzen AI 9 HX PRO 370", "Recoreqich");
+
+                bool sameMatches = (matchSame != null && matchSame.Id == "custom-bound" && !matchSame.IsReadOnly);
+                bool otherRejected = (matchOther != null && matchOther.Id == "unknown-safe" && matchOther.IsReadOnly);
+                bool blocklistWins = (matchBlocklisted != null && matchBlocklisted.Id == "unknown-safe" && matchBlocklisted.IsReadOnly);
+
+                customBindingOk = strayFailClosed && corruptNull && sameMatches && otherRejected && blocklistWins;
+                customBindingDetail = string.Format("StrayRO={0}, CorruptNull={1}, SameMatch={2}, OtherRej={3}, BlocklistWins={4}",
+                    strayFailClosed, corruptNull, sameMatches, otherRejected, blocklistWins);
+            }
+            catch (Exception ex) { customBindingDetail = ex.Message; }
+            finally
+            {
+                DeviceProfile.CustomProfile = savedCustom;
+            }
+            Check(customBindingOk,
+                "Custom DeviceProfile Fail-Closed FromJson, DMI Fingerprint Binding & Blocklist Precedence",
+                customBindingDetail);
+
+            // 80. CLI Fan Duty Anti-Stall Clamping & Explicit --force Override
+            bool cliClampOk = false;
+            string cliClampDetail = "";
+            int savedApuClamp = FanCurveProfile.ApuMinSpinPct;
+            int savedSysClamp = FanCurveProfile.SysMinSpinPct;
+            try
+            {
+                FanCurveProfile.ApuMinSpinPct = 22;
+                FanCurveProfile.SysMinSpinPct = 28;
+                bool c0, c1, c2, c3, c4;
+                int f0, f1, f2, f3, f4;
+
+                int rAuto = Program.ClampCliFanDuty(1, 0, false, out c0, out f0);
+                int rClampedApu = Program.ClampCliFanDuty(1, 5, false, out c1, out f1);
+                int rClampedSys = Program.ClampCliFanDuty(2, 10, false, out c2, out f2);
+                int rForced = Program.ClampCliFanDuty(1, 5, true, out c3, out f3);
+                int rNormal = Program.ClampCliFanDuty(1, 65, false, out c4, out f4);
+
+                cliClampOk = (rAuto == 0 && !c0)
+                    && (rClampedApu == 22 && c1 && f1 == 22)
+                    && (rClampedSys == 28 && c2 && f2 == 28)
+                    && (rForced == 5 && !c3)
+                    && (rNormal == 65 && !c4);
+                cliClampDetail = string.Format("Auto={0}, Apu5->{1}(clamped={2}), Sys10->{3}(clamped={4}), Forced5->{5}, Norm65->{6}",
+                    rAuto, rClampedApu, c1, rClampedSys, c2, rForced, rNormal);
+            }
+            catch (Exception ex) { cliClampDetail = ex.Message; }
+            finally
+            {
+                FanCurveProfile.ApuMinSpinPct = savedApuClamp;
+                FanCurveProfile.SysMinSpinPct = savedSysClamp;
+            }
+            Check(cliClampOk,
+                "CLI Fan Duty Anti-Stall Floor Clamping & --force Override",
+                cliClampDetail);
+
+            // 81. Read-Only Failsafe Latch Preserves Emergency Thermal Tripwire & Periodic SetAuto() Retry
+            bool latchSafetyOk = false;
+            string latchSafetyDetail = "";
+            try
+            {
+                var latchDemo = new DemoBackend();
+                var curvePts = new CurvePoint[] { new CurvePoint(40, 30), new CurvePoint(80, 100) };
+                var customCurve = new FanCurveProfile("Custom", false, -1, curvePts, curvePts);
+                var builtIns = new FanCurveProfile[] { new FanCurveProfile("Balanced", true, 0, curvePts, curvePts) };
+
+                using (var svc = new FanControllerService(null, latchDemo, builtIns, true))
+                {
+                    svc.ApuProfile = customCurve;
+                    svc.SysProfile = customCurve;
+                    latchDemo.FailWrites = true;
+
+                    // Trigger 10+ consecutive failures to engage read-only failsafe latch (with SetAuto also failing)
+                    for (int i = 0; i < 12 && !svc.ReadOnlyFailsafeLatched; i++)
+                    {
+                        svc.EvaluateAndApplyFanProfiles(50 + (i % 2) * 15);
+                    }
+                    bool latchedAfterFails = svc.ReadOnlyFailsafeLatched && !svc.LatchedAutoRestored;
+
+                    // Recover backend: normal curve & manual writes must remain blocked by latch,
+                    // while emergency >= 90°C tripwire MUST still command 100% PWM!
+                    latchDemo.FailWrites = false;
+                    bool manualBlockedWhileLatched = !svc.ApplyManualFan(1, 50);
+                    bool emergencySucceededWhileLatched = svc.EvaluateAndApplyFanProfiles(94)
+                        && svc.EmergencyThermalActive
+                        && svc.LastAppliedApuPct == 100
+                        && svc.ReadOnlyFailsafeLatched;
+
+                    // After cooling below 75°C hysteresis and retry interval expiry, periodic SetAuto() retry restores BIOS Auto
+                    svc.ExpireLatchedAutoRetryTimerForTest();
+                    bool periodicAutoRetryOk = svc.EvaluateAndApplyFanProfiles(60)
+                        && svc.LatchedAutoRestored
+                        && svc.ReadOnlyFailsafeLatched;
+
+                    latchSafetyOk = latchedAfterFails && manualBlockedWhileLatched && emergencySucceededWhileLatched && periodicAutoRetryOk;
+                    latchSafetyDetail = string.Format("Latched={0}, ManualBlocked={1}, Emerg100WhileLatched={2}, PeriodicAutoRetry={3}",
+                        latchedAfterFails, manualBlockedWhileLatched, emergencySucceededWhileLatched, periodicAutoRetryOk);
+                }
+            }
+            catch (Exception ex) { latchSafetyDetail = ex.Message; }
+            Check(latchSafetyOk,
+                "Read-Only Failsafe Latch Preserves Emergency Thermal Tripwire & Periodic SetAuto() Retry",
+                latchSafetyDetail);
+
+            // 82. CLI status JSON InvariantCulture Formatting & String Escaping (Non-English Locales)
+            bool statusJsonLocaleOk = false;
+            string statusJsonLocaleDetail = "";
+            CultureInfo prevCulture = Thread.CurrentThread.CurrentCulture;
+            try
+            {
+                Thread.CurrentThread.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+                FanStatus st = new FanStatus
+                {
+                    CpuTemp = 54,
+                    GpuTemp = 48,
+                    RamUsedGb = 12.5,
+                    RamTotalGb = 32.0,
+                    Mode = "Custom \"Quiet\"\nMode",
+                    RadeonFeaturesSummary = "FreeSync\\AntiLag"
+                };
+                string json = Program.FormatStatusJson(st, "Global\\Access_EC");
+                bool invariantDecimals = json.Contains("\"ram_used_gb\":12.5") && json.Contains("\"ram_total_gb\":32.0") && !json.Contains("12,5");
+                bool escapedStrings = json.Contains("\"mode\":\"Custom \\\"Quiet\\\"\\nMode\"")
+                    && json.Contains("\"radeon_features\":\"FreeSync\\\\AntiLag\"")
+                    && json.Contains("\"mutex_namespace\":\"Global\\\\Access_EC\"");
+                statusJsonLocaleOk = invariantDecimals && escapedStrings;
+                statusJsonLocaleDetail = string.Format("InvariantDec={0}, Escaped={1}", invariantDecimals, escapedStrings);
+            }
+            catch (Exception ex) { statusJsonLocaleDetail = ex.Message; }
+            finally
+            {
+                Thread.CurrentThread.CurrentCulture = prevCulture;
+            }
+            Check(statusJsonLocaleOk,
+                "CLI status JSON InvariantCulture Formatting & String Escaping (de-DE Locale Safety)",
+                statusJsonLocaleDetail);
+
+            // 83. EvaluateCurve Defensive Sorting & Monotonic Thermal Safety on Unsorted/Descending Curves
+            bool curveSortMonoOk = false;
+            string curveSortMonoDetail = "";
+            try
+            {
+                CurvePoint[] unsortedDescending = new CurvePoint[]
+                {
+                    new CurvePoint(80, 90),
+                    new CurvePoint(40, 30),
+                    new CurvePoint(95, 10), // Malformed descending point at high temp
+                    new CurvePoint(60, 55)
+                };
+                int p35 = FanCurveProfile.EvaluateCurve(unsortedDescending, 35, 30);
+                int p60 = FanCurveProfile.EvaluateCurve(unsortedDescending, 60, 30);
+                int p80 = FanCurveProfile.EvaluateCurve(unsortedDescending, 80, 30);
+                int p95 = FanCurveProfile.EvaluateCurve(unsortedDescending, 95, 30);
+                curveSortMonoOk = (p35 == 30 && p60 == 55 && p80 == 90 && p95 >= 90);
+                curveSortMonoDetail = string.Format("35C={0}%, 60C={1}%, 80C={2}%, 95C={3}%", p35, p60, p80, p95);
+            }
+            catch (Exception ex) { curveSortMonoDetail = ex.Message; }
+            Check(curveSortMonoOk,
+                "EvaluateCurve Defensive Sorting & Monotonic Safety on Unsorted/Descending Curves",
+                curveSortMonoDetail);
+
+            // 84. Tachometer Spike Filter Bypass During 100% Emergency / Full-Speed Ramp
+            bool tachSpikeBypassOk = false;
+            string tachSpikeBypassDetail = "";
+            try
+            {
+                HardwareBackend.ResetTachometerFilterState();
+                int baseline = HardwareBackend.DebounceTachometerZero(1, 900, false, 35);
+                // At moderate duty (35%), an instant +2600 RPM glitch is filtered/held
+                int glitchHeld = HardwareBackend.DebounceTachometerZero(1, 3500, false, 35);
+                // At emergency/100% commanded duty, the +2600 RPM spin-up must be reported immediately
+                int emergImmediate = HardwareBackend.DebounceTachometerZero(1, 3500, false, 100);
+
+                tachSpikeBypassOk = (baseline == 900 && glitchHeld == 900 && emergImmediate == 3500);
+                tachSpikeBypassDetail = string.Format("Base={0}, GlitchHeld@35%={1}, Immediate@100%={2}", baseline, glitchHeld, emergImmediate);
+            }
+            catch (Exception ex) { tachSpikeBypassDetail = ex.Message; }
+            finally
+            {
+                HardwareBackend.ResetTachometerFilterState();
+            }
+            Check(tachSpikeBypassOk,
+                "Tachometer Spike Filter Bypass on 100% Emergency/Full-Speed Spin-Up",
+                tachSpikeBypassDetail);
+
+            // 85. SetBiosPowerMode Validation Order (No State Mutation on Unsupported Super I/O Platforms)
+            bool biosPowerOrderOk = false;
+            string biosPowerOrderDetail = "";
+            try
+            {
+                HardwareBackend sioHw = new HardwareBackend();
+                sioHw.EnableSimulationMode();
+                sioHw.Profile = DeviceProfile.FindProfile("ryzen-hx370-ec");
+                sioHw.SuperIoBaseAddr = 0x0A30;
+                var pts = new CurvePoint[] { new CurvePoint(40, 30), new CurvePoint(80, 100) };
+                var builtIns = new FanCurveProfile[] { new FanCurveProfile("Balanced", true, 0, pts, pts) };
+
+                using (var svc = new FanControllerService(sioHw, null, builtIns, false))
+                {
+                    int beforeOverride = svc.BiosPowerModeOverride;
+                    bool result = svc.SetBiosPowerMode(1);
+                    int afterOverride = svc.BiosPowerModeOverride;
+                    biosPowerOrderOk = (!result && afterOverride == beforeOverride);
+                    biosPowerOrderDetail = string.Format("Result={0}, OverrideBefore={1}, OverrideAfter={2}", result, beforeOverride, afterOverride);
+                }
+            }
+            catch (Exception ex) { biosPowerOrderDetail = ex.Message; }
+            Check(biosPowerOrderOk,
+                "SetBiosPowerMode Rejects Super I/O Platforms Without Mutating Controller State",
+                biosPowerOrderDetail);
 
             Console.WriteLine("----------------------------------------------------------------------");
 

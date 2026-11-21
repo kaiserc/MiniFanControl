@@ -1,7 +1,7 @@
 name: CI Build, Test Verification & Release Pipeline
 
 permissions:
-  contents: write
+  contents: read
 
 on:
   push:
@@ -24,26 +24,39 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Verify Version & Metadata Consistency
+        shell: pwsh
+        run: |
+          $ver = (Get-Content VERSION -Raw).Trim()
+          $manifest = Get-Content app.manifest -Raw
+          $iss = Get-Content installer.iss -Raw
+          $csproj = Get-Content MiniFanControl.csproj -Raw
+          $mainForm = Get-Content Ui/MainForm.cs -Raw
+          if ($manifest -notmatch "version=`"$ver\.0`"") { throw "app.manifest version mismatch (expected $ver.0)" }
+          if ($iss -notmatch "#define MyAppVersion `"$ver`"") { throw "installer.iss MyAppVersion mismatch (expected $ver)" }
+          if ($csproj -notmatch "<Version>$ver</Version>") { throw "MiniFanControl.csproj Version mismatch (expected $ver)" }
+          if ($mainForm -notmatch "APP_VERSION\s*=\s*`"$ver`"") { throw "MainForm.APP_VERSION mismatch (expected $ver)" }
+          Write-Host "[OK] Version $ver matches across VERSION, app.manifest, installer.iss, MiniFanControl.csproj, and MainForm.cs"
+
       - name: Build net48 Target
         shell: cmd
         run: |
           dotnet build MiniFanControl.csproj -c Release -f net48
 
-      - name: Build net10.0-windows Target
+      - name: Build & Test net10.0-windows Target
         shell: cmd
         run: |
           dotnet build MiniFanControl.csproj -c Release -f net10.0-windows
+          dotnet bin\Release\net10.0-windows\MiniFanControl.dll test
 
   standalone-build-and-test:
-    name: Standalone .NET 4.8 CSC Build & 77 Automated Self-Tests
+    name: Standalone .NET 4.8 CSC Build & 85 Automated Self-Tests
     runs-on: windows-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Compile Standalone Binaries & Run 77 Self-Tests
+      - name: Compile Standalone Binaries & Run 85 Self-Tests
         shell: cmd
         run: |
           set CI=true
@@ -71,16 +84,29 @@ jobs:
           name: MiniFanControl-Release-Artifacts
           path: |
             dist/*-Portable.zip
-            dist/*-Setup.exe
+            dist/*-Setup-*.exe
             dist/SHA256SUMS.txt
 
+  publish-release:
+    name: Publish Official GitHub Release
+    needs: [ sdk-multitarget-build, standalone-build-and-test ]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Release Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: MiniFanControl-Release-Artifacts
+          path: dist
+
       - name: Publish Official GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*-Portable.zip
-            dist/*-Setup.exe
+            dist/*-Setup-*.exe
             dist/SHA256SUMS.txt
           generate_release_notes: true
           draft: false

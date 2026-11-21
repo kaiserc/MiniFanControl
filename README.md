@@ -1,6 +1,6 @@
 # MiniFanControl — Native EC Fan Control & Thermal Monitor for AMD Ryzen Mini PCs
 
-![Tests](https://img.shields.io/badge/tests-77%2F77%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-85%2F85%20passing-brightgreen)
 ![Security](https://img.shields.io/badge/Security-Fail--Closed%20%7C%20Least--Privilege-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
@@ -17,7 +17,7 @@
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 77 Passed](https://img.shields.io/badge/Automated%20Tests-77%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-7777-passing)
+[![Automated Tests: 85 Passed](https://img.shields.io/badge/Automated%20Tests-85%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-8585-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 [![Ko-fi: Support](https://img.shields.io/badge/Ko--fi-Support%20Project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/kaiser76)
 
@@ -72,7 +72,7 @@ MiniFanControl/
 ├── Telemetry/          # RTSS/CapFrameX shared memory reader & transparent OSD HUD
 │   ├── CapFrameXOverlayForm.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 77-point automated hardware safety & regression test suite
+├── Tests/              # 85-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
 ├── Ui/                 # Double-buffered canvases, accessible WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
@@ -102,10 +102,10 @@ MiniFanControl/
 | **GMKtec NucBox K12** | AMD Ryzen 7 H 255 / 8845HS (Radeon 780M) | ITE IT5570E EC @ `0xFE0B0400` | ✅ Yes | **Verified Native (Dual EC)** |
 | **GMKtec NucBox K8 Plus / K11** | AMD Ryzen 7 8845HS / 8945HS | ITE IT5570E EC @ `0xFE0B0400` | ✅ Yes | **Verified Native (Dual EC)** |
 | **ADREAMER AriesBox 10 / PB07** | AMD Ryzen 7 7840HS (Radeon 780M) | ITE IT5570E EC @ `0xFE0B0400` | ✅ Yes | **Verified Native (Dual EC)** |
-| **Generic Zen 4 / Zen 5 Mini PC** | AMD Ryzen 7000 / 8000 / AI 300 series | ITE IT5570E / Aptio V EC | Auto | **Verified Auto Detection** |
-| **Unrecognized / Unsupported System** | Any unverified CPU / Motherboard | Unverified | — | **Safe Read-Only Mode (Writes Locked)** |
+| **Generic Zen 4 / Zen 5 Mini PC** | AMD Ryzen 7000 / 8000 / AI 300 series | ITE IT5570E / Aptio V EC | Auto | **Manual Opt-In / EC Diff Scanner** (Safe Read-Only by Default) |
+| **Unrecognized / Unsupported System** | Any unverified CPU / Motherboard | Unverified | — | **Safe Read-Only Mode (Writes & Super I/O Probing Locked)** |
 
-> 🛡️ **Fail-Closed Hardware Protection**: If run on an unverified platform, MiniFanControl engages **Safe Read-Only Monitoring Mode**. Telemetry (temperatures, clocks, package power) remains visible, but all hardware write operations are locked to guarantee physical safety. Advanced users can manually select a verified profile under **Tools & Drivers ▾**.
+> 🛡️ **Fail-Closed Hardware Protection**: If run on an unverified or blocklisted platform, MiniFanControl engages **Safe Read-Only Monitoring Mode**. Telemetry (temperatures, clocks, package power) remains visible, while all hardware fan/mode writes and automatic Super I/O LPC config-mode probing are locked to guarantee physical safety. Advanced users can manually select a profile under **Tools & Drivers ▾** or run the explicit **EC Differential Scanner** / `minifan-helper.exe dump` diagnostic (which creates a DMI-bound `custom-profile.json` tied to that specific machine).
 
 ---
 
@@ -258,11 +258,11 @@ MiniFanControl features a **unified multi-driver abstraction** in [`Hardware/Nat
 1. **InpOut64 (`inpoutx64.dll` / `inpoutx64.sys`) — Primary Bundled Engine**:
    - Developed by Phillip Gibbons (Highresolution Enterprises / Red Fox UK), v1.5.0.0.
    - Bundled with MiniFanControl and prioritized directly from the application directory.
-   - Verified SHA256 binary pin: `5F27ED4D5CD58A1EE23DEEB802E09E73F3A1D884CE2135F6E827F67B171269E7`.
+   - Runtime-enforced SHA256 binary pin verified before `LoadLibraryEx` (with a `FileShare.Read` handle held across hash + load to block TOCTOU DLL swaps): `5F27ED4D5CD58A1EE23DEEB802E09E73F3A1D884CE2135F6E827F67B171269E7`.
    - Isolated port I/O and linear memory mapping.
 2. **WinRing0 1.3.1b (`WinRing0x64.dll` / `WinRing0.sys`) — Optional Fallback**:
    - Engine used by LibreHardwareMonitor and OpenHardwareMonitor.
-   - Loaded as secondary fallback only if placed in the application folder (**System32 is never probed** to eliminate DLL hijacking and silent engine substitution).
+   - Loaded as secondary fallback only if placed in the application folder (**System32 is never probed**) and after passing runtime SHA256 pin verification (`11BD2C9F9E2397C9A16E0990E4ED2CF0679498FE0FD418A3DFDAC60B5C160EE5`).
    - Direct port I/O and per-access direct physical memory IOCTLs with live read-back verification.
 3. **PawnIO Integration (Architectural Roadmap)**:
    - Real PawnIO executes scriptable Pawn bytecode modules via `PawnIOLib` (`pawnio_open` / `pawnio_load` / `pawnio_execute`).
@@ -276,7 +276,7 @@ MiniFanControl features a **unified multi-driver abstraction** in [`Hardware/Nat
 
 ### How MiniFanControl Hardens Driver Access (Defense-in-Depth)
 MiniFanControl wraps all ring-0 driver operations inside a strict user-mode defense layer in [`Hardware/NativeInpOut.cs`](Hardware/NativeInpOut.cs):
-- **Strict Fail-Closed Port Whitelist Enforcement**: `IsPortWhitelisted()` strictly permits only documented ACPI EC, Super I/O, and PCI SMN ports for reading and writing (`0x62/0x66`, `0x6C/0x6E`, `0x2E/0x2F`, `0x4E/0x4F`, `0x0A30..0x0A37`, `0xCF8/0xCFC`). Arbitrary unlisted port reads/writes and sensitive system ports (e.g., RTC `0x70/0x71`, PIC `0x20/0x21`, PIT `0x40..0x43`, Fast A20/Reset `0x92`, PCI reset `0xCF9`) are blocked fail-closed before touching the driver.
+- **Strict Fail-Closed Port Whitelist Enforcement**: `NativeInpOut.IsPortWhitelisted()` enforces a single fail-closed choke point directly inside `DlPortReadPortUchar`/`DlPortWritePortUchar` (`Inp32`/`Out32`) and `DlPortReadPortUlong`/`DlPortWritePortUlong`, permitting only documented ACPI EC (`0x62/0x66`, `0x68/0x6C`, `0x6A/0x6E`), Super I/O (`0x2E/0x2F`, `0x4E/0x4F`), hardware monitor / AMD SMBus ranges (`0x0290–0x0297`, `0x02A0–0x02A7`, `0x0A00–0x0A3F`, `0x0B00–0x0B3F`, `0x0E00–0x0E3F`), and PCI SMN (`0xCF8/0xCFC`). Arbitrary unlisted port reads/writes and sensitive system ports (e.g., RTC `0x70/0x71`, PIC `0x20/0x21`, PIT `0x40..0x43`, Fast A20/Reset `0x92`, PCI reset `0xCF9`) are blocked fail-closed before touching the driver.
 - **Strict Physical Memory Bounds**: `MapPhysToLinSafe()` and physical memory IOCTLs strictly enforce a minimum safe physical address boundary (≥ `0x000E0000`, protecting low memory and kernel tables) with a 16 MB maximum size ceiling. Linear mapping is restricted to live driver virtual mappings; disconnected heap snapshots are rejected.
 - **Safe Driver Shutdown for Gamers**: Users playing competitive multiplayer titles can immediately unload active driver services (`WinRing0_1_2_0` or `inpoutx64`) without rebooting by running:
   ```powershell
@@ -355,13 +355,13 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Export supported hardware profiles & probed Super I/O chip ID prefixes as JSON
 .\minifan-helper.exe export-profiles --json
 
-# Execute the 77-point automated hardware safety & curve test suite
+# Execute the 85-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (77/77 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (85/85 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -442,6 +442,14 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 75. **`DeviceProfile` CLI Export**: Verifies `export-profiles` JSON and summary table outputs include verified profiles and probed Super I/O chip-ID families.
 76. **Hardware Probe JSON Export & Super I/O Chip Identification**: Verifies `dump --json` structured DMI/profile/Super I/O output and chip-ID naming for `ITE IT5570E` (`0x5570`), `ITE IT8613E` (`0x8613`), and `Nuvoton NCT67xx`.
 77. **Calibrated 14% Floor, BIOS-Mode Auto-Tune & OSD v1.1.0 Config**: Verifies `EvaluateCurve()` honors calibrated `14%` minimum spin floors end-to-end, `SynthesizeAutoTunedCurve()` adapts TDP and acoustic knees across `Silent` (`35W`), `Balanced` (`48W`), and `Perf` (`60W+`), and `OsdOverlayConfig` round-trips `GraphMode = 4` (`Graphs Only`), `DfCornerInset`, and per-series Live Trend toggles (`TrendCpu`..`TrendSysFan`).
+78. **`NativeInpOut` SHA256 Pin Verification & Single-Choke-Point Port Whitelist**: Verifies runtime SHA256 pin verification accepts authentic driver binaries and rejects tampered payloads fail-closed, and confirms `NativeInpOut.DlPortReadPortUchar`/`WritePortUchar` enforce `IsPortWhitelisted()` directly.
+79. **Custom `DeviceProfile` Fail-Closed `FromJson`, DMI Fingerprint Binding & Blocklist Precedence**: Verifies stray/truncated custom JSON defaults to `IsReadOnly = true` / `IsVerified = false`, bound profiles only match their source machine's DMI, and hardware blocklists (`Recoreqich`/`KTHIN`/`HX PRO 370`) always take precedence.
+80. **CLI Fan Duty Anti-Stall Floor Clamping & `--force` Override**: Verifies `minifan-helper.exe fan`/`fan1`/`fan2` preserves `0%` (BIOS Auto), clamps sub-floor manual speeds to the calibrated anti-stall floor by default, and permits raw low PWM only with `--force`.
+81. **Read-Only Failsafe Latch Preserves Emergency Thermal Tripwire & Periodic `SetAuto()` Retry**: Verifies that after 10 write failures engage the read-only latch, normal/manual writes remain blocked while the ≥90°C emergency tripwire still forces 100% PWM and `SetAuto()` retries periodically until BIOS Auto is confirmed restored.
+82. **CLI `status` JSON `InvariantCulture` Formatting & String Escaping**: Verifies `FormatStatusJson()` emits valid decimal points (`.`) under non-English locales (`de-DE`) and escapes quotes, backslashes, and control characters cleanly.
+83. **`EvaluateCurve` Defensive Sorting & Monotonic Thermal Safety**: Verifies unsorted or malformed descending curve points are defensively sorted and clamped monotonically non-decreasing so higher temperatures never reduce fan speed.
+84. **Tachometer Spike Filter Bypass on 100% Emergency Spin-Up**: Verifies >2000 RPM single-poll glitches are held at moderate duty, while genuine emergency/100% spin-ups are reported immediately.
+85. **`SetBiosPowerMode` Platform Validation Order**: Verifies Super I/O platforms reject EC TDP mode changes without mutating `BiosPowerModeOverride` or cached EC mode state.
 
 ---
 

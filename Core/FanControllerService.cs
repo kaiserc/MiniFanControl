@@ -33,6 +33,9 @@ namespace MiniFanControl
         private int _consecutiveWriteFailures = 0;
         private int _fan2ConsecutiveWriteFailures = 0;
         private bool _readOnlyFailsafeLatched = false;
+        private bool _latchedAutoRestored = false;
+        private DateTime _lastLatchedAutoRetryUtc = DateTime.MinValue;
+        public static readonly TimeSpan LatchedAutoRetryInterval = TimeSpan.FromSeconds(5);
 
         private FanStatus _lastStatus;
         private DateTime _rampUntil = DateTime.MinValue;
@@ -108,6 +111,7 @@ namespace MiniFanControl
         public string LastHardwareWriteError { get { lock (_stateLock) return _lastHardwareWriteError; } }
         public int ConsecutiveWriteFailures { get { lock (_stateLock) return _consecutiveWriteFailures; } }
         public bool ReadOnlyFailsafeLatched { get { lock (_stateLock) return _readOnlyFailsafeLatched; } }
+        public bool LatchedAutoRestored { get { lock (_stateLock) return _latchedAutoRestored; } }
         public bool EmergencyThermalActive { get { lock (_stateLock) return _emergencyThermalActive; } }
         public FanStatus LastStatus { get { lock (_stateLock) return _lastStatus; } }
         public bool IsWorkerPaused { get { return _hwWorkerPaused; } }
@@ -242,13 +246,18 @@ namespace MiniFanControl
             {
                 if (_readOnlyFailsafeLatched) return false;
                 demo = _demoMode;
-                _biosPowerModeOverride = modeCode;
-                _lastAppliedEcMode = -1;
             }
 
+            // Validate platform capability BEFORE mutating controller state
             if (!demo && _hw != null && _hw.SuperIoBaseAddr != 0)
             {
                 return false;
+            }
+
+            lock (_stateLock)
+            {
+                _biosPowerModeOverride = modeCode;
+                _lastAppliedEcMode = -1;
             }
 
             bool ok = demo ? _demo.SetMode(modeCode) : _hw.SetMode(modeCode);
@@ -283,11 +292,17 @@ namespace MiniFanControl
             }
         }
 
+        internal void ExpireLatchedAutoRetryTimerForTest()
+        {
+            lock (_stateLock) { _lastLatchedAutoRetryUtc = DateTime.MinValue; }
+        }
+
         public bool ApplyManualFan(int fanId, int pct)
         {
             bool demo;
             lock (_stateLock)
             {
+                if (_readOnlyFailsafeLatched) return false;
                 demo = _demoMode;
                 if (fanId == 1)
                 {
@@ -331,6 +346,8 @@ namespace MiniFanControl
             {
                 demo = _demoMode;
                 _readOnlyFailsafeLatched = false;
+                _latchedAutoRestored = false;
+                _lastLatchedAutoRetryUtc = DateTime.MinValue;
                 _consecutiveWriteFailures = 0;
                 _apuManualPct = 0;
                 _sysManualPct = 0;
@@ -404,6 +421,29 @@ namespace MiniFanControl
             }
         }
 
+        private bool ExecuteSafetyWriteWhileLatched(bool demo, Func<bool> hwAction, Func<bool> demoAction)
+        {
+            if (demo)
+            {
+                return _demo != null && demoAction();
+            }
+            if (_hw == null || _hw.Profile == null) return false;
+            // Never bypass read-only protection on inherently unverified hardware (unknown-safe)
+            if (!_hw.Profile.IsVerified || _hw.Profile.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            bool prevReadOnly = _hw.Profile.IsReadOnly;
+            try
+            {
+                _hw.Profile.IsReadOnly = false;
+                return hwAction();
+            }
+            finally
+            {
+                _hw.Profile.IsReadOnly = prevReadOnly;
+            }
+        }
+
         public bool EvaluateAndApplyFanProfiles(int apuTemp)
         {
             FanCurveProfile apuProf;
@@ -414,6 +454,9 @@ namespace MiniFanControl
             bool apuManual;
             bool sysManual;
             bool emergState;
+            bool latched;
+            bool latchedAutoRestored;
+            DateTime lastLatchedRetryUtc;
             int lastApuPct;
             int lastSysPct;
             int lastEcMode;
@@ -422,7 +465,6 @@ namespace MiniFanControl
 
             lock (_stateLock)
             {
-                if (_readOnlyFailsafeLatched) return false;
                 if (_apuProfile == null && _builtInProfiles != null && _builtInProfiles.Length > 0) _apuProfile = _builtInProfiles[0];
                 if (_sysProfile == null && _builtInProfiles != null && _builtInProfiles.Length > 0) _sysProfile = _builtInProfiles[0];
                 apuProf = _apuProfile;
@@ -433,6 +475,9 @@ namespace MiniFanControl
                 apuManual = _apuManualOverride;
                 sysManual = _sysManualOverride;
                 emergState = _emergencyThermalActive;
+                latched = _readOnlyFailsafeLatched;
+                latchedAutoRestored = _latchedAutoRestored;
+                lastLatchedRetryUtc = _lastLatchedAutoRetryUtc;
                 lastApuPct = _lastAppliedApuPct;
                 lastSysPct = _lastAppliedSysPct;
                 lastEcMode = _lastAppliedEcMode;
@@ -443,6 +488,8 @@ namespace MiniFanControl
             bool wroteHardware = false;
 
             // Emergency Thermal Safety Guard (TJMax Tripwire):
+            // ALWAYS evaluated BEFORE the read-only failsafe latch return so a latched system
+            // never loses thermal protection if the prior SetAuto() also failed.
             // If APU temperature hits >= 90°C, bypass manual overrides and curves, forcing 100% PWM.
             // Hysteresis holds until temperature recovers below 75°C.
             bool tripped = HardwareBackend.CheckEmergencyThermalTripwire(apuTemp, ref emergState);
@@ -452,12 +499,14 @@ namespace MiniFanControl
             {
                 if (lastApuPct != 100)
                 {
-                    bool ok = demo ? _demo.SetFan(1, 100) : _hw.SetFan(1, 100);
+                    bool ok = latched
+                        ? ExecuteSafetyWriteWhileLatched(demo, () => _hw.SetFan(1, 100), () => _demo.SetFan(1, 100))
+                        : (demo ? _demo.SetFan(1, 100) : _hw.SetFan(1, 100));
                     if (ok)
                     {
                         lock (_stateLock) { _lastAppliedApuPct = 100; }
                         wroteHardware = true;
-                        ClearHardwareWriteError();
+                        if (!latched) ClearHardwareWriteError();
                     }
                     else
                     {
@@ -466,12 +515,14 @@ namespace MiniFanControl
                 }
                 if (hasDual && lastSysPct != 100)
                 {
-                    bool ok = demo ? _demo.SetFan(2, 100) : _hw.SetFan(2, 100);
+                    bool ok = latched
+                        ? ExecuteSafetyWriteWhileLatched(demo, () => _hw.SetFan(2, 100), () => _demo.SetFan(2, 100))
+                        : (demo ? _demo.SetFan(2, 100) : _hw.SetFan(2, 100));
                     if (ok)
                     {
                         lock (_stateLock) { _lastAppliedSysPct = 100; }
                         wroteHardware = true;
-                        ClearHardwareWriteError();
+                        if (!latched) ClearHardwareWriteError();
                     }
                     else
                     {
@@ -479,6 +530,29 @@ namespace MiniFanControl
                     }
                 }
                 return wroteHardware;
+            }
+
+            // If latched in failsafe read-only mode, block normal curve/manual writes,
+            // but periodically retry SetAuto() until BIOS automatic fan control is confirmed restored.
+            if (latched)
+            {
+                if (!latchedAutoRestored && (DateTime.UtcNow - lastLatchedRetryUtc) >= LatchedAutoRetryInterval)
+                {
+                    lock (_stateLock) { _lastLatchedAutoRetryUtc = DateTime.UtcNow; }
+                    bool retryAutoOk = ExecuteSafetyWriteWhileLatched(demo, () => _hw.SetAuto(), () => _demo.SetAuto());
+                    if (retryAutoOk)
+                    {
+                        lock (_stateLock)
+                        {
+                            _latchedAutoRestored = true;
+                            _lastAppliedApuPct = 0;
+                            _lastAppliedSysPct = 0;
+                        }
+                        WatchdogSupervisor.LogWatchdogEvent("Latched failsafe periodic SetAuto() retry succeeded; BIOS Auto restored.");
+                        return true;
+                    }
+                }
+                return false;
             }
 
             int desiredEcMode = -1;
@@ -690,17 +764,28 @@ namespace MiniFanControl
             if (escalate)
             {
                 WatchdogSupervisor.LogWatchdogEvent(string.Format("PERSISTENT WRITE FAILURES ({0} consecutive): Escalating to emergency failsafe. Restoring BIOS Auto and latching read-only mode.", fails));
+                bool autoRestored = false;
                 try
                 {
-                    if (_hw != null)
+                    if (_demoMode && _demo != null)
                     {
-                        _hw.SetAuto();
+                        autoRestored = _demo.SetAuto();
+                    }
+                    else if (_hw != null)
+                    {
+                        autoRestored = _hw.SetAuto();
                         if (_hw.Profile != null) _hw.Profile.IsReadOnly = true;
                     }
                 }
                 catch (Exception ex)
                 {
                     WatchdogSupervisor.LogWatchdogEvent("Escalation SetAuto failed: " + ex.Message);
+                }
+
+                lock (_stateLock)
+                {
+                    _latchedAutoRestored = autoRestored;
+                    _lastLatchedAutoRetryUtc = DateTime.UtcNow;
                 }
 
                 if (EscalatedFailsafeTriggered != null) EscalatedFailsafeTriggered(fails);

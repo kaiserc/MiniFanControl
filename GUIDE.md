@@ -45,7 +45,7 @@ AMD Ryzen Mini PCs—such as the **GMKtec NucBox K12**, **K8 Plus**, **K11**, **
 
 **MiniFanControl** bridges this gap:
 - Communicates directly with the Embedded Controller registers via kernel port I/O.
-- Enforces hardware-safe fan curves with 2°C cooldown hysteresis.
+- Enforces hardware-safe fan curves with 4°C asymmetric cooldown hysteresis.
 - Prevents motor stalling via measured physical spin-up PWM floors.
 - Synchronizes with other monitoring tools (HWiNFO, CapFrameX) via the `Global\Access_EC` mutex.
 
@@ -272,7 +272,7 @@ Mini PC cooling architectures can be controlled via built-in BIOS modes or custo
   - Click **`+ New`** to create a named profile (e.g. `Ultra Quiet`, `Night Download`, `Aggressive Gaming`).
   - Drag points directly on the curve canvas to shape your target response curve.
   - Click **`Use Curve`** to activate the profile.
-  - The software applies a **2°C cooldown hysteresis buffer** so fan speeds do not rapidly oscillate under intermittent burst workloads.
+  - The software applies a **4°C asymmetric cooldown hysteresis buffer** so fan speeds do not rapidly oscillate under intermittent burst workloads.
 
 ### Combined Live Telemetry Graph & Metric Spotlighting
 Click the **`Live Trend`** tab at the top of the curve card to switch to the full-size multi-series live telemetry graph:
@@ -493,7 +493,7 @@ For power users, scripting, task schedulers, and headless servers, `minifan-help
 # Watch all 256 EC registers live in console for 15 seconds to trace changes
 .\minifan-helper.exe watch
 
-# Execute the 65-point automated hardware safety & curve verification suite
+# Execute the 85-point automated hardware safety & curve verification suite
 .\minifan-helper.exe test
 ```
 

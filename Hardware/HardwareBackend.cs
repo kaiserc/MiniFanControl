@@ -140,17 +140,19 @@ namespace MiniFanControl
             }
             try
             {
-                if (NativeInpOut.IsDriverOpen())
+                bool profileWritable = (hw.Profile != null && !hw.Profile.IsReadOnly);
+                // Safe Read-Only Mode: never emit Super I/O LPC config-mode sequences on unverified/read-only hardware
+                if (profileWritable && NativeInpOut.IsDriverOpen())
                 {
                     ushort cId, hBase;
-                    bool allowWrites = (hw.Profile != null && !hw.Profile.IsReadOnly && hw.Profile.Id == "ryzen-hx370-ec");
-                    if (ProbeSuperIo(0x2E, out cId, out hBase, allowWrites) && VerifyIt87HwBase(hBase))
+                    bool allowWrites = (hw.Profile.Id == "ryzen-hx370-ec");
+                    if (ProbeSuperIo(0x2E, out cId, out hBase, allowWrites) && VerifyIt87HwBase(hBase, allowWrites))
                     {
                         hw.SuperIoChipId = cId;
                         hw.SuperIoBaseAddr = hBase;
                         hw.AccessMethod = EcAccessMethod.SuperIo2E;
                     }
-                    else if (ProbeSuperIo(0x4E, out cId, out hBase, allowWrites) && VerifyIt87HwBase(hBase))
+                    else if (ProbeSuperIo(0x4E, out cId, out hBase, allowWrites) && VerifyIt87HwBase(hBase, allowWrites))
                     {
                         hw.SuperIoChipId = cId;
                         hw.SuperIoBaseAddr = hBase;
@@ -206,6 +208,8 @@ namespace MiniFanControl
         /// </summary>
         public static int DebounceTachometerZero(int fanIndex, int rawRpm, bool zeroDutyCommanded, int commandedPct = -1)
         {
+            // Never mask genuine emergency / full-speed spin-ups when >= 95% PWM is commanded
+            bool bypassSpikeFilter = (commandedPct >= 95);
             lock (_filterLock)
             {
                 if (fanIndex == 1)
@@ -213,7 +217,7 @@ namespace MiniFanControl
                     if (rawRpm > 0)
                     {
                         _fan1ZeroStreak = 0;
-                        if (_lastValidFan1Rpm >= 400 && (rawRpm - _lastValidFan1Rpm) > 2000 && _fan1SpikeStreak < 20)
+                        if (!bypassSpikeFilter && _lastValidFan1Rpm >= 400 && (rawRpm - _lastValidFan1Rpm) > 2000 && _fan1SpikeStreak < 20)
                         {
                             _fan1SpikeStreak++;
                             return _lastValidFan1Rpm;
@@ -237,7 +241,7 @@ namespace MiniFanControl
                     if (rawRpm > 0)
                     {
                         _fan2ZeroStreak = 0;
-                        if (_lastValidFan2Rpm >= 400 && (rawRpm - _lastValidFan2Rpm) > 2000 && _fan2SpikeStreak < 20)
+                        if (!bypassSpikeFilter && _lastValidFan2Rpm >= 400 && (rawRpm - _lastValidFan2Rpm) > 2000 && _fan2SpikeStreak < 20)
                         {
                             _fan2SpikeStreak++;
                             return _lastValidFan2Rpm;
@@ -339,39 +343,7 @@ namespace MiniFanControl
 
         public static bool IsPortWhitelisted(ushort port, bool isWrite)
         {
-            // Explicit blocklist: Never permit access to critical motherboard/CPU control ports
-            if (port == 0x70 || port == 0x71 || port == 0x92 || port == 0xCF9 ||
-                port == 0x20 || port == 0x21 || port == 0xA0 || port == 0xA1 ||
-                port == 0x40 || port == 0x41 || port == 0x42 || port == 0x43 ||
-                port == 0x61)
-            {
-                return false;
-            }
-
-            // Standard ACPI Embedded Controller ports
-            if (port == 0x62 || port == 0x66 || port == 0x68 || port == 0x6C || port == 0x6A || port == 0x6E)
-                return true;
-
-            // LPC / Super I/O indexing ports
-            if (port == 0x2E || port == 0x2F || port == 0x4E || port == 0x4F)
-                return true;
-
-            // PCI Configuration Mechanism #1 address and data ports (used strictly for AMD SMN read)
-            if (port == 0xCF8 || port == 0xCFC)
-                return true;
-
-            // Hardware monitor base ranges (IT8613E / IT87xx / NCT6779) & AMD SMBus controller
-            if ((port >= 0x0290 && port <= 0x0297) ||
-                (port >= 0x02A0 && port <= 0x02A7) ||
-                (port >= 0x0A00 && port <= 0x0A3F) ||
-                (port >= 0x0B00 && port <= 0x0B3F) ||
-                (port >= 0x0E00 && port <= 0x0E3F))
-            {
-                return true;
-            }
-
-            // Strict fail-closed: Any unlisted port is rejected for both reads and writes
-            return false;
+            return NativeInpOut.IsPortWhitelisted(port, isWrite);
         }
 
         public static byte ReadPortByte(ushort port)
@@ -589,7 +561,7 @@ namespace MiniFanControl
                         byte baseLo = ReadPortByte(valPort);
                         ushort candidateBase = (ushort)((baseHi << 8) | baseLo);
 
-                        bool verified = (candidateBase != 0 && candidateBase != 0xFFFF && VerifyIt87HwBase(candidateBase));
+                        bool verified = (candidateBase != 0 && candidateBase != 0xFFFF && VerifyIt87HwBase(candidateBase, allowConfigWrites));
 
                         // Only reprogram base address or activate LDN4 if explicitly allowed for an active verified profile
                         if (!verified && allowConfigWrites)
@@ -610,7 +582,7 @@ namespace MiniFanControl
                                 WritePortByte(valPort, (byte)(cand >> 8));
                                 WritePortByte(cfgPort, 0x61);
                                 WritePortByte(valPort, (byte)(cand & 0xFF));
-                                if (VerifyIt87HwBase(cand))
+                                if (VerifyIt87HwBase(cand, true))
                                 {
                                     candidateBase = cand;
                                     verified = true;
@@ -698,7 +670,7 @@ namespace MiniFanControl
             }
         }
 
-        public static bool VerifyIt87HwBase(ushort baseAddr)
+        public static bool VerifyIt87HwBase(ushort baseAddr, bool allowConfigWrites = false)
 
         {
 
@@ -728,7 +700,7 @@ namespace MiniFanControl
 
                     {
 
-                        if ((cfg & 0x01) == 0)
+                        if (allowConfigWrites && (cfg & 0x01) == 0)
 
                         {
 
@@ -1109,65 +1081,24 @@ namespace MiniFanControl
 
                 }
 
-                // 1. Probe LPC Super I/O on Port 0x2E (True BIOS-programmed base address)
-
-                ushort cId, hBase;
+                // 1. Probe LPC Super I/O on Port 0x2E / 0x4E (only for verified writable profiles;
+                //    Safe Read-Only Mode skips Super I/O LPC config-mode write sequences entirely)
 
                 bool allowWrites = (Profile != null && !Profile.IsReadOnly);
 
-                if (ProbeSuperIo(0x2E, out cId, out hBase, allowWrites) && VerifyIt87HwBase(hBase))
+                if (allowWrites)
 
                 {
 
-                    SuperIoChipId = cId;
+                    ushort cId, hBase;
 
-                    SuperIoBaseAddr = hBase;
-
-                    AccessMethod = EcAccessMethod.SuperIo2E;
-
-                    _isInitialized = true;
-
-                    DumpSuperIoDiagnostic(GetWritableDiagnosticPath("sio-diag.txt"));
-
-                    return;
-
-                }
-
-                // 2. Probe LPC Super I/O on Port 0x4E
-
-                if (ProbeSuperIo(0x4E, out cId, out hBase, allowWrites) && VerifyIt87HwBase(hBase))
-
-                {
-
-                    SuperIoChipId = cId;
-
-                    SuperIoBaseAddr = hBase;
-
-                    AccessMethod = EcAccessMethod.SuperIo4E;
-
-                    _isInitialized = true;
-
-                    DumpSuperIoDiagnostic(GetWritableDiagnosticPath("sio-diag.txt"));
-
-                    return;
-
-                }
-
-                // 3. Fallback candidate IT87 Hardware Monitor base addresses (0x58=0x90):
-
-                ushort[] candidateBases = new ushort[] { 0x0A30, 0x0A00, 0x0A10, 0x0A20, 0x0290, 0x02A0 };
-
-                foreach (ushort cand in candidateBases)
-
-                {
-
-                    if (VerifyIt87HwBase(cand))
+                    if (ProbeSuperIo(0x2E, out cId, out hBase, allowWrites) && VerifyIt87HwBase(hBase, allowWrites))
 
                     {
 
-                        SuperIoChipId = 0x8613;
+                        SuperIoChipId = cId;
 
-                        SuperIoBaseAddr = cand;
+                        SuperIoBaseAddr = hBase;
 
                         AccessMethod = EcAccessMethod.SuperIo2E;
 
@@ -1176,6 +1107,54 @@ namespace MiniFanControl
                         DumpSuperIoDiagnostic(GetWritableDiagnosticPath("sio-diag.txt"));
 
                         return;
+
+                    }
+
+                    // 2. Probe LPC Super I/O on Port 0x4E
+
+                    if (ProbeSuperIo(0x4E, out cId, out hBase, allowWrites) && VerifyIt87HwBase(hBase, allowWrites))
+
+                    {
+
+                        SuperIoChipId = cId;
+
+                        SuperIoBaseAddr = hBase;
+
+                        AccessMethod = EcAccessMethod.SuperIo4E;
+
+                        _isInitialized = true;
+
+                        DumpSuperIoDiagnostic(GetWritableDiagnosticPath("sio-diag.txt"));
+
+                        return;
+
+                    }
+
+                    // 3. Fallback candidate IT87 Hardware Monitor base addresses (0x58=0x90):
+
+                    ushort[] candidateBases = new ushort[] { 0x0A30, 0x0A00, 0x0A10, 0x0A20, 0x0290, 0x02A0 };
+
+                    foreach (ushort cand in candidateBases)
+
+                    {
+
+                        if (VerifyIt87HwBase(cand, allowWrites))
+
+                        {
+
+                            SuperIoChipId = 0x8613;
+
+                            SuperIoBaseAddr = cand;
+
+                            AccessMethod = EcAccessMethod.SuperIo2E;
+
+                            _isInitialized = true;
+
+                            DumpSuperIoDiagnostic(GetWritableDiagnosticPath("sio-diag.txt"));
+
+                            return;
+
+                        }
 
                     }
 

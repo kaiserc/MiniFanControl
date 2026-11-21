@@ -42,6 +42,9 @@ namespace MiniFanControl
         public bool HasDualFans   = true;
         public bool IsReadOnly    = false;
         public bool IsVerified    = true;
+        public string BoundManufacturer = "";
+        public string BoundProductName  = "";
+        public string BoundBaseBoard    = "";
 
         public static readonly DeviceProfile[] KnownProfiles = new DeviceProfile[]
         {
@@ -148,7 +151,10 @@ namespace MiniFanControl
             sb.AppendLine(string.Format("  \"regDcVoltsAdc\": \"0x{0:X2}\",", RegDcVoltsAdc));
             sb.AppendLine(string.Format("  \"hasDualFans\": {0},", HasDualFans ? "true" : "false"));
             sb.AppendLine(string.Format("  \"isReadOnly\": {0},", IsReadOnly ? "true" : "false"));
-            sb.AppendLine(string.Format("  \"isVerified\": {0}", IsVerified ? "true" : "false"));
+            sb.AppendLine(string.Format("  \"isVerified\": {0},", IsVerified ? "true" : "false"));
+            sb.AppendLine(string.Format("  \"boundManufacturer\": \"{0}\",", EscapeJson(BoundManufacturer)));
+            sb.AppendLine(string.Format("  \"boundProductName\": \"{0}\",", EscapeJson(BoundProductName)));
+            sb.AppendLine(string.Format("  \"boundBaseBoard\": \"{0}\"", EscapeJson(BoundBaseBoard)));
             sb.AppendLine("}");
             return sb.ToString();
         }
@@ -233,14 +239,88 @@ namespace MiniFanControl
             return s.Replace("\\\"", "\"").Replace("\\\\", "\\");
         }
 
+        private static bool IsMeaningfulDmiToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            string t = value.Trim();
+            return !t.Equals("Unknown", StringComparison.OrdinalIgnoreCase)
+                && !t.Equals("Default string", StringComparison.OrdinalIgnoreCase)
+                && !t.Equals("To be filled by O.E.M.", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public bool HasValidRegisterMap()
+        {
+            return EcBaseAddress >= NativeInpOut.MIN_SAFE_PHYSICAL_ADDR
+                && EcSize > 0
+                && EcSize <= 0x10000
+                && RegCpuTemp != 0
+                && RegFan1Ctrl != 0;
+        }
+
+        public bool MatchesDmi(string productName, string baseBoard, string manufacturer = null)
+        {
+            bool hasProd = IsMeaningfulDmiToken(BoundProductName);
+            bool hasBoard = IsMeaningfulDmiToken(BoundBaseBoard);
+            bool hasMfg = IsMeaningfulDmiToken(BoundManufacturer);
+
+            // Fail-closed: Unbound custom profiles must never auto-match arbitrary hardware
+            if (!hasProd && !hasBoard && !hasMfg)
+                return false;
+
+            int matchedFields = 0;
+
+            if (hasProd)
+            {
+                if (string.IsNullOrWhiteSpace(productName) ||
+                    !BoundProductName.Trim().Equals(productName.Trim(), StringComparison.OrdinalIgnoreCase))
+                    return false;
+                matchedFields++;
+            }
+
+            if (hasBoard)
+            {
+                if (string.IsNullOrWhiteSpace(baseBoard) ||
+                    !BoundBaseBoard.Trim().Equals(baseBoard.Trim(), StringComparison.OrdinalIgnoreCase))
+                    return false;
+                matchedFields++;
+            }
+
+            if (hasMfg)
+            {
+                if (manufacturer != null)
+                {
+                    if (string.IsNullOrWhiteSpace(manufacturer) ||
+                        !BoundManufacturer.Trim().Equals(manufacturer.Trim(), StringComparison.OrdinalIgnoreCase))
+                        return false;
+                    matchedFields++;
+                }
+                else if (!hasProd && !hasBoard)
+                {
+                    return false;
+                }
+            }
+
+            return matchedFields > 0;
+        }
+
         public static DeviceProfile FromJson(string json)
         {
-            if (string.IsNullOrEmpty(json)) return null;
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            if (json.IndexOf('{') < 0 || json.IndexOf('}') < 0) return null;
+
             DeviceProfile p = new DeviceProfile();
             p.Id = "custom-profile";
             p.DisplayName = "Custom Hardware Profile";
-            p.IsReadOnly = false;
-            p.IsVerified = true;
+            // Fail-closed defaults: stray or truncated JSON never silently unlocks hardware writes
+            p.IsReadOnly = true;
+            p.IsVerified = false;
+            p.BoundManufacturer = "";
+            p.BoundProductName = "";
+            p.BoundBaseBoard = "";
+
+            int parsedFieldCount = 0;
+            bool explicitReadOnlyFalse = false;
+            bool explicitVerifiedTrue = false;
 
             string[] lines = json.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (string rawLine in lines)
@@ -258,6 +338,7 @@ namespace MiniFanControl
                     val = val.Substring(1, val.Length - 2);
                 }
 
+                parsedFieldCount++;
                 if (key.Equals("id", StringComparison.OrdinalIgnoreCase)) p.Id = UnescapeJson(val);
                 else if (key.Equals("displayName", StringComparison.OrdinalIgnoreCase)) p.DisplayName = UnescapeJson(val);
                 else if (key.Equals("chipsetNotes", StringComparison.OrdinalIgnoreCase)) p.ChipsetNotes = UnescapeJson(val);
@@ -278,9 +359,37 @@ namespace MiniFanControl
                 else if (key.Equals("regDdrTemp", StringComparison.OrdinalIgnoreCase)) p.RegDdrTemp = ParseByte(val, 0x00);
                 else if (key.Equals("regDcVoltsAdc", StringComparison.OrdinalIgnoreCase)) p.RegDcVoltsAdc = ParseByte(val, 0x00);
                 else if (key.Equals("hasDualFans", StringComparison.OrdinalIgnoreCase)) p.HasDualFans = val.Equals("true", StringComparison.OrdinalIgnoreCase);
-                else if (key.Equals("isReadOnly", StringComparison.OrdinalIgnoreCase)) p.IsReadOnly = val.Equals("true", StringComparison.OrdinalIgnoreCase);
-                else if (key.Equals("isVerified", StringComparison.OrdinalIgnoreCase)) p.IsVerified = val.Equals("true", StringComparison.OrdinalIgnoreCase);
+                else if (key.Equals("isReadOnly", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool ro = !val.Equals("false", StringComparison.OrdinalIgnoreCase);
+                    p.IsReadOnly = ro;
+                    explicitReadOnlyFalse = !ro;
+                }
+                else if (key.Equals("isVerified", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool ver = val.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    p.IsVerified = ver;
+                    explicitVerifiedTrue = ver;
+                }
+                else if (key.Equals("boundManufacturer", StringComparison.OrdinalIgnoreCase)) p.BoundManufacturer = UnescapeJson(val);
+                else if (key.Equals("boundProductName", StringComparison.OrdinalIgnoreCase)) p.BoundProductName = UnescapeJson(val);
+                else if (key.Equals("boundBaseBoard", StringComparison.OrdinalIgnoreCase)) p.BoundBaseBoard = UnescapeJson(val);
             }
+
+            if (parsedFieldCount == 0) return null;
+
+            // Re-verify invariants on load: an invalid register map or unbound profile cannot unlock writes
+            bool hasDmiBinding = IsMeaningfulDmiToken(p.BoundProductName)
+                || IsMeaningfulDmiToken(p.BoundBaseBoard)
+                || IsMeaningfulDmiToken(p.BoundManufacturer);
+
+            if (!p.HasValidRegisterMap() || !hasDmiBinding || !explicitVerifiedTrue || !explicitReadOnlyFalse)
+            {
+                p.IsReadOnly = true;
+                if (!p.HasValidRegisterMap() || !hasDmiBinding)
+                    p.IsVerified = false;
+            }
+
             return p;
         }
 
@@ -361,8 +470,12 @@ namespace MiniFanControl
             p.Id = "custom-profile";
             p.DisplayName = string.Format("Custom: {0} ({1})", prodName, board);
             p.ChipsetNotes = "Auto-generated from EC Differential Telemetry Scanner on " + DateTime.Now.ToString("yyyy-MM-dd HH:mm");
-            p.IsReadOnly = false;
-            p.IsVerified = true;
+            p.BoundManufacturer = (sysInfo != null && IsMeaningfulDmiToken(sysInfo.Manufacturer)) ? sysInfo.Manufacturer.Trim() : "";
+            p.BoundProductName = (sysInfo != null && IsMeaningfulDmiToken(sysInfo.ProductName)) ? sysInfo.ProductName.Trim() : "";
+            p.BoundBaseBoard = (sysInfo != null && IsMeaningfulDmiToken(sysInfo.BaseBoard)) ? sysInfo.BaseBoard.Trim() : "";
+            bool hasBinding = IsMeaningfulDmiToken(p.BoundProductName) || IsMeaningfulDmiToken(p.BoundBaseBoard) || IsMeaningfulDmiToken(p.BoundManufacturer);
+            p.IsReadOnly = !hasBinding;
+            p.IsVerified = hasBinding;
 
             // Default fallback registers
             p.RegCpuTemp = 0x70;
@@ -485,15 +598,21 @@ namespace MiniFanControl
 
         public static DeviceProfile MatchProfile(string productName, string baseBoard, string cpuName, string manufacturer)
         {
+            string combined = ((manufacturer ?? "") + " " + (productName ?? "") + " " + (baseBoard ?? "") + " " + (cpuName ?? "")).ToUpperInvariant();
+            // Safety blocklist ALWAYS takes precedence before any custom profile lookup
+            if (combined.Contains("RECOREQICH") || combined.Contains("KTHIN") || combined.Contains("HX PRO 370"))
+                return DeviceProfile.FindProfile("unknown-safe");
+
             if (DeviceProfile.CustomProfile == null)
             {
                 DeviceProfile.LoadCustomProfile();
             }
-            if (DeviceProfile.CustomProfile != null)
+            if (DeviceProfile.CustomProfile != null
+                && DeviceProfile.CustomProfile.HasValidRegisterMap()
+                && DeviceProfile.CustomProfile.MatchesDmi(productName, baseBoard, manufacturer))
+            {
                 return DeviceProfile.CustomProfile;
-            string combined = ((manufacturer ?? "") + " " + (productName ?? "") + " " + (baseBoard ?? "") + " " + (cpuName ?? "")).ToUpperInvariant();
-            if (combined.Contains("RECOREQICH") || combined.Contains("KTHIN") || combined.Contains("HX PRO 370"))
-                return DeviceProfile.FindProfile("unknown-safe");
+            }
             if (combined.Contains("EVO-X1") || combined.Contains("TS-12C"))
                 return DeviceProfile.FindProfile("ryzen-hx370-ec");
             if (combined.Contains("ADREAMER") || combined.Contains("ARIESBOX") || combined.Contains("PB07"))

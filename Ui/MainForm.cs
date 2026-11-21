@@ -303,7 +303,7 @@ namespace MiniFanControl
         private readonly Button[] _biosModeButtons = new Button[3]; // 0=Balanced, 1=Performance, 2=Silent
         private int _lastActiveBiosModeCode = -1;
         private Button _driversMenuBtn;
-        private ContextMenu _driversMenu;
+        private ContextMenuStrip _driversMenu;
         private Button _themeToggleBtn;
         private Label _errorBanner;
         private DoubleBufferedPanel _cpuTempBox;
@@ -1686,7 +1686,7 @@ namespace MiniFanControl
 
         private void RebuildDriversMenu()
         {
-            ContextMenu oldMenu = _driversMenu;
+            ContextMenuStrip oldMenu = _driversMenu;
             _driversMenu = CreateDriversAndToolsMenu();
             if (oldMenu != null)
             {
@@ -2135,23 +2135,23 @@ namespace MiniFanControl
             UpdateCalibrationBadge();
         }
 
-        private ContextMenu CreateDriversAndToolsMenu()
+        private ContextMenuStrip CreateDriversAndToolsMenu()
         {
-            ContextMenu menu = new ContextMenu();
-            menu.MenuItems.Add("✨ First-Time Setup Assistant & Auto-Tune Guide...", (s, e) => ShowSetupAssistantDialog(true));
-            menu.MenuItems.Add("-");
+            ContextMenuStrip menu = new ContextMenuStrip();
+            menu.Items.Add("✨ First-Time Setup Assistant & Auto-Tune Guide...", null, (s, e) => ShowSetupAssistantDialog(true));
+            menu.Items.Add(new ToolStripSeparator());
             string calMenuLabel = string.IsNullOrEmpty(FanCurveProfile.LastCalibratedDate)
                 ? "Calibrate Fans (Not Yet Calibrated — Default 30% Min)..."
                 : string.Format("Calibrate Fans (✓ Last: {0} • Min {1}%)...",
                     FanCurveProfile.LastCalibratedDate, FanCurveProfile.ApuMinSpinPct);
-            menu.MenuItems.Add(calMenuLabel, (s, e) => RunGuiFanCalibration());
+            menu.Items.Add(calMenuLabel, null, (s, e) => RunGuiFanCalibration());
             string layoutLabel = _hasDualFans
                 ? "Fan Layout: 2 Fans (APU + Sys) — Click for 1-Fan Mode"
                 : "Fan Layout: 1 Fan (APU Only) — Click for 2-Fan Mode";
-            menu.MenuItems.Add(layoutLabel, (s, e) => ToggleDualFanMode());
-            menu.MenuItems.Add("-");
+            menu.Items.Add(layoutLabel, null, (s, e) => ToggleDualFanMode());
+            menu.Items.Add(new ToolStripSeparator());
             string osdToggleLabel = _showOverlay ? "Hide In-Game OSD Overlay" : "Show In-Game OSD Overlay";
-            menu.MenuItems.Add(osdToggleLabel, (s, e) =>
+            menu.Items.Add(osdToggleLabel, null, (s, e) =>
             {
                 if (_showOverlayCb != null) _showOverlayCb.Checked = !_showOverlayCb.Checked;
                 else SetOverlayVisible(!_showOverlay);
@@ -2159,120 +2159,120 @@ namespace MiniFanControl
             string osdStyleLabel = _osd.VerticalLayout
                 ? "OSD Layout: Vertical Stack — Click for Horizontal Bar"
                 : "OSD Layout: Horizontal Bar — Click for Vertical Stack";
-            menu.MenuItems.Add(osdStyleLabel, (s, e) => ToggleOverlayLayoutStyle());
+            menu.Items.Add(osdStyleLabel, null, (s, e) => ToggleOverlayLayoutStyle());
             string osdLockLabel = _lockOverlay
                 ? "Unlock OSD Overlay (Allow Mouse Drag)"
                 : "Lock OSD Overlay (Click-Through Mode)";
-            menu.MenuItems.Add(osdLockLabel, (s, e) =>
+            menu.Items.Add(osdLockLabel, null, (s, e) =>
             {
                 if (_lockOverlayCb != null) _lockOverlayCb.Checked = !_lockOverlayCb.Checked;
                 else SetOverlayLocked(!_lockOverlay);
             });
-            menu.MenuItems.Add("Configure OSD Overlay Studio...", (s, e) => OpenOsdConfigTab());
-            menu.MenuItems.Add("-");
+            menu.Items.Add("Configure OSD Overlay Studio...", null, (s, e) => OpenOsdConfigTab());
+            menu.Items.Add(new ToolStripSeparator());
             string resetPeaksLabel = _sessionStats.SampleCount > 0
                 ? string.Format("Reset Session Peaks (Max CPU {0}°C • iGPU {1}°C • NVMe {2}°C • {3}W)",
                     _sessionStats.MaxCpuTemp, _sessionStats.MaxGpuTemp, _sessionStats.MaxNvmeTemp, _sessionStats.MaxPowerWatts)
                 : "Reset Session Peak (Max °C / W) Stats";
-            menu.MenuItems.Add(resetPeaksLabel, (s, e) => ResetSessionPeaks());
+            menu.Items.Add(resetPeaksLabel, null, (s, e) => ResetSessionPeaks());
             string exportCsvLabel = string.Format("📊 Export Session Telemetry to CSV ({0} samples logged)...", _sessionStats.LoggedRecordCount);
-            menu.MenuItems.Add(exportCsvLabel, (s, e) => ExportSessionTelemetryToCsv());
-            menu.MenuItems.Add("✨ Auto-Tune Optimal Fan Curve (from Telemetry & Calibration)...", (s, e) => RunAutoTuneCurve());
-            menu.MenuItems.Add("📋 Copy Active Fan Curve to Clipboard (Share Curve)...", (s, e) => CopyCurveToClipboard());
-            menu.MenuItems.Add("📥 Import Fan Curve from Clipboard...", (s, e) => ImportCurveFromClipboard());
+            menu.Items.Add(exportCsvLabel, null, (s, e) => ExportSessionTelemetryToCsv());
+            menu.Items.Add("✨ Auto-Tune Optimal Fan Curve (from Telemetry & Calibration)...", null, (s, e) => RunAutoTuneCurve());
+            menu.Items.Add("📋 Copy Active Fan Curve to Clipboard (Share Curve)...", null, (s, e) => CopyCurveToClipboard());
+            menu.Items.Add("📥 Import Fan Curve from Clipboard...", null, (s, e) => ImportCurveFromClipboard());
             string safeExitLabel = string.Format("Exit Safety: Restore BIOS Auto on Close ({0})",
                 _restoreAutoOnExit ? "✓ Enabled" : "Disabled (Keep Custom PWM)");
-            menu.MenuItems.Add(safeExitLabel, (s, e) =>
+            menu.Items.Add(safeExitLabel, null, (s, e) =>
             {
                 _restoreAutoOnExit = !_restoreAutoOnExit;
                 SaveSettings();
-                _driversMenu = CreateDriversAndToolsMenu();
+                RebuildDriversMenu();
                 _statusBarLabel.Text = _restoreAutoOnExit
                     ? "✓ Exit Safety enabled: fans restore to BIOS Auto on close"
                     : "ℹ Exit Safety disabled: custom/manual PWM persists after close";
             });
             string closeToTrayLabel = string.Format("Window Close: Minimize to System Tray ({0})",
                 _closeToTray ? "✓ Enabled (Keep Curves)" : "Disabled (Close Exits)");
-            menu.MenuItems.Add(closeToTrayLabel, (s, e) =>
+            menu.Items.Add(closeToTrayLabel, null, (s, e) =>
             {
                 _closeToTray = !_closeToTray;
                 if (_trayCb != null) _trayCb.Checked = _closeToTray;
                 SaveSettings();
-                _driversMenu = CreateDriversAndToolsMenu();
+                RebuildDriversMenu();
                 _statusBarLabel.Text = _closeToTray
                     ? "✓ Close to Tray enabled: 'X' keeps curves running in background"
                     : "ℹ Close to Tray disabled: 'X' exits app and restores BIOS Auto";
             });
             string silentSleepLabel = string.Format("Sleep Behavior: Silent Standby Coast-Down ({0})",
                 _silentSleepStandby ? "✓ Silent Zero-RPM (No Kickstart)" : "BIOS Auto (2-4s Kickstart)");
-            menu.MenuItems.Add(silentSleepLabel, (s, e) =>
+            menu.Items.Add(silentSleepLabel, null, (s, e) =>
             {
                 _silentSleepStandby = !_silentSleepStandby;
                 SaveSettings();
-                _driversMenu = CreateDriversAndToolsMenu();
+                RebuildDriversMenu();
                 _statusBarLabel.Text = _silentSleepStandby
                     ? "✓ Silent Standby active: fans gently coast to 0% with no 2-4s kickstart burst"
                     : "ℹ BIOS Auto Standby active: motherboard firmware manages sleep with 2-4s burst";
             });
             string hotkeysLabel = string.Format("Global Hotkeys Ctrl+Alt+F9..F12 ({0})",
                 _enableGlobalHotkeys ? "✓ Enabled" : "Disabled");
-            menu.MenuItems.Add(hotkeysLabel, (s, e) =>
+            menu.Items.Add(hotkeysLabel, null, (s, e) =>
             {
                 _enableGlobalHotkeys = !_enableGlobalHotkeys;
                 UpdateGlobalHotkeysRegistration();
                 SaveSettings();
-                _driversMenu = CreateDriversAndToolsMenu();
+                RebuildDriversMenu();
                 _statusBarLabel.Text = _enableGlobalHotkeys
                     ? "✓ Global hotkeys enabled (Ctrl+Alt+F9..F12)"
                     : "ℹ Global hotkeys disabled";
             });
             string demoLabel = string.Format("Offline Demo / Simulation Mode ({0})", _demoMode ? "✓ Active" : "Disabled");
-            menu.MenuItems.Add(demoLabel, (s, e) =>
+            menu.Items.Add(demoLabel, null, (s, e) =>
             {
                 _demoMode = !_demoMode;
                 SaveSettings();
-                _driversMenu = CreateDriversAndToolsMenu();
+                RebuildDriversMenu();
                 _statusBarLabel.Text = _demoMode
                     ? "ℹ Offline Demo Mode active (synthetic telemetry)"
                     : "✓ Hardware Mode active (direct EC registers)";
                 RefreshStatus();
             });
-            menu.MenuItems.Add("-");
-            MenuItem profileSubMenu = new MenuItem("Hardware Profile & EC Target");
+            menu.Items.Add(new ToolStripSeparator());
+            ToolStripMenuItem profileSubMenu = new ToolStripMenuItem("Hardware Profile && EC Target");
             bool isAuto = string.IsNullOrEmpty(_profileOverrideId) || _profileOverrideId.Equals("auto", StringComparison.OrdinalIgnoreCase);
             string autoTitle = string.Format("Auto-Detect: {0} (Active)", _sysInfo.MatchedProfile.DisplayName);
-            MenuItem autoItem = new MenuItem(autoTitle, (s, e) => SetHardwareProfile("auto"));
+            ToolStripMenuItem autoItem = new ToolStripMenuItem(autoTitle, null, (s, e) => SetHardwareProfile("auto"));
             if (isAuto) autoItem.Checked = true;
-            profileSubMenu.MenuItems.Add(autoItem);
-            profileSubMenu.MenuItems.Add("-");
+            profileSubMenu.DropDownItems.Add(autoItem);
+            profileSubMenu.DropDownItems.Add(new ToolStripSeparator());
             if (DeviceProfile.CustomProfile != null)
             {
                 string custId = DeviceProfile.CustomProfile.Id;
                 string custTitle = "★ " + DeviceProfile.CustomProfile.DisplayName;
-                MenuItem custItem = new MenuItem(custTitle, (s, e) => SetHardwareProfile(custId));
+                ToolStripMenuItem custItem = new ToolStripMenuItem(custTitle, null, (s, e) => SetHardwareProfile(custId));
                 if (!isAuto && _sysInfo.MatchedProfile.Id == custId) custItem.Checked = true;
-                profileSubMenu.MenuItems.Add(custItem);
-                profileSubMenu.MenuItems.Add("-");
+                profileSubMenu.DropDownItems.Add(custItem);
+                profileSubMenu.DropDownItems.Add(new ToolStripSeparator());
             }
             foreach (DeviceProfile dp in DeviceProfile.KnownProfiles)
             {
                 string pid = dp.Id;
-                MenuItem dpItem = new MenuItem(dp.DisplayName, (s, e) => SetHardwareProfile(pid));
+                ToolStripMenuItem dpItem = new ToolStripMenuItem(dp.DisplayName, null, (s, e) => SetHardwareProfile(pid));
                 if (!isAuto && _sysInfo.MatchedProfile.Id == pid) dpItem.Checked = true;
-                profileSubMenu.MenuItems.Add(dpItem);
+                profileSubMenu.DropDownItems.Add(dpItem);
             }
-            menu.MenuItems.Add(profileSubMenu);
-            menu.MenuItems.Add("-");
-            menu.MenuItems.Add("Export Hardware & EC Probe Report (for HX 370 / New PCs)...", (s, e) => ExportHardwareProbeReport());
-            menu.MenuItems.Add("🔬 EC Motherboard Telemetry & Differential Scanner (Tier 2 Discovery)...", (s, e) => ShowEcDifferentialScannerDialog());
-            menu.MenuItems.Add("🚀 Submit Hardware Profile to GitHub (1-Click)...", (s, e) => SubmitHardwareProfileOnline());
-            menu.MenuItems.Add("Detected Hardware & Multi-Model Info...", (s, e) => ShowHardwareCompatibilityDialog());
-            menu.MenuItems.Add("-");
-            menu.MenuItems.Add("GMKtec Official Drivers & Manuals (K12 / Mini PCs)...", (s, e) => OpenUrlSafe(URL_GMKTEC_DRIVERS));
-            menu.MenuItems.Add("AMD Software: Adrenalin & Chipset Drivers...", (s, e) => OpenUrlSafe(URL_AMD_DRIVERS));
-            menu.MenuItems.Add("-");
-            menu.MenuItems.Add("🛡️ Kernel Driver & HVCI Security Status...", (s, e) => ShowKernelDriverSecurityDialog());
-            MenuItem langMenu = new MenuItem("🌐 Language / 语言 / Sprache");
+            menu.Items.Add(profileSubMenu);
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("Export Hardware && EC Probe Report (for HX 370 / New PCs)...", null, (s, e) => ExportHardwareProbeReport());
+            menu.Items.Add("🔬 EC Motherboard Telemetry && Differential Scanner (Tier 2 Discovery)...", null, (s, e) => ShowEcDifferentialScannerDialog());
+            menu.Items.Add("🚀 Submit Hardware Profile to GitHub (1-Click)...", null, (s, e) => SubmitHardwareProfileOnline());
+            menu.Items.Add("Detected Hardware && Multi-Model Info...", null, (s, e) => ShowHardwareCompatibilityDialog());
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("GMKtec Official Drivers && Manuals (K12 / Mini PCs)...", null, (s, e) => OpenUrlSafe(URL_GMKTEC_DRIVERS));
+            menu.Items.Add("AMD Software: Adrenalin && Chipset Drivers...", null, (s, e) => OpenUrlSafe(URL_AMD_DRIVERS));
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("🛡️ Kernel Driver && HVCI Security Status...", null, (s, e) => ShowKernelDriverSecurityDialog());
+            ToolStripMenuItem langMenu = new ToolStripMenuItem("🌐 Language / 语言 / Sprache");
             AddLanguageMenuItem(langMenu, "Auto (System Default)", AppLanguage.Auto);
             AddLanguageMenuItem(langMenu, "English", AppLanguage.English);
             AddLanguageMenuItem(langMenu, "简体中文 (Chinese Simplified)", AppLanguage.Chinese);
@@ -2280,27 +2280,27 @@ namespace MiniFanControl
             AddLanguageMenuItem(langMenu, "Español (Spanish)", AppLanguage.Spanish);
             AddLanguageMenuItem(langMenu, "Français (French)", AppLanguage.French);
             AddLanguageMenuItem(langMenu, "日本語 (Japanese)", AppLanguage.Japanese);
-            menu.MenuItems.Add(langMenu);
-            menu.MenuItems.Add("-");
-            menu.MenuItems.Add("About MiniFanControl v" + APP_VERSION + "...", (s, e) => ShowAboutDialog());
+            menu.Items.Add(langMenu);
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("About MiniFanControl v" + APP_VERSION + "...", null, (s, e) => ShowAboutDialog());
             return menu;
         }
 
-        private void AddLanguageMenuItem(MenuItem parent, string title, AppLanguage lang)
+        private void AddLanguageMenuItem(ToolStripMenuItem parent, string title, AppLanguage lang)
         {
-            MenuItem item = new MenuItem(title, (s, e) =>
+            ToolStripMenuItem item = new ToolStripMenuItem(title, null, (s, e) =>
             {
                 Loc.SetLanguage(lang);
                 ApplyLocalization();
                 SaveSettings();
-                _driversMenu = CreateDriversAndToolsMenu();
+                RebuildDriversMenu();
                 if (_statusBarLabel != null)
                 {
                     _statusBarLabel.Text = string.Format("✓ Language: {0}", lang.ToString());
                 }
             });
             if (Loc.CurrentLanguage == lang) item.Checked = true;
-            parent.MenuItems.Add(item);
+            parent.DropDownItems.Add(item);
         }
 
         private void ApplyLocalization()
@@ -2326,23 +2326,30 @@ namespace MiniFanControl
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("MiniFanControl Kernel Driver & HVCI Security Status\n");
             sb.AppendLine("• Active Kernel Driver Engine: " + drv);
+            sb.AppendLine("• Binary SHA256 Pin Check: " + (NativeInpOut.IsDriverHashVerified
+                ? ("VERIFIED (" + (NativeInpOut.ActiveDriverSha256 ?? "") + ")")
+                : "Not Verified / Not Loaded"));
             sb.AppendLine("• Windows 11 Memory Integrity (HVCI): " + (hvci ? "ENABLED (Strict Kernel Code Integrity)" : "Disabled"));
             sb.AppendLine();
             if (NativeInpOut.ActiveDriver == HardwareDriverEngine.InpOut64)
             {
                 sb.AppendLine("STATUS: InpOut64 Active (inpoutx64.dll)");
-                sb.AppendLine("Standard InpOut64 driver is loaded (SHA256 verified). Note that with Windows 11 Memory Integrity (HVCI) enabled, Microsoft's vulnerable driver blocklist may block InpOut64 service startup.");
+                sb.AppendLine("Standard InpOut64 driver passed runtime SHA256 pin verification before loading. Note that with Windows 11 Memory Integrity (HVCI) enabled, Microsoft's vulnerable driver blocklist may block InpOut64 service startup.");
                 if (hvci) sb.AppendLine("HVCI is enabled: If hardware writes fail, run in Demo Mode or disable Memory Integrity in Windows Security.");
             }
             else if (NativeInpOut.ActiveDriver == HardwareDriverEngine.WinRing0)
             {
                 sb.AppendLine("STATUS: WinRing0 Active (WinRing0x64.dll)");
-                sb.AppendLine("WinRing0 1.3.1b driver is loaded. Note that HVCI blocklists block older WinRing0 drivers.");
+                sb.AppendLine("WinRing0 driver passed runtime SHA256 pin verification before loading. Note that HVCI blocklists block older WinRing0 drivers.");
             }
             else
             {
                 sb.AppendLine("STATUS: NO KERNEL DRIVER LOADED (Demo Mode / Read-Only)");
-                sb.AppendLine("Hardware port I/O is disabled; running in safe read-only simulation mode.");
+                if (!string.IsNullOrEmpty(NativeInpOut.LastDriverIntegrityError))
+                {
+                    sb.AppendLine("SECURITY ALERT: " + NativeInpOut.LastDriverIntegrityError);
+                }
+                sb.AppendLine("Hardware port I/O is disabled; running in safe read-only monitoring/simulation mode.");
             }
             MessageBox.Show(sb.ToString(), "Kernel Driver & Security Status", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }

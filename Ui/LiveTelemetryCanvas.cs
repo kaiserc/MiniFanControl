@@ -163,22 +163,22 @@ namespace MiniFanControl
 
             if (e.Button == MouseButtons.Right)
             {
-                ContextMenu cm = new ContextMenu();
-                cm.MenuItems.Add("Show All Trends", (s, args) =>
+                ContextMenuStrip cm = new ContextMenuStrip();
+                cm.Items.Add("Show All Trends", null, (s, args) =>
                 {
                     ShowCpu = ShowGpu = ShowRam = ShowNvme = ShowPower = ShowAmbient = ShowApuRpm = true;
                     ShowSysRpm = HasDualFans;
                     Invalidate();
                     if (TrendVisibilityChanged != null) TrendVisibilityChanged(this, EventArgs.Empty);
                 });
-                cm.MenuItems.Add("Temps Only (CPU / iGPU / RAM / NVMe / Chas)", (s, args) =>
+                cm.Items.Add("Temps Only (CPU / iGPU / RAM / NVMe / Chas)", null, (s, args) =>
                 {
                     ShowCpu = ShowGpu = ShowRam = ShowNvme = ShowAmbient = true;
                     ShowPower = ShowApuRpm = ShowSysRpm = false;
                     Invalidate();
                     if (TrendVisibilityChanged != null) TrendVisibilityChanged(this, EventArgs.Empty);
                 });
-                cm.MenuItems.Add("Power && Fans Only (PWR / APU / SYS)", (s, args) =>
+                cm.Items.Add("Power && Fans Only (PWR / APU / SYS)", null, (s, args) =>
                 {
                     ShowCpu = ShowGpu = ShowRam = ShowNvme = ShowAmbient = false;
                     ShowPower = ShowApuRpm = true;
@@ -186,8 +186,8 @@ namespace MiniFanControl
                     Invalidate();
                     if (TrendVisibilityChanged != null) TrendVisibilityChanged(this, EventArgs.Empty);
                 });
-                cm.MenuItems.Add("-");
-                cm.MenuItems.Add("Save Live Graph Snapshot as PNG...", (s, args) =>
+                cm.Items.Add(new ToolStripSeparator());
+                cm.Items.Add("Save Live Graph Snapshot as PNG...", null, (s, args) =>
                 {
                     using (SaveFileDialog sfd = new SaveFileDialog())
                     {
@@ -199,11 +199,12 @@ namespace MiniFanControl
                         }
                     }
                 });
-                cm.MenuItems.Add("-");
-                cm.MenuItems.Add("Reset Session Peaks", (s, args) =>
+                cm.Items.Add(new ToolStripSeparator());
+                cm.Items.Add("Reset Session Peaks", null, (s, args) =>
                 {
                     if (ResetPeaksRequested != null) ResetPeaksRequested(this, EventArgs.Empty);
                 });
+                cm.Closed += (s, args) => { try { cm.Dispose(); } catch { } };
                 cm.Show(this, e.Location);
                 return;
             }

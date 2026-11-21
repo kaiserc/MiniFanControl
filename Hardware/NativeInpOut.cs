@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using Microsoft.Win32;
 
 namespace MiniFanControl
@@ -39,11 +40,126 @@ namespace MiniFanControl
         public const ulong MIN_SAFE_PHYSICAL_ADDR = 0x000E0000;
         public const uint MAX_SAFE_MAP_SIZE = 16 * 1024 * 1024;
 
+        /// <summary>
+        /// Verified SHA256 pin for bundled InpOut64 (inpoutx64.dll v1.5.0.0, Phillip Gibbons / Highresolution Enterprises).
+        /// Checked fail-closed before LoadLibraryEx to prevent DLL planting / local privilege escalation.
+        /// </summary>
+        public const string INPOUTX64_SHA256 = "5F27ED4D5CD58A1EE23DEEB802E09E73F3A1D884CE2135F6E827F67B171269E7";
+
+        /// <summary>
+        /// Verified SHA256 pins for optional WinRing0 x64 fallback DLL (OpenLibSys 1.2.0.5 / LibreHardwareMonitor).
+        /// </summary>
+        public static readonly string[] WINRING0X64_ALLOWED_SHA256 = new string[]
+        {
+            "11BD2C9F9E2397C9A16E0990E4ED2CF0679498FE0FD418A3DFDAC60B5C160EE5"
+        };
+
         private static readonly object _driverLock = new object();
         private static bool _dllSearchHardened = false;
         private static IntPtr _hDriverDll = IntPtr.Zero;
 
         public static HardwareDriverEngine ActiveDriver { get; private set; }
+        public static bool IsDriverHashVerified { get; private set; }
+        public static string ActiveDriverSha256 { get; private set; }
+        public static string LastDriverIntegrityError { get; private set; }
+
+        /// <summary>
+        /// Single fail-closed choke point for all x86 I/O port reads and writes.
+        /// Explicitly blocks critical motherboard/CPU control ports and rejects any unlisted port.
+        /// </summary>
+        public static bool IsPortWhitelisted(ushort port, bool isWrite)
+        {
+            // Explicit blocklist: Never permit access to critical motherboard/CPU control ports
+            if (port == 0x70 || port == 0x71 || port == 0x92 || port == 0xCF9 ||
+                port == 0x20 || port == 0x21 || port == 0xA0 || port == 0xA1 ||
+                port == 0x40 || port == 0x41 || port == 0x42 || port == 0x43 ||
+                port == 0x61)
+            {
+                return false;
+            }
+
+            // Standard ACPI Embedded Controller ports
+            if (port == 0x62 || port == 0x66 || port == 0x68 || port == 0x6C || port == 0x6A || port == 0x6E)
+                return true;
+
+            // LPC / Super I/O indexing ports
+            if (port == 0x2E || port == 0x2F || port == 0x4E || port == 0x4F)
+                return true;
+
+            // PCI Configuration Mechanism #1 address and data ports (used strictly for AMD SMN/FCH access)
+            if (port == 0xCF8 || port == 0xCFC)
+                return true;
+
+            // Hardware monitor base ranges (IT8613E / IT87xx / NCT6779) & AMD SMBus controller
+            if ((port >= 0x0290 && port <= 0x0297) ||
+                (port >= 0x02A0 && port <= 0x02A7) ||
+                (port >= 0x0A00 && port <= 0x0A3F) ||
+                (port >= 0x0B00 && port <= 0x0B3F) ||
+                (port >= 0x0E00 && port <= 0x0E3F))
+            {
+                return true;
+            }
+
+            // Strict fail-closed: Any unlisted port is rejected for both reads and writes
+            return false;
+        }
+
+        private static string ComputeStreamSha256(Stream stream)
+        {
+            using (SHA256 sha = SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(stream);
+                return BitConverter.ToString(hash).Replace("-", "").ToUpperInvariant();
+            }
+        }
+
+        public static string ComputeFileSha256(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) return null;
+            using (FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                return ComputeStreamSha256(fs);
+            }
+        }
+
+        public static bool VerifyFileSha256(string filePath, string[] allowedHashes, out string actualHash)
+        {
+            actualHash = null;
+            if (string.IsNullOrEmpty(filePath) || allowedHashes == null || allowedHashes.Length == 0 || !File.Exists(filePath))
+                return false;
+            try
+            {
+                actualHash = ComputeFileSha256(filePath);
+                if (string.IsNullOrEmpty(actualHash)) return false;
+                for (int i = 0; i < allowedHashes.Length; i++)
+                {
+                    if (!string.IsNullOrEmpty(allowedHashes[i]) &&
+                        actualHash.Equals(allowedHashes[i].Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                actualHash = null;
+            }
+            return false;
+        }
+
+        private static bool IsHashAllowed(string actualHash, string[] allowedHashes)
+        {
+            if (string.IsNullOrEmpty(actualHash) || allowedHashes == null) return false;
+            for (int i = 0; i < allowedHashes.Length; i++)
+            {
+                if (!string.IsNullOrEmpty(allowedHashes[i]) &&
+                    actualHash.Equals(allowedHashes[i].Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
 
         public static string ActiveDriverName
         {
@@ -189,6 +305,10 @@ namespace MiniFanControl
             {
                 if (ActiveDriver != HardwareDriverEngine.None) return true;
 
+                LastDriverIntegrityError = null;
+                IsDriverHashVerified = false;
+                ActiveDriverSha256 = null;
+
                 string appDir = AppDomain.CurrentDomain.BaseDirectory;
 
                 // Priority 1: Check for bundled InpOut (inpoutx64.dll) in application directory
@@ -197,31 +317,54 @@ namespace MiniFanControl
                     Path.Combine(appDir, "inpoutx64.dll")
                 };
 
+                string[] inpoutPins = new string[] { INPOUTX64_SHA256 };
+
                 foreach (string candidate in inpoutCandidates)
                 {
                     if (File.Exists(candidate))
                     {
                         try
                         {
-                            IntPtr hDll = LoadLibraryEx(candidate, IntPtr.Zero, LOAD_WITH_ALTERED_SEARCH_PATH);
-                            if (hDll != IntPtr.Zero)
+                            // Hold a read-only FileShare.Read handle across SHA256 verification and LoadLibraryEx
+                            // to eliminate TOCTOU binary swapping in writable portable directories.
+                            using (FileStream pinLock = new FileStream(candidate, FileMode.Open, FileAccess.Read, FileShare.Read))
                             {
-                                _hDriverDll = hDll;
-                                _inpoutIsOpen = GetProcDelegate<InpOutIsOpenDelegate>(hDll, "IsInpOutDriverOpen");
-                                _inpoutReadByte = GetProcDelegate<InpOutReadUcharDelegate>(hDll, "DlPortReadPortUchar");
-                                _inpoutWriteByte = GetProcDelegate<InpOutWriteUcharDelegate>(hDll, "DlPortWritePortUchar");
-                                _inpoutReadDword = GetProcDelegate<InpOutReadUlongDelegate>(hDll, "DlPortReadPortUlong");
-                                _inpoutWriteDword = GetProcDelegate<InpOutWriteUlongDelegate>(hDll, "DlPortWritePortUlong");
-                                _inpoutInp32 = GetProcDelegate<InpOutInp32Delegate>(hDll, "Inp32");
-                                _inpoutOut32 = GetProcDelegate<InpOutOut32Delegate>(hDll, "Out32");
-                                _inpoutMapPhys = GetProcDelegate<InpOutMapPhysToLinDelegate>(hDll, "MapPhysToLin");
-                                _inpoutUnmap = GetProcDelegate<InpOutUnmapPhysicalMemoryDelegate>(hDll, "UnmapPhysicalMemory");
+                                string actualHash = ComputeStreamSha256(pinLock);
+                                if (!IsHashAllowed(actualHash, inpoutPins))
+                                {
+                                    LastDriverIntegrityError = string.Format(
+                                        "Blocked untrusted {0}: SHA256 mismatch (actual {1}, expected {2}).",
+                                        Path.GetFileName(candidate), actualHash, INPOUTX64_SHA256);
+                                    WatchdogSupervisor.LogWatchdogEvent("SECURITY: " + LastDriverIntegrityError);
+                                    continue;
+                                }
 
-                                ActiveDriver = HardwareDriverEngine.InpOut64;
-                                return true;
+                                IntPtr hDll = LoadLibraryEx(candidate, IntPtr.Zero, LOAD_WITH_ALTERED_SEARCH_PATH);
+                                if (hDll != IntPtr.Zero)
+                                {
+                                    _hDriverDll = hDll;
+                                    _inpoutIsOpen = GetProcDelegate<InpOutIsOpenDelegate>(hDll, "IsInpOutDriverOpen");
+                                    _inpoutReadByte = GetProcDelegate<InpOutReadUcharDelegate>(hDll, "DlPortReadPortUchar");
+                                    _inpoutWriteByte = GetProcDelegate<InpOutWriteUcharDelegate>(hDll, "DlPortWritePortUchar");
+                                    _inpoutReadDword = GetProcDelegate<InpOutReadUlongDelegate>(hDll, "DlPortReadPortUlong");
+                                    _inpoutWriteDword = GetProcDelegate<InpOutWriteUlongDelegate>(hDll, "DlPortWritePortUlong");
+                                    _inpoutInp32 = GetProcDelegate<InpOutInp32Delegate>(hDll, "Inp32");
+                                    _inpoutOut32 = GetProcDelegate<InpOutOut32Delegate>(hDll, "Out32");
+                                    _inpoutMapPhys = GetProcDelegate<InpOutMapPhysToLinDelegate>(hDll, "MapPhysToLin");
+                                    _inpoutUnmap = GetProcDelegate<InpOutUnmapPhysicalMemoryDelegate>(hDll, "UnmapPhysicalMemory");
+
+                                    ActiveDriver = HardwareDriverEngine.InpOut64;
+                                    IsDriverHashVerified = true;
+                                    ActiveDriverSha256 = actualHash;
+                                    LastDriverIntegrityError = null;
+                                    return true;
+                                }
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            WatchdogSupervisor.LogWatchdogEvent("InpOut64 preload failed: " + ex.Message);
+                        }
                     }
                 }
 
@@ -238,39 +381,58 @@ namespace MiniFanControl
                     {
                         try
                         {
-                            IntPtr hDll = LoadLibraryEx(candidate, IntPtr.Zero, LOAD_WITH_ALTERED_SEARCH_PATH);
-                            if (hDll != IntPtr.Zero)
+                            using (FileStream pinLock = new FileStream(candidate, FileMode.Open, FileAccess.Read, FileShare.Read))
                             {
-                                var initFn = GetProcDelegate<OlsInitializeDelegate>(hDll, "InitializeOls");
-                                var statusFn = GetProcDelegate<OlsGetDllStatusDelegate>(hDll, "GetDllStatus");
-                                var readByteFn = GetProcDelegate<OlsReadIoPortByteDelegate>(hDll, "ReadIoPortByte");
-                                var writeByteFn = GetProcDelegate<OlsWriteIoPortByteDelegate>(hDll, "WriteIoPortByte");
-
-                                if (initFn != null && readByteFn != null && writeByteFn != null)
+                                string actualHash = ComputeStreamSha256(pinLock);
+                                if (!IsHashAllowed(actualHash, WINRING0X64_ALLOWED_SHA256))
                                 {
-                                    int initResult = initFn();
-                                    uint status = statusFn != null ? statusFn() : 0;
-                                    if (initResult != 0 && status == 0)
-                                    {
-                                        _hDriverDll = hDll;
-                                        _winringInit = initFn;
-                                        _winringDeinit = GetProcDelegate<OlsDeinitializeDelegate>(hDll, "DeinitializeOls");
-                                        _winringStatus = statusFn;
-                                        _winringReadByte = readByteFn;
-                                        _winringWriteByte = writeByteFn;
-                                        _winringReadDword = GetProcDelegate<OlsReadIoPortDwordDelegate>(hDll, "ReadIoPortDword");
-                                        _winringWriteDword = GetProcDelegate<OlsWriteIoPortDwordDelegate>(hDll, "WriteIoPortDword");
-                                        _winringReadMem = GetProcDelegate<OlsReadPhysicalMemoryDelegate>(hDll, "ReadPhysicalMemory");
-                                        _winringWriteMem = GetProcDelegate<OlsWritePhysicalMemoryDelegate>(hDll, "WritePhysicalMemory");
-
-                                        ActiveDriver = HardwareDriverEngine.WinRing0;
-                                        return true;
-                                    }
+                                    LastDriverIntegrityError = string.Format(
+                                        "Blocked untrusted {0}: SHA256 mismatch (actual {1}).",
+                                        Path.GetFileName(candidate), actualHash);
+                                    WatchdogSupervisor.LogWatchdogEvent("SECURITY: " + LastDriverIntegrityError);
+                                    continue;
                                 }
-                                FreeLibrary(hDll);
+
+                                IntPtr hDll = LoadLibraryEx(candidate, IntPtr.Zero, LOAD_WITH_ALTERED_SEARCH_PATH);
+                                if (hDll != IntPtr.Zero)
+                                {
+                                    var initFn = GetProcDelegate<OlsInitializeDelegate>(hDll, "InitializeOls");
+                                    var statusFn = GetProcDelegate<OlsGetDllStatusDelegate>(hDll, "GetDllStatus");
+                                    var readByteFn = GetProcDelegate<OlsReadIoPortByteDelegate>(hDll, "ReadIoPortByte");
+                                    var writeByteFn = GetProcDelegate<OlsWriteIoPortByteDelegate>(hDll, "WriteIoPortByte");
+
+                                    if (initFn != null && readByteFn != null && writeByteFn != null)
+                                    {
+                                        int initResult = initFn();
+                                        uint status = statusFn != null ? statusFn() : 0;
+                                        if (initResult != 0 && status == 0)
+                                        {
+                                            _hDriverDll = hDll;
+                                            _winringInit = initFn;
+                                            _winringDeinit = GetProcDelegate<OlsDeinitializeDelegate>(hDll, "DeinitializeOls");
+                                            _winringStatus = statusFn;
+                                            _winringReadByte = readByteFn;
+                                            _winringWriteByte = writeByteFn;
+                                            _winringReadDword = GetProcDelegate<OlsReadIoPortDwordDelegate>(hDll, "ReadIoPortDword");
+                                            _winringWriteDword = GetProcDelegate<OlsWriteIoPortDwordDelegate>(hDll, "WriteIoPortDword");
+                                            _winringReadMem = GetProcDelegate<OlsReadPhysicalMemoryDelegate>(hDll, "ReadPhysicalMemory");
+                                            _winringWriteMem = GetProcDelegate<OlsWritePhysicalMemoryDelegate>(hDll, "WritePhysicalMemory");
+
+                                            ActiveDriver = HardwareDriverEngine.WinRing0;
+                                            IsDriverHashVerified = true;
+                                            ActiveDriverSha256 = actualHash;
+                                            LastDriverIntegrityError = null;
+                                            return true;
+                                        }
+                                    }
+                                    FreeLibrary(hDll);
+                                }
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            WatchdogSupervisor.LogWatchdogEvent("WinRing0 preload failed: " + ex.Message);
+                        }
                     }
                 }
 
@@ -303,6 +465,8 @@ namespace MiniFanControl
 
         public static byte DlPortReadPortUchar(ushort port)
         {
+            if (!IsPortWhitelisted(port, false)) return 0xFF;
+
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
             if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringReadByte != null)
@@ -325,6 +489,8 @@ namespace MiniFanControl
 
         public static void DlPortWritePortUchar(ushort port, byte value)
         {
+            if (!IsPortWhitelisted(port, true)) return;
+
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
             if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringWriteByte != null)
@@ -470,6 +636,8 @@ namespace MiniFanControl
                     _hDriverDll = IntPtr.Zero;
                 }
                 ActiveDriver = HardwareDriverEngine.None;
+                IsDriverHashVerified = false;
+                ActiveDriverSha256 = null;
             }
         }
     }

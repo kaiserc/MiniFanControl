@@ -55,6 +55,65 @@ namespace MiniFanControl
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
         private const int SW_RESTORE = 9;
 
+        public static string EscapeJson(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            StringBuilder sb = new StringBuilder(s.Length + 8);
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                switch (c)
+                {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < 0x20)
+                            sb.AppendFormat(CultureInfo.InvariantCulture, "\\u{0:X4}", (int)c);
+                        else
+                            sb.Append(c);
+                        break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        public static string FormatStatusJson(FanStatus st, string mutexNamespace)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "{{\"cpu_temp\":{0},\"gpu_temp\":{1},\"apu_power_w\":{2},\"fan1_rpm\":{3},\"fan2_rpm\":{4}," +
+                "\"mode\":\"{5}\",\"mode_code\":{6},\"fan1_pct\":{7},\"fan2_pct\":{8}," +
+                "\"fan1_manual\":{9},\"fan2_manual\":{10},\"nvme_temp\":{11},\"nvme_health\":{12}," +
+                "\"ram_used_gb\":{13:0.0},\"ram_total_gb\":{14:0.0},\"ram_load_pct\":{15},\"ddr_sticks\":{16},\"ddr_temp1\":{17},\"ddr_temp2\":{18},\"ddr_spread\":{19},\"radeon_features\":\"{20}\",\"mutex_namespace\":\"{21}\"}}",
+                st.CpuTemp, st.GpuTemp, st.ApuPowerWatts, st.Fan1Rpm, st.Fan2Rpm,
+                EscapeJson(st.Mode), st.ModeCode, st.Fan1Pct, st.Fan2Pct,
+                st.Fan1Manual, st.Fan2Manual, st.NvmeTemp, st.NvmeHealthPct,
+                st.RamUsedGb, st.RamTotalGb, st.RamLoadPct, st.DdrStickCount, st.DdrTemp1, st.DdrTemp2, st.DdrTempSpread,
+                EscapeJson(st.RadeonFeaturesSummary ?? "None"), EscapeJson(mutexNamespace ?? ""));
+        }
+
+        public static int ClampCliFanDuty(int fanId, int requestedPct, bool force, out bool wasClamped, out int minFloor)
+        {
+            minFloor = (fanId == 1) ? FanCurveProfile.ApuMinSpinPct : FanCurveProfile.SysMinSpinPct;
+            if (minFloor < 14 || minFloor > 50)
+                minFloor = FanCurveProfile.MIN_SPIN_PCT;
+
+            wasClamped = false;
+            if (requestedPct <= 0)
+                return 0;
+
+            int clamped = Math.Min(100, requestedPct);
+            if (!force && clamped < minFloor)
+            {
+                wasClamped = true;
+                return minFloor;
+            }
+            return clamped;
+        }
+
         [STAThread]
 
         public static int Main(string[] args)
@@ -66,6 +125,8 @@ namespace MiniFanControl
             bool demoMode = false;
 
             bool startMinimized = false;
+
+            bool forceWrite = false;
 
             string cmd = null;
 
@@ -92,6 +153,14 @@ namespace MiniFanControl
                 {
 
                     startMinimized = true;
+
+                }
+
+                else if (a == "--force" || a == "-f")
+
+                {
+
+                    forceWrite = true;
 
                 }
 
@@ -142,11 +211,11 @@ namespace MiniFanControl
 
                     Console.WriteLine("  mode <0|1|2> [--demo]                 Set thermal mode (0=Balanced, 1=Performance, 2=Silent)");
 
-                    Console.WriteLine("  fan <1|2> <0..100> [--demo]           Set fan 1 or 2 to PWM percentage (0=Auto)");
+                    Console.WriteLine("  fan <1|2> <0..100> [--force] [--demo] Set fan 1 or 2 PWM (0=Auto; clamped to spin floor unless --force)");
 
-                    Console.WriteLine("  fan1 <0..100> [--demo]                Set fan 1 PWM percentage");
+                    Console.WriteLine("  fan1 <0..100> [--force] [--demo]      Set fan 1 PWM percentage (clamped to spin floor unless --force)");
 
-                    Console.WriteLine("  fan2 <0..100> [--demo]                Set fan 2 PWM percentage");
+                    Console.WriteLine("  fan2 <0..100> [--force] [--demo]      Set fan 2 PWM percentage (clamped to spin floor unless --force)");
 
                     Console.WriteLine("  auto [--demo]                         Restore BIOS Automatic control for both fans");
 
@@ -154,7 +223,7 @@ namespace MiniFanControl
                     Console.WriteLine("  diff-scan / ec-scan [--demo]          Run EC differential sensor scanner (Tier 2 discovery)");
                     Console.WriteLine("  calibrate [passes] [--demo]           Execute multi-pass fan calibration curve analysis");
 
-                    Console.WriteLine("  test                                  Run 77-point automated safety & regression suite");
+                    Console.WriteLine("  test                                  Run 85-point automated safety & regression suite");
                     Console.WriteLine("  hw-matrix                             Run multi-profile hardware validation matrix");
                     Console.WriteLine("  export-profiles [--json]              Export supported hardware profiles & Super I/O IDs");
 
@@ -252,10 +321,14 @@ namespace MiniFanControl
                 {
                     bool inpoutRunning = DriverServiceManager.IsDriverServiceRunning("inpoutx64");
                     bool winringRunning = DriverServiceManager.IsDriverServiceRunning("WinRing0_1_2_0");
-                    Console.WriteLine("{{\"active_driver\":\"{0}\",\"winring0_service\":{1},\"inpout_service\":{2}}}",
-                        NativeInpOut.ActiveDriverName,
+                    Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                        "{{\"active_driver\":\"{0}\",\"hash_verified\":{1},\"sha256\":\"{2}\",\"integrity_error\":\"{3}\",\"winring0_service\":{4},\"inpout_service\":{5}}}",
+                        EscapeJson(NativeInpOut.ActiveDriverName),
+                        NativeInpOut.IsDriverHashVerified ? "true" : "false",
+                        EscapeJson(NativeInpOut.ActiveDriverSha256 ?? ""),
+                        EscapeJson(NativeInpOut.LastDriverIntegrityError ?? ""),
                         winringRunning ? "true" : "false",
-                        inpoutRunning ? "true" : "false");
+                        inpoutRunning ? "true" : "false"));
                     return 0;
                 }
                 else if (cmd == "driver-stop")
@@ -351,15 +424,7 @@ namespace MiniFanControl
                         {
 
                             FanStatus st = demoMode ? demo.GetStatus() : hw.GetStatus();
-                            Console.WriteLine(
-                                "{{\"cpu_temp\":{0},\"gpu_temp\":{1},\"apu_power_w\":{2},\"fan1_rpm\":{3},\"fan2_rpm\":{4}," +
-                                "\"mode\":\"{5}\",\"mode_code\":{6},\"fan1_pct\":{7},\"fan2_pct\":{8}," +
-                                "\"fan1_manual\":{9},\"fan2_manual\":{10},\"nvme_temp\":{11},\"nvme_health\":{12}," +
-                                "\"ram_used_gb\":{13:0.0},\"ram_total_gb\":{14:0.0},\"ram_load_pct\":{15},\"ddr_sticks\":{16},\"ddr_temp1\":{17},\"ddr_temp2\":{18},\"ddr_spread\":{19},\"radeon_features\":\"{20}\",\"mutex_namespace\":\"{21}\"}}",
-                                st.CpuTemp, st.GpuTemp, st.ApuPowerWatts, st.Fan1Rpm, st.Fan2Rpm,
-                                st.Mode, st.ModeCode, st.Fan1Pct, st.Fan2Pct,
-                                st.Fan1Manual, st.Fan2Manual, st.NvmeTemp, st.NvmeHealthPct,
-                                st.RamUsedGb, st.RamTotalGb, st.RamLoadPct, st.DdrStickCount, st.DdrTemp1, st.DdrTemp2, st.DdrTempSpread, st.RadeonFeaturesSummary ?? "None", EcBusMutex.MutexNamespaceDiagnostic);
+                            Console.WriteLine(FormatStatusJson(st, EcBusMutex.MutexNamespaceDiagnostic));
                             return 0;
 
                         }
@@ -437,19 +502,40 @@ namespace MiniFanControl
 
                             }
 
-                            bool ok = demoMode ? demo.SetFan(fanId, pct) : hw.SetFan(fanId, pct);
+                            // Load calibrated anti-stall floor from saved settings so CLI respects hardware calibration
+                            try
+                            {
+                                AppSettings cliSettings = new AppSettings();
+                                cliSettings.Load(null, null, new List<FanCurveProfile>());
+                            }
+                            catch { }
+
+                            int requestedPct = pct;
+                            bool wasClamped;
+                            int minFloor;
+                            int appliedPct = ClampCliFanDuty(fanId, requestedPct, forceWrite, out wasClamped, out minFloor);
+
+                            bool ok = demoMode ? demo.SetFan(fanId, appliedPct) : hw.SetFan(fanId, appliedPct);
 
                             if (ok)
 
                             {
 
-                                if (pct == 0)
+                                if (appliedPct == 0)
 
-                                    Console.WriteLine("{{\"ok\":true,\"fan\":{0},\"mode\":\"auto\"}}", fanId);
+                                    Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "{{\"ok\":true,\"fan\":{0},\"mode\":\"auto\"}}", fanId));
+
+                                else if (wasClamped)
+
+                                    Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                                        "{{\"ok\":true,\"fan\":{0},\"pct\":{1},\"requested_pct\":{2},\"clamped\":true,\"min_spin_pct\":{3},\"mode\":\"manual\"}}",
+                                        fanId, appliedPct, requestedPct, minFloor));
 
                                 else
 
-                                    Console.WriteLine("{{\"ok\":true,\"fan\":{0},\"pct\":{1},\"mode\":\"manual\"}}", fanId, pct);
+                                    Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                                        "{{\"ok\":true,\"fan\":{0},\"pct\":{1},\"forced\":{2},\"mode\":\"manual\"}}",
+                                        fanId, appliedPct, forceWrite ? "true" : "false"));
 
                                 return 0;
 
@@ -459,7 +545,8 @@ namespace MiniFanControl
 
                             {
 
-                                Console.WriteLine("{{\"ok\":false,\"error\":\"Hardware write verification failed or profile is read-only\",\"fan\":{0},\"pct\":{1}}}", fanId, pct);
+                                Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                                    "{{\"ok\":false,\"error\":\"Hardware write verification failed or profile is read-only\",\"fan\":{0},\"pct\":{1}}}", fanId, appliedPct));
 
                                 return 1;
 
@@ -478,7 +565,9 @@ namespace MiniFanControl
                             {
 
                                 string desc = demoMode ? "Demo Auto" : hw.GetAutoRestoreDescription();
-                                Console.WriteLine("{{\"ok\":true,\"action\":\"auto\",\"mode\":\"Balanced\",\"status\":\"{0}\",\"fan1\":\"auto\",\"fan2\":\"auto\"}}", desc);
+                                Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                                    "{{\"ok\":true,\"action\":\"auto\",\"mode\":\"Balanced\",\"status\":\"{0}\",\"fan1\":\"auto\",\"fan2\":\"auto\"}}",
+                                    EscapeJson(desc)));
 
                                 return 0;
 

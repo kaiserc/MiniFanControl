@@ -296,25 +296,56 @@ namespace MiniFanControl
             if (minSpinFloor < 14 || minSpinFloor > 50)
                 minSpinFloor = MIN_SPIN_PCT;
 
+            // Defensive thermal safety: ensure points are ordered by ascending temperature
+            // and monotonically non-decreasing in PWM duty (avoid allocation on the normal valid path).
+            CurvePoint[] evalPts = points;
+            bool needsNormalize = false;
+            for (int i = 0; i < points.Length - 1; i++)
+            {
+                if (points[i].Temp > points[i + 1].Temp || points[i].Pct > points[i + 1].Pct)
+                {
+                    needsNormalize = true;
+                    break;
+                }
+            }
+            if (needsNormalize)
+            {
+                evalPts = ClonePoints(points);
+                Array.Sort(evalPts, delegate(CurvePoint a, CurvePoint b)
+                {
+                    int cmp = a.Temp.CompareTo(b.Temp);
+                    return cmp != 0 ? cmp : a.Pct.CompareTo(b.Pct);
+                });
+                for (int i = 1; i < evalPts.Length; i++)
+                {
+                    if (evalPts[i].Pct < evalPts[i - 1].Pct)
+                        evalPts[i] = new CurvePoint(evalPts[i].Temp, evalPts[i - 1].Pct);
+                }
+            }
+
             int rawPct;
             bool fromZeroSegment = false;
 
-            if (tempC <= points[0].Temp)
+            if (tempC <= evalPts[0].Temp)
             {
-                rawPct = points[0].Pct;
+                rawPct = evalPts[0].Pct;
+            }
+            else if (tempC >= evalPts[evalPts.Length - 1].Temp)
+            {
+                rawPct = evalPts[evalPts.Length - 1].Pct;
             }
             else
             {
-                rawPct = points[points.Length - 1].Pct;
-                for (int i = 0; i < points.Length - 1; i++)
+                rawPct = evalPts[evalPts.Length - 1].Pct;
+                for (int i = 0; i < evalPts.Length - 1; i++)
                 {
-                    CurvePoint p0 = points[i];
-                    CurvePoint p1 = points[i + 1];
+                    CurvePoint p0 = evalPts[i];
+                    CurvePoint p1 = evalPts[i + 1];
                     if (tempC >= p0.Temp && tempC <= p1.Temp)
                     {
                         if (p1.Temp <= p0.Temp)
                         {
-                            rawPct = p1.Pct;
+                            rawPct = Math.Max(p0.Pct, p1.Pct);
                         }
                         else
                         {
