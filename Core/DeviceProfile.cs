@@ -229,14 +229,7 @@ namespace MiniFanControl
 
         private static string EscapeJson(string s)
         {
-            if (string.IsNullOrEmpty(s)) return "";
-            return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "").Replace("\n", " ");
-        }
-
-        private static string UnescapeJson(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            return s.Replace("\\\"", "\"").Replace("\\\\", "\\");
+            return SimpleJson.Escape(s);
         }
 
         private static bool IsMeaningfulDmiToken(string value)
@@ -318,30 +311,21 @@ namespace MiniFanControl
             p.BoundProductName = "";
             p.BoundBaseBoard = "";
 
-            int parsedFieldCount = 0;
+            Dictionary<string, string> fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            int parsedFieldCount = SimpleJson.ParseFlatObject(json, fields, stringsOnly: false);
+            if (parsedFieldCount == 0) return null;
+
             bool explicitReadOnlyFalse = false;
             bool explicitVerifiedTrue = false;
 
-            string[] lines = json.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            foreach (string rawLine in lines)
+            foreach (KeyValuePair<string, string> kv in fields)
             {
-                string line = rawLine.Trim();
-                if (!line.StartsWith("\"")) continue;
-                int keyEnd = line.IndexOf('"', 1);
-                if (keyEnd <= 1) continue;
-                int colonIdx = line.IndexOf(':', keyEnd + 1);
-                if (colonIdx <= 0) continue;
-                string key = line.Substring(1, keyEnd - 1);
-                string val = line.Substring(colonIdx + 1).Trim().TrimEnd(',').Trim();
-                if (val.Length >= 2 && val.StartsWith("\"") && val.EndsWith("\""))
-                {
-                    val = val.Substring(1, val.Length - 2);
-                }
+                string key = kv.Key;
+                string val = kv.Value ?? "";
 
-                parsedFieldCount++;
-                if (key.Equals("id", StringComparison.OrdinalIgnoreCase)) p.Id = UnescapeJson(val);
-                else if (key.Equals("displayName", StringComparison.OrdinalIgnoreCase)) p.DisplayName = UnescapeJson(val);
-                else if (key.Equals("chipsetNotes", StringComparison.OrdinalIgnoreCase)) p.ChipsetNotes = UnescapeJson(val);
+                if (key.Equals("id", StringComparison.OrdinalIgnoreCase)) p.Id = val;
+                else if (key.Equals("displayName", StringComparison.OrdinalIgnoreCase)) p.DisplayName = val;
+                else if (key.Equals("chipsetNotes", StringComparison.OrdinalIgnoreCase)) p.ChipsetNotes = val;
                 else if (key.Equals("ecBaseAddress", StringComparison.OrdinalIgnoreCase)) p.EcBaseAddress = ParseUlong(val, 0xFE0B0400UL);
                 else if (key.Equals("ecSize", StringComparison.OrdinalIgnoreCase)) p.EcSize = (uint)ParseUlong(val, 0x100);
                 else if (key.Equals("regModeStatus", StringComparison.OrdinalIgnoreCase)) p.RegModeStatus = ParseByte(val, 0x31);
@@ -371,12 +355,10 @@ namespace MiniFanControl
                     p.IsVerified = ver;
                     explicitVerifiedTrue = ver;
                 }
-                else if (key.Equals("boundManufacturer", StringComparison.OrdinalIgnoreCase)) p.BoundManufacturer = UnescapeJson(val);
-                else if (key.Equals("boundProductName", StringComparison.OrdinalIgnoreCase)) p.BoundProductName = UnescapeJson(val);
-                else if (key.Equals("boundBaseBoard", StringComparison.OrdinalIgnoreCase)) p.BoundBaseBoard = UnescapeJson(val);
+                else if (key.Equals("boundManufacturer", StringComparison.OrdinalIgnoreCase)) p.BoundManufacturer = val;
+                else if (key.Equals("boundProductName", StringComparison.OrdinalIgnoreCase)) p.BoundProductName = val;
+                else if (key.Equals("boundBaseBoard", StringComparison.OrdinalIgnoreCase)) p.BoundBaseBoard = val;
             }
-
-            if (parsedFieldCount == 0) return null;
 
             // Re-verify invariants on load: an invalid register map or unbound profile cannot unlock writes
             bool hasDmiBinding = IsMeaningfulDmiToken(p.BoundProductName)
@@ -683,8 +665,7 @@ namespace MiniFanControl
 
         private static string EscapeJsonStr(string s)
         {
-            if (string.IsNullOrEmpty(s)) return "";
-            return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "").Replace("\n", " ");
+            return SimpleJson.Escape(s);
         }
 
         public string BuildProbeReportJson(HardwareBackend hw, DemoBackend demo, bool demoMode)

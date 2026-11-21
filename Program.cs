@@ -57,27 +57,7 @@ namespace MiniFanControl
 
         public static string EscapeJson(string s)
         {
-            if (string.IsNullOrEmpty(s)) return "";
-            StringBuilder sb = new StringBuilder(s.Length + 8);
-            for (int i = 0; i < s.Length; i++)
-            {
-                char c = s[i];
-                switch (c)
-                {
-                    case '\\': sb.Append("\\\\"); break;
-                    case '"': sb.Append("\\\""); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    default:
-                        if (c < 0x20)
-                            sb.AppendFormat(CultureInfo.InvariantCulture, "\\u{0:X4}", (int)c);
-                        else
-                            sb.Append(c);
-                        break;
-                }
-            }
-            return sb.ToString();
+            return SimpleJson.Escape(s);
         }
 
         public static string FormatStatusJson(FanStatus st, string mutexNamespace)

@@ -4245,8 +4245,18 @@ namespace MiniFanControl
                 DeviceProfile stray = DeviceProfile.FromJson("{\n  \"id\": \"stray\",\n  \"displayName\": \"Stray Profile\"\n}");
                 bool strayFailClosed = (stray != null && stray.IsReadOnly && !stray.IsVerified && !stray.MatchesDmi("NucBox K12", "K12", "GMKtec"));
 
-                // Empty/corrupt payload returns null
+                // Empty/corrupt payload returns null; single-line JSON with escapes & DMI binding parses cleanly
                 bool corruptNull = (DeviceProfile.FromJson("not-json") == null);
+                string singleLineProfileJson = "{\"id\":\"single-line\",\"displayName\":\"Compact: \\\"Test\\\"\",\"regCpuTemp\":\"0x70\",\"regFan1Ctrl\":\"0x33\",\"hasDualFans\":true,\"isReadOnly\":false,\"isVerified\":true,\"boundProductName\":\"UM890 Pro\",\"boundBaseBoard\":\"F7BSC\"}";
+                DeviceProfile singleLineParsed = DeviceProfile.FromJson(singleLineProfileJson);
+                bool singleLineOk = (singleLineParsed != null
+                    && singleLineParsed.Id == "single-line"
+                    && singleLineParsed.DisplayName == "Compact: \"Test\""
+                    && singleLineParsed.RegCpuTemp == 0x70
+                    && singleLineParsed.HasDualFans
+                    && !singleLineParsed.IsReadOnly
+                    && singleLineParsed.IsVerified
+                    && singleLineParsed.MatchesDmi("UM890 Pro", "F7BSC"));
 
                 // Bound profile matches ONLY source machine DMI, never another Mini PC or a blocklisted machine
                 DeviceProfile bound = new DeviceProfile
@@ -4269,9 +4279,9 @@ namespace MiniFanControl
                 bool otherRejected = (matchOther != null && matchOther.Id == "unknown-safe" && matchOther.IsReadOnly);
                 bool blocklistWins = (matchBlocklisted != null && matchBlocklisted.Id == "unknown-safe" && matchBlocklisted.IsReadOnly);
 
-                customBindingOk = strayFailClosed && corruptNull && sameMatches && otherRejected && blocklistWins;
-                customBindingDetail = string.Format("StrayRO={0}, CorruptNull={1}, SameMatch={2}, OtherRej={3}, BlocklistWins={4}",
-                    strayFailClosed, corruptNull, sameMatches, otherRejected, blocklistWins);
+                customBindingOk = strayFailClosed && corruptNull && singleLineOk && sameMatches && otherRejected && blocklistWins;
+                customBindingDetail = string.Format("StrayRO={0}, CorruptNull={1}, SingleLine={2}, SameMatch={3}, OtherRej={4}, BlocklistWins={5}",
+                    strayFailClosed, corruptNull, singleLineOk, sameMatches, otherRejected, blocklistWins);
             }
             catch (Exception ex) { customBindingDetail = ex.Message; }
             finally

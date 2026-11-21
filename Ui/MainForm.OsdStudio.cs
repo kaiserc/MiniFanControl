@@ -1,0 +1,1308 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Drawing.Text;
+using System.Globalization;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using System.Windows.Forms;
+using Microsoft.Win32;
+
+namespace MiniFanControl
+{
+    public partial class MainForm
+    {
+        private void InitOverlayForm()
+        {
+            _overlayForm = new CapFrameXOverlayForm
+            {
+                Location = new Point(Math.Max(0, _osd.OverlayX), Math.Max(0, _osd.OverlayY)),
+                Stats = _sessionStats,
+                ProcessorBadgeText = GetRyzenTierBadge(),
+                SampleIntervalMs = _refreshIntervalMs
+            };
+            _osd.ApplyToOverlay(_overlayForm, _themePref, _hasDualFans, _useFahrenheit);
+            _overlayForm.UpdateDimensions();
+            _overlayForm.PositionOrLayoutChanged += (s, e) =>
+            {
+                _osd.ReadFromOverlay(_overlayForm);
+                SyncOsdStudioUiFromOverlay();
+                SaveSettings();
+                RebuildDriversMenu();
+            };
+            _overlayForm.RequestHideOverlay += (s, e) =>
+            {
+                if (_showOverlayCb != null) _showOverlayCb.Checked = false;
+                else SetOverlayVisible(false);
+            };
+            _overlayForm.RequestToggleLock += (s, e) =>
+            {
+                if (_lockOverlayCb != null) _lockOverlayCb.Checked = !_lockOverlayCb.Checked;
+                else SetOverlayLocked(!_lockOverlay);
+            };
+            _overlayForm.RequestOpenOsdConfig += (s, e) =>
+            {
+                OpenOsdConfigTab();
+            };
+            _overlayForm.RequestSnapLocation += (s, corner) =>
+            {
+                SetOverlayCornerPosition(corner);
+            };
+            _overlayForm.RequestSamplingInterval += (s, ms) =>
+            {
+                SetRefreshInterval(ms);
+            };
+
+            // Pre-seed live telemetry into overlay before first display so dimensions account for all active rows (NVMe, RAM, Mode)
+            if (_lastStatus.RamTotalGb <= 0 && _hw != null)
+            {
+                try { _lastStatus = _hw.GetStatus(); } catch { }
+            }
+            string initMode = (!_hasDualFans || _apuProfile == null)
+                ? ShortModeTag(_apuProfile != null ? _apuProfile.Name : "Auto")
+                : string.Format("{0}/{1}", ShortModeTag(_apuProfile.Name), ShortModeTag(_sysProfile != null ? _sysProfile.Name : _apuProfile.Name));
+            _overlayForm.UpdateMetrics(_lastStatus, initMode, _hasDualFans);
+
+            if (_showOverlay)
+            {
+                _overlayForm.Show();
+                _overlayForm.ApplyClickThrough(_lockOverlay);
+                _overlayForm.EnsureTopMost();
+                _overlayForm.BringToFront();
+                _overlayForm.Invalidate();
+            }
+        }
+
+        private void SyncOverlayFromStudio()
+        {
+            if (_overlayForm == null) return;
+            _overlayForm.Stats = _sessionStats;
+            _osd.ApplyToOverlay(_overlayForm, _themePref, _hasDualFans, _useFahrenheit);
+            _overlayForm.UpdateDimensions();
+            _overlayForm.Invalidate();
+            SaveSettings();
+        }
+
+        private void SyncOsdStudioUiFromOverlay()
+        {
+            if (_overlayForm != null)
+            {
+                _osd.ReadFromOverlay(_overlayForm);
+            }
+            if (_liveCanvas != null)
+            {
+                _liveCanvas.ShowCpu = _osd.TrendCpu;
+                _liveCanvas.ShowGpu = _osd.TrendGpu;
+                _liveCanvas.ShowRam = _osd.TrendRam;
+                _liveCanvas.ShowNvme = _osd.TrendNvme;
+                _liveCanvas.ShowPower = _osd.TrendPower;
+                _liveCanvas.ShowAmbient = _osd.TrendAmbient;
+                _liveCanvas.ShowApuRpm = _osd.TrendApuFan;
+                _liveCanvas.ShowSysRpm = _osd.TrendSysFan;
+                _liveCanvas.Invalidate();
+            }
+
+            if (_osdOpacitySlider != null && _osdOpacitySlider.Value != _osd.OpacityPct)
+                _osdOpacitySlider.Value = Math.Max(_osdOpacitySlider.Minimum, Math.Min(_osdOpacitySlider.Maximum, _osd.OpacityPct));
+            if (_osdOpacityPctLabel != null)
+                _osdOpacityPctLabel.Text = string.Format("{0}%", _osd.OpacityPct);
+
+            if (_osdShowCpuCb != null) _osdShowCpuCb.Checked = _osd.ShowCpu;
+            if (_osdShowGpuCb != null) _osdShowGpuCb.Checked = _osd.ShowGpu;
+            if (_osdShowNvmeCb != null) _osdShowNvmeCb.Checked = _osd.ShowNvme;
+            if (_osdShowPowerCb != null) _osdShowPowerCb.Checked = _osd.ShowPower;
+            if (_osdShowRamCb != null) _osdShowRamCb.Checked = _osd.ShowRam;
+            if (_osdShowVrmCurrentCb != null) _osdShowVrmCurrentCb.Checked = _osd.ShowVrmCurrent;
+            if (_osdShowAmbientCb != null) _osdShowAmbientCb.Checked = _osd.ShowAmbient;
+            if (_osdShowFabricClockCb != null) _osdShowFabricClockCb.Checked = _osd.ShowFabricClock;
+            if (_osdShowNpuCb != null)
+            {
+                bool hasNpu = _demoMode || _lastStatus.NpuActivityPct >= 0 || AmdAdlGpuSensor.HasNpuHardware;
+                _osdShowNpuCb.Checked = _osd.ShowNpu && hasNpu;
+                _osdShowNpuCb.Enabled = hasNpu;
+                _osdShowNpuCb.Text = hasNpu ? "Ryzen AI NPU" : "Ryzen AI NPU (N/A)";
+            }
+            if (_osdShowFpsCb != null) _osdShowFpsCb.Checked = _osd.ShowFps;
+            if (_osdShowLowsCb != null) _osdShowLowsCb.Checked = _osd.ShowLows;
+            if (_osdShowGpuLoadCb != null) _osdShowGpuLoadCb.Checked = _osd.ShowGpuLoad;
+            if (_osdShowApuFanCb != null) _osdShowApuFanCb.Checked = _osd.ShowApuFan;
+            if (_osdShowSysFanCb != null)
+            {
+                _osdShowSysFanCb.Checked = _osd.ShowSysFan && _hasDualFans;
+                _osdShowSysFanCb.Enabled = _hasDualFans;
+                _osdShowSysFanCb.Text = _hasDualFans ? "Sys Fan RPM" : "Sys Fan RPM (N/A)";
+            }
+            if (_osdShowModeCb != null) _osdShowModeCb.Checked = _osd.ShowMode;
+            if (_osdShowPeaksCb != null) _osdShowPeaksCb.Checked = _osd.ShowPeaks;
+            if (_osdTrackerModeCombo != null)
+            {
+                int tmIdx = Math.Max(0, Math.Min(3, _osd.PeakTrackerMode));
+                if (_osdTrackerModeCombo.SelectedIndex != tmIdx) _osdTrackerModeCombo.SelectedIndex = tmIdx;
+                _osdTrackerModeCombo.Enabled = _osd.ShowPeaks;
+            }
+            if (_osdShowRadeonCb != null) _osdShowRadeonCb.Checked = _osd.ShowRadeon;
+            if (_osdShowRadeonExtTagsCb != null) _osdShowRadeonExtTagsCb.Checked = _osd.ShowRadeonExtTags;
+            if (_osdShowDriverVerCb != null) _osdShowDriverVerCb.Checked = _osd.ShowDriverVer;
+            if (_osdShowClocksCb != null) _osdShowClocksCb.Checked = _osd.ShowClocks;
+            if (_osdShowGameNameCb != null) _osdShowGameNameCb.Checked = _osd.ShowGameName;
+            if (_osdSparklineBgCb != null) _osdSparklineBgCb.Checked = _osd.SparklineBg;
+            if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = _osd.ShowLiveTrend;
+            if (_osdShowFpsGraphCb != null) _osdShowFpsGraphCb.Checked = _osd.ShowFpsGraph;
+            if (_osdPlotFpsOnTrendCb != null) _osdPlotFpsOnTrendCb.Checked = _osd.PlotFpsOnTrend;
+            if (_osdDfGraphStyleCb != null) _osdDfGraphStyleCb.Checked = _osd.DfGraphStyle;
+            if (_osdDfCornerInsetCb != null) _osdDfCornerInsetCb.Checked = _osd.DfCornerInset;
+            if (_osdDfGraphFirstCb != null) _osdDfGraphFirstCb.Checked = _osd.DfGraphFirst;
+            if (_osdShowRamTempCb != null) _osdShowRamTempCb.Checked = _osd.ShowRamTemp;
+            if (_osdShowRamDualSticksCb != null) _osdShowRamDualSticksCb.Checked = _osd.ShowRamDualSticks;
+            if (_osdShowRamSpreadCb != null) _osdShowRamSpreadCb.Checked = _osd.ShowRamSpread;
+            if (_osdShowRamLoadCb != null) _osdShowRamLoadCb.Checked = _osd.ShowRamLoad;
+            if (_osdShowRamPowerCb != null) _osdShowRamPowerCb.Checked = _osd.ShowRamPower;
+            if (_osdShowRamClockCb != null) _osdShowRamClockCb.Checked = _osd.ShowRamClock;
+            if (_osdShowNvmePowerCb != null) _osdShowNvmePowerCb.Checked = _osd.ShowNvmePower;
+            if (_osdShowNvmeIoCb != null) _osdShowNvmeIoCb.Checked = _osd.ShowNvmeIo;
+            if (_osdShowNvmeDualCb != null) _osdShowNvmeDualCb.Checked = _osd.ShowNvmeDual;
+            if (_osdShowCpuLoadCb != null) _osdShowCpuLoadCb.Checked = _osd.ShowCpuLoad;
+            if (_osdShowGpuHotspotCb != null)
+            {
+                bool hasHotspot = _demoMode || _lastStatus.GpuHotspotTemp > 0;
+                _osdShowGpuHotspotCb.Checked = _osd.ShowGpuHotspot && hasHotspot;
+                _osdShowGpuHotspotCb.Enabled = hasHotspot;
+                _osdShowGpuHotspotCb.Text = hasHotspot ? "iGPU Hotspot (🔥°C)" : "iGPU Hotspot (N/A)";
+            }
+            if (_osdShowPowerLimitCb != null) _osdShowPowerLimitCb.Checked = _osd.ShowPowerLimit;
+            if (_osdShowFclkSyncCb != null) _osdShowFclkSyncCb.Checked = _osd.ShowFclkSync;
+            if (_osdShowFrametimeMsCb != null) _osdShowFrametimeMsCb.Checked = _osd.ShowFrametimeMs;
+            if (_osdShowFpsAvgCb != null) _osdShowFpsAvgCb.Checked = _osd.ShowFpsAvg;
+            if (_osdMatchThemeCb != null) _osdMatchThemeCb.Checked = _osd.MatchTheme;
+
+            if (_osdToggleOverlayBtn != null)
+                _osdToggleOverlayBtn.Text = _showOverlay ? "● OSD Active" : "○ OSD Hidden";
+            if (_osdToggleLockBtn != null)
+                _osdToggleLockBtn.Text = _lockOverlay ? "Locked (Click-Thru)" : "Unlocked (Drag)";
+
+            UpdateOsdStudioStyles();
+        }
+
+        private void SetOverlayCornerPosition(int corner)
+        {
+            if (_overlayForm == null) return;
+            Screen screen = Screen.FromControl(_overlayForm.Visible ? (Form)_overlayForm : this);
+            Rectangle wa = screen.WorkingArea;
+            _overlayForm.UpdateDimensions();
+            int w = _overlayForm.Width;
+            int h = _overlayForm.Height;
+            int margin = 16;
+
+            switch (corner)
+            {
+                case 0: // Top-Left
+                    _osd.OverlayX = wa.Left + margin;
+                    _osd.OverlayY = wa.Top + margin;
+                    break;
+                case 1: // Top-Right
+                    _osd.OverlayX = wa.Right - w - margin;
+                    _osd.OverlayY = wa.Top + margin;
+                    break;
+                case 2: // Bottom-Left
+                    _osd.OverlayX = wa.Left + margin;
+                    _osd.OverlayY = Math.Max(wa.Top + margin, wa.Bottom - h - margin);
+                    break;
+                case 3: // Bottom-Right
+                    _osd.OverlayX = wa.Right - w - margin;
+                    _osd.OverlayY = Math.Max(wa.Top + margin, wa.Bottom - h - margin);
+                    break;
+                case 4: // Center-Top
+                    _osd.OverlayX = wa.Left + Math.Max(0, (wa.Width - w) / 2);
+                    _osd.OverlayY = wa.Top + margin;
+                    break;
+                case 5: // Center-Bottom
+                    _osd.OverlayX = wa.Left + Math.Max(0, (wa.Width - w) / 2);
+                    _osd.OverlayY = Math.Max(wa.Top + margin, wa.Bottom - h - margin);
+                    break;
+            }
+
+            _overlayForm.Location = new Point(_osd.OverlayX, _osd.OverlayY);
+            SaveSettings();
+            _overlayForm.Invalidate();
+        }
+
+        private void OpenOsdConfigTab()
+        {
+            if (WindowState == FormWindowState.Minimized)
+            {
+                WindowState = FormWindowState.Normal;
+            }
+            Show();
+            Activate();
+            BringToFront();
+
+            if (!_showOverlay)
+            {
+                if (_showOverlayCb != null) _showOverlayCb.Checked = true;
+                else SetOverlayVisible(true);
+            }
+
+            SetOsdConfigViewMode(true);
+        }
+
+        private void SetPresetsAndCustomVisible(bool visible)
+        {
+            if (_modeButtons != null)
+            {
+                for (int i = 0; i < _modeButtons.Length; i++)
+                {
+                    if (_modeButtons[i] != null) _modeButtons[i].Visible = visible;
+                }
+            }
+            if (_customLabel != null) _customLabel.Visible = visible;
+            if (_customModeCombo != null) _customModeCombo.Visible = visible;
+            if (_activateCustomBtn != null) _activateCustomBtn.Visible = visible;
+            if (_autoTuneCustomBtn != null) _autoTuneCustomBtn.Visible = visible;
+            if (_addCustomBtn != null) _addCustomBtn.Visible = visible;
+            if (_deleteCustomBtn != null) _deleteCustomBtn.Visible = visible;
+        }
+
+        private void SetManualFanControlVisible(bool visible)
+        {
+            _manualFanControlVisible = visible;
+            if (_manualFanHeaderLabel != null) _manualFanHeaderLabel.Visible = visible;
+            if (_calibBadgeLabel != null) _calibBadgeLabel.Visible = visible;
+            if (_fanCardPanel != null) _fanCardPanel.Visible = visible;
+
+            int cardHeight = visible ? 590 : 720;
+            int canvasHeight = visible ? 518 : 648;
+            int hintY = visible ? 566 : 696;
+
+            if (_modeCardPanel != null && _modeCardPanel.Height != cardHeight)
+            {
+                _modeCardPanel.Height = cardHeight;
+            }
+
+            if (_curveHintLabel != null)
+            {
+                _curveHintLabel.Location = new Point(8, hintY);
+            }
+
+            if (_liveCanvas != null)
+            {
+                _liveCanvas.Location = new Point(8, 42);
+                _liveCanvas.Size = new Size(1056, canvasHeight);
+            }
+            if (_perfCanvas != null)
+            {
+                _perfCanvas.Location = new Point(8, 42);
+                _perfCanvas.Size = new Size(1056, canvasHeight);
+            }
+            if (_osdConfigPanel != null)
+            {
+                _osdConfigPanel.Location = new Point(8, 41);
+                _osdConfigPanel.Size = new Size(1056, canvasHeight);
+            }
+            if (_osdMetricsScrollPanel != null)
+            {
+                _osdMetricsScrollPanel.Size = new Size(1048, Math.Max(260, canvasHeight - 200));
+            }
+        }
+
+        private void SetOsdConfigViewMode(bool show)
+        {
+            _showingOsdConfig = show;
+            if (show)
+            {
+                _showingLiveTelemetry = false;
+                _showingPerfGraph = false;
+                _highlightedMetric = 0;
+            }
+
+            if (_osdConfigPanel != null) _osdConfigPanel.Visible = show;
+
+            bool isFanTab = !show && !_showingLiveTelemetry && !_showingPerfGraph;
+            SetPresetsAndCustomVisible(isFanTab);
+            SetManualFanControlVisible(isFanTab);
+
+            if (show)
+            {
+                if (_curveCanvas != null) _curveCanvas.Visible = false;
+                if (_liveCanvas != null) _liveCanvas.Visible = false;
+                if (_perfCanvas != null) _perfCanvas.Visible = false;
+                if (_curveHintLabel != null)
+                    _curveHintLabel.Text = "OSD Overlay Studio — configure live graphs, placement, opacity and telemetry metrics";
+                SyncOsdStudioUiFromOverlay();
+            }
+            else
+            {
+                if (_showingPerfGraph)
+                {
+                    if (_curveCanvas != null) _curveCanvas.Visible = false;
+                    if (_liveCanvas != null) _liveCanvas.Visible = false;
+                    if (_perfCanvas != null)
+                    {
+                        _perfCanvas.Visible = true;
+                        _perfCanvas.Invalidate();
+                    }
+                }
+                else if (_showingLiveTelemetry)
+                {
+                    if (_curveCanvas != null) _curveCanvas.Visible = false;
+                    if (_perfCanvas != null) _perfCanvas.Visible = false;
+                    if (_liveCanvas != null)
+                    {
+                        _liveCanvas.Visible = true;
+                        _liveCanvas.Invalidate();
+                    }
+                }
+                else
+                {
+                    if (_liveCanvas != null) _liveCanvas.Visible = false;
+                    if (_perfCanvas != null) _perfCanvas.Visible = false;
+                    if (_curveCanvas != null)
+                    {
+                        _curveCanvas.Location = new Point(8, 108);
+                        _curveCanvas.Size = new Size(1056, 454);
+                        _curveCanvas.Visible = true;
+                        _curveCanvas.Invalidate();
+                    }
+                }
+                UpdateCurveHint();
+            }
+
+            UpdateCurveTabStyles();
+            UpdateOsdStudioStyles();
+            InvalidateAllMetricBoxes();
+            UpdateWideLayout();
+        }
+
+        private void SetOverlayVisible(bool visible)
+        {
+            _showOverlay = visible;
+            if (_overlayForm != null)
+            {
+                if (visible)
+                {
+                    if (!_overlayForm.Visible) _overlayForm.Show();
+                    _overlayForm.ApplyClickThrough(_lockOverlay);
+                    _overlayForm.EnsureTopMost();
+                    _overlayForm.BringToFront();
+                    _overlayForm.Invalidate();
+                }
+                else
+                {
+                    _overlayForm.Hide();
+                }
+            }
+            SaveSettings();
+            RebuildDriversMenu();
+            RefreshStatus();
+        }
+
+        private void SetOverlayLocked(bool locked)
+        {
+            _lockOverlay = locked;
+            if (_overlayForm != null)
+            {
+                _overlayForm.ApplyClickThrough(locked);
+            }
+            SaveSettings();
+            RebuildDriversMenu();
+        }
+
+        private void RebuildDriversMenu()
+        {
+            ContextMenuStrip oldMenu = _driversMenu;
+            _driversMenu = CreateDriversAndToolsMenu();
+            if (oldMenu != null)
+            {
+                try { oldMenu.Dispose(); } catch { }
+            }
+        }
+
+        private void ToggleOverlayLayoutStyle()
+        {
+            _osd.VerticalLayout = !_osd.VerticalLayout;
+            if (_overlayForm != null)
+            {
+                _overlayForm.VerticalLayout = _osd.VerticalLayout;
+                _overlayForm.UpdateDimensions();
+                _overlayForm.Invalidate();
+            }
+            SaveSettings();
+            RebuildDriversMenu();
+        }
+
+
+        private void BuildOsdStudioPanel(Panel p)
+        {
+            // Row 1 (y=5): Title + Quick Toggle Buttons
+            _osdTitleLabel = new Label
+            {
+                Text = "OSD OVERLAY CONFIGURATION STUDIO",
+                Font = new Font("Segoe UI", 8.75f, FontStyle.Bold),
+                Location = new Point(8, 8),
+                Size = new Size(380, 22),
+                UseMnemonic = false
+            };
+            p.Controls.Add(_osdTitleLabel);
+
+            _osdToggleOverlayBtn = new Button
+            {
+                Text = _showOverlay ? "● OSD Active" : "○ OSD Hidden",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(746, 5),
+                Size = new Size(140, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdToggleOverlayBtn.FlatAppearance.BorderSize = 0;
+            _osdToggleOverlayBtn.Click += (s, e) =>
+            {
+                if (_showOverlayCb != null) _showOverlayCb.Checked = !_showOverlay;
+                else SetOverlayVisible(!_showOverlay);
+                SyncOsdStudioUiFromOverlay();
+            };
+            p.Controls.Add(_osdToggleOverlayBtn);
+
+            _osdToggleLockBtn = new Button
+            {
+                Text = _lockOverlay ? "Locked (Click-Thru)" : "Unlocked (Drag)",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(894, 5),
+                Size = new Size(154, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdToggleLockBtn.FlatAppearance.BorderSize = 0;
+            _osdToggleLockBtn.Click += (s, e) =>
+            {
+                if (_lockOverlayCb != null) _lockOverlayCb.Checked = !_lockOverlay;
+                else SetOverlayLocked(!_lockOverlay);
+                SyncOsdStudioUiFromOverlay();
+            };
+            p.Controls.Add(_osdToggleLockBtn);
+
+            // Row 2 (y=38): Section 1 - Live Graph Display Mode (Left) & Combined Graph Height (Right)
+            _osdGraphModeLabel = new Label
+            {
+                Text = "Live Graph Display Mode:",
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(8, 38),
+                Size = new Size(300, 16),
+                UseMnemonic = false
+            };
+            p.Controls.Add(_osdGraphModeLabel);
+
+            _osdGraphHeightLabel = new Label
+            {
+                Text = "Combined Live Graph Height:",
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(492, 38),
+                Size = new Size(300, 16),
+                UseMnemonic = false
+            };
+            p.Controls.Add(_osdGraphHeightLabel);
+
+            // Row 2 Buttons (y=56, h=26): 5 modes across x=8..482
+            _osdBtnBothGraphs = new Button
+            {
+                Text = "Both (All)",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
+                Location = new Point(8, 56),
+                Size = new Size(88, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnBothGraphs.FlatAppearance.BorderSize = 0;
+            _osdBtnBothGraphs.Click += (s, e) => { _osd.GraphMode = 3; _osd.ShowLiveTrend = true; if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = true; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _uiToolTip.SetToolTip(_osdBtnBothGraphs, "Show both mini sparklines per metric and combined live trend graph");
+            p.Controls.Add(_osdBtnBothGraphs);
+
+            _osdBtnCombinedGraph = new Button
+            {
+                Text = "Combined",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
+                Location = new Point(100, 56),
+                Size = new Size(88, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnCombinedGraph.FlatAppearance.BorderSize = 0;
+            _osdBtnCombinedGraph.Click += (s, e) => { _osd.GraphMode = 2; _osd.ShowLiveTrend = true; if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = true; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _uiToolTip.SetToolTip(_osdBtnCombinedGraph, "Show combined multi-series live trend graph only");
+            p.Controls.Add(_osdBtnCombinedGraph);
+
+            _osdBtnSparklines = new Button
+            {
+                Text = "Sparklines",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
+                Location = new Point(192, 56),
+                Size = new Size(88, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnSparklines.FlatAppearance.BorderSize = 0;
+            _osdBtnSparklines.Click += (s, e) => { _osd.GraphMode = 1; _osd.ShowLiveTrend = false; if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = false; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _uiToolTip.SetToolTip(_osdBtnSparklines, "Show mini inline sparklines per metric only");
+            p.Controls.Add(_osdBtnSparklines);
+
+            _osdBtnTextOnly = new Button
+            {
+                Text = "Text Only",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
+                Location = new Point(284, 56),
+                Size = new Size(86, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnTextOnly.FlatAppearance.BorderSize = 0;
+            _osdBtnTextOnly.Click += (s, e) => { _osd.GraphMode = 0; _osd.ShowLiveTrend = false; if (_osdShowLiveTrendCb != null) _osdShowLiveTrendCb.Checked = false; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            _uiToolTip.SetToolTip(_osdBtnTextOnly, "Display metrics as text only without live graphs");
+            p.Controls.Add(_osdBtnTextOnly);
+
+            _osdBtnGraphsOnly = new Button
+            {
+                Text = "Graphs Only",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
+                Location = new Point(374, 56),
+                Size = new Size(108, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnGraphsOnly.FlatAppearance.BorderSize = 0;
+            _osdBtnGraphsOnly.Click += (s, e) =>
+            {
+                _osd.GraphMode = 4;
+                if (!_osd.ShowFpsGraph && !_osd.ShowLiveTrend)
+                {
+                    _osd.ShowFpsGraph = true;
+                    if (_osdShowFpsGraphCb != null) _osdShowFpsGraphCb.Checked = true;
+                }
+                SyncOverlayFromStudio();
+                UpdateOsdStudioStyles();
+            };
+            _uiToolTip.SetToolTip(_osdBtnGraphsOnly, "Hide all metric text rows and display ONLY the enabled graphs (toggle FPS & Frametime Graph and/or Live Trend Graph below).");
+            p.Controls.Add(_osdBtnGraphsOnly);
+
+            // Right side: Height buttons
+            _osdBtnHeightCompact = new Button
+            {
+                Text = "75px Compact",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
+                Location = new Point(492, 56),
+                Size = new Size(108, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnHeightCompact.FlatAppearance.BorderSize = 0;
+            _osdBtnHeightCompact.Click += (s, e) => { _osd.GraphHeight = 75; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            p.Controls.Add(_osdBtnHeightCompact);
+
+            _osdBtnHeightMedium = new Button
+            {
+                Text = "105px Medium",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
+                Location = new Point(608, 56),
+                Size = new Size(108, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnHeightMedium.FlatAppearance.BorderSize = 0;
+            _osdBtnHeightMedium.Click += (s, e) => { _osd.GraphHeight = 105; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            p.Controls.Add(_osdBtnHeightMedium);
+
+            _osdBtnHeightLarge = new Button
+            {
+                Text = "140px Large",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
+                Location = new Point(724, 56),
+                Size = new Size(108, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnHeightLarge.FlatAppearance.BorderSize = 0;
+            _osdBtnHeightLarge.Click += (s, e) => { _osd.GraphHeight = 140; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            p.Controls.Add(_osdBtnHeightLarge);
+
+            _osdBtnHeightXl = new Button
+            {
+                Text = "180px XL",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
+                Location = new Point(840, 56),
+                Size = new Size(108, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnHeightXl.FlatAppearance.BorderSize = 0;
+            _osdBtnHeightXl.Click += (s, e) => { _osd.GraphHeight = 180; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            p.Controls.Add(_osdBtnHeightXl);
+
+            // Row 3 (y=88): Section 2 - Scale Tier (Left) & Layout Direction (Right)
+            _osdScaleLabel = new Label
+            {
+                Text = "Overlay Scale Tier:",
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(8, 88),
+                Size = new Size(300, 16),
+                UseMnemonic = false
+            };
+            p.Controls.Add(_osdScaleLabel);
+
+            _osdLayoutLabel = new Label
+            {
+                Text = "Layout Direction:",
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(492, 88),
+                Size = new Size(300, 16),
+                UseMnemonic = false
+            };
+            p.Controls.Add(_osdLayoutLabel);
+
+            // Row 3 Buttons (y=106, h=26):
+            _osdBtnScale100 = new Button
+            {
+                Text = "100% Std",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
+                Location = new Point(8, 106),
+                Size = new Size(108, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnScale100.FlatAppearance.BorderSize = 0;
+            _osdBtnScale100.Click += (s, e) => { _osd.ScaleTier = 0; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            p.Controls.Add(_osdBtnScale100);
+
+            _osdBtnScale125 = new Button
+            {
+                Text = "125% Lg",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
+                Location = new Point(124, 106),
+                Size = new Size(108, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnScale125.FlatAppearance.BorderSize = 0;
+            _osdBtnScale125.Click += (s, e) => { _osd.ScaleTier = 1; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            p.Controls.Add(_osdBtnScale125);
+
+            _osdBtnScale150 = new Button
+            {
+                Text = "150% XL",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
+                Location = new Point(240, 106),
+                Size = new Size(108, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnScale150.FlatAppearance.BorderSize = 0;
+            _osdBtnScale150.Click += (s, e) => { _osd.ScaleTier = 2; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            p.Controls.Add(_osdBtnScale150);
+
+            _osdBtnScale185 = new Button
+            {
+                Text = "185% 4K",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
+                Location = new Point(356, 106),
+                Size = new Size(108, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnScale185.FlatAppearance.BorderSize = 0;
+            _osdBtnScale185.Click += (s, e) => { _osd.ScaleTier = 3; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            p.Controls.Add(_osdBtnScale185);
+
+            _osdBtnLayoutH = new Button
+            {
+                Text = "▬ Horizontal Bar",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(492, 106),
+                Size = new Size(224, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnLayoutH.FlatAppearance.BorderSize = 0;
+            _osdBtnLayoutH.Click += (s, e) => { _osd.VerticalLayout = false; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            p.Controls.Add(_osdBtnLayoutH);
+
+            _osdBtnLayoutV = new Button
+            {
+                Text = "▮ Vertical Stack",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(724, 106),
+                Size = new Size(224, 26),
+                Cursor = Cursors.Hand
+            };
+            _osdBtnLayoutV.FlatAppearance.BorderSize = 0;
+            _osdBtnLayoutV.Click += (s, e) => { _osd.VerticalLayout = true; SyncOverlayFromStudio(); UpdateOsdStudioStyles(); };
+            p.Controls.Add(_osdBtnLayoutV);
+
+            // Row 4 (y=136): Section 3 - Opacity Slider & Quick Snap Corner Buttons
+            _osdOpacityLabel = new Label
+            {
+                Text = "Opacity:",
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(8, 140),
+                Size = new Size(62, 20),
+                UseMnemonic = false
+            };
+            p.Controls.Add(_osdOpacityLabel);
+
+            _osdOpacitySlider = new TrackBar
+            {
+                Minimum = 35,
+                Maximum = 100,
+                Value = Math.Max(35, Math.Min(100, _osd.OpacityPct)),
+                TickStyle = TickStyle.None,
+                Location = new Point(72, 134),
+                Size = new Size(130, 30),
+                AccessibleName = "OSD Overlay Opacity Percentage"
+            };
+            _osdOpacitySlider.Scroll += (s, e) =>
+            {
+                _osd.OpacityPct = _osdOpacitySlider.Value;
+                _osdOpacityPctLabel.Text = string.Format("{0}%", _osd.OpacityPct);
+                if (_overlayForm != null) _overlayForm.ApplyOpacity(_osd.OpacityPct);
+                SaveSettings();
+            };
+            p.Controls.Add(_osdOpacitySlider);
+
+            _osdOpacityPctLabel = new Label
+            {
+                Text = string.Format("{0}%", _osd.OpacityPct),
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(206, 138),
+                Size = new Size(42, 20),
+                UseMnemonic = false
+            };
+            p.Controls.Add(_osdOpacityPctLabel);
+
+            _osdSnapLabel = new Label
+            {
+                Text = "Quick Snap:",
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(244, 138),
+                Size = new Size(88, 20),
+                UseMnemonic = false
+            };
+            p.Controls.Add(_osdSnapLabel);
+
+            Font snapBtnFont = new Font("Segoe UI", 7.25f, FontStyle.Bold);
+            _osdQuickPosTl = new Button { Text = "Top-Left", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(334, 136), Size = new Size(112, 26), Cursor = Cursors.Hand };
+            _osdQuickPosTl.FlatAppearance.BorderSize = 0;
+            _osdQuickPosTl.Click += (s, e) => SetOverlayCornerPosition(0);
+            _uiToolTip.SetToolTip(_osdQuickPosTl, "Snap OSD to Top-Left screen corner");
+            p.Controls.Add(_osdQuickPosTl);
+
+            _osdQuickPosTc = new Button { Text = "Center-Top", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(450, 136), Size = new Size(116, 26), Cursor = Cursors.Hand };
+            _osdQuickPosTc.FlatAppearance.BorderSize = 0;
+            _osdQuickPosTc.Click += (s, e) => SetOverlayCornerPosition(4);
+            _uiToolTip.SetToolTip(_osdQuickPosTc, "Snap OSD to Center-Top screen edge");
+            p.Controls.Add(_osdQuickPosTc);
+
+            _osdQuickPosTr = new Button { Text = "Top-Right", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(570, 136), Size = new Size(112, 26), Cursor = Cursors.Hand };
+            _osdQuickPosTr.FlatAppearance.BorderSize = 0;
+            _osdQuickPosTr.Click += (s, e) => SetOverlayCornerPosition(1);
+            _uiToolTip.SetToolTip(_osdQuickPosTr, "Snap OSD to Top-Right screen corner");
+            p.Controls.Add(_osdQuickPosTr);
+
+            _osdQuickPosBl = new Button { Text = "Bottom-Left", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(686, 136), Size = new Size(116, 26), Cursor = Cursors.Hand };
+            _osdQuickPosBl.FlatAppearance.BorderSize = 0;
+            _osdQuickPosBl.Click += (s, e) => SetOverlayCornerPosition(2);
+            _uiToolTip.SetToolTip(_osdQuickPosBl, "Snap OSD to Bottom-Left screen corner");
+            p.Controls.Add(_osdQuickPosBl);
+
+            _osdQuickPosBc = new Button { Text = "Center-Bottom", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(806, 136), Size = new Size(122, 26), Cursor = Cursors.Hand };
+            _osdQuickPosBc.FlatAppearance.BorderSize = 0;
+            _osdQuickPosBc.Click += (s, e) => SetOverlayCornerPosition(5);
+            _uiToolTip.SetToolTip(_osdQuickPosBc, "Snap OSD to Center-Bottom screen edge");
+            p.Controls.Add(_osdQuickPosBc);
+
+            _osdQuickPosBr = new Button { Text = "Bottom-Right", FlatStyle = FlatStyle.Flat, Font = snapBtnFont, Location = new Point(932, 136), Size = new Size(116, 26), Cursor = Cursors.Hand };
+            _osdQuickPosBr.FlatAppearance.BorderSize = 0;
+            _osdQuickPosBr.Click += (s, e) => SetOverlayCornerPosition(3);
+            _uiToolTip.SetToolTip(_osdQuickPosBr, "Snap OSD to Bottom-Right screen corner");
+            p.Controls.Add(_osdQuickPosBr);
+
+            // Row 5 (y=174): Section 4 - Telemetry Metrics & Overlay Parts Header + Select All / Defaults Buttons
+            _osdMetricsHeaderLabel = new Label
+            {
+                Text = "Visible Telemetry Metrics & Overlay Parts:",
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+                Location = new Point(8, 174),
+                Size = new Size(460, 20),
+                UseMnemonic = false
+            };
+            p.Controls.Add(_osdMetricsHeaderLabel);
+
+            _osdSelectAllBtn = new Button
+            {
+                Text = "Select All",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
+                Location = new Point(712, 170),
+                Size = new Size(104, 25),
+                Cursor = Cursors.Hand
+            };
+            _osdSelectAllBtn.FlatAppearance.BorderSize = 0;
+            _osdSelectAllBtn.Click += (s, e) =>
+            {
+                _osd.SelectAllMetrics(_hasDualFans);
+                SyncOsdStudioUiFromOverlay();
+                SyncOverlayFromStudio();
+            };
+            p.Controls.Add(_osdSelectAllBtn);
+
+            _osdDeselectAllBtn = new Button
+            {
+                Text = "Deselect All",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
+                Location = new Point(824, 170),
+                Size = new Size(108, 25),
+                Cursor = Cursors.Hand
+            };
+            _osdDeselectAllBtn.FlatAppearance.BorderSize = 0;
+            _osdDeselectAllBtn.Click += (s, e) =>
+            {
+                _osd.DeselectAllMetrics();
+                SyncOsdStudioUiFromOverlay();
+                SyncOverlayFromStudio();
+            };
+            p.Controls.Add(_osdDeselectAllBtn);
+
+            _osdResetDefaultsBtn = new Button
+            {
+                Text = "Defaults",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
+                Location = new Point(940, 170),
+                Size = new Size(108, 25),
+                Cursor = Cursors.Hand
+            };
+            _osdResetDefaultsBtn.FlatAppearance.BorderSize = 0;
+            _osdResetDefaultsBtn.Click += (s, e) =>
+            {
+                _osd.ResetDefaults(_hasDualFans);
+                SyncOsdStudioUiFromOverlay();
+                SyncOverlayFromStudio();
+            };
+            p.Controls.Add(_osdResetDefaultsBtn);
+
+            // Row 6+ (y=200..648): Per-Metric Configuration Sections (fits cleanly without scrollbar)
+            _osdMetricsScrollPanel = new Panel
+            {
+                Location = new Point(4, 200),
+                Size = new Size(1048, 448),
+                AutoScroll = true
+            };
+            p.Controls.Add(_osdMetricsScrollPanel);
+            _osdSectionHeaders.Clear();
+
+            int[] colX = new[] { 8, 260, 512, 764 };
+            const int colW = 246;
+            const int cbH = 22;
+            const int rowStep = 21;
+            int curY = 0;
+
+            // 1. CPU (left) & Power & VRM (right)
+            int pairY = curY;
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "CPU", ref curY, 8, 490);
+            _osdShowCpuCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY, 242, cbH, "CPU Temp", _osd.ShowCpu, v => { _osd.ShowCpu = v; SyncOverlayFromStudio(); }, null);
+            _osdShowCpuLoadCb = AddOsdCheckBox(_osdMetricsScrollPanel, 258, curY, 242, cbH, "CPU Load (%)", _osd.ShowCpuLoad, v => { _osd.ShowCpuLoad = v; SyncOverlayFromStudio(); },
+                "Show CPU utilization percentage on the CPU overlay row");
+            _osdShowClocksCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY + rowStep, 242, cbH, "Clock Speeds (@ GHz/MHz)", _osd.ShowClocks, v => { _osd.ShowClocks = v; SyncOverlayFromStudio(); },
+                "Display effective CPU, iGPU, and RAM clock frequencies (@ 4.1G / @ 800MHz). Uncheck to maximize space for sparklines.");
+
+            int rightY = pairY;
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "Power & VRM", ref rightY, 518, 490);
+            _osdShowPowerCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY, 242, cbH, "APU Power (W)", _osd.ShowPower, v => { _osd.ShowPower = v; SyncOverlayFromStudio(); }, null);
+            _osdShowPowerLimitCb = AddOsdCheckBox(_osdMetricsScrollPanel, 768, rightY, 242, cbH, "APU Power Limit (/W)", _osd.ShowPowerLimit, v => { _osd.ShowPowerLimit = v; SyncOverlayFromStudio(); },
+                "Show active PPT/STAPM power limit (/65W) next to APU Power");
+            _osdShowVrmCurrentCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY + rowStep, 242, cbH, "VRM Current (TDC/EDC)", _osd.ShowVrmCurrent, v => { _osd.ShowVrmCurrent = v; SyncOverlayFromStudio(); },
+                "Display deep silicon VRM amperage draw (continuous TDC and peak EDC amps for VDD & SOC rails)");
+            curY += rowStep * 2;
+
+            // 2. iGPU & Radeon
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "iGPU & Radeon", ref curY);
+            _osdShowGpuCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "iGPU Temp", _osd.ShowGpu, v => { _osd.ShowGpu = v; SyncOverlayFromStudio(); }, null);
+            _osdShowGpuHotspotCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "iGPU Hotspot (🔥°C)", _osd.ShowGpuHotspot, v => { _osd.ShowGpuHotspot = v; SyncOverlayFromStudio(); },
+                "Show iGPU junction hotspot temperature (🔥°C) when available");
+            _osdShowGpuLoadCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "GPU Load & Clock", _osd.ShowGpuLoad, v => { _osd.ShowGpuLoad = v; SyncOverlayFromStudio(); }, null);
+            _osdShowRadeonCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "Radeon Feature Tags", _osd.ShowRadeon, v => { _osd.ShowRadeon = v; SyncOverlayFromStudio(); },
+                "Display compact pill tags for active AMD Radeon features (FreeSync, Anti-Lag, AFMF, Chill, Boost, RSR, RIS)");
+            _osdShowDriverVerCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep, colW, cbH, "Radeon Driver Version", _osd.ShowDriverVer, v => { _osd.ShowDriverVer = v; SyncOverlayFromStudio(); },
+                "Show the installed AMD Radeon Software (Adrenalin) driver version on the OSD");
+            _osdShowRadeonExtTagsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep, colW, cbH, "SAM, EnhSync & FRTC Tags", _osd.ShowRadeonExtTags, v => { _osd.ShowRadeonExtTags = v; SyncOverlayFromStudio(); },
+                "Include Smart Access Memory (SAM), Enhanced Sync, and FRTC cap pills in the OSD Radeon tags row");
+            curY += rowStep * 2;
+
+            // 3. RAM (DDR5)
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "RAM (DDR5)", ref curY);
+            _osdShowRamCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "RAM Load & Power", _osd.ShowRam, v => { _osd.ShowRam = v; SyncOverlayFromStudio(); }, null);
+            _osdShowRamTempCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "RAM Temp (°C)", _osd.ShowRamTemp, v => { _osd.ShowRamTemp = v; SyncOverlayFromStudio(); },
+                "Show DDR5 temperature on the RAM overlay row");
+            _osdShowRamDualSticksCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "RAM Dual-Stick (35/41°C)", _osd.ShowRamDualSticks, v => { _osd.ShowRamDualSticks = v; SyncOverlayFromStudio(); },
+                "Show both SODIMM temperatures (35/41°C). Uncheck to show only the single hottest stick (41°C).");
+            _osdShowRamSpreadCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "RAM Spread Delta (Δ°C)", _osd.ShowRamSpread, v => { _osd.ShowRamSpread = v; SyncOverlayFromStudio(); },
+                "Show thermal spread delta badge (Δ6°) between stacked SODIMM slots");
+            _osdShowRamLoadCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep, colW, cbH, "RAM Load (%)", _osd.ShowRamLoad, v => { _osd.ShowRamLoad = v; SyncOverlayFromStudio(); },
+                "Show memory utilization percentage (e.g. 22%) on the RAM overlay row");
+            _osdShowRamPowerCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep, colW, cbH, "RAM Power Draw (~W)", _osd.ShowRamPower, v => { _osd.ShowRamPower = v; SyncOverlayFromStudio(); },
+                "Show DDR5 power draw (~3.6W) on the RAM overlay row");
+            _osdShowRamClockCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY + rowStep, colW, cbH, "RAM Clock (@ MHz)", _osd.ShowRamClock, v => { _osd.ShowRamClock = v; SyncOverlayFromStudio(); },
+                "Show effective DDR data rate (@ 5600MHz) on the RAM overlay row (independent of CPU/iGPU clocks)");
+            curY += rowStep * 2;
+
+            // 4. NVMe Storage (left) & Chassis & Silicon (right)
+            pairY = curY;
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "NVMe Storage", ref curY, 8, 490);
+            _osdShowNvmeCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY, 242, cbH, "NVMe SSD Temp", _osd.ShowNvme, v => { _osd.ShowNvme = v; SyncOverlayFromStudio(); }, null);
+            _osdShowNvmePowerCb = AddOsdCheckBox(_osdMetricsScrollPanel, 258, curY, 242, cbH, "NVMe Power Draw (~W)", _osd.ShowNvmePower, v => { _osd.ShowNvmePower = v; SyncOverlayFromStudio(); },
+                "Show PCIe NVMe SSD power draw (~0.9W) on the NVMe overlay row");
+            _osdShowNvmeIoCb = AddOsdCheckBox(_osdMetricsScrollPanel, 8, curY + rowStep, 242, cbH, "NVMe I/O (MB/s)", _osd.ShowNvmeIo, v => { _osd.ShowNvmeIo = v; SyncOverlayFromStudio(); },
+                "Show live NVMe read/write throughput (MB/s) on the NVMe overlay row");
+            _osdShowNvmeDualCb = AddOsdCheckBox(_osdMetricsScrollPanel, 258, curY + rowStep, 242, cbH, "NVMe Dual-Drive (°C/°C)", _osd.ShowNvmeDual, v => { _osd.ShowNvmeDual = v; SyncOverlayFromStudio(); },
+                "Show second NVMe drive temperature when idle and a second drive is detected");
+
+            rightY = pairY;
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "Chassis & Silicon", ref rightY, 518, 490);
+            _osdShowAmbientCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY, 242, cbH, "Chassis Ambient", _osd.ShowAmbient, v => { _osd.ShowAmbient = v; SyncOverlayFromStudio(); },
+                "Display motherboard chassis ambient temperature (IT8613 Sensor 4)");
+            _osdShowFabricClockCb = AddOsdCheckBox(_osdMetricsScrollPanel, 768, rightY, 242, cbH, "Infinity Fabric (FCLK)", _osd.ShowFabricClock, v => { _osd.ShowFabricClock = v; SyncOverlayFromStudio(); },
+                "Display AMD Infinity Fabric clock frequency (FCLK) and 1:1 memory bus synchronization status");
+            _osdShowFclkSyncCb = AddOsdCheckBox(_osdMetricsScrollPanel, 518, rightY + rowStep, 242, cbH, "FCLK Sync Badge (1:1)", _osd.ShowFclkSync, v => { _osd.ShowFclkSync = v; SyncOverlayFromStudio(); },
+                "Show 1:1 Sync / Async badge on the Infinity Fabric row");
+            _osdShowNpuCb = AddOsdCheckBox(_osdMetricsScrollPanel, 768, rightY + rowStep, 242, cbH, "Ryzen AI NPU", _osd.ShowNpu, v => { _osd.ShowNpu = v; SyncOverlayFromStudio(); },
+                "Display AMD Ryzen AI NPU activity percentage (PMLOG_NPU_BUSY_AVG) and inference clock");
+            curY += rowStep * 2;
+
+            // 5. FPS & Frametime
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "FPS & Frametime", ref curY);
+            _osdShowFpsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "Live FPS & Frametime", _osd.ShowFps, v => { _osd.ShowFps = v; SyncOverlayFromStudio(); }, null);
+            _osdShowFrametimeMsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "FPS Frametime (ms)", _osd.ShowFrametimeMs, v => { _osd.ShowFrametimeMs = v; SyncOverlayFromStudio(); },
+                "Show frame time in milliseconds (e.g. 16.7ms) next to FPS");
+            _osdShowLowsCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "0.1% Low & Avg FPS", _osd.ShowLows, v => { _osd.ShowLows = v; SyncOverlayFromStudio(); }, null);
+            _osdShowFpsAvgCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "FPS Session Avg", _osd.ShowFpsAvg, v => { _osd.ShowFpsAvg = v; SyncOverlayFromStudio(); },
+                "Show session average FPS on the FPS row instead of peak/min tracker");
+            curY += rowStep;
+
+            // 6. Fans
+            AddOsdSectionHeader(_osdMetricsScrollPanel, "Fans", ref curY);
+            _osdShowApuFanCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "APU Fan RPM", _osd.ShowApuFan, v => { _osd.ShowApuFan = v; SyncOverlayFromStudio(); }, null);
+            _osdShowSysFanCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, _hasDualFans ? "Sys Fan RPM" : "Sys Fan RPM (N/A)", _osd.ShowSysFan && _hasDualFans, v => { _osd.ShowSysFan = v; SyncOverlayFromStudio(); }, null);
+            _osdShowSysFanCb.Enabled = _hasDualFans;
+            curY += rowStep;
+
+            // 7. Graphs, Theme & Global Overlay
+            _osdSubFieldsHeaderLabel = AddOsdSectionHeader(_osdMetricsScrollPanel, "Graphs, Theme & Global Overlay", ref curY);
+            _osdShowLiveTrendCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "Live Trend Graph", _osd.ShowLiveTrend, v =>
+            {
+                _osd.ShowLiveTrend = v;
+                if (_osd.ShowLiveTrend)
+                {
+                    if (_osd.GraphMode == 0) _osd.GraphMode = 2;
+                    else if (_osd.GraphMode == 1) _osd.GraphMode = 3;
+                }
+                else
+                {
+                    if (_osd.GraphMode == 2) _osd.GraphMode = 0;
+                    else if (_osd.GraphMode == 3) _osd.GraphMode = 1;
+                }
+                SyncOverlayFromStudio();
+                UpdateOsdStudioStyles();
+            }, "Display the multi-sensor live history trend chart (CPU, iGPU, NVMe, Power, Fan RPM)");
+            _osdShowFpsGraphCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "FPS & Frametime Graph", _osd.ShowFpsGraph, v => { _osd.ShowFpsGraph = v; SyncOverlayFromStudio(); }, null);
+            _osdDfGraphStyleCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "DF Twin Graphs", _osd.DfGraphStyle, v => { _osd.DfGraphStyle = v; SyncOverlayFromStudio(); },
+                "Render Digital Foundry style twin graphs: FRAME-TIME (MS) 0-50-100 and FRAME-RATE (FPS) 0-40-80-120");
+            _osdDfGraphFirstCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "DF Graphs on Top", _osd.DfGraphFirst, v => { _osd.DfGraphFirst = v; SyncOverlayFromStudio(); },
+                "Render Digital Foundry style twin graphs above the multi-sensor Live Trend graph");
+
+            _osdPlotFpsOnTrendCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep, colW, cbH, "Plot FPS on Live Trend", _osd.PlotFpsOnTrend, v => { _osd.PlotFpsOnTrend = v; SyncOverlayFromStudio(); }, null);
+            _osdSparklineBgCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep, colW, cbH, "Background Sparklines", _osd.SparklineBg, v => { _osd.SparklineBg = v; SyncOverlayFromStudio(); },
+                "Render sparklines as full-width glowing background underlays across each metric row");
+            _osdShowModeCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY + rowStep, colW, cbH, "Thermal Mode", _osd.ShowMode, v => { _osd.ShowMode = v; SyncOverlayFromStudio(); }, null);
+            _osdShowGameNameCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY + rowStep, colW, cbH, "Active Game Title", _osd.ShowGameName, v => { _osd.ShowGameName = v; SyncOverlayFromStudio(); },
+                "Display the active 3D game process name on the OSD header and horizontal bar");
+
+            _osdMatchThemeCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY + rowStep * 2, colW, cbH, "Match App Theme", _osd.MatchTheme, v => { _osd.MatchTheme = v; SyncOverlayFromStudio(); }, null);
+            _osdShowPeaksCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY + rowStep * 2, 96, cbH, "Trackers", _osd.ShowPeaks, v =>
+            {
+                _osd.ShowPeaks = v;
+                if (_osdTrackerModeCombo != null) _osdTrackerModeCombo.Enabled = _osd.ShowPeaks;
+                SyncOverlayFromStudio();
+            }, "Show session Peak (▲), Low (▼), Min/Max (▼▲), or Avg (~) trackers for temperature, power, and usage.");
+
+            _osdTrackerModeCombo = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Regular),
+                Location = new Point(colX[1] + 98, curY + 2 * rowStep),
+                Size = new Size(134, 24),
+                Enabled = _osd.ShowPeaks,
+                AccessibleName = "OSD Peak Tracker Mode",
+                Cursor = Cursors.Hand
+            };
+            _osdTrackerModeCombo.Items.AddRange(new object[] { "Peaks (▲)", "Lows (▼)", "Min/Max (▼▲)", "Avg (~)" });
+            _osdTrackerModeCombo.SelectedIndex = Math.Max(0, Math.Min(3, _osd.PeakTrackerMode));
+            _osdTrackerModeCombo.SelectedIndexChanged += (s, e) =>
+            {
+                if (_osdTrackerModeCombo.SelectedIndex >= 0)
+                {
+                    _osd.PeakTrackerMode = _osdTrackerModeCombo.SelectedIndex;
+                    SyncOverlayFromStudio();
+                }
+            };
+            _uiToolTip.SetToolTip(_osdTrackerModeCombo, "Choose whether the right-hand tracker column displays Peaks (▲), Lows (▼), Min/Max (▼▲), or Session Average (~).");
+            _osdMetricsScrollPanel.Controls.Add(_osdTrackerModeCombo);
+            _osdDfCornerInsetCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY + rowStep * 2, colW, cbH, "DF Corner Inset", _osd.DfCornerInset, v =>
+            {
+                _osd.DfCornerInset = v;
+                if (v)
+                {
+                    _osd.ShowFpsGraph = true;
+                    _osd.DfGraphStyle = true;
+                    if (_osdShowFpsGraphCb != null) _osdShowFpsGraphCb.Checked = true;
+                    if (_osdDfGraphStyleCb != null) _osdDfGraphStyleCb.Checked = true;
+                }
+                SyncOverlayFromStudio();
+            }, "Render a compact 30-sample Digital Foundry Frame-Time box tucked inside the top-left corner of the FPS graph.");
+            curY += rowStep * 3 + 4;
+
+            _osdTipLabel = new Label
+            {
+                Text = "Tip: Drag OSD with mouse. Right-click for options. Ctrl+Alt+F9 toggles.",
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Regular),
+                Location = new Point(8, curY),
+                Size = new Size(990, 22),
+                Padding = new Padding(4, 2, 4, 2),
+                UseMnemonic = false
+            };
+            _uiToolTip.SetToolTip(_osdTipLabel, "Drag OSD anywhere across multiple monitors with your mouse. Right-click the OSD anytime for quick scale, graph modes, heights & click-through lock, or press Ctrl+Alt+F9 to toggle overlay.");
+            _osdMetricsScrollPanel.Controls.Add(_osdTipLabel);
+        }
+
+        private Label AddOsdSectionHeader(Panel parent, string title, ref int curY, int x = 8, int width = 990)
+        {
+            if (curY > 2) curY += 3;
+            Label lbl = new Label
+            {
+                Text = title,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
+                Location = new Point(x, curY),
+                Size = new Size(width, 17),
+                UseMnemonic = false
+            };
+            parent.Controls.Add(lbl);
+            _osdSectionHeaders.Add(lbl);
+            curY += 17;
+            return lbl;
+        }
+
+        private CheckBox AddOsdCheckBox(Panel parent, int x, int y, int width, int height, string text, bool initialChecked, Action<bool> onChanged, string tooltip)
+        {
+            CheckBox cb = new CheckBox
+            {
+                Text = text,
+                Location = new Point(x, y),
+                Size = new Size(width, height),
+                Checked = initialChecked,
+                UseMnemonic = false
+            };
+            cb.CheckedChanged += (s, e) => onChanged(cb.Checked);
+            if (!string.IsNullOrEmpty(tooltip))
+                _uiToolTip.SetToolTip(cb, tooltip);
+            parent.Controls.Add(cb);
+            return cb;
+        }
+
+
+        private void UpdateOsdStudioStyles()
+        {
+            if (_osdConfigPanel == null) return;
+            bool isRadeon = (_themePref == ThemePreference.Radeon);
+            Color surface = isRadeon ? RadeonSurface : (IsAb ? AbSurface : (_isDarkMode ? DarkSurface : LightSurface));
+            Color surface2 = isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2));
+            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
+            Color textDim = isRadeon ? RadeonTextDim : (IsAb ? AbTextDim : (_isDarkMode ? DarkTextDim : LightTextDim));
+            Color accent = isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent));
+            Color activeFg = isRadeon ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
+
+            _osdConfigPanel.BackColor = surface;
+
+            // Highlight active Graph Mode button
+            Button[] modeBtns = new[] { _osdBtnTextOnly, _osdBtnSparklines, _osdBtnCombinedGraph, _osdBtnBothGraphs, _osdBtnGraphsOnly };
+            for (int i = 0; i < modeBtns.Length; i++)
+            {
+                if (modeBtns[i] == null) continue;
+                bool active = (_osd.GraphMode == i);
+                modeBtns[i].BackColor = active ? accent : surface2;
+                modeBtns[i].ForeColor = active ? activeFg : text;
+                modeBtns[i].Font = active ? TabFontBold : TabFontRegular;
+            }
+
+            // Highlight active Scale button (100%, 125%, 150%, 185%)
+            Button[] scaleBtns = new[] { _osdBtnScale100, _osdBtnScale125, _osdBtnScale150, _osdBtnScale185 };
+            for (int i = 0; i < scaleBtns.Length; i++)
+            {
+                if (scaleBtns[i] == null) continue;
+                bool active = (_osd.ScaleTier == i);
+                scaleBtns[i].BackColor = active ? accent : surface2;
+                scaleBtns[i].ForeColor = active ? activeFg : text;
+                scaleBtns[i].Font = active ? TabFontBold : TabFontRegular;
+            }
+
+            // Highlight active Layout button
+            if (_osdBtnLayoutH != null)
+            {
+                bool activeH = !_osd.VerticalLayout;
+                _osdBtnLayoutH.BackColor = activeH ? accent : surface2;
+                _osdBtnLayoutH.ForeColor = activeH ? activeFg : text;
+                _osdBtnLayoutH.Font = activeH ? TabFontBold : TabFontRegular;
+            }
+            if (_osdBtnLayoutV != null)
+            {
+                bool activeV = _osd.VerticalLayout;
+                _osdBtnLayoutV.BackColor = activeV ? accent : surface2;
+                _osdBtnLayoutV.ForeColor = activeV ? activeFg : text;
+                _osdBtnLayoutV.Font = activeV ? TabFontBold : TabFontRegular;
+            }
+
+            // Highlight active Height button (75px Compact, 105px Medium, 140px Large, 180px XL)
+            if (_osdBtnHeightCompact != null)
+            {
+                bool active = (_osd.GraphHeight <= 85);
+                _osdBtnHeightCompact.BackColor = active ? accent : surface2;
+                _osdBtnHeightCompact.ForeColor = active ? activeFg : text;
+                _osdBtnHeightCompact.Font = active ? TabFontBold : TabFontRegular;
+            }
+            if (_osdBtnHeightMedium != null)
+            {
+                bool active = (_osd.GraphHeight > 85 && _osd.GraphHeight <= 120);
+                _osdBtnHeightMedium.BackColor = active ? accent : surface2;
+                _osdBtnHeightMedium.ForeColor = active ? activeFg : text;
+                _osdBtnHeightMedium.Font = active ? TabFontBold : TabFontRegular;
+            }
+            if (_osdBtnHeightLarge != null)
+            {
+                bool active = (_osd.GraphHeight > 120 && _osd.GraphHeight <= 160);
+                _osdBtnHeightLarge.BackColor = active ? accent : surface2;
+                _osdBtnHeightLarge.ForeColor = active ? activeFg : text;
+                _osdBtnHeightLarge.Font = active ? TabFontBold : TabFontRegular;
+            }
+            if (_osdBtnHeightXl != null)
+            {
+                bool active = (_osd.GraphHeight > 160);
+                _osdBtnHeightXl.BackColor = active ? accent : surface2;
+                _osdBtnHeightXl.ForeColor = active ? activeFg : text;
+                _osdBtnHeightXl.Font = active ? TabFontBold : TabFontRegular;
+            }
+
+            // Style quick snap buttons
+            Button[] snapBtns = new[] { _osdQuickPosTl, _osdQuickPosTc, _osdQuickPosTr, _osdQuickPosBl, _osdQuickPosBc, _osdQuickPosBr };
+            foreach (Button b in snapBtns)
+            {
+                if (b != null)
+                {
+                    b.BackColor = surface2;
+                    b.ForeColor = text;
+                }
+            }
+
+            // Style quick action buttons (Select All / Deselect All / Defaults)
+            if (_osdSelectAllBtn != null)
+            {
+                _osdSelectAllBtn.BackColor = surface2;
+                _osdSelectAllBtn.ForeColor = text;
+            }
+            if (_osdDeselectAllBtn != null)
+            {
+                _osdDeselectAllBtn.BackColor = surface2;
+                _osdDeselectAllBtn.ForeColor = text;
+            }
+            if (_osdResetDefaultsBtn != null)
+            {
+                _osdResetDefaultsBtn.BackColor = surface2;
+                _osdResetDefaultsBtn.ForeColor = text;
+            }
+
+            // Style quick toggle buttons
+            if (_osdToggleOverlayBtn != null)
+            {
+                _osdToggleOverlayBtn.BackColor = _showOverlay ? accent : surface2;
+                _osdToggleOverlayBtn.ForeColor = _showOverlay ? activeFg : text;
+            }
+            if (_osdToggleLockBtn != null)
+            {
+                _osdToggleLockBtn.BackColor = _lockOverlay ? (isRadeon ? RadeonOrange : Color.FromArgb(0xEA, 0x58, 0x0C)) : surface2;
+                _osdToggleLockBtn.ForeColor = _lockOverlay ? Color.White : text;
+            }
+
+            if (_optCardOsdConfigBtn != null)
+            {
+                _optCardOsdConfigBtn.BackColor = surface2;
+                _optCardOsdConfigBtn.ForeColor = text;
+            }
+
+            if (_osdOpacitySlider != null) _osdOpacitySlider.BackColor = surface;
+            if (_osdOpacityPctLabel != null) _osdOpacityPctLabel.ForeColor = text;
+
+            // Style all section labels inside OSD Studio
+            if (_osdTitleLabel != null) { _osdTitleLabel.BackColor = surface; _osdTitleLabel.ForeColor = accent; }
+            if (_osdGraphModeLabel != null) { _osdGraphModeLabel.BackColor = surface; _osdGraphModeLabel.ForeColor = text; }
+            if (_osdGraphHeightLabel != null) { _osdGraphHeightLabel.BackColor = surface; _osdGraphHeightLabel.ForeColor = text; }
+            if (_osdScaleLabel != null) { _osdScaleLabel.BackColor = surface; _osdScaleLabel.ForeColor = text; }
+            if (_osdLayoutLabel != null) { _osdLayoutLabel.BackColor = surface; _osdLayoutLabel.ForeColor = text; }
+            if (_osdOpacityLabel != null) { _osdOpacityLabel.BackColor = surface; _osdOpacityLabel.ForeColor = text; }
+            if (_osdSnapLabel != null) { _osdSnapLabel.BackColor = surface; _osdSnapLabel.ForeColor = text; }
+            if (_osdMetricsHeaderLabel != null) { _osdMetricsHeaderLabel.BackColor = surface; _osdMetricsHeaderLabel.ForeColor = text; }
+            if (_osdSubFieldsHeaderLabel != null) { _osdSubFieldsHeaderLabel.BackColor = surface; _osdSubFieldsHeaderLabel.ForeColor = text; }
+            if (_osdMetricsScrollPanel != null) { _osdMetricsScrollPanel.BackColor = surface; _osdMetricsScrollPanel.ForeColor = text; }
+            foreach (Label secHdr in _osdSectionHeaders)
+            {
+                if (secHdr != null)
+                {
+                    secHdr.BackColor = surface;
+                    secHdr.ForeColor = accent;
+                }
+            }
+            if (_osdTipLabel != null)
+            {
+                _osdTipLabel.BackColor = surface2;
+                _osdTipLabel.ForeColor = textDim;
+            }
+
+            // CheckBoxes inside studio
+            CheckBox[] cbs = new[]
+            {
+                _osdShowCpuCb, _osdShowGpuCb, _osdShowNvmeCb, _osdShowRamCb,
+                _osdShowVrmCurrentCb, _osdShowAmbientCb, _osdShowFabricClockCb, _osdShowNpuCb,
+                _osdShowApuFanCb, _osdShowSysFanCb, _osdShowPowerCb, _osdShowGpuLoadCb,
+                _osdShowFpsCb, _osdShowLowsCb,
+                _osdShowModeCb, _osdShowPeaksCb, _osdShowRadeonCb, _osdShowRadeonExtTagsCb, _osdShowDriverVerCb,
+                _osdShowClocksCb, _osdShowGameNameCb, _osdSparklineBgCb, _osdMatchThemeCb,
+                _osdShowLiveTrendCb, _osdShowFpsGraphCb, _osdPlotFpsOnTrendCb, _osdDfGraphStyleCb, _osdDfCornerInsetCb, _osdDfGraphFirstCb,
+                _osdShowRamTempCb, _osdShowRamDualSticksCb, _osdShowRamSpreadCb, _osdShowRamLoadCb,
+                _osdShowRamPowerCb, _osdShowRamClockCb, _osdShowNvmePowerCb,
+                _osdShowNvmeIoCb, _osdShowNvmeDualCb, _osdShowCpuLoadCb, _osdShowGpuHotspotCb,
+                _osdShowPowerLimitCb, _osdShowFclkSyncCb, _osdShowFrametimeMsCb, _osdShowFpsAvgCb
+            };
+            foreach (CheckBox cb in cbs)
+            {
+                if (cb != null)
+                {
+                    cb.BackColor = surface;
+                    cb.ForeColor = text;
+                }
+            }
+            if (_osdTrackerModeCombo != null)
+            {
+                _osdTrackerModeCombo.BackColor = surface2;
+                _osdTrackerModeCombo.ForeColor = text;
+            }
+        }
+
+    }
+}

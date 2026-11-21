@@ -47,13 +47,14 @@ The codebase is organized into cleanly separated domain modules supporting both 
 
 ```
 MiniFanControl/
-├── Core/               # Controller service, settings persistence, OSD config, profiles & themes
+├── Core/               # Controller service, settings persistence, JSON tokenizer, OSD config, profiles & themes
 │   ├── AppSettings.cs
 │   ├── DeviceProfile.cs
 │   ├── FanControllerService.cs
 │   ├── FanStatus.cs
 │   ├── Localization.cs
 │   ├── OsdOverlayConfig.cs
+│   ├── SimpleJson.cs
 │   ├── TelemetrySessionStats.cs
 │   └── ThemePreference.cs
 ├── Curves/             # Curve interpolation math & 3-pass automated calibration engine
@@ -65,6 +66,9 @@ MiniFanControl/
 │   ├── DriverServiceManager.cs
 │   ├── EcBusMutex.cs
 │   ├── HardwareBackend.cs
+│   ├── HardwareBackend.PortsAndEc.cs
+│   ├── HardwareBackend.SiliconSensors.cs
+│   ├── HardwareBackend.SuperIo.cs
 │   ├── NativeInpOut.cs
 │   └── SystemStorageMemorySensor.cs
 ├── Safety/             # Out-of-process crash supervisor daemon & IPC heartbeat watchdog
@@ -77,11 +81,17 @@ MiniFanControl/
 ├── Ui/                 # Double-buffered canvases, accessible WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
 │   ├── DoubleBufferedPanel.cs
+│   ├── EcDifferentialScannerForm.cs
 │   ├── FanCalibrationDialog.cs
 │   ├── FanCurveCanvas.cs
 │   ├── LivePerformanceCanvas.cs
 │   ├── LiveTelemetryCanvas.cs
 │   ├── MainForm.cs
+│   ├── MainForm.CurvesAndModes.cs
+│   ├── MainForm.Layout.cs
+│   ├── MainForm.MenusAndTray.cs
+│   ├── MainForm.OsdStudio.cs
+│   ├── MainForm.Theme.cs
 │   ├── NewModeDialog.cs
 │   └── SetupAssistantDialog.cs
 ├── .github/            # GitHub Actions CI/CD workflows & structured issue templates
