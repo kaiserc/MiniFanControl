@@ -1,3 +1,15 @@
+# Release Notes: MiniFanControl v1.2.2 (Native Windows ETW Display Latency, Desktop GPU OSD Polish & 101/101 Suite)
+
+**MiniFanControl v1.2.2** adds **100% hook-free native Windows ETW Display Latency & Flip Mode monitoring** (`Microsoft-Windows-DXGI` + `Microsoft-Windows-DxgKrnl` — the same kernel event stream used by Intel PresentMon and CapFrameX), integrates **Desktop GPU & Read-Only OSD polish** with upward frametime scaling and responsive layout improvements, and crosses the **101/101 passing automated tests** milestone on both `.NET 4.8` and `.NET 10.0-windows`.
+
+## ✨ Highlights in v1.2.2
+- **Native Hook-Free Windows ETW Display Latency (`Display Latency (ETW)`)**: Measures true `Present() → Scan-out` display latency (`ms`), render latency, and Flip Mode (`MPO Flip` / `Indep. Flip` / `Composed`) across DX11/DX12/Vulkan games with zero game injection and zero extra DLLs—and automatically provides native FPS, Frametime, 1% & 0.1% Lows even when RTSS isn't running (Tests #100–#101).
+- **Live Latency Across OSD, `Live Perf` & CLI**: Displays `LAT: xx.xms` in the DF Corner / FPS overlay header and OSD strip (toggleable in OSD Studio & context menu), adds color-coded `Lat: xx.xms (MPO Flip)` badges and hover HUD readouts to `Live Perf`, adds `minifan-helper.exe latency [--demo]`, and exposes latency fields in `status` JSON.
+- **Desktop GPU / Read-Only OSD Polish & Responsive Layout**: Distinguishes discrete `GPU` vs `iGPU`, uses crisp ASCII `(HS xx°)` hotspot labels, hides inactive fan/mode rows in Read-Only mode, tracks 1% Low history with consistent frametime resolution, refines upward frametime scaling, and polishes responsive layout geometry (Test #99).
+- **101/101 Automated Safety & Telemetry Tests**: All **101** automated self-tests pass on both `.NET 4.8` and `.NET 10.0-windows`.
+
+---
+
 # Release Notes: MiniFanControl v1.2.1 (High-DPI GDI Scaling & Clean Desktop Read-Only Mode)
 
 **MiniFanControl v1.2.1** fixes high-DPI text/layout clipping on 125%–250% (1440p/4K) Windows displays and polishes the **Safe Read-Only Monitoring** experience on unverified desktop motherboards, expanding the automated test suite to **98/98 passing**.

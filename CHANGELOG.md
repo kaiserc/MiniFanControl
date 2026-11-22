@@ -4,6 +4,16 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.2.2] - 2026-11-22
+
+### ⏱️ Native Hook-Free Windows ETW Display Latency & Flip Mode Monitoring
+- **PresentMon-Style DXGI/DxgKrnl ETW Latency Engine (`Telemetry/EtwLatencyMonitor.cs`, `Hardware/HardwareBackend.cs`, `Hardware/DemoBackend.cs`, `Core/FanStatus.cs`, `Core/TelemetrySessionStats.cs`)**: Added zero-dependency real-time Windows ETW tracing (`Microsoft-Windows-DXGI` + `Microsoft-Windows-DxgKrnl` QPC events) measuring Present-to-Display scan-out latency (`DisplayLatencyMs`), Render latency (`RenderLatencyMs`), Flip Mode (`MPO Flip` / `Indep. Flip` / `Composed`), and automatic hook-free fallback FPS/Frametime/1%/0.1% Lows even when RTSS isn't running—with post-flip scan-out pairing to prevent premature secondary-monitor VSync under-reads (Test #100).
+- **OSD, OSD Studio, `Live Perf` Ribbon & CLI Integration (`Telemetry/CapFrameXOverlayForm*.cs`, `Ui/LivePerformanceCanvas.cs`, `Ui/MainForm.OsdStudio.cs`, `Core/OsdOverlayConfig.cs`, `Program.cs`)**: Displays live `LAT: xx.xms` on the DF Corner / FPS graph header and OSD strip, adds the `Display Latency (ETW)` toggle in OSD Studio and the OSD context menu, adds color-coded `Lat: xx.xms (MPO Flip)` badges + hover HUD readouts to `Live Perf`, adds `minifan-helper.exe latency [--demo]`, and exposes latency fields in `status` JSON (Test #101).
+
+### 🖥️ Desktop GPU / Read-Only OSD Polish, Upward Frametime Scale & Responsive Layout
+- **Desktop GPU & Read-Only OSD Refinements (`Hardware/RadeonSettingsSensor.cs`, `Telemetry/CapFrameXOverlayForm*.cs`, `Telemetry/FpsMonitor.cs`, `Ui/LivePerformanceCanvas.cs`, `Ui/MainForm.Layout.cs`)**: Added discrete GPU detection (`GPU` vs `iGPU` labels), clean ASCII `(HS xx°)` hotspot formatting, automatic read-only OSD row trimming (hiding 0 RPM fans & read-only mode), consistent frametime resolution, 1% Low history tracking, upward frametime graph scaling, and responsive layout refinements (Test #99).
+- **101/101 Automated Tests (`Tests/SelfTestSuite.cs`, `.github/workflows/ci.yml`, `README.md`, `GUIDE.md`, `HARDWARE_VALIDATION.md`, `CONTRIBUTING.md`)**: Surpassed **100+ automated tests** with **101/101 passing** across `.NET 4.8` and `.NET 10.0-windows`.
+
 ## [1.2.1] - 2026-11-22
 
 ### 🖥️ High-DPI Scaling & Safe Desktop Read-Only Monitoring

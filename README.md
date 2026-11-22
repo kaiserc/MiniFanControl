@@ -1,6 +1,6 @@
 # MiniFanControl — Native EC Fan Control & Thermal Monitor for AMD Ryzen Mini PCs
 
-![Tests](https://img.shields.io/badge/tests-96%2F96%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-101%2F101%20passing-brightgreen)
 ![Security](https://img.shields.io/badge/Security-Fail--Closed%20%7C%20Least--Privilege-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
@@ -10,14 +10,14 @@
 </p>
 
 <p align="center">
-  <img src="assets/ui-main-osd.jpg" alt="MiniFanControl v1.2.1 Windows 11 Afterburner Dashboard, DF Corner Performance View, and Stacked Live Trend In-Game OSD" width="85%" />
+  <img src="assets/ui-main-osd.jpg" alt="MiniFanControl v1.2.2 Windows 11 Afterburner Dashboard, DF Corner Performance View, and Stacked Live Trend In-Game OSD" width="85%" />
 </p>
 
-[![Release: v1.2.1](https://img.shields.io/badge/Release-v1.2.1-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
+[![Release: v1.2.2](https://img.shields.io/badge/Release-v1.2.2-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 96 Passed](https://img.shields.io/badge/Automated%20Tests-96%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-9696-passing)
+[![Automated Tests: 101 Passed](https://img.shields.io/badge/Automated%20Tests-101%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-101101-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 [![Ko-fi: Support](https://img.shields.io/badge/Ko--fi-Support%20Project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/kaiser76)
 
@@ -78,14 +78,15 @@ MiniFanControl/
 │   └── SystemStorageMemorySensor.cs
 ├── Safety/             # Out-of-process crash supervisor daemon & IPC heartbeat watchdog
 │   └── WatchdogSupervisor.cs
-├── Telemetry/          # RTSS/CapFrameX shared memory reader & transparent OSD HUD
+├── Telemetry/          # RTSS shared memory reader, native Windows ETW latency engine & transparent OSD HUD
 │   ├── CapFrameXOverlayForm.cs
 │   ├── CapFrameXOverlayForm.ContextMenu.cs
 │   ├── CapFrameXOverlayForm.Formatting.cs
 │   ├── CapFrameXOverlayForm.Graphs.cs
 │   ├── CapFrameXOverlayForm.Paint.cs
+│   ├── EtwLatencyMonitor.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 96-point automated hardware safety & regression test suite
+├── Tests/              # 101-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
 ├── Ui/                 # Double-buffered canvases, Win11 DWM chrome, accessible WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
@@ -381,13 +382,16 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Generate sanitized hardware profile JSON & pre-filled GitHub Issue URL
 .\minifan-helper.exe submit-report
 
-# Execute the 96-point automated hardware safety & curve test suite
+# Inspect native Windows DXGI/DxgKrnl ETW Display Latency & Flip Mode
+.\minifan-helper.exe latency
+
+# Execute the 101-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (98/98 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (101/101 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -487,6 +491,11 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 94. **Sanitized Hardware Profile Submission (`HardwareProfileSubmission`)**: Verifies valid JSON output, PII redaction of `C:\Users\<name>` paths, and length-bounded pre-filled GitHub New Issue URL generation.
 95. **Windows 11 DWM Visual Style (`Win11VisualStyle`)**: Verifies Win32 `COLORREF` (`0x00BBGGRR`) encoding, color blending, rounded card border rendering, modern button styling, and null-form safety.
 96. **Opt-In Anti-Cheat Persistence & MainForm Win11 DWM Handle Integration**: Verifies `AppSettings.AutoPauseForAntiCheat` defaults to `false` and `MainForm` handle creation applies Windows 11 DWM frame styling cleanly.
+97. **Unverified Desktop Hardware (`unknown-safe`) Read-Only Guard**: Verifies inherently read-only desktop profiles skip EC/fan writes cleanly without accumulating write failures or triggering failsafe spam.
+98. **High-DPI GDI Scaling Manifest & `MainForm` Layout Integrity**: Verifies `gdiScaling=true` / `dpiAware=false` in `app.manifest` and `AutoScaleMode.None` on `MainForm`.
+99. **Desktop PC OSD Polish & Consistent Frametime**: Verifies discrete GPU vs `iGPU` labeling, ASCII hotspot formatting, read-only OSD row trimming, consistent frametime resolution, and 1% Low history tracking.
+100. **Native Windows ETW Display Latency Tracker & x64 Struct Alignment (`EtwLatencyMonitor`, `EtwPresentTracker`)**: Verifies Win64 ETW struct sizes (`88`/`280`/`448` bytes), DXGI/DxgKrnl MPO/FreeSync HSync scan-out latency math, post-flip pairing, Composed Blit detection, ignored-process filtering, and stale expiry.
+101. **ETW Display Latency Stats, OSD Studio Persistence, Overlay/LivePerf Render & Status JSON**: Verifies `TelemetrySessionStats` latency tracking, `OsdOverlayConfig.ShowLatency` round-trip, DF Corner / `LivePerformanceCanvas` rendering, and CLI `status` JSON latency fields.
 
 ---
 
