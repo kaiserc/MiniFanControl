@@ -421,7 +421,11 @@ namespace MiniFanControl
 
             string game = CapFrameXOverlayForm.FormatGameName(Status.RtssProcessName);
             bool isGameActive = !string.IsNullOrEmpty(game) && curFps > 0;
-            string gameTag = isGameActive ? ("🎮 " + game) : (Status.RtssRunning ? "⏱ RTSS Active (Desktop / Idle)" : "⏱ RTSS Standby");
+            string gameTag = isGameActive
+                ? ("🎮 " + game)
+                : (Status.RtssRunning
+                    ? "⏱ RTSS Active (Desktop / Idle)"
+                    : (Status.EtwLatencyActive ? "⏱ ETW Active (Hook-Free)" : "⏱ RTSS / ETW Standby"));
 
             Color textCol = IsRadeonTheme ? Color.FromArgb(0xFD, 0xBA, 0x74)
                 : (IsAfterburnerTheme ? Color.FromArgb(0x00, 0xE5, 0xFF)
@@ -473,6 +477,18 @@ namespace MiniFanControl
                     string low1Str = string.Format("1%: {0}", low1);
                     TextRenderer.DrawText(g, low1Str, FontTitle, new Point(x, 10), low1Col, TextFormatFlags.NoPadding);
                     x += TextRenderer.MeasureText(g, low1Str, FontTitle, new Size(120, 20), TextFormatFlags.NoPadding).Width + 10;
+                }
+
+                if (Status.DisplayLatencyMs > 0.0)
+                {
+                    Color latCol = (Status.DisplayLatencyMs <= 15.0)
+                        ? Color.FromArgb(0x4A, 0xDE, 0x80)
+                        : (Status.DisplayLatencyMs <= 30.0 ? Color.FromArgb(0xFB, 0xBF, 0x24) : Color.FromArgb(0xFB, 0x71, 0x85));
+                    string latStr = string.Format("Lat: {0:0.0}ms", Status.DisplayLatencyMs);
+                    if (!string.IsNullOrEmpty(Status.PresentFlipMode))
+                        latStr += " (" + Status.PresentFlipMode + ")";
+                    TextRenderer.DrawText(g, latStr, FontTitle, new Point(x, 10), latCol, TextFormatFlags.NoPadding);
+                    x += TextRenderer.MeasureText(g, latStr, FontTitle, new Size(180, 20), TextFormatFlags.NoPadding).Width + 10;
                 }
             }
             else
@@ -723,7 +739,10 @@ namespace MiniFanControl
                     ? Stats.FrametimeHistory[sIdx] / 10.0
                     : 16.6;
                 int equivFps = ft > 0 ? (int)Math.Round(1000.0 / ft) : 0;
-                string hud = string.Format("{0} | Frametime: {1:0.0} ms (~{2} FPS)", FormatTimeAgo(samplesAgo), ft, equivFps);
+                string latHud = (Status.DisplayLatencyMs > 0.0)
+                    ? string.Format(" | Lat: {0:0.0} ms{1}", Status.DisplayLatencyMs, !string.IsNullOrEmpty(Status.PresentFlipMode) ? (" • " + Status.PresentFlipMode) : "")
+                    : "";
+                string hud = string.Format("{0} | Frametime: {1:0.0} ms (~{2} FPS){3}", FormatTimeAgo(samplesAgo), ft, equivFps, latHud);
 
                 DrawHoverHud(g, plot, hud, _hoverMouseX, _hoverMouseY);
             }

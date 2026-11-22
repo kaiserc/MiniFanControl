@@ -190,6 +190,7 @@ namespace MiniFanControl
         public bool ShowFclkSync = true;
         public bool ShowFrametimeMs = true;
         public bool ShowFpsAvg = true;
+        public bool ShowLatency = true;
         public bool ShowRadeonExtendedTags = true;
         public bool UseFahrenheit = false;
 
@@ -843,6 +844,9 @@ namespace MiniFanControl
                 hash = hash * 31 + (ShowFclkSync ? 1 : 0);
                 hash = hash * 31 + (ShowFrametimeMs ? 1 : 0);
                 hash = hash * 31 + (ShowFpsAvg ? 1 : 0);
+                hash = hash * 31 + (ShowLatency ? 1 : 0);
+                hash = hash * 31 + (int)Math.Round(st.DisplayLatencyMs * 10);
+                if (st.PresentFlipMode != null) hash = hash * 31 + st.PresentFlipMode.GetHashCode();
                 hash = hash * 31 + (ShowRadeonExtendedTags ? 1 : 0);
                 hash = hash * 31 + (UseFahrenheit ? 1 : 0);
                 hash = hash * 31 + PeakTrackerMode;

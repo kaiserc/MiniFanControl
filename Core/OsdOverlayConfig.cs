@@ -61,6 +61,7 @@ namespace MiniFanControl
         public bool ShowFclkSync = true;
         public bool ShowFrametimeMs = true;
         public bool ShowFpsAvg = true;
+        public bool ShowLatency = true;
 
         // Per-series toggles for Live Trend graph (shared between app Live Trend tab & OSD Live Trend graph)
         public bool TrendCpu = true;
@@ -117,6 +118,7 @@ namespace MiniFanControl
             ShowFclkSync = true;
             ShowFrametimeMs = true;
             ShowFpsAvg = true;
+            ShowLatency = true;
             TrendCpu = true;
             TrendGpu = true;
             TrendRam = true;
@@ -236,6 +238,7 @@ namespace MiniFanControl
             overlay.ShowFclkSync = ShowFclkSync;
             overlay.ShowFrametimeMs = ShowFrametimeMs;
             overlay.ShowFpsAvg = ShowFpsAvg;
+            overlay.ShowLatency = ShowLatency;
             overlay.ShowRadeonExtendedTags = ShowRadeonExtTags;
             overlay.TrendCpu = TrendCpu;
             overlay.TrendGpu = TrendGpu;
@@ -379,6 +382,7 @@ namespace MiniFanControl
             if (k == "OsdShowFclkSync") { ShowFclkSync = ParseBool(v); return true; }
             if (k == "OsdShowFrametimeMs") { ShowFrametimeMs = ParseBool(v); return true; }
             if (k == "OsdShowFpsAvg") { ShowFpsAvg = ParseBool(v); return true; }
+            if (k == "OsdShowLatency") { ShowLatency = ParseBool(v); return true; }
             if (k == "OsdShowRadeonExtTags") { ShowRadeonExtTags = ParseBool(v); return true; }
             if (k == "TrendCpu") { TrendCpu = ParseBool(v); return true; }
             if (k == "TrendGpu") { TrendGpu = ParseBool(v); return true; }
@@ -444,6 +448,7 @@ namespace MiniFanControl
             lines.Add("OsdShowFclkSync=" + (ShowFclkSync ? "1" : "0"));
             lines.Add("OsdShowFrametimeMs=" + (ShowFrametimeMs ? "1" : "0"));
             lines.Add("OsdShowFpsAvg=" + (ShowFpsAvg ? "1" : "0"));
+            lines.Add("OsdShowLatency=" + (ShowLatency ? "1" : "0"));
             lines.Add("OsdShowRadeonExtTags=" + (ShowRadeonExtTags ? "1" : "0"));
             lines.Add("TrendCpu=" + (TrendCpu ? "1" : "0"));
             lines.Add("TrendGpu=" + (TrendGpu ? "1" : "0"));

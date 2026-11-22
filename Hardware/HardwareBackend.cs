@@ -757,7 +757,9 @@ namespace MiniFanControl
                 cpuClk, memClk, gfxVolt, adlFclk, adlGfxCurr, adlSocCurr);
 
             RtssTelemetry rtss = FpsMonitor.GetTelemetry();
-            RadeonSettingsTelemetry rad = RadeonSettingsSensor.Sample(rtss.ProcessName);
+            EtwLatencyTelemetry etw = EtwLatencyMonitor.GetTelemetry(!_isSimulatedMode);
+            string activeGameProc = !string.IsNullOrEmpty(rtss.ProcessName) ? rtss.ProcessName : etw.ProcessName;
+            RadeonSettingsTelemetry rad = RadeonSettingsSensor.Sample(activeGameProc);
 
             // DDR5 Dual Stacked SO-DIMM Thermal Resolution
             int ddrCount = GetDdrStickCount(mem.TotalGb);
@@ -878,15 +880,19 @@ namespace MiniFanControl
                 GpuHotspotTemp = hotspot,
                 NpuClockMhz = npuClk,
                 NpuActivityPct = npuAct,
-                RtssFps = rtss.IsAvailable ? rtss.Fps : -1,
+                RtssFps = rtss.IsAvailable ? rtss.Fps : (etw.HasLiveFrames && etw.Fps > 0 ? etw.Fps : -1),
                 RtssRunning = rtss.IsRtssRunning,
-                RtssFrametimeMs = rtss.IsAvailable ? rtss.FrametimeMs : 0.0,
-                RtssAvgFps = rtss.IsAvailable ? rtss.AvgFps : 0,
+                RtssFrametimeMs = rtss.IsAvailable ? rtss.FrametimeMs : (etw.HasLiveFrames ? etw.FrametimeMs : 0.0),
+                RtssAvgFps = rtss.IsAvailable ? rtss.AvgFps : (etw.HasLiveFrames ? etw.AvgFps : 0),
                 RtssMinFps = rtss.IsAvailable ? rtss.MinFps : 0,
                 RtssMaxFps = rtss.IsAvailable ? rtss.MaxFps : 0,
-                RtssP1LowFps = rtss.IsAvailable ? rtss.P1LowFps : 0,
-                RtssP01LowFps = rtss.IsAvailable ? rtss.P01LowFps : 0,
-                RtssProcessName = !string.IsNullOrEmpty(rtss.ProcessName) ? rtss.ProcessName : null,
+                RtssP1LowFps = rtss.IsAvailable ? rtss.P1LowFps : (etw.HasLiveFrames ? etw.P1LowFps : 0),
+                RtssP01LowFps = rtss.IsAvailable ? rtss.P01LowFps : (etw.HasLiveFrames ? etw.P01LowFps : 0),
+                RtssProcessName = !string.IsNullOrEmpty(activeGameProc) ? activeGameProc : null,
+                DisplayLatencyMs = etw.HasLiveFrames ? etw.DisplayLatencyMs : 0.0,
+                RenderLatencyMs = etw.HasLiveFrames ? etw.RenderLatencyMs : 0.0,
+                PresentFlipMode = etw.HasLiveFrames ? (etw.FlipMode ?? "") : "",
+                EtwLatencyActive = etw.IsEtwActive,
                 PowerSource = pwrSrc,
                 Fan1Rpm = fan1Rpm,
                 Fan2Rpm = fan2Rpm,

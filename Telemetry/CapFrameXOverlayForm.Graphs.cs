@@ -1112,17 +1112,20 @@ namespace MiniFanControl
             int p1Low = _status.RtssP1LowFps > 0 ? _status.RtssP1LowFps : ((Stats != null && Stats.P1LowFps > 0) ? Stats.P1LowFps : 0);
             int p01Low = _status.RtssP01LowFps > 0 ? _status.RtssP01LowFps : ((Stats != null && Stats.P01LowFps > 0) ? Stats.P01LowFps : 0);
 
-            // Bold Header: FRAME-RATE (FPS) with live readout, average, 1% and 0.1% lows
+            // Bold Header: FRAME-RATE (FPS) with live readout, average, 1% and 0.1% lows + native ETW Display Latency
             string lowsPart = "";
             if (p1Low > 0) lowsPart += string.Format("  •  1%: {0}", p1Low);
             if (p01Low > 0) lowsPart += string.Format("  •  0.1%: {0}", p01Low);
+            string latPart = (ShowLatency && _status.DisplayLatencyMs > 0)
+                ? string.Format("  •  LAT: {0:0.0}ms", _status.DisplayLatencyMs)
+                : "";
             string fpsHdr;
             if (curLiveFps > 0)
             {
                 bool compactHdr = rect.Width < (int)Math.Round(340 * sc);
                 fpsHdr = compactHdr
-                    ? string.Format("FPS: {0}{1}{2}", curLiveFps, sessionAvg > 0 ? string.Format("  •  AVG: {0}", sessionAvg) : "", lowsPart)
-                    : string.Format("FRAME-RATE (FPS)  •  NOW: {0}{1}{2}", curLiveFps, sessionAvg > 0 ? string.Format("  •  AVG: {0}", sessionAvg) : "", lowsPart);
+                    ? string.Format("FPS: {0}{1}{2}{3}", curLiveFps, sessionAvg > 0 ? string.Format("  •  AVG: {0}", sessionAvg) : "", lowsPart, latPart)
+                    : string.Format("FRAME-RATE (FPS)  •  NOW: {0}{1}{2}{3}", curLiveFps, sessionAvg > 0 ? string.Format("  •  AVG: {0}", sessionAvg) : "", lowsPart, latPart);
             }
             else
             {

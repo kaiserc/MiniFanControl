@@ -5149,6 +5149,166 @@ namespace MiniFanControl
                 "Desktop PC OSD Polish (Discrete GPU Label, ASCII Hotspot, Read-Only Row Trimming, Consistent FT & 1% Low History)",
                 desktopOsdDetail);
 
+            // 100. Native Windows ETW Present-to-Display Latency Tracker, FreeSync HSync Scanout & x64 Struct Layout
+            bool etwTrackerOk = false;
+            string etwTrackerDetail = "";
+            try
+            {
+                int szEventTrace = Marshal.SizeOf(typeof(EtwLatencyMonitor.EVENT_TRACE));
+                int szLogHdr = Marshal.SizeOf(typeof(EtwLatencyMonitor.TRACE_LOGFILE_HEADER_64));
+                int szLogFile = Marshal.SizeOf(typeof(EtwLatencyMonitor.EVENT_TRACE_LOGFILE_64));
+                bool structsOk = (IntPtr.Size != 8) || (szEventTrace == 88 && szLogHdr == 280 && szLogFile == 448);
+
+                EtwPresentTracker tracker = new EtwPresentTracker(delegate(uint p)
+                {
+                    if (p == 1001) return "explorer.exe";
+                    if (p == 2002) return "ES2-Win64-Shipping.exe";
+                    if (p == 3003) return "ComposedGame.exe";
+                    return null;
+                });
+
+                double freq = 10000000.0; // 10 MHz QPC (10,000 ticks = 1.0 ms)
+                long baseQpc = 100000000L;
+
+                // Ignored process (explorer.exe) must never be tracked
+                tracker.ProcessEvent(EtwPresentTracker.ProviderDxgi, EtwPresentTracker.DXGI_PRESENT_START, 1001, baseQpc, freq);
+                EtwLatencyTelemetry ignSnap = tracker.GetSnapshot(baseQpc + 100000, freq, true);
+                bool ignoredFiltered = !ignSnap.HasLiveFrames;
+
+                // Simulate 30 frames at 100 FPS (10.0 ms interval) with MPO Flip (+6.5 ms) & FreeSync HSync Scanout (+11.2 ms)
+                long lastQpc = baseQpc;
+                for (int i = 0; i < 30; i++)
+                {
+                    long tStart = baseQpc + i * 100000L; // +10.0 ms per frame
+                    tracker.ProcessEvent(EtwPresentTracker.ProviderDxgi, EtwPresentTracker.DXGI_PRESENT_MPO_START, 2002, tStart, freq);
+                    tracker.ProcessEvent(EtwPresentTracker.ProviderDxgi, EtwPresentTracker.DXGI_PRESENT_MPO_STOP, 2002, tStart + 2500L, freq); // +0.25 ms
+                    tracker.ProcessEvent(EtwPresentTracker.ProviderDxgKrnl, EtwPresentTracker.DXGKRNL_MMIO_FLIP_MPO, 2002, tStart + 65000L, freq); // +6.5 ms
+                    tracker.ProcessEvent(EtwPresentTracker.ProviderDxgKrnl, EtwPresentTracker.DXGKRNL_HSYNC_DPC_MPO, 0, tStart + 112000L, freq); // +11.2 ms
+                    lastQpc = tStart + 112000L;
+                }
+
+                EtwLatencyTelemetry mpoSnap = tracker.GetSnapshot(lastQpc + 50000L, freq, true);
+                bool mpoOk = mpoSnap.HasLiveFrames
+                    && mpoSnap.ProcessName == "ES2-Win64-Shipping.exe"
+                    && mpoSnap.FlipMode == "MPO Flip"
+                    && (mpoSnap.DisplayLatencyMs >= 10.5 && mpoSnap.DisplayLatencyMs <= 12.0)
+                    && (mpoSnap.RenderLatencyMs >= 6.0 && mpoSnap.RenderLatencyMs <= 7.0)
+                    && (mpoSnap.PresentApiMs >= 0.20 && mpoSnap.PresentApiMs <= 0.30)
+                    && (mpoSnap.Fps >= 98 && mpoSnap.Fps <= 102)
+                    && (mpoSnap.AvgFps >= 98 && mpoSnap.AvgFps <= 102)
+                    && mpoSnap.P1LowFps > 0;
+
+                // Stale idle expiry (> 2.5s) clears HasLiveFrames
+                EtwLatencyTelemetry staleSnap = tracker.GetSnapshot(lastQpc + 30000000L, freq, true);
+                bool staleCleared = !staleSnap.HasLiveFrames;
+
+                // Composed Blit flip mode detection on a new game after idle
+                long tComp = lastQpc + 30000000L;
+                for (int i = 0; i < 5; i++)
+                {
+                    long ts = tComp + i * 166667L;
+                    tracker.ProcessEvent(EtwPresentTracker.ProviderDxgi, EtwPresentTracker.DXGI_PRESENT_START, 3003, ts, freq);
+                    tracker.ProcessEvent(EtwPresentTracker.ProviderDxgKrnl, EtwPresentTracker.DXGKRNL_BLIT, 3003, ts + 80000L, freq);
+                    tracker.ProcessEvent(EtwPresentTracker.ProviderDxgKrnl, EtwPresentTracker.DXGKRNL_VSYNC_DPC, 0, ts + 280000L, freq);
+                }
+                EtwLatencyTelemetry compSnap = tracker.GetSnapshot(tComp + 5 * 166667L, freq, true);
+                bool composedOk = compSnap.HasLiveFrames && compSnap.FlipMode == "Composed" && compSnap.DisplayLatencyMs >= 25.0;
+
+                etwTrackerOk = structsOk && ignoredFiltered && mpoOk && staleCleared && composedOk;
+                etwTrackerDetail = string.Format("Structs({0}/{1}/{2})={3}, Ignored={4}, MPO(Lat={5:0.0}ms,Ren={6:0.0}ms,FPS={7})={8}, Stale={9}, Comp({10}/{11:0.0}ms)={12}",
+                    szEventTrace, szLogHdr, szLogFile, structsOk, ignoredFiltered,
+                    mpoSnap.DisplayLatencyMs, mpoSnap.RenderLatencyMs, mpoSnap.Fps, mpoOk,
+                    staleCleared, compSnap.FlipMode, compSnap.DisplayLatencyMs, composedOk);
+            }
+            catch (Exception ex) { etwTrackerDetail = ex.Message; }
+            Check(etwTrackerOk,
+                "Native Windows ETW Display Latency Tracker (DXGI/DxgKrnl MPO/FreeSync/Composed & x64 Structs)",
+                etwTrackerDetail);
+
+            // 101. ETW Display Latency Stats, OSD Studio Persistence & Overlay/LivePerf Rendering
+            bool etwUiOk = false;
+            string etwUiDetail = "";
+            try
+            {
+                TelemetrySessionStats latStats = new TelemetrySessionStats();
+                FanStatus stLat = new FanStatus
+                {
+                    CpuTemp = 72,
+                    GpuTemp = 68,
+                    ApuPowerWatts = 48,
+                    RtssFps = 98,
+                    RtssFrametimeMs = 10.2,
+                    RtssAvgFps = 96,
+                    RtssP1LowFps = 78,
+                    RtssP01LowFps = 71,
+                    RtssProcessName = "ES2-Win64-Shipping.exe",
+                    DisplayLatencyMs = 11.4,
+                    RenderLatencyMs = 6.8,
+                    PresentFlipMode = "MPO Flip",
+                    EtwLatencyActive = true,
+                    Mode = "Balanced"
+                };
+                latStats.Record(stLat);
+                stLat.DisplayLatencyMs = 13.6;
+                latStats.Record(stLat);
+                bool statsOk = (latStats.LatencyHistory.Count == 2)
+                    && (Math.Abs(latStats.MinLatencyMs - 11.4) < 0.05)
+                    && (Math.Abs(latStats.MaxLatencyMs - 13.6) < 0.05)
+                    && (Math.Abs(latStats.AvgLatencyMs - 12.5) < 0.05);
+
+                // OsdOverlayConfig ShowLatency round-trip
+                OsdOverlayConfig cfg = new OsdOverlayConfig();
+                cfg.ShowLatency = false;
+                List<string> lines = new List<string>();
+                cfg.AppendSettings(lines);
+                OsdOverlayConfig cfg2 = new OsdOverlayConfig();
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    int eq = lines[i].IndexOf('=');
+                    if (eq > 0) cfg2.TryParseSetting(lines[i].Substring(0, eq), lines[i].Substring(eq + 1));
+                }
+                bool cfgRoundTrip = !cfg2.ShowLatency;
+
+                // Render Overlay (DF Corner) and LivePerformanceCanvas with live latency without exceptions
+                bool renderOk = false;
+                using (CapFrameXOverlayForm osdLat = new CapFrameXOverlayForm())
+                using (LivePerformanceCanvas perfLat = new LivePerformanceCanvas())
+                {
+                    osdLat.ShowLatency = true;
+                    osdLat.DfCornerInset = true;
+                    osdLat.Stats = latStats;
+                    osdLat.UpdateMetrics(stLat, "Balanced", true);
+                    osdLat.UpdateDimensions();
+                    using (Bitmap b1 = new Bitmap(Math.Max(1, osdLat.TargetWidth), Math.Max(1, osdLat.TargetHeight)))
+                    {
+                        osdLat.DrawToBitmap(b1, new Rectangle(0, 0, osdLat.TargetWidth, osdLat.TargetHeight));
+                    }
+
+                    perfLat.Size = new Size(900, 480);
+                    perfLat.Stats = latStats;
+                    perfLat.Status = stLat;
+                    using (Bitmap b2 = new Bitmap(900, 480))
+                    {
+                        perfLat.DrawToBitmap(b2, new Rectangle(0, 0, 900, 480));
+                    }
+                    renderOk = true;
+                }
+
+                // Verify CLI status JSON contains display_latency_ms & flip_mode
+                string statusJson = Program.FormatStatusJson(stLat, "Global");
+                bool jsonOk = statusJson.Contains("\"display_latency_ms\":13.6")
+                    && statusJson.Contains("\"flip_mode\":\"MPO Flip\"")
+                    && statusJson.Contains("\"etw_active\":true");
+
+                etwUiOk = statsOk && cfgRoundTrip && renderOk && jsonOk;
+                etwUiDetail = string.Format("Stats(Avg={0:0.0}ms)={1}, CfgRT={2}, Render={3}, Json={4}",
+                    latStats.AvgLatencyMs, statsOk, cfgRoundTrip, renderOk, jsonOk);
+            }
+            catch (Exception ex) { etwUiDetail = ex.Message; }
+            Check(etwUiOk,
+                "ETW Display Latency Stats, OSD Studio Persistence, Overlay/LivePerf Render & Status JSON",
+                etwUiDetail);
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));

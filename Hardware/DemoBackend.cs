@@ -128,7 +128,11 @@ namespace MiniFanControl
                 RadeonBoost = true,
                 RadeonRsr = true,
                 RadeonRis = true,
-                RadeonFsr = true
+                RadeonFsr = true,
+                DisplayLatencyMs = Math.Round(11.2 + _rng.Next(-8, 12) * 0.1, 1),
+                RenderLatencyMs = Math.Round(6.8 + _rng.Next(-5, 8) * 0.1, 1),
+                PresentFlipMode = "MPO Flip",
+                EtwLatencyActive = true
             };
         }
 

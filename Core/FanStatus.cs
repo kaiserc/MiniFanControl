@@ -49,6 +49,10 @@ namespace MiniFanControl
         public int RtssP1LowFps;
         public int RtssP01LowFps;
         public string RtssProcessName;
+        public double DisplayLatencyMs;  // Native ETW Present-to-Display scan-out latency (ms)
+        public double RenderLatencyMs;   // Native ETW Present-to-MMIO/MPO flip latency (ms)
+        public string PresentFlipMode;   // "Indep. Flip", "MPO Flip", "Composed", or ""
+        public bool EtwLatencyActive;    // True when native Windows DXGI/DxgKrnl ETW session is active
         public string PowerSource;
         public int Fan1Rpm;
         public int Fan2Rpm;

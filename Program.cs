@@ -67,12 +67,13 @@ namespace MiniFanControl
                 "{{\"cpu_temp\":{0},\"gpu_temp\":{1},\"apu_power_w\":{2},\"fan1_rpm\":{3},\"fan2_rpm\":{4}," +
                 "\"mode\":\"{5}\",\"mode_code\":{6},\"fan1_pct\":{7},\"fan2_pct\":{8}," +
                 "\"fan1_manual\":{9},\"fan2_manual\":{10},\"nvme_temp\":{11},\"nvme_health\":{12}," +
-                "\"ram_used_gb\":{13:0.0},\"ram_total_gb\":{14:0.0},\"ram_load_pct\":{15},\"ddr_sticks\":{16},\"ddr_temp1\":{17},\"ddr_temp2\":{18},\"ddr_spread\":{19},\"radeon_features\":\"{20}\",\"mutex_namespace\":\"{21}\"}}",
+                "\"ram_used_gb\":{13:0.0},\"ram_total_gb\":{14:0.0},\"ram_load_pct\":{15},\"ddr_sticks\":{16},\"ddr_temp1\":{17},\"ddr_temp2\":{18},\"ddr_spread\":{19},\"radeon_features\":\"{20}\",\"mutex_namespace\":\"{21}\",\"display_latency_ms\":{22:0.0},\"render_latency_ms\":{23:0.0},\"flip_mode\":\"{24}\",\"etw_active\":{25}}}",
                 st.CpuTemp, st.GpuTemp, st.ApuPowerWatts, st.Fan1Rpm, st.Fan2Rpm,
                 EscapeJson(st.Mode), st.ModeCode, st.Fan1Pct, st.Fan2Pct,
                 st.Fan1Manual, st.Fan2Manual, st.NvmeTemp, st.NvmeHealthPct,
                 st.RamUsedGb, st.RamTotalGb, st.RamLoadPct, st.DdrStickCount, st.DdrTemp1, st.DdrTemp2, st.DdrTempSpread,
-                EscapeJson(st.RadeonFeaturesSummary ?? "None"), EscapeJson(mutexNamespace ?? ""));
+                EscapeJson(st.RadeonFeaturesSummary ?? "None"), EscapeJson(mutexNamespace ?? ""),
+                st.DisplayLatencyMs, st.RenderLatencyMs, EscapeJson(st.PresentFlipMode ?? ""), st.EtwLatencyActive ? "true" : "false");
         }
 
         public static int ClampCliFanDuty(int fanId, int requestedPct, bool force, out bool wasClamped, out int minFloor)
@@ -173,7 +174,8 @@ namespace MiniFanControl
 
                     Console.WriteLine("MiniFanControl v" + MainForm.APP_VERSION + " CLI Commands:");
 
-                    Console.WriteLine("  status [--demo]                       Query fan speeds, APU power, temperatures");
+                    Console.WriteLine("  status [--demo]                       Query fan speeds, APU power, temperatures & display latency");
+                    Console.WriteLine("  latency [--demo]                      Inspect native Windows DXGI/DxgKrnl ETW display latency & flip mode");
 
                     Console.WriteLine("  mode <0|1|2> [--demo]                 Set thermal mode (0=Balanced, 1=Performance, 2=Silent)");
 
@@ -192,7 +194,7 @@ namespace MiniFanControl
                     Console.WriteLine("  diff-scan / ec-scan [--demo]          Run EC differential sensor scanner (Tier 2 discovery)");
                     Console.WriteLine("  calibrate [passes] [--demo]           Execute multi-pass fan calibration curve analysis");
 
-                    Console.WriteLine("  test                                  Run 96-point automated safety & regression suite");
+                    Console.WriteLine("  test                                  Run 101-point automated safety & regression suite");
                     Console.WriteLine("  hw-matrix                             Run multi-profile hardware validation matrix");
                     Console.WriteLine("  export-profiles [--json]              Export supported hardware profiles & Super I/O IDs");
 
@@ -284,6 +286,32 @@ namespace MiniFanControl
                         Console.Error.WriteLine("{{\"error\":\"{0}\"}}", ex.Message.Replace("\"", "\\\"").Replace("\r", "").Replace("\n", " "));
                         return 1;
                     }
+                }
+
+                if (cmd == "latency" || cmd == "--latency")
+                {
+                    if (demoMode)
+                    {
+                        Console.WriteLine("{\"etw_active\":true,\"has_live_frames\":true,\"display_latency_ms\":11.4,\"render_latency_ms\":6.8,\"present_api_ms\":0.24,\"flip_mode\":\"MPO Flip\",\"fps\":98,\"frametime_ms\":10.2,\"process\":\"ES2-Win64-Shipping.exe\",\"diagnostic\":\"Demo Mode\"}");
+                        return 0;
+                    }
+                    EtwLatencyMonitor.EnsureStarted();
+                    Thread.Sleep(350);
+                    EtwLatencyTelemetry etw = EtwLatencyMonitor.GetTelemetry(false);
+                    Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                        "{{\"etw_active\":{0},\"has_live_frames\":{1},\"display_latency_ms\":{2:0.0},\"render_latency_ms\":{3:0.0},\"present_api_ms\":{4:0.00},\"flip_mode\":\"{5}\",\"fps\":{6},\"frametime_ms\":{7:0.00},\"process\":\"{8}\",\"diagnostic\":\"{9}\"}}",
+                        etw.IsEtwActive ? "true" : "false",
+                        etw.HasLiveFrames ? "true" : "false",
+                        etw.DisplayLatencyMs,
+                        etw.RenderLatencyMs,
+                        etw.PresentApiMs,
+                        EscapeJson(etw.FlipMode ?? ""),
+                        etw.Fps,
+                        etw.FrametimeMs,
+                        EscapeJson(etw.ProcessName ?? ""),
+                        EscapeJson(EtwLatencyMonitor.LastDiagnostic ?? "")));
+                    EtwLatencyMonitor.Shutdown();
+                    return 0;
                 }
 
                 if (cmd == "daemon" || cmd == "--daemon" || cmd == "headless" || cmd == "--headless")
@@ -910,6 +938,7 @@ namespace MiniFanControl
             }
             finally
             {
+                try { EtwLatencyMonitor.Shutdown(); } catch { }
                 NativeInpOut.Shutdown();
                 if (singleInstanceMutex != null)
                 {

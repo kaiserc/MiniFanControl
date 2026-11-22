@@ -473,6 +473,7 @@ namespace MiniFanControl
         private CheckBox _osdShowFclkSyncCb;
         private CheckBox _osdShowFrametimeMsCb;
         private CheckBox _osdShowFpsAvgCb;
+        private CheckBox _osdShowLatencyCb;
         private CheckBox _osdShowRadeonExtTagsCb;
         private Panel _osdMetricsScrollPanel;
         private readonly List<Label> _osdSectionHeaders = new List<Label>();
@@ -808,6 +809,7 @@ namespace MiniFanControl
         private void OnProcessOrCrashExit(object sender, EventArgs e)
         {
             RestoreHardwareSafeAutoIfNeeded();
+            try { EtwLatencyMonitor.Shutdown(); } catch { }
         }
 
         private bool _isSystemSuspended = false;
@@ -2362,6 +2364,7 @@ namespace MiniFanControl
                 _refreshTimer = null;
             }
             RestoreHardwareSafeAutoIfNeeded();
+            try { EtwLatencyMonitor.Shutdown(); } catch { }
             if (_headerLogoBox != null && _headerLogoBox.Image != null)
             {
                 _headerLogoBox.Image.Dispose();

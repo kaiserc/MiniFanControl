@@ -178,6 +178,7 @@ namespace MiniFanControl
             if (_osdShowFclkSyncCb != null) _osdShowFclkSyncCb.Checked = _osd.ShowFclkSync;
             if (_osdShowFrametimeMsCb != null) _osdShowFrametimeMsCb.Checked = _osd.ShowFrametimeMs;
             if (_osdShowFpsAvgCb != null) _osdShowFpsAvgCb.Checked = _osd.ShowFpsAvg;
+            if (_osdShowLatencyCb != null) _osdShowLatencyCb.Checked = _osd.ShowLatency;
             if (_osdMatchThemeCb != null) _osdMatchThemeCb.Checked = _osd.MatchTheme;
 
             if (_osdToggleOverlayBtn != null)
@@ -1036,6 +1037,11 @@ namespace MiniFanControl
                 }
                 SyncOverlayFromStudio();
             }, "Render a compact 30-sample Digital Foundry Frame-Time box tucked inside the top-left corner of the FPS graph.");
+            _osdShowLatencyCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY + rowStep * 2, colW, cbH, "Display Latency (ETW)", _osd.ShowLatency, v =>
+            {
+                _osd.ShowLatency = v;
+                SyncOverlayFromStudio();
+            }, "Show native hook-free Windows ETW Present-to-Display scan-out latency (ms) and Flip Mode (MPO / Indep. Flip / Composed) on the OSD.");
             curY += rowStep * 3 + 4;
 
             _osdTipLabel = new Label
@@ -1254,7 +1260,7 @@ namespace MiniFanControl
                 _osdShowRamTempCb, _osdShowRamDualSticksCb, _osdShowRamSpreadCb, _osdShowRamLoadCb,
                 _osdShowRamPowerCb, _osdShowRamClockCb, _osdShowNvmePowerCb,
                 _osdShowNvmeIoCb, _osdShowNvmeDualCb, _osdShowCpuLoadCb, _osdShowGpuHotspotCb,
-                _osdShowPowerLimitCb, _osdShowFclkSyncCb, _osdShowFrametimeMsCb, _osdShowFpsAvgCb
+                _osdShowPowerLimitCb, _osdShowFclkSyncCb, _osdShowFrametimeMsCb, _osdShowFpsAvgCb, _osdShowLatencyCb
             };
             foreach (CheckBox cb in cbs)
             {

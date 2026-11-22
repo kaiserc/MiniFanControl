@@ -321,6 +321,8 @@ namespace MiniFanControl
                         if (hasFps)
                         {
                             val = (ShowFrametimeMs && ft > 0) ? string.Format("{0} ({1:0.0}ms)", _status.RtssFps, ft) : string.Format("{0} FPS", _status.RtssFps);
+                            if (ShowLatency && _status.DisplayLatencyMs > 0)
+                                val += string.Format(" • L:{0:0.0}ms", _status.DisplayLatencyMs);
                         }
                         else
                         {

@@ -35,6 +35,7 @@ namespace MiniFanControl
         public double FrametimeMs;
         public int AvgFps;
         public int P01LowFps;
+        public double DisplayLatencyMs;
         public int NvmeTemp;
         public double RamUsedGb;
         public int RamLoadPct;
@@ -96,6 +97,9 @@ namespace MiniFanControl
         public double MinFrametimeMs { get; private set; }
         public double MaxFrametimeMs { get; private set; }
         public double AvgFrametimeMs { get { return _frametimeSampleCount > 0 ? _sumFrametimeMs / _frametimeSampleCount : 0.0; } }
+        public double MinLatencyMs { get; private set; }
+        public double MaxLatencyMs { get; private set; }
+        public double AvgLatencyMs { get { return _latencySampleCount > 0 ? _sumLatencyMs / _latencySampleCount : 0.0; } }
 
         private long _sumCpuTemp;
         private long _sumGpuTemp;
@@ -114,6 +118,8 @@ namespace MiniFanControl
         private int _fpsSampleCount;
         private double _sumFrametimeMs;
         private int _frametimeSampleCount;
+        private double _sumLatencyMs;
+        private int _latencySampleCount;
         private long _sumCpuLoad;
         private int _cpuLoadSampleCount;
         private long _sumGpuLoad;
@@ -181,6 +187,8 @@ namespace MiniFanControl
         public List<int> P1LowHistory { get { return _p1LowHist; } }
         public List<int> P01LowHistory { get { return _p01LowHist; } }
         public List<int> FrametimeHistory { get { return _frametimeHist; } }
+        public List<int> LatencyHistory { get { return _latencyHist; } }
+        private readonly List<int> _latencyHist = new List<int>(HISTORY_LEN);
         public List<int> VrmHistory { get { return _vrmHist; } }
         public List<int> FabricClockHistory { get { return _fclkHist; } }
         public List<int> NpuHistory { get { return _npuHist; } }
@@ -246,6 +254,8 @@ namespace MiniFanControl
             P01LowFps = 0;
             MinFrametimeMs = double.MaxValue;
             MaxFrametimeMs = 0.0;
+            MinLatencyMs = double.MaxValue;
+            MaxLatencyMs = 0.0;
             MinVrmCurrentAmps = double.MaxValue;
             MaxVrmCurrentAmps = 0.0;
             MinVrmTemp = int.MaxValue;
@@ -281,6 +291,8 @@ namespace MiniFanControl
             _fpsSampleCount = 0;
             _sumFrametimeMs = 0.0;
             _frametimeSampleCount = 0;
+            _sumLatencyMs = 0.0;
+            _latencySampleCount = 0;
             _sumCpuLoad = 0;
             _cpuLoadSampleCount = 0;
             _sumGpuLoad = 0;
@@ -308,6 +320,7 @@ namespace MiniFanControl
             _p1LowHist.Clear();
             _p01LowHist.Clear();
             _frametimeHist.Clear();
+            _latencyHist.Clear();
             _vrmHist.Clear();
             _fclkHist.Clear();
             _npuHist.Clear();
@@ -445,6 +458,15 @@ namespace MiniFanControl
                     if (ft < MinFrametimeMs) MinFrametimeMs = ft;
                     if (ft > MaxFrametimeMs) MaxFrametimeMs = ft;
                     PushSample(_frametimeHist, (int)Math.Round(ft * 10.0));
+                }
+
+                if (st.DisplayLatencyMs > 0.0 && st.DisplayLatencyMs <= 250.0)
+                {
+                    _latencySampleCount++;
+                    _sumLatencyMs += st.DisplayLatencyMs;
+                    if (st.DisplayLatencyMs < MinLatencyMs) MinLatencyMs = st.DisplayLatencyMs;
+                    if (st.DisplayLatencyMs > MaxLatencyMs) MaxLatencyMs = st.DisplayLatencyMs;
+                    PushSample(_latencyHist, (int)Math.Round(st.DisplayLatencyMs * 10.0));
                 }
 
                 // Accept driver-provided percentiles only if they are not poisoned by initial startup stalls

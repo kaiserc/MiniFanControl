@@ -205,6 +205,7 @@ namespace MiniFanControl
             AddMetricToggleMenuItem(subFieldsMenu, "FCLK Sync Status (1:1)", () => ShowFclkSync, v => ShowFclkSync = v);
             AddMetricToggleMenuItem(subFieldsMenu, "FPS Frametime (ms)", () => ShowFrametimeMs, v => ShowFrametimeMs = v);
             AddMetricToggleMenuItem(subFieldsMenu, "FPS Session Avg", () => ShowFpsAvg, v => ShowFpsAvg = v);
+            AddMetricToggleMenuItem(subFieldsMenu, "Display Latency (ETW ms)", () => ShowLatency, v => ShowLatency = v);
             menu.Items.Add(subFieldsMenu);
 
             ToolStripMenuItem themeMenu = new ToolStripMenuItem("OSD Theme Palette");
