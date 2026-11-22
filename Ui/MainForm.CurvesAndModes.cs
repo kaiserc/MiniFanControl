@@ -300,10 +300,18 @@ namespace MiniFanControl
             if (_tabApuCurveBtn == null || _tabSysCurveBtn == null || _curveCanvas == null)
                 return;
 
-            string apuModeStr = _apuManualOverride ? "Manual" : (_apuProfile != null ? _apuProfile.Name : "Balanced");
-            string sysModeStr = _sysManualOverride ? "Manual" : (_sysProfile != null ? _sysProfile.Name : "Balanced");
-            _tabApuCurveBtn.Text = string.Format("● APU Fan: {0}", ShortModeTag(apuModeStr));
-            _tabSysCurveBtn.Text = string.Format("● Sys Fan: {0}", ShortModeTag(sysModeStr));
+            if (IsReadOnlyMonitoringMode)
+            {
+                _tabApuCurveBtn.Text = "● APU Fan: Read-Only";
+                _tabSysCurveBtn.Text = "● Sys Fan: Read-Only";
+            }
+            else
+            {
+                string apuModeStr = _apuManualOverride ? "Manual" : (_apuProfile != null ? _apuProfile.Name : "Balanced");
+                string sysModeStr = _sysManualOverride ? "Manual" : (_sysProfile != null ? _sysProfile.Name : "Balanced");
+                _tabApuCurveBtn.Text = string.Format("● APU Fan: {0}", ShortModeTag(apuModeStr));
+                _tabSysCurveBtn.Text = string.Format("● Sys Fan: {0}", ShortModeTag(sysModeStr));
+            }
             if (_tabLiveGraphBtn != null)
             {
                 string hlTag = _highlightedMetric == 2 ? " (iGPU)"
@@ -531,10 +539,16 @@ namespace MiniFanControl
         private void UpdateCalibrationBadge()
         {
             if (_calibBadgeLabel == null) return;
-            bool isCalibrated, isStale;
             bool isRadeon = (_themePref == ThemePreference.Radeon);
-            _calibBadgeLabel.Text = FanCurveProfile.FormatCalibrationStatusBadge(_hasDualFans, out isCalibrated, out isStale);
             _calibBadgeLabel.BackColor = isRadeon ? RadeonBg : (IsAb ? AbBg : (_isDarkMode ? DarkBg : LightBg));
+            if (IsReadOnlyMonitoringMode)
+            {
+                _calibBadgeLabel.Text = "👁️ Safe Read-Only Monitoring (Fan writes disabled)";
+                _calibBadgeLabel.ForeColor = isRadeon ? RadeonTextDim : (_isDarkMode ? DarkTextDim : LightTextDim);
+                return;
+            }
+            bool isCalibrated, isStale;
+            _calibBadgeLabel.Text = FanCurveProfile.FormatCalibrationStatusBadge(_hasDualFans, out isCalibrated, out isStale);
             if (!isCalibrated)
             {
                 _calibBadgeLabel.ForeColor = isRadeon ? RadeonTextDim : (_isDarkMode ? DarkTextDim : LightTextDim);
@@ -625,8 +639,15 @@ namespace MiniFanControl
         private void RefreshPowerBarCapabilityUi()
         {
             if (_biosPowerLabel == null) return;
-            bool usesWinPower = IsUsingWindowsPowerMode();
-            bool shouldShow = (_demoMode || _hw == null || !_hw.IsSuperIoControlled || usesWinPower);
+            bool readOnlyMonitor = IsReadOnlyMonitoringMode;
+            bool usesWinPower = !readOnlyMonitor && IsUsingWindowsPowerMode();
+            bool shouldShow = !readOnlyMonitor && (_demoMode || _hw == null || !_hw.IsSuperIoControlled || usesWinPower);
+            int headerLabelW = shouldShow ? 344 : 692;
+            if (_hwBadgeLabel != null && _hwBadgeLabel.Width != headerLabelW)
+                _hwBadgeLabel.Size = new Size(headerLabelW, _hwBadgeLabel.Height);
+            if (_hwSubLabel != null && _hwSubLabel.Width != headerLabelW)
+                _hwSubLabel.Size = new Size(headerLabelW, _hwSubLabel.Height);
+
             if (_biosPowerLabel.Visible != shouldShow || _lastPowerBarIsWinMode != usesWinPower)
             {
                 _lastPowerBarIsWinMode = usesWinPower;

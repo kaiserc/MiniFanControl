@@ -316,6 +316,16 @@ namespace MiniFanControl
 
         public void RunGuiFanCalibration()
         {
+            if (IsReadOnlyMonitoringMode)
+            {
+                MessageBox.Show(this,
+                    "Fan calibration is disabled in Safe Read-Only Monitoring Mode because this hardware is unverified.\n\n" +
+                    "MiniFanControl safely monitors your sensors without writing to unknown EC or Super I/O registers.\n" +
+                    "To test calibration safely on this PC, enable 'Offline Demo / Simulation Mode' in Tools & Drivers.",
+                    "MiniFanControl — Safe Read-Only Mode",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
             if (_controller != null) _controller.PauseForSuspend();
             bool timerWasEnabled = _refreshTimer != null && _refreshTimer.Enabled;
             if (_refreshTimer != null) _refreshTimer.Stop();
@@ -393,7 +403,7 @@ namespace MiniFanControl
         internal void ShowSetupAssistantDialog(bool manual)
         {
             if (_isUnitTest) return;
-            using (SetupAssistantDialog dlg = new SetupAssistantDialog(this, _isDarkMode, _themePref, _showSetupAssistant))
+            using (SetupAssistantDialog dlg = new SetupAssistantDialog(this, _isDarkMode, _themePref, _showSetupAssistant, IsReadOnlyMonitoringMode))
             {
                 dlg.ShowDialog(this);
                 _showSetupAssistant = dlg.ShowOnStartupIfUncalibrated;
@@ -607,11 +617,15 @@ namespace MiniFanControl
             menu.Items.Add(demoLabel, null, (s, e) =>
             {
                 _demoMode = !_demoMode;
+                if (_controller != null) _controller.ClearStaleWriteErrors();
+                UpdateReadOnlyUiState();
                 SaveSettings();
                 RebuildDriversMenu();
                 _statusBarLabel.Text = _demoMode
                     ? "ℹ Offline Demo Mode active (synthetic telemetry)"
-                    : "✓ Hardware Mode active (direct EC registers)";
+                    : (IsReadOnlyMonitoringMode
+                        ? "👁️ Safe Read-Only Monitoring Mode active (unverified hardware)"
+                        : "✓ Hardware Mode active (direct EC registers)");
                 RefreshStatus();
             });
             menu.Items.Add(new ToolStripSeparator());

@@ -10,6 +10,7 @@ namespace MiniFanControl
         private readonly MainForm _mainForm;
         private readonly bool _darkMode;
         private readonly ThemePreference _themePref;
+        private readonly bool _isReadOnlyMode;
 
         private Label _calibBadge;
         private Label _autoTuneResultLabel;
@@ -22,13 +23,15 @@ namespace MiniFanControl
             get { return _showOnStartupCb != null && _showOnStartupCb.Checked; }
         }
 
-        public SetupAssistantDialog(MainForm mainForm, bool darkMode, ThemePreference themePref, bool showOnStartupDefault)
+        public SetupAssistantDialog(MainForm mainForm, bool darkMode, ThemePreference themePref, bool showOnStartupDefault, bool isReadOnlyMode = false)
         {
             _mainForm = mainForm;
             _darkMode = darkMode;
             _themePref = themePref;
+            _isReadOnlyMode = isReadOnlyMode;
 
             Text = Loc.Get("SetupAssistant.Title", "MiniFanControl — First-Time Setup Assistant & Auto-Tune Guide");
+            AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -60,7 +63,9 @@ namespace MiniFanControl
 
             Label sub = new Label
             {
-                Text = Loc.Get("SetupAssistant.Subtitle", "Follow these two quick steps to tune optimal cooling acoustics for your Mini PC."),
+                Text = _isReadOnlyMode
+                    ? "Unverified hardware detected — running in Safe Read-Only Monitoring Mode (fan writes disabled)."
+                    : Loc.Get("SetupAssistant.Subtitle", "Follow these two quick steps to tune optimal cooling acoustics for your Mini PC."),
                 Font = new Font("Segoe UI", 9.25f, FontStyle.Regular),
                 ForeColor = textDim,
                 Location = new Point(22, 44),
@@ -121,6 +126,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _calibrateBtn.FlatAppearance.BorderSize = 0;
+            _calibrateBtn.Enabled = !_isReadOnlyMode;
             _calibrateBtn.Click += (s, e) =>
             {
                 if (_mainForm != null)
@@ -171,6 +177,7 @@ namespace MiniFanControl
                 Cursor = Cursors.Hand
             };
             _autoTuneBtn.FlatAppearance.BorderSize = 0;
+            _autoTuneBtn.Enabled = !_isReadOnlyMode;
             _autoTuneBtn.Click += (s, e) =>
             {
                 if (_mainForm != null)
@@ -277,6 +284,12 @@ namespace MiniFanControl
         private void RefreshCalibBadge()
         {
             if (_calibBadge == null) return;
+            if (_isReadOnlyMode)
+            {
+                _calibBadge.Text = "👁️ Read-Only (Writes Disabled)";
+                _calibBadge.ForeColor = _darkMode ? Color.FromArgb(0x94, 0xA3, 0xB8) : Color.FromArgb(0x64, 0x74, 0x8B);
+                return;
+            }
             bool isCal, isStale;
             string text = FanCurveProfile.FormatCalibrationStatusBadge(true, out isCal, out isStale);
             _calibBadge.Text = text;

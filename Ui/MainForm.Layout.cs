@@ -33,7 +33,7 @@ namespace MiniFanControl
             Panel card = new DoubleBufferedPanel
             {
                 Location = new Point(14, top + 20),
-                Size = new Size(ClientSize.Width - 28, height)
+                Size = new Size(1072, height)
             };
             card.Paint += (s, e) =>
             {
@@ -665,8 +665,14 @@ namespace MiniFanControl
             Controls.Add(_hwSubLabel);
 
             // Explicit Power Mode Switcher — BIOS EC 0x31/0x32 on EC boards, or native Windows Power Mode on Super I/O boards
-            bool usesWinPower = (!_demoMode && _hw != null && _hw.IsSuperIoControlled && WindowsPowerMode.IsSupported());
-            bool showBiosPowerBar = (_demoMode || _hw == null || !_hw.IsSuperIoControlled || usesWinPower);
+            bool readOnlyMonitor = IsReadOnlyMonitoringMode;
+            bool usesWinPower = (!readOnlyMonitor && !_demoMode && _hw != null && _hw.IsSuperIoControlled && WindowsPowerMode.IsSupported());
+            bool showBiosPowerBar = !readOnlyMonitor && (_demoMode || _hw == null || !_hw.IsSuperIoControlled || usesWinPower);
+            if (!showBiosPowerBar)
+            {
+                _hwBadgeLabel.Size = new Size(692, 24);
+                _hwSubLabel.Size = new Size(692, 18);
+            }
             string biosPowerTip = GetPowerBarTooltip(usesWinPower);
             _biosPowerLabel = new Label
             {

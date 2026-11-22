@@ -192,6 +192,15 @@ namespace MiniFanControl
         internal string LastHardwareWriteError { get { return _controller != null ? _controller.LastHardwareWriteError : null; } }
         internal int ConsecutiveWriteFailures { get { return _controller != null ? _controller.ConsecutiveWriteFailures : 0; } }
         internal bool ReadOnlyFailsafeLatched { get { return _controller != null && _controller.ReadOnlyFailsafeLatched; } }
+        private bool IsReadOnlyMonitoringMode
+        {
+            get
+            {
+                return !_demoMode && _hw != null && _hw.Profile != null &&
+                       _hw.Profile.IsReadOnly &&
+                       (!_hw.Profile.IsVerified || _hw.Profile.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase));
+            }
+        }
         internal bool TestEvaluateAndApplyFanProfiles(int apuTemp) { return _controller != null && _controller.EvaluateAndApplyFanProfiles(apuTemp); }
         internal void TestSetFanManual(int fanId, int pct) { ApplyFan(fanId, pct); }
         internal void TestApplyAutoAll() { ApplyAutoAll(); }
@@ -564,14 +573,17 @@ namespace MiniFanControl
 
             Text = "MiniFanControl";
             Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
-            AutoScaleMode = AutoScaleMode.Dpi;
+            AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.Sizable;
             MinimumSize = new Size(860, 640);
             AutoScroll = true;
             MaximizeBox = true;
             StartPosition = FormStartPosition.CenterScreen;
             Rectangle wa = Screen.PrimaryScreen != null ? Screen.PrimaryScreen.WorkingArea : new Rectangle(0, 0, 1280, 1024);
-            ClientSize = new Size(Math.Min(1100, Math.Max(860, wa.Width - 24)), Math.Min(1258, Math.Max(640, wa.Height - 40)));
+            int desiredH = Math.Min(1258, Math.Max(640, wa.Height - 40));
+            int extraScrollW = (desiredH < 1258) ? (SystemInformation.VerticalScrollBarWidth + 4) : 0;
+            int desiredW = Math.Min(1100 + extraScrollW, Math.Max(860, wa.Width - 24));
+            ClientSize = new Size(desiredW, desiredH);
             try
             {
                 Icon assoc = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -586,6 +598,7 @@ namespace MiniFanControl
             PopulateCustomCombo();
             ApplyLocalization();
             ApplyThemeToControls();
+            UpdateReadOnlyUiState();
             UpdateTrayIcons(0, 0);
             SetGraphViewMode(true, false, 1);
 
@@ -654,7 +667,7 @@ namespace MiniFanControl
                     {
                         MinimizeToTray();
                     }
-                    else if (!_isUnitTest && _showSetupAssistant && string.IsNullOrEmpty(FanCurveProfile.LastCalibratedDate))
+                    else if (!_isUnitTest && !IsReadOnlyMonitoringMode && _showSetupAssistant && string.IsNullOrEmpty(FanCurveProfile.LastCalibratedDate))
                     {
                         BeginInvoke((Action)(() => ShowSetupAssistantDialog(false)));
                     }
@@ -1308,22 +1321,46 @@ namespace MiniFanControl
             }
             if (_hw != null) _hw.Profile = _sysInfo.MatchedProfile;
             _hasDualFans = _sysInfo.MatchedProfile.HasDualFans;
-            if (_hwSubLabel != null)
+            if (_controller != null) _controller.ClearStaleWriteErrors();
+            UpdateReadOnlyUiState();
+            SaveSettings();
+            _driversMenu = CreateDriversAndToolsMenu();
+            _statusBarLabel.Text = string.Format("✓ Profile: {0}", _sysInfo.MatchedProfile.DisplayName);
+            RefreshStatus();
+        }
+
+        private void UpdateReadOnlyUiState()
+        {
+            bool readOnly = IsReadOnlyMonitoringMode;
+            if (readOnly && _controller != null)
+            {
+                _controller.ClearStaleWriteErrors();
+            }
+            if (readOnly && _errorBanner != null && _errorBanner.Visible)
+            {
+                _errorBanner.Visible = false;
+            }
+            if (_hwSubLabel != null && _sysInfo != null && _sysInfo.MatchedProfile != null)
             {
                 string drvInfo = NativeInpOut.ActiveDriverName;
-                if (_sysInfo.MatchedProfile.IsReadOnly)
+                if (readOnly)
                 {
-                    _hwSubLabel.Text = string.Format("EC Map: {0} • [SAFE READ-ONLY MODE] • Driver: {1} • Global\\Access_EC Mutex", _sysInfo.MatchedProfile.DisplayName, drvInfo);
+                    _hwSubLabel.Text = string.Format("Safe Read-Only Monitoring (Fan writes disabled) • Driver: {0}", drvInfo);
                 }
                 else
                 {
                     _hwSubLabel.Text = string.Format("EC Map: {0} • Driver: {1} • Global\\Access_EC Mutex • 64-bit", _sysInfo.MatchedProfile.DisplayName, drvInfo);
                 }
             }
-            SaveSettings();
-            _driversMenu = CreateDriversAndToolsMenu();
-            _statusBarLabel.Text = string.Format("✓ Profile: {0}", _sysInfo.MatchedProfile.DisplayName);
-            RefreshStatus();
+
+            RefreshPowerBarCapabilityUi();
+            UpdateCalibrationBadge();
+
+            if (_fan1Slider != null) _fan1Slider.Enabled = !readOnly;
+            if (_fan1AutoBtn != null) _fan1AutoBtn.Enabled = !readOnly;
+            if (_fan2Slider != null) _fan2Slider.Enabled = !readOnly && _hasDualFans;
+            if (_fan2AutoBtn != null) _fan2AutoBtn.Enabled = !readOnly && _hasDualFans;
+            if (_allAutoBtn != null) _allAutoBtn.Enabled = !readOnly;
         }
 
         private void SetRefreshInterval(int ms)
@@ -1507,9 +1544,11 @@ namespace MiniFanControl
 
             if (_overlayForm != null && _showOverlay)
             {
-                string osdMode = (!_hasDualFans || apuModeName == sysModeName)
-                    ? ShortModeTag(apuModeName)
-                    : string.Format("{0}/{1}", ShortModeTag(apuModeName), ShortModeTag(sysModeName));
+                string osdMode = IsReadOnlyMonitoringMode
+                    ? "Read-Only"
+                    : ((!_hasDualFans || apuModeName == sysModeName)
+                        ? ShortModeTag(apuModeName)
+                        : string.Format("{0}/{1}", ShortModeTag(apuModeName), ShortModeTag(sysModeName)));
                 _overlayForm.UpdateMetrics(st, osdMode, _hasDualFans);
             }
 
@@ -1866,7 +1905,11 @@ namespace MiniFanControl
                 }
             }
 
-            if (!_hasDualFans || apuModeName == sysModeName)
+            bool readOnlyMonitor = IsReadOnlyMonitoringMode;
+
+            if (readOnlyMonitor)
+                _modeLabel.Text = "Read-Only Monitoring (Motherboard Auto)";
+            else if (!_hasDualFans || apuModeName == sysModeName)
                 _modeLabel.Text = apuModeName;
             else
                 _modeLabel.Text = string.Format("{0} / {1}", apuModeName, sysModeName);
@@ -1878,7 +1921,12 @@ namespace MiniFanControl
                 : (_controller != null ? _controller.BiosPowerModeOverride : -1);
             UpdateBiosPowerModeStyles(liveBiosCode);
 
-            if (_emergencyThermalActive)
+            if (readOnlyMonitor)
+            {
+                _pct1Label.Text = "Read-Only";
+                _pct1Label.ForeColor = dimText;
+            }
+            else if (_emergencyThermalActive)
             {
                 _pct1Label.Text = "100% (Emergency)";
                 _pct1Label.ForeColor = warnRose;
@@ -1898,6 +1946,11 @@ namespace MiniFanControl
             if (!_hasDualFans)
             {
                 _pct2Label.Text = "Disabled";
+                _pct2Label.ForeColor = dimText;
+            }
+            else if (readOnlyMonitor)
+            {
+                _pct2Label.Text = "Read-Only";
                 _pct2Label.ForeColor = dimText;
             }
             else if (_emergencyThermalActive)
@@ -1922,7 +1975,7 @@ namespace MiniFanControl
             }
 
             // 7. APU Fan Box (Row 2, Col 2) — Low/Avg/High RPM + Tuning Profile on its own full line
-            string f1ValTxt = string.Format("{0} RPM", st.Fan1Rpm);
+            string f1ValTxt = (readOnlyMonitor && st.Fan1Rpm == 0) ? "-- RPM" : string.Format("{0} RPM", st.Fan1Rpm);
             if (_fan1RpmLabel.Text != f1ValTxt) _fan1RpmLabel.Text = f1ValTxt;
             if (_fan1RpmLabel.ForeColor != tempFg) _fan1RpmLabel.ForeColor = tempFg;
             if (_fan1Box != null)
@@ -1931,13 +1984,15 @@ namespace MiniFanControl
                 string fan1PeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxFan1Rpm > 0)
                     ? string.Format("▼{0} ~{1:0} ▲{2}", _sessionStats.MinFan1Rpm, _sessionStats.AvgFan1Rpm, _sessionStats.MaxFan1Rpm)
                     : "";
-                string fan1Detail1 = _emergencyThermalActive
-                    ? "APU / CPU Cooler • Emergency Override"
-                    : (_apuManualOverride
-                        ? "APU / CPU Cooler • Manual Override"
-                        : (st.Fan1Manual == 0 ? "APU / CPU Cooler • BIOS Auto" : "APU / CPU Cooler • Active Curve"));
-                string fan1Detail2 = apuModeName;
-                SetMetricDetail(4, fan1PeakTxt, _pct1Label.Text, fan1Detail1, fan1Detail2, _pct1Label.ForeColor, tempFg);
+                string fan1Detail1 = readOnlyMonitor
+                    ? "APU / CPU Cooler • Motherboard Controlled"
+                    : (_emergencyThermalActive
+                        ? "APU / CPU Cooler • Emergency Override"
+                        : (_apuManualOverride
+                            ? "APU / CPU Cooler • Manual Override"
+                            : (st.Fan1Manual == 0 ? "APU / CPU Cooler • BIOS Auto" : "APU / CPU Cooler • Active Curve")));
+                string fan1Detail2 = readOnlyMonitor ? "Safe Read-Only Mode" : apuModeName;
+                SetMetricDetail(4, fan1PeakTxt, _pct1Label.Text, fan1Detail1, fan1Detail2, _pct1Label.ForeColor, readOnlyMonitor ? dimText : tempFg);
                 _fan1Box.AccessibleName = string.Format("APU Fan Speed: {0} RPM", st.Fan1Rpm);
                 _fan1Box.Invalidate();
             }
@@ -1957,13 +2012,15 @@ namespace MiniFanControl
                     : "";
                 string fan2Detail1 = !_hasDualFans
                     ? "Single-Fan Chassis"
-                    : (_emergencyThermalActive
-                        ? "RAM / NVMe Cooler • Emergency Override"
-                        : (_sysManualOverride
-                            ? "RAM / NVMe Cooler • Manual Override"
-                            : (st.Fan2Manual == 0 ? "RAM / NVMe Cooler • BIOS Auto" : "RAM / NVMe Cooler • Active Curve")));
-                string fan2Detail2 = !_hasDualFans ? "Disabled" : sysModeName;
-                SetMetricDetail(5, fan2PeakTxt, _pct2Label.Text, fan2Detail1, fan2Detail2, _pct2Label.ForeColor, !_hasDualFans ? Color.Empty : tempFg);
+                    : (readOnlyMonitor
+                        ? "System Fan • Motherboard Controlled"
+                        : (_emergencyThermalActive
+                            ? "RAM / NVMe Cooler • Emergency Override"
+                            : (_sysManualOverride
+                                ? "RAM / NVMe Cooler • Manual Override"
+                                : (st.Fan2Manual == 0 ? "RAM / NVMe Cooler • BIOS Auto" : "RAM / NVMe Cooler • Active Curve"))));
+                string fan2Detail2 = !_hasDualFans ? "Disabled" : (readOnlyMonitor ? "Safe Read-Only Mode" : sysModeName);
+                SetMetricDetail(5, fan2PeakTxt, _pct2Label.Text, fan2Detail1, fan2Detail2, _pct2Label.ForeColor, (!_hasDualFans || readOnlyMonitor) ? dimText : tempFg);
                 _fan2Box.AccessibleName = !_hasDualFans ? "System Fan: Disabled" : string.Format("System Fan Speed: {0} RPM", st.Fan2Rpm);
                 _fan2Box.Invalidate();
             }
@@ -1972,6 +2029,21 @@ namespace MiniFanControl
             {
                 _statusBarLabel.ForeColor = Color.FromArgb(0xFB, 0x71, 0x85);
                 _statusBarLabel.Text = string.Format("🔥 EMERGENCY THERMAL OVERRIDE (CPU {0}°C) — Fans at 100%", apuTemp);
+            }
+            else if (ReadOnlyFailsafeLatched)
+            {
+                _statusBarLabel.ForeColor = _isDarkMode ? ErrorFgDark : ErrorFgLight;
+                _statusBarLabel.Text = string.Format("🛡️ FAILSAFE READ-ONLY (BIOS Auto restored)  |  {0:HH:mm:ss}", DateTime.Now);
+            }
+            else if (!string.IsNullOrEmpty(_lastHardwareWriteError))
+            {
+                _statusBarLabel.ForeColor = _isDarkMode ? ErrorFgDark : ErrorFgLight;
+                _statusBarLabel.Text = string.Format("⚠️ Hardware write rejected ({0} retries)  |  {1:HH:mm:ss}", _consecutiveWriteFailures, DateTime.Now);
+            }
+            else if (readOnlyMonitor)
+            {
+                _statusBarLabel.ForeColor = dimText;
+                _statusBarLabel.Text = string.Format("👁️ SAFE READ-ONLY MONITORING (Unverified Hardware — Fan writes disabled)  |  {0:HH:mm:ss}", DateTime.Now);
             }
             else if (DateTime.UtcNow < _rampUntil)
             {
@@ -2012,6 +2084,12 @@ namespace MiniFanControl
         {
             string[] names = { "Balanced", "Performance", "Silent", "AI Workload" };
             if (code < 0 || code >= _builtInProfiles.Length) return;
+            if (IsReadOnlyMonitoringMode)
+            {
+                if (_statusBarLabel != null)
+                    _statusBarLabel.Text = "👁️ Fan writes are disabled in Safe Read-Only Monitoring Mode (unverified hardware)";
+                return;
+            }
 
             try
             {
@@ -2041,6 +2119,12 @@ namespace MiniFanControl
 
         private void ApplyFan(int fanId, int pct, bool allowBelowFloor = false)
         {
+            if (IsReadOnlyMonitoringMode)
+            {
+                if (_statusBarLabel != null)
+                    _statusBarLabel.Text = "👁️ Fan writes are disabled in Safe Read-Only Monitoring Mode (unverified hardware)";
+                return;
+            }
             try
             {
                 int appliedPct = pct;
@@ -2090,6 +2174,12 @@ namespace MiniFanControl
 
         private void ApplyAutoAll()
         {
+            if (IsReadOnlyMonitoringMode)
+            {
+                if (_statusBarLabel != null)
+                    _statusBarLabel.Text = "👁️ Safe Read-Only Monitoring Mode — motherboard BIOS already controls fans";
+                return;
+            }
             try
             {
                 bool ok = _controller != null && _controller.ApplyAutoAll();

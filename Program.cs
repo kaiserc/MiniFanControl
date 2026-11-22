@@ -785,6 +785,9 @@ namespace MiniFanControl
 
             }
 
+#if NET5_0_OR_GREATER
+            Application.SetHighDpiMode(HighDpiMode.DpiUnawareGdiScaled);
+#endif
             Application.EnableVisualStyles();
 
             Application.SetCompatibleTextRenderingDefault(false);

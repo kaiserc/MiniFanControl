@@ -235,12 +235,35 @@ namespace MiniFanControl
         }
 
         /// <summary>
+        /// True when running on live hardware with an inherently unverified / read-only profile
+        /// (such as desktop motherboards matched to unknown-safe). In this mode all hardware writes
+        /// are intentionally skipped so safe monitoring never triggers bogus failsafe errors.
+        /// </summary>
+        public bool IsInherentlyReadOnly
+        {
+            get
+            {
+                bool demo;
+                lock (_stateLock) { demo = _demoMode; }
+                return !demo && _hw != null && _hw.Profile != null &&
+                       _hw.Profile.IsReadOnly &&
+                       (!_hw.Profile.IsVerified || _hw.Profile.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        public void ClearStaleWriteErrors()
+        {
+            ClearHardwareWriteError();
+        }
+
+        /// <summary>
         /// Changes the live BIOS/EC TDP Power Mode (0=Balanced, 1=Performance, 2=Silent via EC 0x32)
         /// independently without replacing active Custom Fan Curves or manual fan overrides.
         /// </summary>
         public bool SetBiosPowerMode(int modeCode)
         {
             if (modeCode < 0 || modeCode > 2) return false;
+            if (IsInherentlyReadOnly) return false;
             bool demo;
             lock (_stateLock)
             {
@@ -326,6 +349,7 @@ namespace MiniFanControl
         public bool ApplyManualFan(int fanId, int pct, bool allowBelowFloor, out int appliedPct, out bool wasClamped, out int minFloor)
         {
             appliedPct = ClampManualFanDuty(fanId, pct, allowBelowFloor, out wasClamped, out minFloor);
+            if (IsInherentlyReadOnly) return false;
             bool demo;
             lock (_stateLock)
             {
@@ -391,6 +415,12 @@ namespace MiniFanControl
                 }
             }
 
+            if (IsInherentlyReadOnly)
+            {
+                ClearHardwareWriteError();
+                return false;
+            }
+
             if (_hw != null && _hw.Profile != null && !_hw.Profile.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase))
             {
                 _hw.Profile.IsReadOnly = false;
@@ -412,6 +442,7 @@ namespace MiniFanControl
         public void RestoreSafeAutoOnExit(bool restoreAutoOnExit)
         {
             if (!restoreAutoOnExit) return;
+            if (IsInherentlyReadOnly) return;
 
             bool demo;
             bool apuWasSoftwareOrManual;
@@ -473,6 +504,13 @@ namespace MiniFanControl
 
         public bool EvaluateAndApplyFanProfiles(int apuTemp)
         {
+            // Never attempt fan/EC register writes or escalate failsafe errors on inherently
+            // read-only unverified hardware (e.g. desktop motherboards matched to unknown-safe).
+            if (IsInherentlyReadOnly)
+            {
+                return false;
+            }
+
             FanCurveProfile apuProf;
             FanCurveProfile sysProf;
             FanStatus snapshot;

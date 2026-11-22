@@ -5008,6 +5008,69 @@ namespace MiniFanControl
                 "AppSettings AutoPauseForAntiCheat Opt-In Default & MainForm Win11 DWM Handle Integration",
                 polishUiDetail);
 
+            // 97. Unverified Desktop Hardware (unknown-safe) Skips Writes Without Fake Failsafe Escalation
+            bool roDesktopOk = false;
+            string roDesktopDetail = "";
+            try
+            {
+                HardwareBackend roHw = new HardwareBackend();
+                roHw.Profile = DeviceProfile.FindProfile("unknown-safe");
+                var pts = new CurvePoint[] { new CurvePoint(40, 30), new CurvePoint(80, 100) };
+                var builtIns = new FanCurveProfile[] { new FanCurveProfile("Balanced", true, 0, pts, pts) };
+                using (var svc = new FanControllerService(roHw, new DemoBackend(), builtIns, false))
+                {
+                    bool isRo = svc.IsInherentlyReadOnly;
+                    bool anyEvalWrote = false;
+                    for (int i = 0; i < 15; i++)
+                    {
+                        if (svc.EvaluateAndApplyFanProfiles(55 + (i % 3) * 10))
+                            anyEvalWrote = true;
+                    }
+                    bool manWrote = svc.ApplyManualFan(1, 50);
+                    bool modeWrote = svc.SetBiosPowerMode(1);
+                    bool autoWrote = svc.ApplyAutoAll();
+
+                    roDesktopOk = isRo && !anyEvalWrote && !manWrote && !modeWrote && !autoWrote &&
+                                  svc.ConsecutiveWriteFailures == 0 &&
+                                  svc.LastHardwareWriteError == null &&
+                                  !svc.ReadOnlyFailsafeLatched;
+                    roDesktopDetail = string.Format("IsRO={0}, Fails={1}, Err={2}, Latched={3}",
+                        isRo, svc.ConsecutiveWriteFailures, svc.LastHardwareWriteError ?? "null", svc.ReadOnlyFailsafeLatched);
+                }
+            }
+            catch (Exception ex) { roDesktopDetail = ex.Message; }
+            Check(roDesktopOk,
+                "Unverified Desktop Hardware (unknown-safe) Read-Only Monitoring Without Failsafe Spam",
+                roDesktopDetail);
+
+            // 98. High-DPI GDI Scaling Manifest & MainForm AutoScaleMode Guard
+            bool dpiGuardOk = false;
+            string dpiGuardDetail = "";
+            try
+            {
+                string manifestPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.manifest");
+                if (!File.Exists(manifestPath))
+                    manifestPath = Path.Combine(Environment.CurrentDirectory, "app.manifest");
+                bool manifestOk = true;
+                if (File.Exists(manifestPath))
+                {
+                    string xml = File.ReadAllText(manifestPath);
+                    manifestOk = xml.Contains("<gdiScaling") && xml.Contains(">true</gdiScaling>") &&
+                                 xml.Contains(">false</dpiAware>");
+                }
+                bool formScaleNone = false;
+                using (MainForm f = new MainForm(true, false, true))
+                {
+                    formScaleNone = (f.AutoScaleMode == AutoScaleMode.None);
+                }
+                dpiGuardOk = manifestOk && formScaleNone;
+                dpiGuardDetail = string.Format("ManifestGdiScaling={0}, MainFormAutoScaleNone={1}", manifestOk, formScaleNone);
+            }
+            catch (Exception ex) { dpiGuardDetail = ex.Message; }
+            Check(dpiGuardOk,
+                "High-DPI GDI Scaling Manifest & MainForm AutoScaleMode Layout Integrity",
+                dpiGuardDetail);
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));
