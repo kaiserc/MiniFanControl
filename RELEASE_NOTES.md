@@ -1,3 +1,14 @@
+# Release Notes: MiniFanControl v1.2.1 (High-DPI GDI Scaling & Clean Desktop Read-Only Mode)
+
+**MiniFanControl v1.2.1** fixes high-DPI text/layout clipping on 125%–250% (1440p/4K) Windows displays and polishes the **Safe Read-Only Monitoring** experience on unverified desktop motherboards, expanding the automated test suite to **98/98 passing**.
+
+## ✨ Highlights in v1.2.1
+- **Crisp High-DPI Scaling on 4K & Scaled Desktop Monitors**: Enabled Windows 10/11 System Enhanced GDI Scaling (`app.manifest` + `HighDpiMode.DpiUnawareGdiScaled`) with fixed section-card geometry and scrollbar-aware initial sizing, fixing clipped/overlapping text in telemetry cards, buttons, live graphs, `SetupAssistantDialog`, and the OSD overlay (Test #98).
+- **Zero Failsafe Spam on Desktop / Unverified Hardware (`unknown-safe`)**: `FanControllerService` now cleanly skips EC/fan writes on inherently read-only unverified profiles instead of accumulating write failures and triggering an `Escalated failsafe` banner (Test #97).
+- **Clean Read-Only Monitoring UX**: Suppresses the automatic Mini PC calibration wizard popup on read-only hardware, hides unusable EC `BIOS:` header buttons, disables manual fan write controls, and accurately reports `Read-Only` across the header, fan tiles, tabs, OSD, and status bar.
+
+---
+
 # Release Notes: MiniFanControl v1.2.0 (PawnIO HVCI Driver, Windows 11 Visual Polish, Anti-Cheat Auto-Pause & Headless Daemon)
 
 **MiniFanControl v1.2.0** is a major feature and visual polish release introducing native **PawnIO (`PawnIOLib`)** HVCI-compatible driver support, **Windows 11 DWM** dark/themed titlebars and sleek rounded card chrome, opt-in **Anti-Cheat Safe Auto-Pause** (EAC / BattlEye + Vanguard detection), a zero-UI **Headless Background Daemon** (`minifan-helper.exe daemon`), upgraded **1-Click Sanitized GitHub Hardware Profile Submission**, smooth **`Live Perf` FPS curve parity** with the Digital Foundry overlay, and **96/96 passing tests** on both `.NET 4.8` and `.NET 10.0-windows`.

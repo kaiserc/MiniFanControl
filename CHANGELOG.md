@@ -4,6 +4,13 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.2.1] - 2026-11-22
+
+### 🖥️ High-DPI Scaling & Safe Desktop Read-Only Monitoring
+- **Windows High-DPI GDI Scaling (`app.manifest`, `Program.cs`, `Ui/MainForm.cs`, `Ui/MainForm.Layout.cs`, `Ui/SetupAssistantDialog.cs`)**: Enabled Windows 10/11 System Enhanced GDI Scaling (`dpiAware=false`, `gdiScaling=true`, and `HighDpiMode.DpiUnawareGdiScaled` on `.NET 10`) with `AutoScaleMode.None` and scrollbar-safe initial sizing, eliminating text clipping, wrapped buttons, and overlapping labels on 125%–250% HiDPI/4K monitors across the main dashboard, dialogs, canvases, and in-game OSD (Test #98).
+- **Clean Safe Read-Only Mode on Unverified / Desktop Hardware (`Core/FanControllerService.cs`, `Ui/MainForm.cs`, `Ui/MainForm.CurvesAndModes.cs`, `Ui/MainForm.MenusAndTray.cs`, `Ui/SetupAssistantDialog.cs`)**: Added `IsInherentlyReadOnly` guards so unverified boards (`unknown-safe`, e.g., desktop motherboards) never attempt EC/fan writes or trigger spurious `Escalated failsafe (Failures: 10)` error banners, suppressed auto-opening the Mini PC Setup Assistant on startup, hid unusable EC `BIOS:` header buttons, disabled manual fan write controls, and surfaced accurate `Read-Only` status across the header, fan cards, tabs, OSD overlay, and status bar (Test #97).
+- **98/98 Automated Tests (`Tests/SelfTestSuite.cs`, `.github/workflows/ci.yml`)**: Expanded automated test coverage to **98/98 passing**.
+
 ## [1.2.0] - 2026-11-22
 
 ### ✨ Windows 11 DWM Visual Polish & Smooth Live Performance Parity
