@@ -71,6 +71,7 @@ namespace MiniFanControl
         public bool VerticalLayout = true;
         public bool ClickThrough = false;
         public bool HasDualFans = true;
+        public bool IsReadOnlyMode = false;
 
         // 0 = Text Only, 1 = Mini Sparklines per Metric, 2 = Combined Live Graph, 3 = Both Sparklines + Combined Graph
         public int GraphMode = 3;
@@ -120,6 +121,45 @@ namespace MiniFanControl
         public bool DfGraphStyle = true;
         public bool DfCornerInset = false;
         public int SampleIntervalMs = 1000;
+
+        private bool IsEffectivelyReadOnly()
+        {
+            return IsReadOnlyMode || string.Equals(_modeSummary, "Read-Only", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool ShouldShowApuFanRow()
+        {
+            if (!ShowApuFan) return false;
+            if (IsEffectivelyReadOnly() && _status.Fan1Rpm <= 0) return false;
+            return true;
+        }
+
+        private bool ShouldShowSysFanRow()
+        {
+            if (!HasDualFans || !ShowSysFan) return false;
+            if (IsEffectivelyReadOnly() && _status.Fan2Rpm <= 0) return false;
+            return true;
+        }
+
+        private bool ShouldShowModeRow()
+        {
+            if (!ShowMode) return false;
+            if (IsEffectivelyReadOnly()) return false;
+            return true;
+        }
+
+        private int ComputeDisplayAvgFps(int curLiveFps)
+        {
+            if (_status.RtssAvgFps > 0) return _status.RtssAvgFps;
+            int sessionAvg = (Stats != null && Stats.AvgFps > 0)
+                ? (int)Math.Round(Stats.AvgFps)
+                : curLiveFps;
+            if (Stats != null && Stats.MaxFps > 0 && sessionAvg > Stats.MaxFps)
+                sessionAvg = Stats.MaxFps;
+            if (Stats != null && Stats.MinFps > 0 && Stats.MinFps < int.MaxValue && sessionAvg < Stats.MinFps)
+                sessionAvg = Stats.MinFps;
+            return sessionAvg;
+        }
 
         private string FormatSampleTimeAgo(int samplesAgo)
         {
@@ -772,6 +812,9 @@ namespace MiniFanControl
                 hash = hash * 31 + st.CpuLoadPct;
                 hash = hash * 31 + st.CpuClockMhz;
                 hash = hash * 31 + st.GpuTemp;
+                hash = hash * 31 + st.GpuHotspotTemp;
+                hash = hash * 31 + (st.IsDiscreteGpu ? 1 : 0);
+                hash = hash * 31 + (IsReadOnlyMode ? 1 : 0);
                 hash = hash * 31 + st.GfxClockMhz;
                 hash = hash * 31 + st.GfxActivityPct;
                 hash = hash * 31 + st.ApuPowerWatts;
@@ -805,6 +848,9 @@ namespace MiniFanControl
                 hash = hash * 31 + PeakTrackerMode;
                 hash = hash * 31 + (int)Math.Round(st.VddTdcCurrentAmps * 10);
                 hash = hash * 31 + st.Fps;
+                hash = hash * 31 + st.RtssAvgFps;
+                hash = hash * 31 + st.RtssP1LowFps;
+                hash = hash * 31 + st.RtssP01LowFps;
                 hash = hash * 31 + (int)Math.Round((double)st.RtssFrametimeMs * 10);
                 if (GraphMode != 3 && Stats != null)
                 {

@@ -153,7 +153,8 @@ namespace MiniFanControl
             if (badges == null || badges.Count == 0) return;
 
             badges.Sort((a, b) => a.TargetY.CompareTo(b.TargetY));
-            float minSpacing = Math.Max(9f, 9.5f * sc);
+            int bh = (int)Math.Round(10 * sc);
+            float minSpacing = bh + Math.Max(1.5f, 1.5f * sc);
             for (int i = 0; i < badges.Count; i++)
                 badges[i].DisplayY = badges[i].TargetY;
 
@@ -163,7 +164,6 @@ namespace MiniFanControl
                     badges[i].DisplayY = badges[i - 1].DisplayY + minSpacing;
             }
 
-            int bh = (int)Math.Round(10 * sc);
             float maxBottom = plot.Bottom - (float)Math.Round(bh / 2f) - 1;
             if (badges[badges.Count - 1].DisplayY > maxBottom)
             {
@@ -248,10 +248,10 @@ namespace MiniFanControl
 
             bool afterburner = MatchAppTheme && IsAfterburnerTheme;
             Color chartBg = afterburner
-                ? Color.FromArgb(190, 12, 14, 18)
+                ? Color.FromArgb(222, 12, 14, 18)
                 : ((MatchAppTheme && IsRadeonTheme)
-                    ? Color.FromArgb(180, 10, 4, 6)
-                    : Color.FromArgb(180, 10, 12, 18));
+                    ? Color.FromArgb(215, 10, 4, 6)
+                    : Color.FromArgb(215, 10, 12, 18));
 
             using (SolidBrush bgBr = new SolidBrush(chartBg))
             using (Pen borderPen = new Pen(gridCol, 1f))
@@ -275,7 +275,10 @@ namespace MiniFanControl
             int start = total - take;
 
             int tMin = int.MaxValue, tMax = int.MinValue;
+            int pMin = int.MaxValue, pMax = int.MinValue;
             int rMin = int.MaxValue, rMax = int.MinValue;
+            bool showApuTrend = TrendApuFan && (!IsEffectivelyReadOnly() || _status.Fan1Rpm > 0);
+            bool showSysTrend = HasDualFans && TrendSysFan && (!IsEffectivelyReadOnly() || _status.Fan2Rpm > 0);
             bool ramHasTemp = (Stats.RamTempHistory != null && Stats.RamTempHistory.Count > 0 && Stats.RamTempHistory[Stats.RamTempHistory.Count - 1] > 0);
             for (int i = 0; i < take; i++)
             {
@@ -301,8 +304,8 @@ namespace MiniFanControl
                 if (TrendPower && idx < Stats.PowerHistory.Count && Stats.PowerHistory[idx] > 0)
                 {
                     int v = Stats.PowerHistory[idx];
-                    if (v < tMin) tMin = v;
-                    if (v > tMax) tMax = v;
+                    if (v < pMin) pMin = v;
+                    if (v > pMax) pMax = v;
                 }
                 if (TrendAmbient && idx < Stats.AmbientHistory.Count && Stats.AmbientHistory[idx] > 0)
                 {
@@ -321,17 +324,17 @@ namespace MiniFanControl
                     else if (idx < Stats.RamPowerHistory.Count && Stats.RamPowerHistory[idx] > 0)
                     {
                         int v = (int)Math.Round(Stats.RamPowerHistory[idx] / 10.0);
-                        if (v < tMin) tMin = v;
-                        if (v > tMax) tMax = v;
+                        if (v < pMin) pMin = v;
+                        if (v > pMax) pMax = v;
                     }
                 }
-                if (TrendApuFan && idx < Stats.Fan1RpmHistory.Count)
+                if (showApuTrend && idx < Stats.Fan1RpmHistory.Count)
                 {
                     int v = Stats.Fan1RpmHistory[idx];
                     if (v < rMin) rMin = v;
                     if (v > rMax) rMax = v;
                 }
-                if (HasDualFans && TrendSysFan && idx < Stats.Fan2RpmHistory.Count)
+                if (showSysTrend && idx < Stats.Fan2RpmHistory.Count)
                 {
                     int v = Stats.Fan2RpmHistory[idx];
                     if (v < rMin) rMin = v;
@@ -360,6 +363,17 @@ namespace MiniFanControl
                 leftHi = leftLo + 8f;
             }
 
+            // Independent normalized Y-axis for Power (W) so high desktop wattage (100-350W)
+            // never squashes 35-70°C thermal traces into a flat band at the bottom.
+            float pwrLo = (pMin <= pMax) ? Math.Max(0f, pMin - Math.Max(4f, (pMax - pMin) * 0.12f)) : 0f;
+            float pwrHi = (pMin <= pMax) ? (pMax + Math.Max(4f, (pMax - pMin) * 0.12f)) : 100f;
+            if (pwrHi - pwrLo < 10f)
+            {
+                float mid = (pwrLo + pwrHi) * 0.5f;
+                pwrLo = Math.Max(0f, mid - 5f);
+                pwrHi = pwrLo + 10f;
+            }
+
             float rpmLo = (rMin <= rMax) ? Math.Max(0f, rMin - 150f) : 0f;
             float rpmHi = (rMin <= rMax) ? (rMax + 150f) : 3000f;
             if (rpmHi - rpmLo < 400f)
@@ -370,23 +384,44 @@ namespace MiniFanControl
 
             // Build active legend items upfront so we know whether the legend wraps to a 2nd line
             string tUnitHdr = TelemetrySessionStats.TempUnit(UseFahrenheit);
-            string unitSuffix = (plotFpsHere && (ShowFps || ShowLows) && Stats.FpsHistory.Count > 0 && Stats.FpsHistory[Stats.FpsHistory.Count - 1] > 0) ? (tUnitHdr + "/W/FPS") : (tUnitHdr + "/W");
-            string hdr = (tMin <= tMax)
-                ? string.Format("LIVE TREND ({0}–{1}{2})", TelemetrySessionStats.ToDisplayTemp(tMin, UseFahrenheit), TelemetrySessionStats.ToDisplayTemp(tMax, UseFahrenheit), unitSuffix)
-                : (rMin <= rMax ? string.Format("LIVE TREND ({0}–{1} RPM)", rMin, rMax) : "LIVE TREND");
+            string tempSuffix = (plotFpsHere && (ShowFps || ShowLows) && Stats.FpsHistory.Count > 0 && Stats.FpsHistory[Stats.FpsHistory.Count - 1] > 0) ? (tUnitHdr + "/FPS") : tUnitHdr;
+            string hdr;
+            if (tMin <= tMax && pMin <= pMax)
+            {
+                hdr = string.Format("TREND {0}–{1}{2} • {3}–{4}W",
+                    TelemetrySessionStats.ToDisplayTemp(tMin, UseFahrenheit),
+                    TelemetrySessionStats.ToDisplayTemp(tMax, UseFahrenheit),
+                    tempSuffix, pMin, pMax);
+            }
+            else if (tMin <= tMax)
+            {
+                hdr = string.Format("TREND {0}–{1}{2}",
+                    TelemetrySessionStats.ToDisplayTemp(tMin, UseFahrenheit),
+                    TelemetrySessionStats.ToDisplayTemp(tMax, UseFahrenheit),
+                    tempSuffix);
+            }
+            else if (pMin <= pMax)
+            {
+                hdr = string.Format("TREND {0}–{1}W", pMin, pMax);
+            }
+            else
+            {
+                hdr = (rMin <= rMax) ? string.Format("TREND {0}–{1} RPM", rMin, rMax) : "LIVE TREND";
+            }
 
+            string gpuLbl = _status.GpuShortLabel;
             List<KeyValuePair<string, Color>> legendItems = new List<KeyValuePair<string, Color>>();
             if (TrendCpu) legendItems.Add(new KeyValuePair<string, Color>("● CPU", cpuCol));
-            if (TrendGpu) legendItems.Add(new KeyValuePair<string, Color>("● iGPU", gpuCol));
+            if (TrendGpu) legendItems.Add(new KeyValuePair<string, Color>("● " + gpuLbl, gpuCol));
             if (TrendRam && _status.RamTotalGb > 0) legendItems.Add(new KeyValuePair<string, Color>("● RAM", Color.FromArgb(0x81, 0x8C, 0xF8)));
             if (TrendNvme && _status.NvmeTemp > 0) legendItems.Add(new KeyValuePair<string, Color>("● NVMe", CfxTeal));
             if (TrendPower) legendItems.Add(new KeyValuePair<string, Color>("● PWR", pwrCol));
             if (TrendAmbient && _status.AmbientTemp > 0) legendItems.Add(new KeyValuePair<string, Color>("● CHAS", Color.FromArgb(0xE2, 0xE8, 0xF0)));
-            if (TrendApuFan) legendItems.Add(new KeyValuePair<string, Color>("● APU", apuCol));
-            if (HasDualFans && TrendSysFan) legendItems.Add(new KeyValuePair<string, Color>("● SYS", sysCol));
+            if (showApuTrend) legendItems.Add(new KeyValuePair<string, Color>("● APU", apuCol));
+            if (showSysTrend) legendItems.Add(new KeyValuePair<string, Color>("● SYS", sysCol));
 
             int hdrLeftX = rect.X + (int)Math.Round(4 * sc);
-            int hdrW = TextRenderer.MeasureText(g, hdr, _fontChart, new Size(260, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+            int hdrW = TextRenderer.MeasureText(g, hdr, _fontChart, new Size(280, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
             int simX = hdrLeftX + hdrW + (int)Math.Round(6 * sc);
             int maxLegX = rect.Right - 4;
             int legRows = 1;
@@ -406,13 +441,13 @@ namespace MiniFanControl
             }
 
             int rowH = Math.Max(11, (int)Math.Round(12f * sc));
-            int topPad = (legRows > 1) ? (int)Math.Round(25f * sc) : (int)Math.Round(14f * sc);
+            int topPad = (legRows > 1) ? (int)Math.Round(27f * sc) : (int)Math.Round(15f * sc);
             int rightPad = (int)Math.Round(38f * sc);
             Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - 2));
 
             List<EndpointBadge> badges = new List<EndpointBadge>();
 
-            if (HasDualFans && TrendSysFan)
+            if (showSysTrend)
             {
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.Fan2RpmHistory, start, take, rpmLo, rpmHi, sysCol, false, true, sc);
                 if (pt.HasValue && Stats.Fan2RpmHistory.Count > 0)
@@ -421,7 +456,7 @@ namespace MiniFanControl
                     if (v > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = string.Format("{0:0.0}k", v / 1000.0), Color = sysCol, Dashed = true });
                 }
             }
-            if (TrendApuFan)
+            if (showApuTrend)
             {
                 PointF? pt = DrawCombinedSubSeries(g, plot, Stats.Fan1RpmHistory, start, take, rpmLo, rpmHi, apuCol, false, true, sc);
                 if (pt.HasValue && Stats.Fan1RpmHistory.Count > 0)
@@ -460,14 +495,14 @@ namespace MiniFanControl
                 }
                 else if (_status.RamPowerWatts > 0)
                 {
-                    PointF? pt = DrawCombinedSubSeries(g, plot, Stats.RamPowerHistory, start, take, leftLo, leftHi, Color.FromArgb(0x81, 0x8C, 0xF8), false, true, sc);
+                    PointF? pt = DrawCombinedSubSeries(g, plot, Stats.RamPowerHistory, start, take, pwrLo * 10f, pwrHi * 10f, Color.FromArgb(0x81, 0x8C, 0xF8), false, true, sc);
                     if (pt.HasValue && Stats.RamPowerHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = string.Format("{0:0}W", Stats.RamPowerHistory[Stats.RamPowerHistory.Count - 1] / 10.0), Color = Color.FromArgb(0x81, 0x8C, 0xF8), Dashed = true });
                 }
             }
             if (TrendPower)
             {
-                PointF? pt = DrawCombinedSubSeries(g, plot, Stats.PowerHistory, start, take, leftLo, leftHi, pwrCol, false, false, sc);
-                if (pt.HasValue && Stats.PowerHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = Stats.PowerHistory[Stats.PowerHistory.Count - 1] + "W", Color = pwrCol });
+                PointF? pt = DrawCombinedSubSeries(g, plot, Stats.PowerHistory, start, take, pwrLo, pwrHi, pwrCol, false, true, sc);
+                if (pt.HasValue && Stats.PowerHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = Stats.PowerHistory[Stats.PowerHistory.Count - 1] + "W", Color = pwrCol, Dashed = true });
             }
             if (TrendNvme && _status.NvmeTemp > 0)
             {
@@ -537,9 +572,10 @@ namespace MiniFanControl
                     ? (ddrSpd > 0 ? string.Format("{0} {1}%@{2}M", rTempStr, rLoad, ddrSpd) : string.Format("{0} {1}%", rTempStr, rLoad))
                     : (ddrSpd > 0 ? string.Format("{0}%@{1}M", rLoad, ddrSpd) : string.Format("{0}%", rLoad));
 
-                string hud = string.Format("{0} | CPU {1}° • iGPU {2}° • RAM {3} • NVMe {4}° • PWR {5}W",
+                string hud = string.Format("{0} | CPU {1}° • {2} {3}° • RAM {4} • NVMe {5}° • PWR {6}W",
                     FormatSampleTimeAgo(samplesAgo),
                     TelemetrySessionStats.ToDisplayTemp(c, UseFahrenheit),
+                    gpuLbl,
                     TelemetrySessionStats.ToDisplayTemp(g_, UseFahrenheit),
                     rStr,
                     TelemetrySessionStats.ToDisplayTemp(n, UseFahrenheit), p);
@@ -797,7 +833,7 @@ namespace MiniFanControl
         {
             if (rect.Width <= 10 || rect.Height <= 10) return;
 
-            Color bgCol = compactCorner ? Color.FromArgb(232, 10, 14, 22) : Color.FromArgb(195, 10, 14, 20);
+            Color bgCol = compactCorner ? Color.FromArgb(242, 10, 14, 22) : Color.FromArgb(222, 10, 14, 20);
             Color brdCol = compactCorner ? Color.FromArgb(195, 0x22, 0xD3, 0xEE) : Color.FromArgb(220, 255, 255, 255);
             using (SolidBrush bgBr = new SolidBrush(bgCol))
             using (Pen borderPen = new Pen(brdCol, 1.2f))
@@ -862,32 +898,48 @@ namespace MiniFanControl
                 g.DrawLine(boundPen, plot.Right, plot.Top, plot.Right, plot.Bottom);
             }
 
-            // Subtle dashed midpoint horizontal reference line
+            // Subtle dashed midpoint horizontal reference line + 16.6ms (60 FPS) & 33.3ms (30 FPS) pacing guides
             using (Pen midGridPen = new Pen(Color.FromArgb(45, 255, 255, 255), 1f) { DashStyle = DashStyle.Dash })
             {
                 float midY = plot.Top + plot.Height / 2f;
                 g.DrawLine(midGridPen, plot.Left, midY, plot.Right, midY);
             }
+            if (16.6f <= ftCeiling)
+            {
+                float y16 = plot.Bottom - (16.6f / ftCeiling) * plot.Height;
+                using (Pen p16 = new Pen(Color.FromArgb(65, 0x22, 0xC5, 0x5E), 1f) { DashStyle = DashStyle.Dot })
+                {
+                    g.DrawLine(p16, plot.Left, y16, plot.Right, y16);
+                }
+            }
+            if (33.3f <= ftCeiling)
+            {
+                float y33 = plot.Bottom - (33.3f / ftCeiling) * plot.Height;
+                using (Pen p33 = new Pen(Color.FromArgb(65, 0xF5, 0x9E, 0x0B), 1f) { DashStyle = DashStyle.Dot })
+                {
+                    g.DrawLine(p33, plot.Left, y33, plot.Right, y33);
+                }
+            }
 
-            // Right Axis Labels: 0 (top), mid (middle), ftCeiling (bottom) - Dynamic Zoom (50ms / 75ms / 100ms)
-            string lbl0 = "0";
-            string lblMid = (ftCeiling / 2).ToString();
+            // Right Axis Labels: ftCeiling (top), mid (middle), 0 (bottom) - Standard upward stutter scale
             string lblMax = ftCeiling.ToString();
+            string lblMid = (ftCeiling / 2).ToString();
+            string lbl0 = "0";
 
-            Size sz0 = TextRenderer.MeasureText(g, lbl0, _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            Size szMax = TextRenderer.MeasureText(g, lblMax, _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
             Size szMid = TextRenderer.MeasureText(g, lblMid, _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            Size sz100 = TextRenderer.MeasureText(g, lblMax, _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            Size sz0 = TextRenderer.MeasureText(g, lbl0, _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
-            int y0 = Math.Max(rect.Y + 2, (int)Math.Round(plot.Top - sz0.Height / 2f));
-            int y50 = (int)Math.Round(plot.Top + plot.Height / 2f - szMid.Height / 2f);
-            int y100 = Math.Min(rect.Bottom - 2 - sz100.Height, (int)Math.Round(plot.Bottom - sz100.Height / 2f));
+            int yMax = Math.Max(rect.Y + 2, (int)Math.Round(plot.Top - szMax.Height / 2f));
+            int yMid = (int)Math.Round(plot.Top + plot.Height / 2f - szMid.Height / 2f);
+            int y0 = Math.Min(rect.Bottom - 2 - sz0.Height, (int)Math.Round(plot.Bottom - sz0.Height / 2f));
 
-            TextRenderer.DrawText(g, lbl0, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y0), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, lblMax, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), yMax), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
             if (!compactCorner || plot.Height >= (int)Math.Round(34 * sc))
             {
-                TextRenderer.DrawText(g, lblMid, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y50), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(g, lblMid, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), yMid), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
             }
-            TextRenderer.DrawText(g, lblMax, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y100), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, lbl0, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y0), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             if (Stats == null || Stats.FrametimeHistory == null || Stats.FrametimeHistory.Count == 0)
                 return;
@@ -903,7 +955,7 @@ namespace MiniFanControl
                     ? Stats.FrametimeHistory[start] / 10.0f
                     : 16.6f;
                 float norm = Math.Max(0f, Math.Min(1f, ftMs / (float)ftCeiling));
-                float y = plot.Top + norm * plot.Height;
+                float y = plot.Bottom - norm * plot.Height;
                 pts[0] = new PointF(plot.Left, y);
                 pts[1] = new PointF(plot.Right, y);
             }
@@ -915,10 +967,10 @@ namespace MiniFanControl
                     float ftMs = (idx < Stats.FrametimeHistory.Count && Stats.FrametimeHistory[idx] > 0)
                         ? Stats.FrametimeHistory[idx] / 10.0f
                         : 16.6f;
-                    // Inverted: 0ms is at plot.Top, ftCeiling ms is at plot.Bottom (stutter drops downward)
+                    // Standard upward scale: 0ms is at plot.Bottom, ftCeiling ms is at plot.Top (stutter spikes upward)
                     float norm = Math.Max(0f, Math.Min(1f, ftMs / (float)ftCeiling));
                     float x = plot.Left + (plot.Width * i) / (float)(take - 1);
-                    float y = plot.Top + norm * plot.Height;
+                    float y = plot.Bottom - norm * plot.Height;
                     pts[i] = new PointF(x, y);
                 }
             }
@@ -1006,9 +1058,7 @@ namespace MiniFanControl
                     ? Stats.FpsHistory[total - 1]
                     : 0);
 
-            int sessionAvg = (Stats != null && Stats.AvgFps > 0)
-                ? (int)Math.Round(Stats.AvgFps)
-                : (_status.RtssAvgFps > 0 ? _status.RtssAvgFps : curLiveFps);
+            int sessionAvg = ComputeDisplayAvgFps(curLiveFps);
 
             int targetFpsCeiling = CalculateDfCeiling(curLiveFps, (Stats != null) ? Stats.FpsHistory : null);
             if (targetFpsCeiling > _currentFpsCeiling)
@@ -1052,7 +1102,7 @@ namespace MiniFanControl
                 levels = new int[] { fpsCeiling, step * 2, step, 0 };
             }
 
-            using (SolidBrush bgBr = new SolidBrush(Color.FromArgb(195, 10, 14, 20)))
+            using (SolidBrush bgBr = new SolidBrush(Color.FromArgb(222, 10, 14, 20)))
             using (Pen borderPen = new Pen(Color.FromArgb(220, 255, 255, 255), 1.2f))
             {
                 g.FillRectangle(bgBr, rect);
@@ -1162,6 +1212,43 @@ namespace MiniFanControl
                     {
                         lowPen.DashStyle = DashStyle.Dot;
                         g.DrawLines(lowPen, lowPts);
+                    }
+                }
+            }
+
+            // 1% Low dashed line (Amber Orange — visually distinct from 0.1% Low Rose floor)
+            if (Stats.P1LowHistory != null && Stats.P1LowHistory.Count > 0)
+            {
+                PointF[] p1Pts = new PointF[Math.Max(2, take)];
+                bool hasAnyP1 = false;
+                if (take == 1)
+                {
+                    int lowVal = (start < Stats.P1LowHistory.Count && Stats.P1LowHistory[start] > 0) ? Stats.P1LowHistory[start] : p1Low;
+                    if (lowVal > 0) hasAnyP1 = true;
+                    float norm = Math.Max(0f, Math.Min(1f, lowVal / (float)fpsCeiling));
+                    float y = plot.Bottom - norm * plot.Height;
+                    p1Pts[0] = new PointF(plot.Left, y);
+                    p1Pts[1] = new PointF(plot.Right, y);
+                }
+                else
+                {
+                    for (int i = 0; i < take; i++)
+                    {
+                        int idx = start + i;
+                        int lowVal = (idx < Stats.P1LowHistory.Count && Stats.P1LowHistory[idx] > 0) ? Stats.P1LowHistory[idx] : p1Low;
+                        if (lowVal > 0) hasAnyP1 = true;
+                        float norm = Math.Max(0f, Math.Min(1f, lowVal / (float)fpsCeiling));
+                        float x = plot.Left + (plot.Width * i) / (float)(take - 1);
+                        float y = plot.Bottom - norm * plot.Height;
+                        p1Pts[i] = new PointF(x, y);
+                    }
+                }
+                if (hasAnyP1)
+                {
+                    using (Pen p1Pen = new Pen(Color.FromArgb(185, 0xFB, 0x92, 0x3C), 1.15f * Math.Max(1f, sc * 0.85f)))
+                    {
+                        p1Pen.DashStyle = DashStyle.Dash;
+                        g.DrawLines(p1Pen, p1Pts);
                     }
                 }
             }
@@ -1330,10 +1417,11 @@ namespace MiniFanControl
                 int samplesAgo = take - 1 - (sampleIdx - start);
                 int f = (sampleIdx < Stats.FpsHistory.Count) ? Stats.FpsHistory[sampleIdx] : 0;
                 int avg = (sampleIdx < Stats.AvgFpsHistory.Count) ? Stats.AvgFpsHistory[sampleIdx] : 0;
+                int low1Hist = (Stats.P1LowHistory != null && sampleIdx < Stats.P1LowHistory.Count && Stats.P1LowHistory[sampleIdx] > 0) ? Stats.P1LowHistory[sampleIdx] : p1Low;
                 int low01 = (sampleIdx < Stats.P01LowHistory.Count) ? Stats.P01LowHistory[sampleIdx] : 0;
 
                 string hud = string.Format("{0} | FPS: {1} • Avg: {2} • 1%: {3} • 0.1%: {4}",
-                    FormatSampleTimeAgo(samplesAgo), f, avg, p1Low > 0 ? p1Low.ToString() : "--", low01 > 0 ? low01.ToString() : "--");
+                    FormatSampleTimeAgo(samplesAgo), f, avg, low1Hist > 0 ? low1Hist.ToString() : "--", low01 > 0 ? low01.ToString() : "--");
                 DrawHoverHudBox(g, rect, plot, hud, _fontTrace, _hoverMouseX, _hoverMouseY, sc);
             }
         }

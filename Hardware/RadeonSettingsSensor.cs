@@ -570,6 +570,52 @@ namespace MiniFanControl
             return 0;
         }
 
+        public static bool IsDiscreteGpuDescription(string desc)
+        {
+            if (string.IsNullOrWhiteSpace(desc)) return false;
+            string d = desc.Trim();
+
+            // Explicit integrated GPU patterns (Ryzen Mobile/Desktop iGPUs & Vega APUs)
+            if (d.IndexOf("780M", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("890M", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("880M", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("860M", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("840M", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("760M", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("740M", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("680M", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("660M", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("610M", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("Radeon(TM) Graphics", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("Vega 8", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("Vega 7", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("Vega 6", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("Vega 3", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return false;
+            }
+
+            // Explicit discrete GPU patterns (AMD Radeon RX / PRO / VII, NVIDIA GeForce / RTX, Intel Arc)
+            if (d.IndexOf("RX ", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("Radeon PRO", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("Radeon VII", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("Fury", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("R9 ", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("R7 ", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("GeForce", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("RTX", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("GTX", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("Quadro", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("Arc A", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("Arc B", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                d.IndexOf("Arc Pro", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
         private static string FindAmdDisplayAdapterKey()
         {
             try
@@ -578,6 +624,7 @@ namespace MiniFanControl
                 using (RegistryKey root = Registry.LocalMachine.OpenSubKey(classRoot, false))
                 {
                     if (root == null) return null;
+                    string firstAmdKey = null;
                     string[] subKeys = root.GetSubKeyNames();
                     foreach (string sub in subKeys)
                     {
@@ -592,12 +639,22 @@ namespace MiniFanControl
                                     if ((provider != null && provider.IndexOf("Advanced Micro Devices", StringComparison.OrdinalIgnoreCase) >= 0) ||
                                         (desc != null && (desc.IndexOf("Radeon", StringComparison.OrdinalIgnoreCase) >= 0 || desc.IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0)))
                                     {
-                                        return classRoot + @"\" + sub;
+                                        string fullKey = classRoot + @"\" + sub;
+                                        if (IsDiscreteGpuDescription(desc))
+                                        {
+                                            // Prefer discrete Radeon GPU over integrated Ryzen iGPU on desktop dual-GPU systems
+                                            return fullKey;
+                                        }
+                                        if (firstAmdKey == null)
+                                        {
+                                            firstAmdKey = fullKey;
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                    return firstAmdKey;
                 }
             }
             catch { }

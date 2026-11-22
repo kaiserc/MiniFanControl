@@ -2715,23 +2715,32 @@ namespace MiniFanControl
                     bool namesOk = (mf.TestTabApuCurveBtn.Text.IndexOf("Fan", StringComparison.OrdinalIgnoreCase) >= 0) &&
                                    (mf.TestTabSysCurveBtn.Text.IndexOf("Fan", StringComparison.OrdinalIgnoreCase) >= 0);
 
-                    // 3. Verify Dynamic Manual Fan Control Visibility & Canvas Expansion
-                    // On Live Trend: Manual Fan Control hidden, canvas expanded to 648px (fits all OSD Studio metrics without inner scrollbar)
+                    // 3. Verify Dynamic Responsive Vertical Layout across 4K/1440p (1216px) and 1080p/Scaled (976px)
+                    mf.TestApplyWideLayoutSize(1100, 1216);
+                    // On Live Trend at 1216px: full 648px canvas & 451px OSD Studio metrics panel (zero inner scroll!)
                     mf.TestSetGraphViewMode(true, false, 1);
                     bool liveHiddenOk = (!mf.TestManualFanControlVisible) &&
-                                        (mf.TestModeCardPanel != null && mf.TestModeCardPanel.Height == 720) &&
-                                        (mf.TestLiveCanvas != null && mf.TestLiveCanvas.Height == 648);
+                                        (mf.TestModeCardPanel != null && mf.TestModeCardPanel.Height == 716) &&
+                                        (mf.TestLiveCanvas != null && mf.TestLiveCanvas.Height == 648) &&
+                                        (mf.TestOsdMetricsScrollPanel != null && mf.TestOsdMetricsScrollPanel.Height >= 450);
 
-                    // On Live Perf: Manual Fan Control hidden, perf canvas expanded to 648px
+                    // On Live Perf at 1216px: full 648px perf canvas
                     mf.TestSetGraphViewMode(false, true, 0);
                     bool perfHiddenOk = (!mf.TestManualFanControlVisible) &&
-                                        (mf.TestModeCardPanel != null && mf.TestModeCardPanel.Height == 720) &&
+                                        (mf.TestModeCardPanel != null && mf.TestModeCardPanel.Height == 716) &&
                                         (mf.TestPerfCanvas != null && mf.TestPerfCanvas.Height == 648);
 
-                    // On APU Fan: Manual Fan Control visible, card height fills space above Manual Fan Control (590px)
+                    // On APU Fan at 1216px: Manual Fan Control visible, modeCard contracts cleanly to 606px
                     mf.TestSetGraphViewMode(false, false, 0);
                     int curCardH = mf.TestModeCardPanel != null ? mf.TestModeCardPanel.Height : 0;
-                    bool fanShownOk = mf.TestManualFanControlVisible && (curCardH == 590);
+                    bool fanShownOk = mf.TestManualFanControlVisible && (curCardH == 606);
+
+                    // Compact 1080p / 4K@200% responsive adaptation (976px): shrinks graphs to 408px with zero outer scroll
+                    mf.TestApplyWideLayoutSize(1100, 976);
+                    mf.TestSetGraphViewMode(true, false, 1);
+                    bool compactAdaptOk = (mf.TestModeCardPanel != null && mf.TestModeCardPanel.Height == 476) &&
+                                          (mf.TestLiveCanvas != null && mf.TestLiveCanvas.Height == 408);
+                    fanShownOk = fanShownOk && compactAdaptOk;
 
                     // 4. Verify CapFrameX Overlay 1440p / High-DPI Auto-Fit Scaling & Taskbar Clamping
                     using (CapFrameXOverlayForm ov = new CapFrameXOverlayForm())
@@ -5070,6 +5079,75 @@ namespace MiniFanControl
             Check(dpiGuardOk,
                 "High-DPI GDI Scaling Manifest & MainForm AutoScaleMode Layout Integrity",
                 dpiGuardDetail);
+
+            // 99. Desktop PC OSD Polish: Discrete GPU Detection, Hotspot ASCII Label, Read-Only Row Trimming, Consistent Frametime & 1% Low History
+            bool desktopOsdOk = false;
+            string desktopOsdDetail = "";
+            try
+            {
+                bool dgpuDet = RadeonSettingsSensor.IsDiscreteGpuDescription("AMD Radeon RX 9070 XT")
+                            && RadeonSettingsSensor.IsDiscreteGpuDescription("NVIDIA GeForce RTX 5080")
+                            && !RadeonSettingsSensor.IsDiscreteGpuDescription("AMD Radeon 780M Graphics")
+                            && !RadeonSettingsSensor.IsDiscreteGpuDescription("AMD Radeon(TM) Graphics");
+
+                FanStatus dgpuSt = new FanStatus { CpuTemp = 59, GpuTemp = 46, GpuHotspotTemp = 52, GfxActivityPct = 86, GfxClockMhz = 2306, ApuPowerWatts = 135, IsDiscreteGpu = true, RtssFps = 60, RtssFrametimeMs = 16.7, RtssAvgFps = 59, RtssP1LowFps = 46, RtssP01LowFps = 36, RtssProcessName = "StarCitizen.exe" };
+                FanStatus igpuSt = new FanStatus { CpuTemp = 55, GpuTemp = 48, IsDiscreteGpu = false };
+                bool labelsOk = (dgpuSt.GpuShortLabel == "GPU" && igpuSt.GpuShortLabel == "iGPU");
+
+                double steadyFt = FpsMonitor.ResolveConsistentFrametimeMs(16.67, 18.1, 60);
+                double spikeFt = FpsMonitor.ResolveConsistentFrametimeMs(18.5, 115.0, 54);
+                bool ftConsistOk = (Math.Abs(steadyFt - 16.67) < 0.01 && Math.Abs(spikeFt - 115.0) < 0.01);
+
+                TelemetrySessionStats p1Stats = new TelemetrySessionStats();
+                p1Stats.Record(dgpuSt);
+                p1Stats.Record(dgpuSt);
+                bool p1HistOk = (p1Stats.P1LowHistory != null && p1Stats.P1LowHistory.Count == 2 && p1Stats.P1LowHistory[1] == 46);
+
+                bool osdHotspotOk = false;
+                bool roHideOk = false;
+                bool lpcLightOk = false;
+                using (CapFrameXOverlayForm osd = new CapFrameXOverlayForm())
+                {
+                    osd.Stats = p1Stats;
+                    osd.ShowGpu = true;
+                    osd.ShowGpuHotspot = true;
+                    osd.ShowApuFan = true;
+                    osd.ShowSysFan = true;
+                    osd.ShowMode = true;
+                    osd.HasDualFans = true;
+                    osd.IsReadOnlyMode = false;
+                    osd.UpdateMetrics(dgpuSt, "Balanced", true);
+                    int normalCount = osd.CountVisibleMetrics();
+                    string gpuTxt = osd.FormatGpuOverlayValue();
+                    osdHotspotOk = (gpuTxt.IndexOf("(HS 52°)", StringComparison.Ordinal) >= 0 && gpuTxt.IndexOf("🔥", StringComparison.Ordinal) < 0);
+
+                    osd.IsReadOnlyMode = true;
+                    osd.UpdateMetrics(dgpuSt, "Read-Only", true);
+                    int roCount = osd.CountVisibleMetrics();
+                    roHideOk = (roCount == normalCount - 3); // APU Fan (0 RPM), Sys Fan (0 RPM), and Mode (Read-Only) hidden
+                }
+
+                using (LivePerformanceCanvas lpc2 = new LivePerformanceCanvas { Width = 900, Height = 360, SplitView = true, DfZoomedFrametime = true, DfCornerInset = true, IsDarkMode = false, Stats = p1Stats })
+                {
+                    lpc2.UpdateStatus(dgpuSt);
+                    using (Bitmap bmp = new Bitmap(900, 360))
+                    using (Graphics g = Graphics.FromImage(bmp))
+                    {
+                        lpc2.RenderForTest(g);
+                        lpc2.IsDarkMode = true;
+                        lpc2.RenderForTest(g);
+                        lpcLightOk = true;
+                    }
+                }
+
+                desktopOsdOk = dgpuDet && labelsOk && ftConsistOk && p1HistOk && osdHotspotOk && roHideOk && lpcLightOk;
+                desktopOsdDetail = string.Format("dGPU={0}, Labels={1}, FtConsist={2}, P1Hist={3}, HotspotAscii={4}, RoHide={5}, LpcRender={6}",
+                    dgpuDet, labelsOk, ftConsistOk, p1HistOk, osdHotspotOk, roHideOk, lpcLightOk);
+            }
+            catch (Exception ex) { desktopOsdDetail = ex.Message; }
+            Check(desktopOsdOk,
+                "Desktop PC OSD Polish (Discrete GPU Label, ASCII Hotspot, Read-Only Row Trimming, Consistent FT & 1% Low History)",
+                desktopOsdDetail);
 
             Console.WriteLine("----------------------------------------------------------------------");
 

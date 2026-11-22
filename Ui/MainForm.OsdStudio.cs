@@ -172,7 +172,7 @@ namespace MiniFanControl
                 bool hasHotspot = _demoMode || _lastStatus.GpuHotspotTemp > 0;
                 _osdShowGpuHotspotCb.Checked = _osd.ShowGpuHotspot && hasHotspot;
                 _osdShowGpuHotspotCb.Enabled = hasHotspot;
-                _osdShowGpuHotspotCb.Text = hasHotspot ? "iGPU Hotspot (🔥°C)" : "iGPU Hotspot (N/A)";
+                _osdShowGpuHotspotCb.Text = hasHotspot ? "GPU Hotspot (HS °C)" : "GPU Hotspot (N/A)";
             }
             if (_osdShowPowerLimitCb != null) _osdShowPowerLimitCb.Checked = _osd.ShowPowerLimit;
             if (_osdShowFclkSyncCb != null) _osdShowFclkSyncCb.Checked = _osd.ShowFclkSync;
@@ -274,39 +274,8 @@ namespace MiniFanControl
             if (_calibBadgeLabel != null) _calibBadgeLabel.Visible = visible;
             if (_fanCardPanel != null) _fanCardPanel.Visible = visible;
 
-            int cardHeight = visible ? 590 : 720;
-            int canvasHeight = visible ? 518 : 648;
-            int hintY = visible ? 566 : 696;
-
-            if (_modeCardPanel != null && _modeCardPanel.Height != cardHeight)
-            {
-                _modeCardPanel.Height = cardHeight;
-            }
-
-            if (_curveHintLabel != null)
-            {
-                _curveHintLabel.Location = new Point(8, hintY);
-            }
-
-            if (_liveCanvas != null)
-            {
-                _liveCanvas.Location = new Point(8, 42);
-                _liveCanvas.Size = new Size(1056, canvasHeight);
-            }
-            if (_perfCanvas != null)
-            {
-                _perfCanvas.Location = new Point(8, 42);
-                _perfCanvas.Size = new Size(1056, canvasHeight);
-            }
-            if (_osdConfigPanel != null)
-            {
-                _osdConfigPanel.Location = new Point(8, 41);
-                _osdConfigPanel.Size = new Size(1056, canvasHeight);
-            }
-            if (_osdMetricsScrollPanel != null)
-            {
-                _osdMetricsScrollPanel.Size = new Size(1048, Math.Max(260, canvasHeight - 200));
-            }
+            int clientH = _testClientHeightOverride > 0 ? _testClientHeightOverride : ClientSize.Height;
+            ApplyDynamicVerticalLayout(clientH);
         }
 
         private void SetOsdConfigViewMode(bool show)
@@ -362,8 +331,6 @@ namespace MiniFanControl
                     if (_perfCanvas != null) _perfCanvas.Visible = false;
                     if (_curveCanvas != null)
                     {
-                        _curveCanvas.Location = new Point(8, 108);
-                        _curveCanvas.Size = new Size(1056, 454);
                         _curveCanvas.Visible = true;
                         _curveCanvas.Invalidate();
                     }
@@ -891,11 +858,11 @@ namespace MiniFanControl
             };
             p.Controls.Add(_osdResetDefaultsBtn);
 
-            // Row 6+ (y=200..648): Per-Metric Configuration Sections (fits cleanly without scrollbar)
+            // Row 6+ (y=198..408): Per-Metric Configuration Sections (scrollable inside compact 976px main window)
             _osdMetricsScrollPanel = new Panel
             {
-                Location = new Point(4, 200),
-                Size = new Size(1048, 448),
+                Location = new Point(4, 198),
+                Size = new Size(1048, 210),
                 AutoScroll = true
             };
             p.Controls.Add(_osdMetricsScrollPanel);
@@ -928,8 +895,8 @@ namespace MiniFanControl
             // 2. iGPU & Radeon
             AddOsdSectionHeader(_osdMetricsScrollPanel, "iGPU & Radeon", ref curY);
             _osdShowGpuCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[0], curY, colW, cbH, "iGPU Temp", _osd.ShowGpu, v => { _osd.ShowGpu = v; SyncOverlayFromStudio(); }, null);
-            _osdShowGpuHotspotCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "iGPU Hotspot (🔥°C)", _osd.ShowGpuHotspot, v => { _osd.ShowGpuHotspot = v; SyncOverlayFromStudio(); },
-                "Show iGPU junction hotspot temperature (🔥°C) when available");
+            _osdShowGpuHotspotCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[1], curY, colW, cbH, "GPU Hotspot (HS °C)", _osd.ShowGpuHotspot, v => { _osd.ShowGpuHotspot = v; SyncOverlayFromStudio(); },
+                "Show GPU junction hotspot temperature (HS °C) when available");
             _osdShowGpuLoadCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[2], curY, colW, cbH, "GPU Load & Clock", _osd.ShowGpuLoad, v => { _osd.ShowGpuLoad = v; SyncOverlayFromStudio(); }, null);
             _osdShowRadeonCb = AddOsdCheckBox(_osdMetricsScrollPanel, colX[3], curY, colW, cbH, "Radeon Feature Tags", _osd.ShowRadeon, v => { _osd.ShowRadeon = v; SyncOverlayFromStudio(); },
                 "Display compact pill tags for active AMD Radeon features (FreeSync, Anti-Lag, AFMF, Chill, Boost, RSR, RIS)");

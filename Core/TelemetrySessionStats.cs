@@ -139,6 +139,7 @@ namespace MiniFanControl
         private readonly List<int> _gpuLoadHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _fpsHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _avgFpsHist = new List<int>(HISTORY_LEN);
+        private readonly List<int> _p1LowHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _p01LowHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _frametimeHist = new List<int>(HISTORY_LEN);
         private readonly List<int> _vrmHist = new List<int>(HISTORY_LEN);
@@ -177,6 +178,7 @@ namespace MiniFanControl
         public List<int> GpuLoadHistory { get { return _gpuLoadHist; } }
         public List<int> FpsHistory { get { return _fpsHist; } }
         public List<int> AvgFpsHistory { get { return _avgFpsHist; } }
+        public List<int> P1LowHistory { get { return _p1LowHist; } }
         public List<int> P01LowHistory { get { return _p01LowHist; } }
         public List<int> FrametimeHistory { get { return _frametimeHist; } }
         public List<int> VrmHistory { get { return _vrmHist; } }
@@ -303,6 +305,7 @@ namespace MiniFanControl
             _gpuLoadHist.Clear();
             _fpsHist.Clear();
             _avgFpsHist.Clear();
+            _p1LowHist.Clear();
             _p01LowHist.Clear();
             _frametimeHist.Clear();
             _vrmHist.Clear();
@@ -519,7 +522,10 @@ namespace MiniFanControl
                 if (MaxFps > 0 && curAvg > MaxFps) curAvg = MaxFps;
                 PushSample(_avgFpsHist, curAvg);
 
+                int curLow1 = P1LowFps > 0 ? P1LowFps : (int)Math.Max(1, Math.Round(st.RtssFps * 0.88));
                 int curLow01 = P01LowFps > 0 ? P01LowFps : (int)Math.Max(1, Math.Round(st.RtssFps * 0.78));
+                if (curLow01 > curLow1 && curLow1 > 0) curLow01 = curLow1;
+                PushSample(_p1LowHist, curLow1);
                 PushSample(_p01LowHist, curLow01);
             }
 

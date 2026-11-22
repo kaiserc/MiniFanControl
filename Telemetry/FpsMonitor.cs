@@ -316,12 +316,14 @@ namespace MiniFanControl
                     }
 
                     int intervalFps = 0;
+                    double intervalFtMs = 0.0;
                     if (time1 > time0 && frames > 0)
                     {
                         int dt = time1 - time0;
                         if (dt > 0)
                         {
                             intervalFps = (int)Math.Round((1000.0 * frames) / dt);
+                            intervalFtMs = (double)dt / frames;
                         }
                     }
 
@@ -420,10 +422,7 @@ namespace MiniFanControl
                         curFps = curAvg;
                     }
 
-                    if ((curFrametimeMs <= 0.0 || curFrametimeMs > 250.0) && curFps > 0)
-                    {
-                        curFrametimeMs = 1000.0 / curFps;
-                    }
+                    curFrametimeMs = ResolveConsistentFrametimeMs(intervalFtMs, curFrametimeMs, curFps);
 
                     // Fallbacks if high-speed buffer was not active or produced outlier values
                     if (curAvg <= 0) curAvg = curFps;
@@ -517,6 +516,28 @@ namespace MiniFanControl
         {
             RtssTelemetry t = GetTelemetry();
             return t.IsAvailable ? t.Fps : -1;
+        }
+
+        /// <summary>
+        /// Reconciles RTSS interval-averaged frametime (dt / frames) with instantaneous last-frame duration
+        /// so steady gameplay stays mathematically consistent with live FPS (e.g. 60 FPS <-> 16.7 ms) while
+        /// preserving genuine stutter spikes (> 1.35x interval frametime) for frametime graphing.
+        /// </summary>
+        public static double ResolveConsistentFrametimeMs(double intervalFtMs, double instantFtMs, int curFps)
+        {
+            bool validInterval = intervalFtMs > 0.25 && intervalFtMs <= 250.0;
+            bool validInstant = instantFtMs > 0.25 && instantFtMs <= 250.0;
+            if (validInterval)
+            {
+                if (validInstant && instantFtMs > intervalFtMs * 1.35)
+                {
+                    return instantFtMs;
+                }
+                return intervalFtMs;
+            }
+            if (validInstant)
+                return instantFtMs;
+            return curFps > 0 ? (1000.0 / curFps) : 0.0;
         }
 
         /// <summary>

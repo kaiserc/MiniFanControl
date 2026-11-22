@@ -49,7 +49,7 @@ namespace MiniFanControl
             string gpuVal = FormatGpuOverlayValue();
 
             string pwrVal = FormatPowerOverlayValue();
-            string f1Val  = string.Format("{0}", _status.Fan1Rpm);
+            string f1Val  = (IsEffectivelyReadOnly() && _status.Fan1Rpm <= 0) ? "--" : string.Format("{0}", _status.Fan1Rpm);
             string f2Val  = _status.Fan2Rpm > 0 ? string.Format("{0}", _status.Fan2Rpm) : "--";
 
             string cpuPeak = FormatCpuOverlayPeak();
@@ -231,7 +231,7 @@ namespace MiniFanControl
                     if (ShowCpu)
                         DrawVertRow(g, row++, rowH, "CPU", cpuVal, cpuPeak, bLabel, bCpu, bPeak, showSpark ? (Stats != null ? Stats.CpuHistory : null) : null, cpuCol, sc);
                     if (ShowGpu || ShowGpuLoad)
-                        DrawVertRow(g, row++, rowH, "iGPU", gpuVal, gpuPeak, bLabel, bGpu, bPeak, showSpark ? (Stats != null ? (vertShowGpuTemp ? Stats.GpuHistory : Stats.GpuLoadHistory) : null) : null, gpuCol, sc);
+                        DrawVertRow(g, row++, rowH, _status.GpuShortLabel, gpuVal, gpuPeak, bLabel, bGpu, bPeak, showSpark ? (Stats != null ? (vertShowGpuTemp ? Stats.GpuHistory : Stats.GpuLoadHistory) : null) : null, gpuCol, sc);
                     if (ShowRam && _status.RamTotalGb > 0)
                     {
                         string ramVal = FormatRamOverlayValue();
@@ -327,13 +327,7 @@ namespace MiniFanControl
                             val = "-- (Standby)";
                         }
 
-                        int sessionAvg = (Stats != null && Stats.AvgFps > 0)
-                            ? (int)Math.Round(Stats.AvgFps)
-                            : (_status.RtssAvgFps > 0 ? _status.RtssAvgFps : _status.RtssFps);
-                        if (Stats != null && Stats.MaxFps > 0 && sessionAvg > Stats.MaxFps)
-                            sessionAvg = Stats.MaxFps;
-                        if (Stats != null && Stats.MinFps > 0 && Stats.MinFps < int.MaxValue && sessionAvg < Stats.MinFps)
-                            sessionAvg = Stats.MinFps;
+                        int sessionAvg = ComputeDisplayAvgFps(_status.RtssFps);
 
                         string peak = hasFps
                             ? (ShowFpsAvg && sessionAvg > 0 ? string.Format("Avg: {0}", sessionAvg) : (ShowPeaks && Stats != null && Stats.MaxFps > 0 ? string.Format("▲{0}", Stats.MaxFps) : null))
@@ -373,11 +367,11 @@ namespace MiniFanControl
                             DrawVertRow(g, row++, rowH, lbl, val, peak, bLabel, bLow, bPeak, showSpark ? (Stats != null ? Stats.P01LowHistory : null) : null, lowCol, sc);
                         }
                     }
-                    if (ShowApuFan)
+                    if (ShouldShowApuFanRow())
                         DrawVertRow(g, row++, rowH, "APU Fan", f1Val + " RPM", null, bLabel, bApu, bPeak, showSpark ? (Stats != null ? Stats.Fan1RpmHistory : null) : null, apuCol, sc);
-                    if (HasDualFans && ShowSysFan)
+                    if (ShouldShowSysFanRow())
                         DrawVertRow(g, row++, rowH, "Sys Fan", f2Val + " RPM", null, bLabel, bSys, bPeak, showSpark ? (Stats != null ? Stats.Fan2RpmHistory : null) : null, sysCol, sc);
-                    if (ShowMode)
+                    if (ShouldShowModeRow())
                         DrawVertRow(g, row++, rowH, "Mode", _modeSummary, null, bLabel, bWhite, bPeak, null, CfxWhite, sc);
                     if (ShowDriverVersion && !string.IsNullOrEmpty(_status.RadeonSoftwareVer))
                         DrawVertRow(g, row++, rowH, "Driver", _status.RadeonSoftwareVer, null, bLabel, bWhite, bPeak, null, CfxWhite, sc);

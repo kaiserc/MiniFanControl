@@ -22,6 +22,9 @@ namespace MiniFanControl
     {
         public int CpuTemp;
         public int GpuTemp;
+        public string GpuName;
+        public bool IsDiscreteGpu;
+        public string GpuShortLabel { get { return IsDiscreteGpu ? "GPU" : "iGPU"; } }
         public int ApuPowerWatts;
         public int CpuPowerWatts;
         public int GfxPowerWatts;

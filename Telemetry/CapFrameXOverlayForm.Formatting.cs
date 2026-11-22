@@ -25,9 +25,9 @@ namespace MiniFanControl
             if (ShowNpu && _status.NpuActivityPct >= 0) c++;
             if (ShowFps) c++;
             if (ShowLows) c++;
-            if (ShowApuFan) c++;
-            if (HasDualFans && ShowSysFan) c++;
-            if (ShowMode) c++;
+            if (ShouldShowApuFanRow()) c++;
+            if (ShouldShowSysFanRow()) c++;
+            if (ShouldShowModeRow()) c++;
             if (ShowDriverVersion && !string.IsNullOrEmpty(_status.RadeonSoftwareVer)) c++;
             if (ShowRadeonSettings)
             {
@@ -188,7 +188,7 @@ namespace MiniFanControl
                 : string.Format("{0,2}{1}", cpuT, tUnit);
         }
 
-        private string FormatGpuOverlayValue()
+        internal string FormatGpuOverlayValue()
         {
             bool hasGpuTemp = ShowGpu && _status.GpuTemp > 0;
             bool hasGpuLoad = ShowGpuLoad && (_status.GfxActivityPct >= 0);
@@ -198,7 +198,7 @@ namespace MiniFanControl
             int hotT = TelemetrySessionStats.ToDisplayTemp(_status.GpuHotspotTemp, UseFahrenheit);
 
             string gpuTempPart = hasGpuTemp
-                ? ((ShowGpuHotspot && _status.GpuHotspotTemp > 0) ? string.Format("{0,2}{1} (🔥{2}°)", gpuT, tUnit, hotT) : string.Format("{0,2}{1}", gpuT, tUnit))
+                ? ((ShowGpuHotspot && _status.GpuHotspotTemp > 0) ? string.Format("{0,2}{1} (HS {2}°)", gpuT, tUnit, hotT) : string.Format("{0,2}{1}", gpuT, tUnit))
                 : null;
 
             string gpuLoadPart = null;
@@ -283,7 +283,7 @@ namespace MiniFanControl
                 nvmeVal = string.Format("{0}{1} / {2}{1}{3}", nvmeT, tUnit, nvme2T, nvmePwrPart);
             }
             string pwrVal = FormatPowerOverlayValue();
-            string f1Val  = string.Format("{0}r", _status.Fan1Rpm);
+            string f1Val  = (IsEffectivelyReadOnly() && _status.Fan1Rpm <= 0) ? "--" : string.Format("{0}r", _status.Fan1Rpm);
             string f2Val  = _status.Fan2Rpm > 0 ? string.Format("{0}r", _status.Fan2Rpm) : "--";
 
             string cpuPeak = FormatCpuOverlayPeak();
@@ -317,8 +317,9 @@ namespace MiniFanControl
 
             if (ShowGpu || ShowGpuLoad)
             {
+                string gpuLbl = _status.GpuShortLabel;
                 list.Add(new HorizColumn {
-                    Key = "iGPU", Label = "iGPU", Value = gpuVal, Peak = gpuPeak,
+                    Key = "iGPU", Label = gpuLbl, Value = gpuVal, Peak = gpuPeak,
                     LabelBrush = bLabel, ValueBrush = bGpu, PeakBrush = bPeak,
                     SparkSamples = showSpark ? (Stats != null ? (showGpuTemp ? Stats.GpuHistory : Stats.GpuLoadHistory) : null) : null,
                     SparkColor = gpuCol
@@ -429,11 +430,7 @@ namespace MiniFanControl
                 bool hasFps = _status.RtssFps > 0;
                 string lbl = "FPS";
                 string val = hasFps ? string.Format("{0}", _status.RtssFps) : "--";
-                int sessionAvg = (Stats != null && Stats.AvgFps > 0)
-                    ? (int)Math.Round(Stats.AvgFps)
-                    : (_status.RtssAvgFps > 0 ? _status.RtssAvgFps : _status.RtssFps);
-                if (Stats != null && Stats.MaxFps > 0 && sessionAvg > Stats.MaxFps)
-                    sessionAvg = Stats.MaxFps;
+                int sessionAvg = ComputeDisplayAvgFps(_status.RtssFps);
 
                 string peak = hasFps
                     ? (ShowFpsAvg && sessionAvg > 0 ? string.Format("Avg:{0}", sessionAvg) : (ShowPeaks && Stats != null && Stats.MaxFps > 0 ? string.Format("▲{0}", Stats.MaxFps) : null))
@@ -472,7 +469,7 @@ namespace MiniFanControl
             }
 
 
-            if (ShowApuFan)
+            if (ShouldShowApuFanRow())
             {
                 list.Add(new HorizColumn {
                     Key = "APU", Label = "APU", Value = f1Val, Peak = null,
@@ -482,7 +479,7 @@ namespace MiniFanControl
                 });
             }
 
-            if (HasDualFans && ShowSysFan)
+            if (ShouldShowSysFanRow())
             {
                 list.Add(new HorizColumn {
                     Key = "SYS", Label = "SYS", Value = f2Val, Peak = null,
@@ -492,7 +489,7 @@ namespace MiniFanControl
                 });
             }
 
-            if (ShowMode)
+            if (ShouldShowModeRow())
             {
                 string modeVal = !string.IsNullOrEmpty(_modeSummary) ? _modeSummary : (!string.IsNullOrEmpty(_status.Mode) ? _status.Mode : "Auto");
                 list.Add(new HorizColumn {

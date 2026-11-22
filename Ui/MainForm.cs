@@ -229,6 +229,7 @@ namespace MiniFanControl
         internal Panel TestModeCardPanel { get { return _modeCardPanel; } }
         internal Panel TestWideRightPanel { get { return _wideRightPanel; } }
         internal Panel TestFanCardPanel { get { return _fanCardPanel; } }
+        internal Panel TestOsdMetricsScrollPanel { get { return _osdMetricsScrollPanel; } }
         internal Label TestManualFanHeaderLabel { get { return _manualFanHeaderLabel; } }
         internal bool TestManualFanControlVisible { get { return _manualFanControlVisible; } }
         internal LiveTelemetryCanvas TestLiveCanvas { get { return _liveCanvas; } }
@@ -299,6 +300,8 @@ namespace MiniFanControl
         private Panel _modeCardPanel;
         private Label _manualFanHeaderLabel;
         private Panel _fanCardPanel;
+        private Label _optHeaderLabel;
+        private Panel _optCardPanel;
         private bool _manualFanControlVisible = true;
         private Panel _wideRightPanel;
         private Label _wideRightHeaderLabel;
@@ -580,8 +583,10 @@ namespace MiniFanControl
             MaximizeBox = true;
             StartPosition = FormStartPosition.CenterScreen;
             Rectangle wa = Screen.PrimaryScreen != null ? Screen.PrimaryScreen.WorkingArea : new Rectangle(0, 0, 1280, 1024);
-            int desiredH = Math.Min(1258, Math.Max(640, wa.Height - 40));
-            int extraScrollW = (desiredH < 1258) ? (SystemInformation.VerticalScrollBarWidth + 4) : 0;
+            const int idealClientH = 1216; // Fits all OSD Studio metrics without inner scroll & full 648px Live/Perf graphs
+            const int minNoScrollH = 760;  // Dynamic vertical layout adapts down to 760px with zero outer scrollbar
+            int desiredH = Math.Min(idealClientH, Math.Max(640, wa.Height - 40));
+            int extraScrollW = (desiredH < minNoScrollH) ? (SystemInformation.VerticalScrollBarWidth + 4) : 0;
             int desiredW = Math.Min(1100 + extraScrollW, Math.Max(860, wa.Width - 24));
             ClientSize = new Size(desiredW, desiredH);
             try
@@ -1517,13 +1522,14 @@ namespace MiniFanControl
 
             UpdateTrayIcons(st.CpuTemp, st.GpuTemp);
 
+            string gpuLbl = st.GpuShortLabel;
             if (_cpuTrayIcon != null)
             {
                 string tipUnit = TelemetrySessionStats.TempUnit(_useFahrenheit);
-                string tip = string.Format("CPU: {0}{4} (iGPU: {1}{4})\nAPU: {2} RPM | Sys: {3} RPM",
+                string tip = string.Format("CPU: {0}{4} ({5}: {1}{4})\nAPU: {2} RPM | Sys: {3} RPM",
                     TelemetrySessionStats.ToDisplayTemp(st.CpuTemp, _useFahrenheit),
                     TelemetrySessionStats.ToDisplayTemp(st.GpuTemp, _useFahrenheit),
-                    st.Fan1Rpm, st.Fan2Rpm, tipUnit);
+                    st.Fan1Rpm, st.Fan2Rpm, tipUnit, gpuLbl);
                 if (tip.Length > 63) tip = tip.Substring(0, 63);
                 if (_cpuTrayIcon.Text != tip) _cpuTrayIcon.Text = tip;
             }
@@ -1531,10 +1537,10 @@ namespace MiniFanControl
             if (_gpuTrayIcon != null)
             {
                 string tipUnit = TelemetrySessionStats.TempUnit(_useFahrenheit);
-                string tip = string.Format("iGPU: {0}{4} (CPU: {1}{4})\nAPU: {2} RPM | Sys: {3} RPM",
+                string tip = string.Format("{5}: {0}{4} (CPU: {1}{4})\nAPU: {2} RPM | Sys: {3} RPM",
                     TelemetrySessionStats.ToDisplayTemp(st.GpuTemp, _useFahrenheit),
                     TelemetrySessionStats.ToDisplayTemp(st.CpuTemp, _useFahrenheit),
-                    st.Fan1Rpm, st.Fan2Rpm, tipUnit);
+                    st.Fan1Rpm, st.Fan2Rpm, tipUnit, gpuLbl);
                 if (tip.Length > 63) tip = tip.Substring(0, 63);
                 if (_gpuTrayIcon.Text != tip) _gpuTrayIcon.Text = tip;
             }
@@ -1544,6 +1550,7 @@ namespace MiniFanControl
 
             if (_overlayForm != null && _showOverlay)
             {
+                _overlayForm.IsReadOnlyMode = IsReadOnlyMonitoringMode;
                 string osdMode = IsReadOnlyMonitoringMode
                     ? "Read-Only"
                     : ((!_hasDualFans || apuModeName == sysModeName)
@@ -1558,10 +1565,10 @@ namespace MiniFanControl
             }
 
             string tUnit = TelemetrySessionStats.TempUnit(_useFahrenheit);
-            string winTitle = string.Format("CPU {0}{2} | iGPU {1}{2} - MiniFanControl",
+            string winTitle = string.Format("CPU {0}{2} | {3} {1}{2} - MiniFanControl",
                 TelemetrySessionStats.ToDisplayTemp(st.CpuTemp, _useFahrenheit),
                 TelemetrySessionStats.ToDisplayTemp(st.GpuTemp, _useFahrenheit),
-                tUnit);
+                tUnit, gpuLbl);
             if (Text != winTitle) Text = winTitle;
 
             if (_hwSubLabel != null && !string.IsNullOrEmpty(st.RadeonSoftwareVer))
@@ -1614,7 +1621,10 @@ namespace MiniFanControl
                 _perfCanvas.SampleIntervalMs = _refreshIntervalMs;
                 _perfCanvas.UpdateStatus(st);
                 if (_perfCanvas.Visible)
+                {
                     _perfCanvas.Invalidate();
+                    if (_showingPerfGraph) UpdateCurveHint();
+                }
             }
             if (_overlayForm != null)
             {
@@ -1667,11 +1677,11 @@ namespace MiniFanControl
                 _cpuTempBox.Invalidate();
             }
 
-            // 2. iGPU Box (Row 1, Col 1)
+            // 2. GPU / iGPU Box (Row 1, Col 1)
             string gpuValTxt = st.GpuTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.GpuTemp, _useFahrenheit), tUnit) : "N/A";
             if (_gpuTempLabel.Text != gpuValTxt) _gpuTempLabel.Text = gpuValTxt;
             if (_gpuTempLabel.ForeColor != tempFg) _gpuTempLabel.ForeColor = tempFg;
-            if (_gpuBoxTitle != null && _gpuBoxTitle.Text != "iGPU") _gpuBoxTitle.Text = "iGPU";
+            if (_gpuBoxTitle != null && _gpuBoxTitle.Text != gpuLbl) _gpuBoxTitle.Text = gpuLbl;
             string gpuPeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxGpuTemp > 0)
                 ? string.Format("▼{0}° ~{1:0}° ▲{2}°",
                     TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinGpuTemp, _useFahrenheit),
@@ -1689,15 +1699,15 @@ namespace MiniFanControl
                 ? string.Format("Load ▼{0}% ~{1:0}% ▲{2}%", _sessionStats.MinGpuLoad, _sessionStats.AvgGpuLoad, _sessionStats.MaxGpuLoad)
                 : string.Format("Load {0}%", st.GfxActivityPct);
             string gpuExtraPart = st.GpuHotspotTemp > 0
-                ? string.Format(" • 🔥{0}°", TelemetrySessionStats.ToDisplayTemp(st.GpuHotspotTemp, _useFahrenheit))
+                ? string.Format(" • HS {0}°", TelemetrySessionStats.ToDisplayTemp(st.GpuHotspotTemp, _useFahrenheit))
                 : (st.GfxPowerWatts > 0 ? string.Format(" • GFX ~{0}W", st.GfxPowerWatts) : "");
             string gpuDetail1 = gpuLoadRange + gpuExtraPart;
-            string gpuDrvPart = !string.IsNullOrEmpty(st.RadeonSoftwareVer) ? ("Adrenalin " + st.RadeonSoftwareVer) : "Radeon 780M";
+            string gpuDrvPart = !string.IsNullOrEmpty(st.RadeonSoftwareVer) ? ("Adrenalin " + st.RadeonSoftwareVer) : (!string.IsNullOrEmpty(st.GpuName) ? st.GpuName : "Radeon 780M");
             string gpuFeatPart = !string.IsNullOrEmpty(st.RadeonFeaturesSummary) ? (" • " + st.RadeonFeaturesSummary) : "";
             SetMetricDetail(2, gpuPeakTxt, gpuSubTxt, gpuDetail1, gpuDrvPart + gpuFeatPart, Color.Empty);
             if (_gpuTempBox != null)
             {
-                _gpuTempBox.AccessibleName = string.Format("iGPU Temperature: {0}", gpuValTxt);
+                _gpuTempBox.AccessibleName = string.Format("{0} Temperature: {1}", gpuLbl, gpuValTxt);
                 _gpuTempBox.Invalidate();
             }
 
@@ -1819,7 +1829,7 @@ namespace MiniFanControl
                     ? string.Format("CPU {0}W • GFX {1}W • SoC {2}W", st.CpuPowerWatts, st.GfxPowerWatts, st.SocPowerWatts)
                     : (st.ApuPowerWatts > 0 && st.ApuPowerLimitWatts > 0
                         ? string.Format("{0}% of {1}W TDP Budget", Math.Min(999, (int)Math.Round(st.ApuPowerWatts * 100.0 / st.ApuPowerLimitWatts)), st.ApuPowerLimitWatts)
-                        : (st.IsApuPowerEstimated ? "Estimated TDP Envelope" : "APU Package Rail"));
+                        : (st.IsApuPowerEstimated ? "Estimated TDP Envelope" : ((st.IsDiscreteGpu || IsReadOnlyMonitoringMode) ? "Package / Board Rail" : "APU Package Rail")));
                 string pwrDetail2;
                 if (st.VddTdcCurrentAmps > 0.1 || st.VddEdcCurrentAmps > 0.1)
                 {

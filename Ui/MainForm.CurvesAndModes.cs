@@ -642,7 +642,7 @@ namespace MiniFanControl
             bool readOnlyMonitor = IsReadOnlyMonitoringMode;
             bool usesWinPower = !readOnlyMonitor && IsUsingWindowsPowerMode();
             bool shouldShow = !readOnlyMonitor && (_demoMode || _hw == null || !_hw.IsSuperIoControlled || usesWinPower);
-            int headerLabelW = shouldShow ? 344 : 692;
+            int headerLabelW = shouldShow ? 358 : 706;
             if (_hwBadgeLabel != null && _hwBadgeLabel.Width != headerLabelW)
                 _hwBadgeLabel.Size = new Size(headerLabelW, _hwBadgeLabel.Height);
             if (_hwSubLabel != null && _hwSubLabel.Width != headerLabelW)

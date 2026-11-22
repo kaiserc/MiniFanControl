@@ -524,8 +524,6 @@ namespace MiniFanControl
                 if (_liveCanvas != null) _liveCanvas.Visible = false;
                 if (_perfCanvas != null)
                 {
-                    _perfCanvas.Location = new Point(8, 42);
-                    _perfCanvas.Size = new Size(1056, 648);
                     _perfCanvas.Visible = true;
                     _perfCanvas.Invalidate();
                 }
@@ -536,8 +534,6 @@ namespace MiniFanControl
                 if (_perfCanvas != null) _perfCanvas.Visible = false;
                 if (_liveCanvas != null)
                 {
-                    _liveCanvas.Location = new Point(8, 42);
-                    _liveCanvas.Size = new Size(1056, 648);
                     _liveCanvas.HighlightMetric = _highlightedMetric;
                     _liveCanvas.Visible = true;
                     _liveCanvas.Invalidate();
@@ -549,8 +545,6 @@ namespace MiniFanControl
                 if (_perfCanvas != null) _perfCanvas.Visible = false;
                 if (_curveCanvas != null)
                 {
-                    _curveCanvas.Location = new Point(8, 108);
-                    _curveCanvas.Size = new Size(1056, 454);
                     _curveCanvas.Visible = true;
                     _curveCanvas.Invalidate();
                 }
@@ -620,7 +614,7 @@ namespace MiniFanControl
             _headerLogoBox = new PictureBox
             {
                 Location = new Point(10, 4),
-                Size = new Size(72, 72),
+                Size = new Size(56, 56),
                 SizeMode = PictureBoxSizeMode.Zoom,
                 Image = AppLogoRenderer.RenderConcept(1, 256),
                 Cursor = Cursors.Hand
@@ -638,8 +632,8 @@ namespace MiniFanControl
             {
                 Text = topHeaderTitle,
                 Font = new Font("Segoe UI", 11.0f, FontStyle.Bold),
-                Location = new Point(88, 16),
-                Size = new Size(344, 24),
+                Location = new Point(74, 10),
+                Size = new Size(358, 22),
                 AutoEllipsis = true,
                 Cursor = Cursors.Hand,
                 UseMnemonic = false
@@ -655,8 +649,8 @@ namespace MiniFanControl
             {
                 Text = string.Format("EC Map: {0} • Driver: {1} • Global\\Access_EC Mutex • 64-bit", _sysInfo.MatchedProfile.DisplayName, initialDrv),
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Regular),
-                Location = new Point(88, 42),
-                Size = new Size(344, 18),
+                Location = new Point(74, 34),
+                Size = new Size(358, 18),
                 AutoEllipsis = true,
                 Cursor = Cursors.Hand,
                 UseMnemonic = false
@@ -670,15 +664,15 @@ namespace MiniFanControl
             bool showBiosPowerBar = !readOnlyMonitor && (_demoMode || _hw == null || !_hw.IsSuperIoControlled || usesWinPower);
             if (!showBiosPowerBar)
             {
-                _hwBadgeLabel.Size = new Size(692, 24);
-                _hwSubLabel.Size = new Size(692, 18);
+                _hwBadgeLabel.Size = new Size(706, 22);
+                _hwSubLabel.Size = new Size(706, 18);
             }
             string biosPowerTip = GetPowerBarTooltip(usesWinPower);
             _biosPowerLabel = new Label
             {
                 Text = usesWinPower ? "Power:" : "BIOS:",
                 Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
-                Location = new Point(436, 27),
+                Location = new Point(436, 20),
                 Size = new Size(58, 18),
                 TextAlign = ContentAlignment.MiddleRight,
                 Visible = showBiosPowerBar,
@@ -701,7 +695,7 @@ namespace MiniFanControl
                     Text = biosLabels[code],
                     FlatStyle = FlatStyle.Flat,
                     Font = BiosModeFontRegular,
-                    Location = new Point(biosX, 22),
+                    Location = new Point(biosX, 15),
                     Size = new Size(w, 28),
                     Padding = new Padding(0),
                     Cursor = Cursors.Hand,
@@ -724,7 +718,7 @@ namespace MiniFanControl
                 Text = "Tools && Drivers ▾",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(788, 22),
+                Location = new Point(788, 15),
                 Size = new Size(136, 28),
                 Cursor = Cursors.Hand
             };
@@ -741,7 +735,7 @@ namespace MiniFanControl
                 Text = GetThemeButtonLabel(),
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
-                Location = new Point(930, 22),
+                Location = new Point(930, 15),
                 Size = new Size(156, 28),
                 Cursor = Cursors.Hand
             };
@@ -750,14 +744,14 @@ namespace MiniFanControl
             Controls.Add(_themeToggleBtn);
             _themeToggleBtn.BringToFront();
 
-            // 1. Hardware & Live Telemetry Section (top = 78, card = 98..358, height = 260) — 2x4 Expanded Metric Grid
-            Panel statusCard = CreateSectionCard("System Telemetry & Live Hardware Sensors", 78, 260);
+            // 1. Hardware & Live Telemetry Section (top = 64, card = 84..338, height = 254) — 2x4 Metric Grid
+            Panel statusCard = CreateSectionCard("System Telemetry & Live Hardware Sensors", 64, 254);
 
             const int boxW = 257;
-            const int boxH = 108;
+            const int boxH = 105;
             const int boxGapX = 6;
-            const int row1Y = 8;
-            const int row2Y = 122;
+            const int row1Y = 7;
+            const int row2Y = 118;
 
             // Row 1 (Core Silicon & Memory/Storage): CPU | iGPU | RAM | NVMe
             _cpuTempBox = new DoubleBufferedPanel
@@ -1059,44 +1053,44 @@ namespace MiniFanControl
             };
 
             // Row 3: Active Fan Modes & Duty Status
-            Label modeStaticLbl = AddStaticLabel(statusCard, "Mode:", 12, 236, 52, 20);
+            Label modeStaticLbl = AddStaticLabel(statusCard, "Mode:", 12, 229, 52, 20);
             modeStaticLbl.Font = new Font("Segoe UI", 8.75f, FontStyle.Regular);
             _modeLabel = new Label
             {
                 Text = "--",
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Bold),
-                Location = new Point(62, 236),
+                Location = new Point(62, 229),
                 Size = new Size(266, 20),
                 AutoEllipsis = true
             };
             statusCard.Controls.Add(_modeLabel);
 
-            Label apuStaticLbl = AddStaticLabel(statusCard, "APU Fan:", 332, 236, 68, 20);
+            Label apuStaticLbl = AddStaticLabel(statusCard, "APU Fan:", 332, 229, 68, 20);
             apuStaticLbl.Font = new Font("Segoe UI", 8.75f, FontStyle.Regular);
             _pct1Label = new Label
             {
                 Text = "--",
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Bold),
-                Location = new Point(400, 236),
+                Location = new Point(400, 229),
                 Size = new Size(226, 20),
                 AutoEllipsis = true
             };
             statusCard.Controls.Add(_pct1Label);
 
-            Label sysStaticLbl = AddStaticLabel(statusCard, "Sys Fan:", 630, 236, 64, 20);
+            Label sysStaticLbl = AddStaticLabel(statusCard, "Sys Fan:", 630, 229, 64, 20);
             sysStaticLbl.Font = new Font("Segoe UI", 8.75f, FontStyle.Regular);
             _pct2Label = new Label
             {
                 Text = "--",
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Bold),
-                Location = new Point(694, 236),
+                Location = new Point(694, 229),
                 Size = new Size(248, 20),
                 AutoEllipsis = true
             };
             statusCard.Controls.Add(_pct2Label);
 
-            // 2. Modes & Fan Curve Section (top = 366, card = 386..976, height = 590)
-            Panel modeCard = CreateSectionCard("Modes, Fan Curves & Live Telemetry Graph", 366, 590);
+            // 2. Modes & Fan Curve Section (top = 344, card = 364..730, height = 366; expands to 476 when Manual Fan hidden)
+            Panel modeCard = CreateSectionCard("Modes, Fan Curves & Live Telemetry Graph", 344, 366);
             _modeCardPanel = modeCard;
 
             // Row 1 (y=8): Tab Selector Row (📈 Live Trend | 🎮 Live Perf | ● APU Fan | ● Sys Fan | 🖥 OSD Studio)
@@ -1281,11 +1275,11 @@ namespace MiniFanControl
             _deleteCustomBtn.Click += (s, e) => DeleteSelectedCustomMode();
             modeCard.Controls.Add(_deleteCustomBtn);
 
-            // Row 4 (y=108): Large Interactive Fan Curve Graph + Combined Live Telemetry Graph (1056 x 454)
+            // Row 4 (y=106): Interactive Fan Curve Graph + Combined Live Telemetry Graph (1056 x 234)
             _curveCanvas = new FanCurveCanvas
             {
-                Location = new Point(8, 108),
-                Size = new Size(1056, 454),
+                Location = new Point(8, 106),
+                Size = new Size(1056, 234),
                 ApuProfile = _apuProfile,
                 SysProfile = _sysProfile
             };
@@ -1346,7 +1340,7 @@ namespace MiniFanControl
             _liveCanvas = new LiveTelemetryCanvas
             {
                 Location = new Point(8, 42),
-                Size = new Size(1056, 648),
+                Size = new Size(1056, 408),
                 Stats = _sessionStats,
                 HasDualFans = _hasDualFans,
                 ShowCpu = _osd.TrendCpu,
@@ -1383,7 +1377,7 @@ namespace MiniFanControl
             _perfCanvas = new LivePerformanceCanvas
             {
                 Location = new Point(8, 42),
-                Size = new Size(1056, 648),
+                Size = new Size(1056, 408),
                 Stats = _sessionStats,
                 Status = _lastStatus,
                 Visible = false
@@ -1395,7 +1389,7 @@ namespace MiniFanControl
             _osdConfigPanel = new Panel
             {
                 Location = new Point(8, 41),
-                Size = new Size(1056, 648),
+                Size = new Size(1056, 409),
                 Visible = false
             };
             BuildOsdStudioPanel(_osdConfigPanel);
@@ -1405,14 +1399,14 @@ namespace MiniFanControl
             {
                 Text = "",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
-                Location = new Point(8, 566),
+                Location = new Point(8, 344),
                 Size = new Size(1056, 18),
                 TextAlign = ContentAlignment.MiddleCenter
             };
             modeCard.Controls.Add(_curveHintLabel);
 
-            // 3. Manual Fan Control Section (top = 992, card = 1012..1106, height = 94)
-            Panel fanCard = CreateSectionCard("Manual Fan Control", 992, 94);
+            // 3. Manual Fan Control Section (top = 736, card = 756..840, height = 84)
+            Panel fanCard = CreateSectionCard("Manual Fan Control", 736, 84);
             _fanCardPanel = fanCard;
             _manualFanHeaderLabel = _sectionHeaders.Count > 0 ? _sectionHeaders[_sectionHeaders.Count - 1] : null;
 
@@ -1420,7 +1414,7 @@ namespace MiniFanControl
             {
                 Text = "",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(544, 990),
+                Location = new Point(544, 734),
                 Size = new Size(540, 18),
                 TextAlign = ContentAlignment.MiddleRight,
                 Cursor = Cursors.Hand
@@ -1431,13 +1425,13 @@ namespace MiniFanControl
             _uiToolTip.SetToolTip(_calibBadgeLabel,
                 "Shows when your fans were last calibrated and their minimum anti-stall PWM %.\r\nClick to run the 3-pass real-time Fan Calibration Wizard.");
 
-            AddStaticLabel(fanCard, "APU / CPU Fan:", 10, 14, 120, 24);
+            AddStaticLabel(fanCard, "APU / CPU Fan:", 10, 10, 120, 24);
             _fan1Slider = new TrackBar
             {
                 Minimum = 0,
                 Maximum = 100,
                 TickStyle = TickStyle.None,
-                Location = new Point(134, 10),
+                Location = new Point(134, 6),
                 Size = new Size(642, 32),
                 AccessibleName = "APU / CPU Fan Manual Speed Percentage (0 equals Auto)"
             };
@@ -1477,7 +1471,7 @@ namespace MiniFanControl
             {
                 Text = "Auto",
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                Location = new Point(782, 14),
+                Location = new Point(782, 10),
                 Size = new Size(60, 24),
                 TextAlign = ContentAlignment.MiddleCenter
             };
@@ -1487,7 +1481,7 @@ namespace MiniFanControl
             {
                 Text = "Auto",
                 FlatStyle = FlatStyle.Flat,
-                Location = new Point(850, 12),
+                Location = new Point(850, 8),
                 Size = new Size(80, 26),
                 Cursor = Cursors.Hand
             };
@@ -1495,13 +1489,13 @@ namespace MiniFanControl
             _fan1AutoBtn.Click += (s, e) => ApplyFan(1, 0);
             fanCard.Controls.Add(_fan1AutoBtn);
 
-            AddStaticLabel(fanCard, "Sys / RAM Fan:", 10, 52, 120, 24);
+            AddStaticLabel(fanCard, "Sys / RAM Fan:", 10, 46, 120, 24);
             _fan2Slider = new TrackBar
             {
                 Minimum = 0,
                 Maximum = 100,
                 TickStyle = TickStyle.None,
-                Location = new Point(134, 48),
+                Location = new Point(134, 42),
                 Size = new Size(642, 32),
                 AccessibleName = "System / RAM Fan Manual Speed Percentage (0 equals Auto)"
             };
@@ -1541,7 +1535,7 @@ namespace MiniFanControl
             {
                 Text = "Auto",
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-                Location = new Point(782, 52),
+                Location = new Point(782, 46),
                 Size = new Size(60, 24),
                 TextAlign = ContentAlignment.MiddleCenter
             };
@@ -1551,7 +1545,7 @@ namespace MiniFanControl
             {
                 Text = "Auto",
                 FlatStyle = FlatStyle.Flat,
-                Location = new Point(850, 50),
+                Location = new Point(850, 44),
                 Size = new Size(80, 26),
                 Cursor = Cursors.Hand
             };
@@ -1559,14 +1553,16 @@ namespace MiniFanControl
             _fan2AutoBtn.Click += (s, e) => ApplyFan(2, 0);
             fanCard.Controls.Add(_fan2AutoBtn);
 
-            // 4. Options Section (top = 1112, card = 1132..1218, height = 86)
-            Panel optCard = CreateSectionCard("Options", 1112, 86);
+            // 4. Options Section (dynamically anchored to bottom by ApplyDynamicVerticalLayout)
+            Panel optCard = CreateSectionCard("Options", 846, 78);
+            _optCardPanel = optCard;
+            _optHeaderLabel = _sectionHeaders.Count > 0 ? _sectionHeaders[_sectionHeaders.Count - 1] : null;
 
             _samplingLabel = new Label
             {
                 Text = "Sampling:",
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-                Location = new Point(766, 11),
+                Location = new Point(766, 9),
                 AutoSize = true,
                 Cursor = Cursors.Default
             };
@@ -1576,7 +1572,7 @@ namespace MiniFanControl
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
-                Location = new Point(854, 7),
+                Location = new Point(854, 6),
                 Size = new Size(204, 22),
                 Cursor = Cursors.Hand
             };
@@ -1608,8 +1604,8 @@ namespace MiniFanControl
             _showCpuTrayCb = new CheckBox
             {
                 Text = "Show CPU temp in taskbar",
-                Location = new Point(12, 8),
-                Size = new Size(310, 24),
+                Location = new Point(12, 6),
+                Size = new Size(310, 22),
                 Checked = _showCpuTray
             };
             _showCpuTrayCb.CheckedChanged += (s, e) =>
@@ -1624,8 +1620,8 @@ namespace MiniFanControl
             _showGpuTrayCb = new CheckBox
             {
                 Text = "Show iGPU temp in taskbar",
-                Location = new Point(340, 8),
-                Size = new Size(300, 24),
+                Location = new Point(340, 6),
+                Size = new Size(300, 22),
                 Checked = _showGpuTray
             };
             _showGpuTrayCb.CheckedChanged += (s, e) =>
@@ -1640,8 +1636,8 @@ namespace MiniFanControl
             _showOverlayCb = new CheckBox
             {
                 Text = "Show In-Game OSD overlay",
-                Location = new Point(12, 32),
-                Size = new Size(216, 24),
+                Location = new Point(12, 29),
+                Size = new Size(216, 22),
                 Checked = _showOverlay
             };
             _showOverlayCb.CheckedChanged += (s, e) =>
@@ -1657,8 +1653,8 @@ namespace MiniFanControl
                 Text = "⚙ Config...",
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-                Location = new Point(232, 31),
-                Size = new Size(84, 24),
+                Location = new Point(232, 28),
+                Size = new Size(84, 23),
                 Cursor = Cursors.Hand
             };
             _optCardOsdConfigBtn.FlatAppearance.BorderSize = 0;
@@ -1669,8 +1665,8 @@ namespace MiniFanControl
             _lockOverlayCb = new CheckBox
             {
                 Text = "Lock OSD (click-through)",
-                Location = new Point(340, 32),
-                Size = new Size(300, 24),
+                Location = new Point(340, 29),
+                Size = new Size(300, 22),
                 Checked = _lockOverlay
             };
             _lockOverlayCb.CheckedChanged += (s, e) => SetOverlayLocked(_lockOverlayCb.Checked);
@@ -1679,8 +1675,8 @@ namespace MiniFanControl
             _autostartCb = new CheckBox
             {
                 Text = "Start automatically on Windows login",
-                Location = new Point(12, 56),
-                Size = new Size(310, 24),
+                Location = new Point(12, 52),
+                Size = new Size(310, 22),
                 Checked = IsAutostartEnabled()
             };
             _autostartCb.CheckedChanged += (s, e) => ToggleAutostart();
@@ -1689,8 +1685,8 @@ namespace MiniFanControl
             _alwaysOnTopCb = new CheckBox
             {
                 Text = "Keep app on top",
-                Location = new Point(340, 56),
-                Size = new Size(300, 24),
+                Location = new Point(340, 52),
+                Size = new Size(300, 22),
                 Checked = _alwaysOnTop
             };
             _alwaysOnTopCb.CheckedChanged += (s, e) =>
@@ -1708,8 +1704,8 @@ namespace MiniFanControl
             _useFahrenheitCb = new CheckBox
             {
                 Text = "Use Fahrenheit (°F)",
-                Location = new Point(660, 32),
-                Size = new Size(260, 24),
+                Location = new Point(660, 29),
+                Size = new Size(260, 22),
                 Checked = _useFahrenheit
             };
             _useFahrenheitCb.CheckedChanged += (s, e) =>
@@ -1729,8 +1725,8 @@ namespace MiniFanControl
             _trayCb = new CheckBox
             {
                 Text = "Close button minimizes to tray",
-                Location = new Point(660, 56),
-                Size = new Size(260, 24),
+                Location = new Point(660, 52),
+                Size = new Size(260, 22),
                 Checked = _closeToTray
             };
             _trayCb.CheckedChanged += (s, e) =>
@@ -1745,21 +1741,21 @@ namespace MiniFanControl
             _errorBanner = new Label
             {
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
-                Location = new Point(14, 1132),
-                Size = new Size(1072, 82),
+                Location = new Point(14, 866),
+                Size = new Size(1072, 78),
                 Padding = new Padding(8),
                 Visible = false
             };
             Controls.Add(_errorBanner);
             _errorBanner.BringToFront();
 
-            // 5. Status Bar (y = 1220..1248)
+            // 5. Status Bar (y = 947..973)
             _statusBarLabel = new Label
             {
                 Text = "⏳ Initializing…",
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Regular),
-                Location = new Point(14, 1223),
-                Size = new Size(820, 22)
+                Location = new Point(14, 950),
+                Size = new Size(820, 20)
             };
             Controls.Add(_statusBarLabel);
 
@@ -1767,8 +1763,8 @@ namespace MiniFanControl
             {
                 Text = "Reset Auto",
                 FlatStyle = FlatStyle.Flat,
-                Location = new Point(850, 1220),
-                Size = new Size(106, 28),
+                Location = new Point(850, 947),
+                Size = new Size(106, 26),
                 Cursor = Cursors.Hand
             };
             _allAutoBtn.FlatAppearance.BorderSize = 0;
@@ -1779,8 +1775,8 @@ namespace MiniFanControl
             {
                 Text = "Close",
                 FlatStyle = FlatStyle.Flat,
-                Location = new Point(966, 1220),
-                Size = new Size(106, 28),
+                Location = new Point(966, 947),
+                Size = new Size(106, 26),
                 Cursor = Cursors.Hand
             };
             _closeBtn.FlatAppearance.BorderSize = 0;
@@ -1851,6 +1847,77 @@ namespace MiniFanControl
             UpdateWideLayout();
         }
 
+        private void ApplyDynamicVerticalLayout(int rawClientH)
+        {
+            if (_modeCardPanel == null || _optCardPanel == null)
+                return;
+
+            int bottom = Math.Max(760, rawClientH);
+
+            // Bottom status bar (y = bottom - 29 .. bottom - 3)
+            if (_statusBarLabel != null) _statusBarLabel.Location = new Point(14, bottom - 26);
+            if (_allAutoBtn != null) _allAutoBtn.Location = new Point(850, bottom - 29);
+            if (_closeBtn != null) _closeBtn.Location = new Point(966, bottom - 29);
+
+            // Options section (header = 20px, card = 78px, 3px gap above status bar)
+            int optHeaderY = bottom - 130;
+            int optCardY = bottom - 110;
+            if (_optHeaderLabel != null) _optHeaderLabel.Location = new Point(14, optHeaderY);
+            _optCardPanel.Location = new Point(14, optCardY);
+            if (_errorBanner != null) _errorBanner.Location = new Point(14, optCardY);
+
+            // Middle zone ends 6px above Options header
+            int middleBottom = optHeaderY - 6;
+            const int modeCardTop = 364;
+
+            // Manual Fan Control section (header = 20px, card = 84px) anchored above Options
+            int fanHeaderY = middleBottom - 104;
+            int fanCardY = middleBottom - 84;
+            if (_manualFanHeaderLabel != null) _manualFanHeaderLabel.Location = new Point(14, fanHeaderY);
+            if (_calibBadgeLabel != null) _calibBadgeLabel.Location = new Point(544, fanHeaderY - 2);
+            if (_fanCardPanel != null) _fanCardPanel.Location = new Point(14, fanCardY);
+
+            // Modes & Graph card expands dynamically to fill all available vertical space
+            int modeCardBottom = _manualFanControlVisible ? (fanHeaderY - 6) : middleBottom;
+            int cardHeight = Math.Max(260, modeCardBottom - modeCardTop);
+            int canvasHeight = Math.Max(180, cardHeight - 68);
+            int curveHeight = Math.Max(140, cardHeight - 132);
+            int hintY = cardHeight - 22;
+
+            if (_modeCardPanel.Height != cardHeight)
+                _modeCardPanel.Height = cardHeight;
+
+            if (_curveHintLabel != null)
+                _curveHintLabel.Location = new Point(8, hintY);
+
+            if (_curveCanvas != null)
+            {
+                _curveCanvas.Location = new Point(8, 106);
+                _curveCanvas.Size = new Size(1056, curveHeight);
+            }
+
+            if (_osdConfigPanel != null)
+            {
+                _osdConfigPanel.Location = new Point(8, 41);
+                _osdConfigPanel.Size = new Size(1056, canvasHeight + 1);
+            }
+            if (_osdMetricsScrollPanel != null)
+            {
+                _osdMetricsScrollPanel.Size = new Size(1048, Math.Max(140, (canvasHeight + 1) - 198));
+            }
+
+            if (_liveCanvas != null && _liveCanvas.Parent == _modeCardPanel)
+            {
+                _liveCanvas.Location = new Point(8, 42);
+                _liveCanvas.Size = new Size(1056, canvasHeight);
+            }
+            if (_perfCanvas != null && _perfCanvas.Parent == _modeCardPanel)
+            {
+                _perfCanvas.Location = new Point(8, 42);
+                _perfCanvas.Size = new Size(1056, canvasHeight);
+            }
+        }
+
         private void UpdateWideLayout()
         {
             if (_wideRightPanel == null || _modeCardPanel == null || _liveCanvas == null || _perfCanvas == null)
@@ -1858,6 +1925,9 @@ namespace MiniFanControl
 
             int clientW = _testClientWidthOverride > 0 ? _testClientWidthOverride : ClientSize.Width;
             int clientH = _testClientHeightOverride > 0 ? _testClientHeightOverride : ClientSize.Height;
+
+            ApplyDynamicVerticalLayout(clientH);
+
             bool wide = clientW >= 1450;
             if (wide)
             {
@@ -1878,8 +1948,6 @@ namespace MiniFanControl
                     SetManualFanControlVisible(!_showingOsdConfig);
                     if (!_showingOsdConfig && _curveCanvas != null)
                     {
-                        _curveCanvas.Location = new Point(8, 108);
-                        _curveCanvas.Size = new Size(1056, 454);
                         _curveCanvas.Visible = true;
                     }
                     UpdateCurveTabStyles();
@@ -1913,17 +1981,14 @@ namespace MiniFanControl
                 // Collapse hidden wide panel bounds and reset scroll state so un-maximizing from full-screen
                 // never leaves lingering horizontal or vertical scrollbars.
                 _wideRightPanel.Bounds = new Rectangle(0, 0, 0, 0);
-                int canvasH = _manualFanControlVisible ? 518 : 648;
 
                 if (_liveCanvas.Parent != _modeCardPanel) _liveCanvas.Parent = _modeCardPanel;
-                _liveCanvas.Location = new Point(8, 42);
-                _liveCanvas.Size = new Size(1056, canvasH);
                 _liveCanvas.Visible = _showingLiveTelemetry;
 
                 if (_perfCanvas.Parent != _modeCardPanel) _perfCanvas.Parent = _modeCardPanel;
-                _perfCanvas.Location = new Point(8, 42);
-                _perfCanvas.Size = new Size(1056, canvasH);
                 _perfCanvas.Visible = _showingPerfGraph;
+
+                ApplyDynamicVerticalLayout(clientH);
 
                 if (AutoScroll)
                 {

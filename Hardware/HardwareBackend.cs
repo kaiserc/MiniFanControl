@@ -855,11 +855,16 @@ namespace MiniFanControl
                 }
             }
 
+            bool isDiscreteGpu = RadeonSettingsSensor.IsDiscreteGpuDescription(rad.GpuDesc) ||
+                (Profile != null && Profile.IsReadOnly && (rad.SmartAccessMemory || adlPowerWatts > 95 || gfxClk > 2950));
+
             FanStatus st = new FanStatus
             {
                 CpuTemp = cpuTemp,
                 CpuLoadPct = SystemStorageMemorySensor.GetCpuUsage(),
                 GpuTemp = gpuTemp,
+                GpuName = rad.GpuDesc,
+                IsDiscreteGpu = isDiscreteGpu,
                 ApuPowerWatts = apuPower,
                 CpuPowerWatts = cpuPwr,
                 GfxPowerWatts = gfxPwr,

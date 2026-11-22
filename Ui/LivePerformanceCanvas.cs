@@ -554,7 +554,7 @@ namespace MiniFanControl
                 ? (curFt > 0 ? string.Format("FRAME-TIME (MS)  •  {0:0.0} ms", curFt) : "FRAME-TIME (MS)")
                 : (curFt > 0
                     ? string.Format("FRAME-TIME (MS)  •  NOW: {0:0.0} ms  •  {1}", curFt, ftScope)
-                    : "FRAME-TIME (MS)  •  DIGITAL FOUNDRY STYLE INVERTED JITTER SCALE");
+                    : "FRAME-TIME (MS)  •  JITTER / STUTTER ANALYSIS");
             TextRenderer.DrawText(g, ftHdr, FontHeader, new Point(rect.X + 8, rect.Y + 4), Color.FromArgb(0x22, 0xD3, 0xEE), TextFormatFlags.NoPadding);
 
             Rectangle plot = compactCorner
@@ -596,7 +596,7 @@ namespace MiniFanControl
                 // 16.6 ms guide line (60 FPS)
                 if (16.6f <= ftCeiling)
                 {
-                    float y16 = plot.Top + (16.6f / ftCeiling) * plot.Height;
+                    float y16 = plot.Bottom - (16.6f / ftCeiling) * plot.Height;
                     using (Pen p16 = new Pen(Color.FromArgb(DfZoomedFrametime ? 75 : 45, 0x22, 0xC5, 0x5E), 1f) { DashStyle = DashStyle.Dot })
                     {
                         g.DrawLine(p16, plot.Left, y16, plot.Right, y16);
@@ -610,7 +610,7 @@ namespace MiniFanControl
                 // 33.3 ms guide line (30 FPS)
                 if (33.3f <= ftCeiling)
                 {
-                    float y33 = plot.Top + (33.3f / ftCeiling) * plot.Height;
+                    float y33 = plot.Bottom - (33.3f / ftCeiling) * plot.Height;
                     using (Pen p33 = new Pen(Color.FromArgb(DfZoomedFrametime ? 75 : 45, 0xF5, 0x9E, 0x0B), 1f) { DashStyle = DashStyle.Dot })
                     {
                         g.DrawLine(p33, plot.Left, y33, plot.Right, y33);
@@ -622,11 +622,11 @@ namespace MiniFanControl
                 }
             }
 
-            // Right Axis Labels: 0 (top), mid (middle), ftCeiling (bottom) - Inverted Digital Foundry scale
+            // Right Axis Labels: ftCeiling (top), mid (middle), 0 (bottom) - Standard upward stutter scale
             Color axisCol = IsDarkMode ? Color.FromArgb(0x94, 0xA3, 0xB8) : Color.FromArgb(0x64, 0x74, 0x8B);
-            TextRenderer.DrawText(g, "0 ms", FontAxis, new Point(plot.Right + 4, plot.Top - 2), axisCol, TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(g, ftCeiling + " ms", FontAxis, new Point(plot.Right + 4, plot.Top - 2), axisCol, TextFormatFlags.NoPadding);
             TextRenderer.DrawText(g, (ftCeiling / 2) + " ms", FontAxis, new Point(plot.Right + 4, (int)Math.Round(plot.Top + plot.Height / 2f - 6)), axisCol, TextFormatFlags.NoPadding);
-            TextRenderer.DrawText(g, ftCeiling + " ms", FontAxis, new Point(plot.Right + 4, plot.Bottom - 10), axisCol, TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(g, "0 ms", FontAxis, new Point(plot.Right + 4, plot.Bottom - 10), axisCol, TextFormatFlags.NoPadding);
 
             if (Stats == null || Stats.FrametimeHistory == null || Stats.FrametimeHistory.Count == 0)
             {
@@ -646,7 +646,7 @@ namespace MiniFanControl
                     ? Stats.FrametimeHistory[start] / 10.0f
                     : 16.6f;
                 float norm = Math.Max(0f, Math.Min(1f, ftMs / (float)ftCeiling));
-                float y = plot.Top + norm * plot.Height;
+                float y = plot.Bottom - norm * plot.Height;
                 pts[0] = new PointF(plot.Left, y);
                 pts[1] = new PointF(plot.Right, y);
             }
@@ -660,7 +660,7 @@ namespace MiniFanControl
                         : 16.6f;
                     float norm = Math.Max(0f, Math.Min(1f, ftMs / (float)ftCeiling));
                     float x = plot.Left + (plot.Width * i) / (float)(take - 1);
-                    float y = plot.Top + norm * plot.Height;
+                    float y = plot.Bottom - norm * plot.Height;
                     pts[i] = new PointF(x, y);
                 }
             }
@@ -816,7 +816,7 @@ namespace MiniFanControl
             }
 
             // 1. 0.1% Low Translucent Area & Line
-            Color lowCol = Color.FromArgb(0xFB, 0x71, 0x85); // Rose
+            Color lowCol = IsDarkMode ? Color.FromArgb(0xFB, 0x71, 0x85) : Color.FromArgb(0xE1, 0x1D, 0x48); // Rose
             if (Stats.P01LowHistory != null && Stats.P01LowHistory.Count > 0)
             {
                 PointF[] lowPts = new PointF[Math.Max(2, take)];
@@ -851,19 +851,54 @@ namespace MiniFanControl
                     path.AddLines(lowPts);
                     path.AddLine(plot.Right, plot.Bottom, plot.Left, plot.Bottom);
                     path.CloseFigure();
-                    using (SolidBrush lowFill = new SolidBrush(Color.FromArgb(25, lowCol.R, lowCol.G, lowCol.B)))
+                    using (SolidBrush lowFill = new SolidBrush(Color.FromArgb(IsDarkMode ? 28 : 24, lowCol.R, lowCol.G, lowCol.B)))
                     {
                         g.FillPath(lowFill, path);
                     }
                 }
-                using (Pen lowPen = new Pen(Color.FromArgb(160, lowCol), 1.2f) { DashStyle = DashStyle.Dash })
+                using (Pen lowPen = new Pen(Color.FromArgb(IsDarkMode ? 175 : 200, lowCol), 1.25f) { DashStyle = DashStyle.Dot })
                 {
                     g.DrawLines(lowPen, lowPts);
                 }
             }
 
+            // 1b. 1% Low Dashed Line (Amber Orange — clearly separated from 0.1% Low Rose floor in both themes)
+            Color p1Col = IsDarkMode ? Color.FromArgb(0xFB, 0x92, 0x3C) : Color.FromArgb(0xEA, 0x58, 0x0C);
+            if (Stats.P1LowHistory != null && Stats.P1LowHistory.Count > 0)
+            {
+                PointF[] p1Pts = new PointF[Math.Max(2, take)];
+                if (take == 1)
+                {
+                    int p1Val = (start < Stats.P1LowHistory.Count && Stats.P1LowHistory[start] > 0)
+                        ? Stats.P1LowHistory[start]
+                        : (low1 > 0 ? low1 : (int)Math.Max(1, Math.Round(curFps * 0.88)));
+                    float norm = Math.Max(0f, Math.Min(1f, (float)p1Val / fpsCeiling));
+                    float y = plot.Bottom - norm * plot.Height;
+                    p1Pts[0] = new PointF(plot.Left, y);
+                    p1Pts[1] = new PointF(plot.Right, y);
+                }
+                else
+                {
+                    for (int i = 0; i < take; i++)
+                    {
+                        int idx = start + i;
+                        int p1Val = (idx < Stats.P1LowHistory.Count && Stats.P1LowHistory[idx] > 0)
+                            ? Stats.P1LowHistory[idx]
+                            : (low1 > 0 ? low1 : (int)Math.Max(1, Math.Round(curFps * 0.88)));
+                        float norm = Math.Max(0f, Math.Min(1f, (float)p1Val / fpsCeiling));
+                        float x = plot.Left + (plot.Width * i) / (float)(take - 1);
+                        float y = plot.Bottom - norm * plot.Height;
+                        p1Pts[i] = new PointF(x, y);
+                    }
+                }
+                using (Pen p1Pen = new Pen(Color.FromArgb(IsDarkMode ? 190 : 210, p1Col), 1.35f) { DashStyle = DashStyle.Dash })
+                {
+                    g.DrawLines(p1Pen, p1Pts);
+                }
+            }
+
             // 2. Avg FPS Dashed Line
-            Color avgCol = Color.FromArgb(0x93, 0xC5, 0xFD);
+            Color avgCol = IsDarkMode ? Color.FromArgb(0x93, 0xC5, 0xFD) : Color.FromArgb(0x25, 0x63, 0xEB);
             if (Stats.AvgFpsHistory != null && Stats.AvgFpsHistory.Count > 0)
             {
                 PointF[] avgPts = new PointF[Math.Max(2, take)];
@@ -894,7 +929,7 @@ namespace MiniFanControl
             }
 
             // 3. Live Instantaneous FPS Line (smooth DF rolling average, leading edge exact to live FPS)
-            Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8);
+            Color fpsCol = IsDarkMode ? Color.FromArgb(0x38, 0xBD, 0xF8) : Color.FromArgb(0x02, 0x84, 0xC7);
             PointF[] fpsPts = new PointF[Math.Max(2, take)];
             if (take == 1)
             {
@@ -971,9 +1006,10 @@ namespace MiniFanControl
                 int samplesAgo = take - 1 - (sIdx - start);
                 int f = (sIdx < Stats.FpsHistory.Count) ? Stats.FpsHistory[sIdx] : 0;
                 int a = (sIdx < Stats.AvgFpsHistory.Count) ? Stats.AvgFpsHistory[sIdx] : 0;
+                int l1 = (Stats.P1LowHistory != null && sIdx < Stats.P1LowHistory.Count && Stats.P1LowHistory[sIdx] > 0) ? Stats.P1LowHistory[sIdx] : low1;
                 int l01 = (sIdx < Stats.P01LowHistory.Count) ? Stats.P01LowHistory[sIdx] : 0;
                 string hud = string.Format("{0} | Live: {1} FPS • Avg: {2} • 1%: {3} • 0.1%: {4}",
-                    FormatTimeAgo(samplesAgo), f, a, low1 > 0 ? low1.ToString() : "--", l01 > 0 ? l01.ToString() : "--");
+                    FormatTimeAgo(samplesAgo), f, a, l1 > 0 ? l1.ToString() : "--", l01 > 0 ? l01.ToString() : "--");
 
                 DrawHoverHud(g, plot, hud, _hoverMouseX, _hoverMouseY);
             }
