@@ -10,14 +10,15 @@ namespace MiniFanControl
     {
         None = 0,
         WinRing0,
-        InpOut64
+        InpOut64,
+        PawnIO
     }
 
     /// <summary>
     /// Unified Low-Level Kernel Hardware Access Driver Provider.
-    /// Auto-detects and interfaces with InpOut64 (inpoutx64.dll) or WinRing0 1.3.1b (WinRing0x64.dll)
+    /// Priority 0: EV-signed, HVCI-compatible PawnIO (PawnIOLib.dll + signed PawnIO.Modules) when installed.
+    /// Priority 1/2: SHA256-pinned InpOut64 (inpoutx64.dll) or WinRing0 1.3.1b (WinRing0x64.dll) fallback
     /// for LPC port I/O, Super I/O, EC, and MMIO register access.
-    /// Modern scriptable drivers (PawnIO via PawnIOLib bytecode execution) are planned on the roadmap for HVCI compatibility.
     /// </summary>
     public static class NativeInpOut
     {
@@ -276,6 +277,8 @@ namespace MiniFanControl
             {
                 switch (ActiveDriver)
                 {
+                    case HardwareDriverEngine.PawnIO:
+                        return "PawnIO v" + PawnIoDriver.VersionString + " (HVCI-Compatible)";
                     case HardwareDriverEngine.WinRing0:
                         return "WinRing0 1.3.1b (WinRing0x64.dll)";
                     case HardwareDriverEngine.InpOut64:
@@ -420,6 +423,16 @@ namespace MiniFanControl
 
                 string appDir = AppDomain.CurrentDomain.BaseDirectory;
 
+                // Priority 0: Official EV-signed, HVCI-compatible PawnIO (when installed with signed modules)
+                if (PawnIoDriver.IsServiceInstalledAndRunning() && PawnIoDriver.TryInitialize())
+                {
+                    ActiveDriver = HardwareDriverEngine.PawnIO;
+                    IsDriverHashVerified = true;
+                    ActiveDriverSha256 = "EV-SIGNED-PAWNIO";
+                    LastDriverIntegrityError = null;
+                    return true;
+                }
+
                 // Priority 1: Check for bundled InpOut (inpoutx64.dll) in application directory
                 string[] inpoutCandidates = new string[]
                 {
@@ -556,6 +569,10 @@ namespace MiniFanControl
             {
                 PreloadDriverDll();
             }
+            if (ActiveDriver == HardwareDriverEngine.PawnIO)
+            {
+                return PawnIoDriver.IsAvailable;
+            }
             if (ActiveDriver == HardwareDriverEngine.WinRing0)
             {
                 return _winringStatus != null ? (_winringStatus() == 0) : true;
@@ -578,6 +595,11 @@ namespace MiniFanControl
 
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
+            if (ActiveDriver == HardwareDriverEngine.PawnIO)
+            {
+                byte pawnVal;
+                return PawnIoDriver.TryReadPortByte(port, out pawnVal) ? pawnVal : (byte)0xFF;
+            }
             if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringReadByte != null)
             {
                 try { return _winringReadByte(port); } catch { return 0xFF; }
@@ -602,6 +624,11 @@ namespace MiniFanControl
 
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
+            if (ActiveDriver == HardwareDriverEngine.PawnIO)
+            {
+                PawnIoDriver.TryWritePortByte(port, value);
+                return;
+            }
             if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringWriteByte != null)
             {
                 try { _winringWriteByte(port, value); return; } catch { return; }
@@ -735,6 +762,10 @@ namespace MiniFanControl
         {
             lock (_driverLock)
             {
+                if (ActiveDriver == HardwareDriverEngine.PawnIO)
+                {
+                    try { PawnIoDriver.Shutdown(); } catch { }
+                }
                 if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringDeinit != null)
                 {
                     try { _winringDeinit(); } catch { }

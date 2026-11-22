@@ -20,7 +20,7 @@ Fixes #<!-- issue number, if applicable -->
 
 Please confirm the following before requesting review:
 
-- [ ] **Automated Self-Tests:** All 90 tests pass (`.\minifan-helper.exe test` or `dotnet run --project MiniFanControl.csproj -c Release -- test`).
+- [ ] **Automated Self-Tests:** All 96 tests pass (`.\minifan-helper.exe test` or `dotnet run --project MiniFanControl.csproj -c Release -- test`).
 - [ ] **Build Check:** Compiles cleanly via `build-windows.bat` and/or `dotnet build MiniFanControl.csproj -c Release`.
 - [ ] **Hardware Safety Principles** (per [CONTRIBUTING.md](CONTRIBUTING.md)):
   - [ ] Fail-closed behavior preserved (aborts writes on detection, mutex, or read-back failure).

@@ -186,10 +186,13 @@ namespace MiniFanControl
                     Console.WriteLine("  auto [--demo]                         Restore BIOS Automatic control for both fans");
 
                     Console.WriteLine("  probe / dump [--json] [--demo]        Analyze hardware registers and EC access methods");
+                    Console.WriteLine("  submit-report [--demo]                Generate sanitized hardware profile JSON & GitHub Issue URL");
+                    Console.WriteLine("  daemon [--interval ms] [--demo]       Run zero-UI headless background fan control daemon");
+                    Console.WriteLine("  driver-status / driver-stop           Inspect PawnIO/HVCI/driver integrity or stop legacy drivers");
                     Console.WriteLine("  diff-scan / ec-scan [--demo]          Run EC differential sensor scanner (Tier 2 discovery)");
                     Console.WriteLine("  calibrate [passes] [--demo]           Execute multi-pass fan calibration curve analysis");
 
-                    Console.WriteLine("  test                                  Run 90-point automated safety & regression suite");
+                    Console.WriteLine("  test                                  Run 96-point automated safety & regression suite");
                     Console.WriteLine("  hw-matrix                             Run multi-profile hardware validation matrix");
                     Console.WriteLine("  export-profiles [--json]              Export supported hardware profiles & Super I/O IDs");
 
@@ -283,16 +286,63 @@ namespace MiniFanControl
                     }
                 }
 
+                if (cmd == "daemon" || cmd == "--daemon" || cmd == "headless" || cmd == "--headless")
+                {
+                    int intervalMs = 0;
+                    int maxTicks = 0;
+                    bool quiet = false;
+                    for (int i = 0; i < args.Length; i++)
+                    {
+                        if ((args[i] == "--interval" || args[i] == "-i") && i + 1 < args.Length)
+                            int.TryParse(args[i + 1], out intervalMs);
+                        else if (args[i] == "--max-ticks" && i + 1 < args.Length)
+                            int.TryParse(args[i + 1], out maxTicks);
+                        else if (args[i] == "--once")
+                            maxTicks = 1;
+                        else if (args[i] == "--quiet" || args[i] == "-q")
+                            quiet = true;
+                    }
+                    return HeadlessDaemon.Run(demoMode, intervalMs, maxTicks, quiet);
+                }
+
+                if (cmd == "submit-report" || cmd == "--submit-report")
+                {
+                    SystemHardwareInfo subSys = SystemHardwareInfo.Detect();
+                    HardwareBackend subHw = null;
+                    if (!demoMode)
+                    {
+                        subHw = HardwareBackend.CreateAutoDetected();
+                    }
+                    try
+                    {
+                        string json = HardwareProfileSubmission.BuildSanitizedJson(subSys, subHw, MainForm.APP_VERSION);
+                        string issueUrl = HardwareProfileSubmission.BuildGitHubIssueUrl(subSys, subHw, MainForm.APP_VERSION);
+                        Console.WriteLine(json);
+                        Console.WriteLine();
+                        Console.WriteLine("GitHub Issue URL: " + issueUrl);
+                        return 0;
+                    }
+                    finally
+                    {
+                        if (subHw != null) try { subHw.Dispose(); } catch { }
+                    }
+                }
+
                 if (cmd == "driver-status")
                 {
+                    bool pawnRunning = DriverServiceManager.IsDriverServiceRunning("PawnIO");
                     bool inpoutRunning = DriverServiceManager.IsDriverServiceRunning("inpoutx64");
                     bool winringRunning = DriverServiceManager.IsDriverServiceRunning("WinRing0_1_2_0");
+                    bool hvciEnabled = NativeInpOut.IsHvciEnabled();
                     Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                        "{{\"active_driver\":\"{0}\",\"hash_verified\":{1},\"sha256\":\"{2}\",\"integrity_error\":\"{3}\",\"winring0_service\":{4},\"inpout_service\":{5}}}",
+                        "{{\"active_driver\":\"{0}\",\"hash_verified\":{1},\"sha256\":\"{2}\",\"integrity_error\":\"{3}\",\"hvci_enabled\":{4},\"pawnio_service\":{5},\"pawnio_available\":{6},\"winring0_service\":{7},\"inpout_service\":{8}}}",
                         EscapeJson(NativeInpOut.ActiveDriverName),
                         NativeInpOut.IsDriverHashVerified ? "true" : "false",
                         EscapeJson(NativeInpOut.ActiveDriverSha256 ?? ""),
                         EscapeJson(NativeInpOut.LastDriverIntegrityError ?? ""),
+                        hvciEnabled ? "true" : "false",
+                        pawnRunning ? "true" : "false",
+                        PawnIoDriver.IsAvailable ? "true" : "false",
                         winringRunning ? "true" : "false",
                         inpoutRunning ? "true" : "false"));
                     return 0;

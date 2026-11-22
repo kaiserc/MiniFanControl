@@ -30,10 +30,19 @@ namespace MiniFanControl
             Controls.Add(header);
             _sectionHeaders.Add(header);
 
-            Panel card = new Panel
+            Panel card = new DoubleBufferedPanel
             {
                 Location = new Point(14, top + 20),
                 Size = new Size(ClientSize.Width - 28, height)
+            };
+            card.Paint += (s, e) =>
+            {
+                if (SystemInformation.HighContrast) return;
+                bool isRadeon = (_themePref == ThemePreference.Radeon);
+                Color bdr = isRadeon
+                    ? Color.FromArgb(0x4C, 0x18, 0x22)
+                    : (IsAb ? Color.FromArgb(0x22, 0x35, 0x2A) : (_isDarkMode ? Color.FromArgb(0x32, 0x36, 0x4C) : Color.FromArgb(0xD5, 0xDC, 0xE6)));
+                Win11VisualStyle.DrawRoundedCardBorder(e.Graphics, card.ClientRectangle, bdr, 8, 1f);
             };
             Controls.Add(card);
             _sectionCards.Add(card);
@@ -140,10 +149,11 @@ namespace MiniFanControl
             {
                 g.FillRectangle(bgBr, bounds);
             }
-            using (Pen borderPen = new Pen(border, 1.5f))
+            using (SolidBrush topAccent = new SolidBrush(isRadeon ? RadeonAccent : (_isDarkMode ? DarkAccent : LightAccent)))
             {
-                g.DrawRectangle(borderPen, bounds.X, bounds.Y, bounds.Width - 1, bounds.Height - 1);
+                g.FillRectangle(topAccent, bounds.X, bounds.Y, bounds.Width, 2);
             }
+            Win11VisualStyle.DrawRoundedCardBorder(g, bounds, border, 6, 1.2f);
 
             int chartKind = GetTooltipChartKind(e.AssociatedControl);
             int textHeight = bounds.Height - (chartKind > 0 ? 64 : 10);
@@ -369,10 +379,21 @@ namespace MiniFanControl
             Color dimCol = isRadeon ? RadeonTextDim : (IsAb ? AbTextDim : (_isDarkMode ? DarkTextDim : LightTextDim));
             Color textCol = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
 
+            // Subtle top ambient sheen tinted with the sensor's signature color
+            int sheenH = Math.Min(24, Math.Max(8, ch / 4));
+            using (LinearGradientBrush sheen = new LinearGradientBrush(
+                new Rectangle(0, 0, Math.Max(1, cw), sheenH),
+                Color.FromArgb(_isDarkMode ? 26 : 15, lineCol),
+                Color.FromArgb(0, lineCol),
+                LinearGradientMode.Vertical))
+            {
+                g.FillRectangle(sheen, 1, 1, Math.Max(1, cw - 2), sheenH);
+            }
+
             // Sleek 3px left accent strip matching the metric series color
             using (SolidBrush accentBrush = new SolidBrush(lineCol))
             {
-                g.FillRectangle(accentBrush, 0, 0, 3, ch);
+                g.FillRectangle(accentBrush, 0, 1, 3, Math.Max(1, ch - 2));
             }
 
             MetricBoxDetail detail;
@@ -441,10 +462,14 @@ namespace MiniFanControl
             }
             if (_showingLiveTelemetry && _highlightedMetric == chartKind)
             {
-                using (Pen activePen = new Pen(lineCol, 2f))
-                {
-                    g.DrawRectangle(activePen, 1, 1, cw - 2, ch - 2);
-                }
+                Win11VisualStyle.DrawRoundedCardBorder(g, new Rectangle(0, 0, cw, ch), lineCol, 6, 2f);
+            }
+            else if (!SystemInformation.HighContrast)
+            {
+                Color subtleBdr = isRadeon
+                    ? Color.FromArgb(0x46, 0x19, 0x22)
+                    : (IsAb ? Color.FromArgb(0x20, 0x33, 0x28) : (_isDarkMode ? Color.FromArgb(0x2C, 0x30, 0x44) : Color.FromArgb(0xD8, 0xDF, 0xE8)));
+                Win11VisualStyle.DrawRoundedCardBorder(g, new Rectangle(0, 0, cw, ch), subtleBdr, 6, 1f);
             }
         }
 
@@ -614,7 +639,7 @@ namespace MiniFanControl
                 Text = topHeaderTitle,
                 Font = new Font("Segoe UI", 11.0f, FontStyle.Bold),
                 Location = new Point(88, 16),
-                Size = new Size(360, 24),
+                Size = new Size(344, 24),
                 AutoEllipsis = true,
                 Cursor = Cursors.Hand,
                 UseMnemonic = false
@@ -631,7 +656,7 @@ namespace MiniFanControl
                 Text = string.Format("EC Map: {0} • Driver: {1} • Global\\Access_EC Mutex • 64-bit", _sysInfo.MatchedProfile.DisplayName, initialDrv),
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Regular),
                 Location = new Point(88, 42),
-                Size = new Size(360, 18),
+                Size = new Size(344, 18),
                 AutoEllipsis = true,
                 Cursor = Cursors.Hand,
                 UseMnemonic = false
@@ -647,8 +672,8 @@ namespace MiniFanControl
             {
                 Text = usesWinPower ? "Power:" : "BIOS:",
                 Font = new Font("Segoe UI", 8.0f, FontStyle.Bold),
-                Location = new Point(452, 27),
-                Size = new Size(42, 18),
+                Location = new Point(436, 27),
+                Size = new Size(58, 18),
                 TextAlign = ContentAlignment.MiddleRight,
                 Visible = showBiosPowerBar,
                 UseMnemonic = false

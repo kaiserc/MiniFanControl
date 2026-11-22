@@ -8,6 +8,7 @@ obj/
 minifancontrol.cfg
 k12-settings.cfg
 ec-probe-report.txt
+hardware-profile-submission.json
 *EC-Diff*.txt
 sio-diag.txt
 watchdog.log

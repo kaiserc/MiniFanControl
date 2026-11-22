@@ -16,6 +16,7 @@ namespace MiniFanControl
         public bool UseFahrenheit = false;
         public bool ShowSetupAssistant = true;
         public bool SilentSleepStandby = true;
+        public bool AutoPauseForAntiCheat = false;
         public bool AlwaysOnTop = false;
         public bool EnableGlobalHotkeys = true;
         public bool HasDualFans = true;
@@ -174,6 +175,7 @@ namespace MiniFanControl
                     else if (k == "CloseToTray") CloseToTray = ParseBool(v);
                     else if (k == "UseFahrenheit") UseFahrenheit = ParseBool(v);
                     else if (k == "SilentSleepStandby") SilentSleepStandby = ParseBool(v);
+                    else if (k == "AutoPauseForAntiCheat") AutoPauseForAntiCheat = ParseBool(v);
                     else if (k == "AlwaysOnTop") AlwaysOnTop = ParseBool(v);
                     else if (k == "EnableHotkeys") EnableGlobalHotkeys = ParseBool(v);
                     else if (k == "HasDualFans") HasDualFans = ParseBool(v);
@@ -248,6 +250,7 @@ namespace MiniFanControl
                 lines.Add("UseFahrenheit=" + (UseFahrenheit ? "1" : "0"));
                 lines.Add("ShowSetupAssistant=" + (ShowSetupAssistant ? "1" : "0"));
                 lines.Add("SilentSleepStandby=" + (SilentSleepStandby ? "1" : "0"));
+                lines.Add("AutoPauseForAntiCheat=" + (AutoPauseForAntiCheat ? "1" : "0"));
                 lines.Add("AlwaysOnTop=" + (AlwaysOnTop ? "1" : "0"));
                 lines.Add("EnableHotkeys=" + (EnableGlobalHotkeys ? "1" : "0"));
                 lines.Add("HasDualFans=" + (HasDualFans ? "1" : "0"));

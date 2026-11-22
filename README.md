@@ -1,6 +1,6 @@
 # MiniFanControl — Native EC Fan Control & Thermal Monitor for AMD Ryzen Mini PCs
 
-![Tests](https://img.shields.io/badge/tests-90%2F90%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-96%2F96%20passing-brightgreen)
 ![Security](https://img.shields.io/badge/Security-Fail--Closed%20%7C%20Least--Privilege-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
@@ -10,14 +10,14 @@
 </p>
 
 <p align="center">
-  <img src="assets/ui-main-osd.jpg" alt="MiniFanControl AMD Radeon Dashboard, DF Corner Performance View, and In-Game OSD" width="85%" />
+  <img src="assets/ui-main-osd.jpg" alt="MiniFanControl v1.2.0 Windows 11 Afterburner Dashboard, DF Corner Performance View, and Stacked Live Trend In-Game OSD" width="85%" />
 </p>
 
-[![Release: v1.1.3](https://img.shields.io/badge/Release-v1.1.3-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
+[![Release: v1.2.0](https://img.shields.io/badge/Release-v1.2.0-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 90 Passed](https://img.shields.io/badge/Automated%20Tests-90%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-9090-passing)
+[![Automated Tests: 96 Passed](https://img.shields.io/badge/Automated%20Tests-96%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-9696-passing)
 [![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
 [![Ko-fi: Support](https://img.shields.io/badge/Ko--fi-Support%20Project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/kaiser76)
 
@@ -47,11 +47,14 @@ The codebase is organized into cleanly separated domain modules supporting both 
 
 ```
 MiniFanControl/
-├── Core/               # Controller service, settings persistence, JSON tokenizer, OSD config, profiles & themes
+├── Core/               # Controller service, daemon, anti-cheat monitor, settings, JSON, profiles & power modes
+│   ├── AntiCheatMonitor.cs
 │   ├── AppSettings.cs
 │   ├── DeviceProfile.cs
 │   ├── FanControllerService.cs
 │   ├── FanStatus.cs
+│   ├── HardwareProfileSubmission.cs
+│   ├── HeadlessDaemon.cs
 │   ├── Localization.cs
 │   ├── OsdOverlayConfig.cs
 │   ├── SimpleJson.cs
@@ -61,7 +64,7 @@ MiniFanControl/
 ├── Curves/             # Curve interpolation math & 3-pass automated calibration engine
 │   ├── CurvePoint.cs
 │   └── FanCalibrationResult.cs
-├── Hardware/           # Ring-0 hardware abstraction, mutex synchronization & AMD sensors
+├── Hardware/           # Ring-0 & PawnIO HVCI hardware abstraction, mutex synchronization & AMD sensors
 │   ├── AmdAdlGpuSensor.cs
 │   ├── DemoBackend.cs
 │   ├── DriverServiceManager.cs
@@ -71,6 +74,7 @@ MiniFanControl/
 │   ├── HardwareBackend.SiliconSensors.cs
 │   ├── HardwareBackend.SuperIo.cs
 │   ├── NativeInpOut.cs
+│   ├── PawnIoDriver.cs
 │   └── SystemStorageMemorySensor.cs
 ├── Safety/             # Out-of-process crash supervisor daemon & IPC heartbeat watchdog
 │   └── WatchdogSupervisor.cs
@@ -81,9 +85,9 @@ MiniFanControl/
 │   ├── CapFrameXOverlayForm.Graphs.cs
 │   ├── CapFrameXOverlayForm.Paint.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 90-point automated hardware safety & regression test suite
+├── Tests/              # 96-point automated hardware safety & regression test suite
 │   └── SelfTestSuite.cs
-├── Ui/                 # Double-buffered canvases, accessible WinForms controls & dialogs
+├── Ui/                 # Double-buffered canvases, Win11 DWM chrome, accessible WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
 │   ├── DoubleBufferedPanel.cs
 │   ├── EcDifferentialScannerForm.cs
@@ -98,7 +102,8 @@ MiniFanControl/
 │   ├── MainForm.OsdStudio.cs
 │   ├── MainForm.Theme.cs
 │   ├── NewModeDialog.cs
-│   └── SetupAssistantDialog.cs
+│   ├── SetupAssistantDialog.cs
+│   └── Win11VisualStyle.cs
 ├── .github/            # GitHub Actions CI/CD workflows & structured issue templates
 │   ├── workflows/ci.yml
 │   └── ISSUE_TEMPLATE/
@@ -370,13 +375,19 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Export supported hardware profiles & probed Super I/O chip ID prefixes as JSON
 .\minifan-helper.exe export-profiles --json
 
-# Execute the 90-point automated hardware safety & curve test suite
+# Run zero-UI headless background fan control daemon (24/7 servers & local LLM hosts)
+.\minifan-helper.exe daemon
+
+# Generate sanitized hardware profile JSON & pre-filled GitHub Issue URL
+.\minifan-helper.exe submit-report
+
+# Execute the 96-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
 ---
 
-## 🧪 Automated Hardware Safety & Curve Test Suite (90/90 Passing)
+## 🧪 Automated Hardware Safety & Curve Test Suite (96/96 Passing)
 
 The built-in test suite (`minifan-helper.exe test` or automated upon running `build-windows.bat`) rigorously validates safety mechanisms without touching physical registers:
 
@@ -470,6 +481,12 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 88. **Super I/O `0%` Stop Duty, Tach Channel Latching & Non-Zero Floor Calibration**: Verifies Super I/O calibration commands `0%` stop duty (keeping `1%` on EC boards), latches verified tachometer channels to prevent Channel 2 mirroring Channel 1 when stopped, and detects settled non-zero hardware blower floors and ramp-up cleanly.
 89. **Super I/O IT8613E Dynamic `Reg 0x14` Bit 7 PWM Polarity Tracking**: Verifies live duty encoding, status decoding, and 35% safe fallback across both Active-High/Direct (`Reg 0x14 = 0xC7`) and post-sleep Active-Low/Inverted (`Reg 0x14 = 0x47`) polarity states.
 90. **Native Windows Power Mode Overlay Mapping (`WindowsPowerMode`)**: Verifies GUID round-trip mapping, display names, invalid mode code rejection, and safe live query for Windows 11 `Best Power Efficiency`, `Balanced`, and `Best Performance` power overlays.
+91. **PawnIO HVCI Driver Backend & Port Whitelist Gating (`PawnIoDriver`, `NativeInpOut`)**: Verifies Priority-0 PawnIO selection, whitelisted LPC/Super I/O & ACPI EC round-trips, fail-closed blocking of sensitive ports (`0x70`, `0xCF9`) prior to bytecode execution, and clean shutdown.
+92. **Anti-Cheat Safe Auto-Pause State Machine & Ordered Handoff (`AntiCheatMonitor`)**: Verifies opt-in EAC/BattlEye detection, boot-time Riot Vanguard (`vgk`) detection, 3-second resume cooldown, strict BIOS-Auto-before-driver-unload ordering, and PawnIO unload skip.
+93. **Headless Background Daemon Mode (`HeadlessDaemon`)**: Verifies zero-UI `FanControllerService` loop execution, built-in/protected curve resolution, and clean BIOS Auto restoration on exit.
+94. **Sanitized Hardware Profile Submission (`HardwareProfileSubmission`)**: Verifies valid JSON output, PII redaction of `C:\Users\<name>` paths, and length-bounded pre-filled GitHub New Issue URL generation.
+95. **Windows 11 DWM Visual Style (`Win11VisualStyle`)**: Verifies Win32 `COLORREF` (`0x00BBGGRR`) encoding, color blending, rounded card border rendering, modern button styling, and null-form safety.
+96. **Opt-In Anti-Cheat Persistence & MainForm Win11 DWM Handle Integration**: Verifies `AppSettings.AutoPauseForAntiCheat` defaults to `false` and `MainForm` handle creation applies Windows 11 DWM frame styling cleanly.
 
 ---
 

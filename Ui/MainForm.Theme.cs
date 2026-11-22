@@ -184,17 +184,22 @@ namespace MiniFanControl
             }
             UpdateBiosPowerModeStyles(_lastActiveBiosModeCode);
 
+            Color cardBorder = isRadeon
+                ? Color.FromArgb(0x52, 0x1A, 0x24)
+                : (IsAb ? Color.FromArgb(0x22, 0x35, 0x2A) : (_isDarkMode ? Color.FromArgb(0x36, 0x3A, 0x52) : Color.FromArgb(0xCB, 0xD5, 0xE1)));
+
             if (_driversMenuBtn != null)
             {
-                _driversMenuBtn.BackColor = surface2;
-                _driversMenuBtn.ForeColor = text;
+                Win11VisualStyle.StyleModernButton(_driversMenuBtn, surface2, text, cardBorder, _isDarkMode);
             }
 
             if (_themeToggleBtn != null)
             {
                 _themeToggleBtn.Text = GetThemeButtonLabel();
-                _themeToggleBtn.BackColor = isRadeon ? RadeonAccent : (IsAb ? AbGreen : surface2);
-                _themeToggleBtn.ForeColor = isRadeon ? Color.White : (IsAb ? Color.Black : text);
+                Color themeBtnBg = isRadeon ? RadeonAccent : (IsAb ? AbGreen : surface2);
+                Color themeBtnFg = isRadeon ? Color.White : (IsAb ? Color.Black : text);
+                Color themeBtnBorder = isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (IsAb ? AbGreen : cardBorder);
+                Win11VisualStyle.StyleModernButton(_themeToggleBtn, themeBtnBg, themeBtnFg, themeBtnBorder, _isDarkMode || isRadeon);
             }
 
             foreach (Label h in _sectionHeaders)
@@ -203,7 +208,10 @@ namespace MiniFanControl
             UpdateCalibrationBadge();
 
             foreach (Panel c in _sectionCards)
+            {
                 c.BackColor = surface;
+                c.Invalidate();
+            }
 
             if (_wideRightPanel != null)
                 _wideRightPanel.BackColor = surface;
@@ -375,8 +383,9 @@ namespace MiniFanControl
             {
                 if (b != null)
                 {
-                    b.BackColor = surface2;
-                    b.ForeColor = (b == _autoTuneCustomBtn) ? accent : text;
+                    Color btnFg = (b == _autoTuneCustomBtn) ? accent : text;
+                    Color btnBorder = (b == _autoTuneCustomBtn) ? Win11VisualStyle.Blend(cardBorder, accent, 0.55f) : cardBorder;
+                    Win11VisualStyle.StyleModernButton(b, surface2, btnFg, btnBorder, _isDarkMode);
                 }
             }
 
@@ -402,8 +411,7 @@ namespace MiniFanControl
             }
             if (_optCardOsdConfigBtn != null)
             {
-                _optCardOsdConfigBtn.BackColor = surface2;
-                _optCardOsdConfigBtn.ForeColor = text;
+                Win11VisualStyle.StyleModernButton(_optCardOsdConfigBtn, surface2, text, cardBorder, _isDarkMode);
             }
             if (_overlayForm != null)
             {
@@ -413,6 +421,19 @@ namespace MiniFanControl
             UpdateOsdStudioStyles();
 
             UpdateModeButtonStyles(_lastSelectedModeCode);
+            ApplyWin11WindowFrame();
+        }
+
+        private void ApplyWin11WindowFrame()
+        {
+            if (!IsHandleCreated || IsDisposed) return;
+            bool isRadeon = (_themePref == ThemePreference.Radeon);
+            Color bg = isRadeon ? RadeonBg : (IsAb ? AbBg : (_isDarkMode ? DarkBg : LightBg));
+            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
+            Color border = isRadeon
+                ? Color.FromArgb(0x9F, 0x12, 0x39)
+                : (IsAb ? Color.FromArgb(0x16, 0x65, 0x34) : (_isDarkMode ? Color.FromArgb(0x3B, 0x42, 0x61) : Color.FromArgb(0xCB, 0xD5, 0xE1)));
+            Win11VisualStyle.ApplyWindowFrame(this, _isDarkMode || isRadeon || IsAb, bg, text, border);
         }
 
     }

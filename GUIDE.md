@@ -493,7 +493,7 @@ For power users, scripting, task schedulers, and headless servers, `minifan-help
 # Watch all 256 EC registers live in console for 15 seconds to trace changes
 .\minifan-helper.exe watch
 
-# Execute the 90-point automated hardware safety & curve verification suite
+# Execute the 96-point automated hardware safety & curve verification suite
 .\minifan-helper.exe test
 ```
 

@@ -366,6 +366,32 @@ namespace MiniFanControl
             DrawBottomTimeline(g);
         }
 
+        private static float SampleSmoothedFps(List<int> history, int start, int take, int i, int curFps)
+        {
+            if (history == null || history.Count == 0) return 0f;
+            int idx = start + i;
+            if (idx < 0 || idx >= history.Count) return 0f;
+            if (take <= 2) return Math.Max(0, history[idx]);
+            if (i == take - 1) return (curFps > 0) ? curFps : Math.Max(0, history[idx]);
+
+            // 5-point Gaussian-weighted rolling average (0.1, 0.2, 0.4, 0.2, 0.1) to smooth RTSS 1Hz integer steps
+            // while keeping the leading edge exact to live FPS (matches Overlay DF aesthetic)
+            float[] weights = new float[] { 0.10f, 0.20f, 0.40f, 0.20f, 0.10f };
+            float sum = 0f;
+            float wSum = 0f;
+            for (int k = -2; k <= 2; k++)
+            {
+                int sIdx = idx + k;
+                if (sIdx >= start && sIdx < start + take && sIdx < history.Count)
+                {
+                    float w = weights[k + 2];
+                    sum += Math.Max(0, history[sIdx]) * w;
+                    wSum += w;
+                }
+            }
+            return wSum > 0f ? (sum / wSum) : Math.Max(0, history[idx]);
+        }
+
         private int ComputeRollingAvgFps(int curFps)
         {
             if (Status.RtssAvgFps > 0) return Status.RtssAvgFps;
@@ -867,13 +893,13 @@ namespace MiniFanControl
                 }
             }
 
-            // 3. Live Instantaneous FPS Line
+            // 3. Live Instantaneous FPS Line (smooth DF rolling average, leading edge exact to live FPS)
             Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8);
             PointF[] fpsPts = new PointF[Math.Max(2, take)];
             if (take == 1)
             {
-                int fVal = (start < Stats.FpsHistory.Count && Stats.FpsHistory[start] > 0) ? Stats.FpsHistory[start] : 0;
-                float norm = Math.Max(0f, Math.Min(1f, (float)fVal / fpsCeiling));
+                float fVal = (curFps > 0) ? curFps : ((start < Stats.FpsHistory.Count && Stats.FpsHistory[start] > 0) ? Stats.FpsHistory[start] : 0);
+                float norm = Math.Max(0f, Math.Min(1f, fVal / fpsCeiling));
                 float y = plot.Bottom - norm * plot.Height;
                 fpsPts[0] = new PointF(plot.Left, y);
                 fpsPts[1] = new PointF(plot.Right, y);
@@ -882,9 +908,8 @@ namespace MiniFanControl
             {
                 for (int i = 0; i < take; i++)
                 {
-                    int idx = start + i;
-                    int fVal = (idx < Stats.FpsHistory.Count && Stats.FpsHistory[idx] > 0) ? Stats.FpsHistory[idx] : 0;
-                    float norm = Math.Max(0f, Math.Min(1f, (float)fVal / fpsCeiling));
+                    float fVal = SampleSmoothedFps(Stats.FpsHistory, start, take, i, curFps);
+                    float norm = Math.Max(0f, Math.Min(1f, fVal / fpsCeiling));
                     float x = plot.Left + (plot.Width * i) / (float)(take - 1);
                     float y = plot.Bottom - norm * plot.Height;
                     fpsPts[i] = new PointF(x, y);
@@ -1034,13 +1059,13 @@ namespace MiniFanControl
                 g.DrawLines(ftPen, ftPts);
             }
 
-            // 2. Live FPS Series (Left axis, plotted as Sky Blue line)
+            // 2. Live FPS Series (Left axis, smooth DF rolling average matching Overlay)
             Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8);
             PointF[] fpsPts = new PointF[Math.Max(2, take)];
             if (take == 1)
             {
-                int fVal = (start < Stats.FpsHistory.Count && Stats.FpsHistory[start] > 0) ? Stats.FpsHistory[start] : 0;
-                float norm = Math.Max(0f, Math.Min(1f, (float)fVal / fpsCeiling));
+                float fVal = (curFps > 0) ? curFps : ((start < Stats.FpsHistory.Count && Stats.FpsHistory[start] > 0) ? Stats.FpsHistory[start] : 0);
+                float norm = Math.Max(0f, Math.Min(1f, fVal / fpsCeiling));
                 float y = plot.Bottom - norm * plot.Height;
                 fpsPts[0] = new PointF(plot.Left, y);
                 fpsPts[1] = new PointF(plot.Right, y);
@@ -1049,9 +1074,8 @@ namespace MiniFanControl
             {
                 for (int i = 0; i < take; i++)
                 {
-                    int idx = start + i;
-                    int fVal = (idx < Stats.FpsHistory.Count && Stats.FpsHistory[idx] > 0) ? Stats.FpsHistory[idx] : 0;
-                    float norm = Math.Max(0f, Math.Min(1f, (float)fVal / fpsCeiling));
+                    float fVal = SampleSmoothedFps(Stats.FpsHistory, start, take, i, curFps);
+                    float norm = Math.Max(0f, Math.Min(1f, fVal / fpsCeiling));
                     float x = plot.Left + (plot.Width * i) / (float)(take - 1);
                     float y = plot.Bottom - norm * plot.Height;
                     fpsPts[i] = new PointF(x, y);

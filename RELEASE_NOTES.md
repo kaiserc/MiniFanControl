@@ -1,3 +1,16 @@
+# Release Notes: MiniFanControl v1.2.0 (PawnIO HVCI Driver, Windows 11 Visual Polish, Anti-Cheat Auto-Pause & Headless Daemon)
+
+**MiniFanControl v1.2.0** is a major feature and visual polish release introducing native **PawnIO (`PawnIOLib`)** HVCI-compatible driver support, **Windows 11 DWM** dark/themed titlebars and sleek rounded card chrome, opt-in **Anti-Cheat Safe Auto-Pause** (EAC / BattlEye + Vanguard detection), a zero-UI **Headless Background Daemon** (`minifan-helper.exe daemon`), upgraded **1-Click Sanitized GitHub Hardware Profile Submission**, smooth **`Live Perf` FPS curve parity** with the Digital Foundry overlay, and **96/96 passing tests** on both `.NET 4.8` and `.NET 10.0-windows`.
+
+## ✨ Highlights in v1.2.0
+- **Native Windows 11 DWM Visual Polish & Smooth `Live Perf` Parity**: Zero-dependency `dwmapi.dll` theming matches the Windows 11 titlebar, text, rounded corners, and window border to Dark, Light, AMD Radeon, and Afterburner themes alongside sensor-tinted telemetry card sheens, crisp hairline card/button borders, hover/press feedback, and smooth Gaussian-averaged FPS curves on the `Live Perf` tab matching the DF Corner overlay (Tests #95–#96).
+- **PawnIO (`PawnIOLib`) HVCI-Compatible Driver Backend**: Detects and loads EV-signed `PawnIOLib.dll` + signed `LpcIO.bin` / `LpcACPIEC.bin` modules as Priority 0 so Windows 11 users can keep Core Isolation / Memory Integrity enabled, while preserving fail-closed port whitelisting and seamless fallback to SHA256-pinned `InpOut64` / `WinRing0` (Test #91).
+- **Opt-In Anti-Cheat Safe Auto-Pause**: New `🎮 Auto-Pause for Anti-Cheat (EAC / BattlEye)` toggle in `Tools & Drivers` strictly restores BIOS Auto / Safe Super I/O Fallback *before* unloading legacy kernel drivers while an anti-cheat is active (never unloading EV-signed PawnIO), and seamlessly resumes fan curves once the game closes (Test #92).
+- **Headless Background Daemon (`minifan-helper.exe daemon`)**: Run full curve regulation, anti-stall clamping, 90°C thermal tripwire, and sleep/resume protection with zero GUI/GDI+ footprint for 24/7 servers and local LLM hosts (Test #93).
+- **Upgraded 1-Click Hardware Profile Submission**: Generates a PII-sanitized JSON payload + pre-filled GitHub New Issue URL directly from `Tools & Drivers` or `minifan-helper.exe submit-report` (Test #94).
+
+---
+
 # Release Notes: MiniFanControl v1.1.3 (Super I/O Dynamic PWM Polarity, Native Windows Power Mode Bar & Calibration Fix)
 
 **MiniFanControl v1.1.3** brings major reliability and control improvements for **ITE IT8613E Super I/O** Ryzen Mini PCs (such as the TOPC TS-12C / Ryzen AI 9 HX 370): live `Reg 0x14` Bit 7 (`PWM_POL`) polarity tracking across cold-boot and Modern Standby sleep/resume transitions, a native Windows 11 **`Power:`** mode bar (`Silent` / `Balanced` / `Perf`) synced via `powrprof.dll`, reliable 3-pass calibration for non-zero floor blowers, and **90/90 passing tests** on both `.NET 4.8` and `.NET 10.0-windows`.

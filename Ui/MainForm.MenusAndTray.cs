@@ -121,21 +121,27 @@ namespace MiniFanControl
             try
             {
                 string report = _sysInfo.BuildProbeReport(_hw, _demo, _demoMode);
-                string outPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ec-probe-report.txt");
+                string json = HardwareProfileSubmission.BuildSanitizedJson(_sysInfo, _hw, APP_VERSION);
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                string outPath = Path.Combine(baseDir, "ec-probe-report.txt");
+                string jsonPath = Path.Combine(baseDir, "hardware-profile-submission.json");
                 File.WriteAllText(outPath, report, Encoding.UTF8);
+                File.WriteAllText(jsonPath, json, Encoding.UTF8);
 
+                string combinedClipboard = "```json\n" + json + "\n```\n\n" + report;
                 try
                 {
-                    Clipboard.SetText(report);
+                    Clipboard.SetText(combinedClipboard);
                 }
                 catch { }
 
-                string url = "https://github.com/kaiserc/MiniFanControl/issues/new?template=unsupported_hardware.md";
+                string url = HardwareProfileSubmission.BuildGitHubIssueUrl(_sysInfo, _hw, APP_VERSION);
                 OpenUrlSafe(url);
 
                 MessageBox.Show(this,
-                    "Your system hardware probe report has been copied to your clipboard and saved to:\n" + outPath +
-                    "\n\nOpening the GitHub New Issue page in your browser — simply paste (Ctrl+V) into the issue description!",
+                    "Your sanitized hardware profile JSON & probe report have been copied to your clipboard and saved to:\n" +
+                    "• " + jsonPath + "\n• " + outPath +
+                    "\n\nOpening a pre-filled GitHub Issue in your browser — review it and paste (Ctrl+V) the full EC report if needed!",
                     "Submit Hardware Compatibility Profile", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
@@ -643,6 +649,21 @@ namespace MiniFanControl
             menu.Items.Add("AMD Software: Adrenalin && Chipset Drivers...", null, (s, e) => OpenUrlSafe(URL_AMD_DRIVERS));
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("🛡️ Kernel Driver && HVCI Security Status...", null, (s, e) => ShowKernelDriverSecurityDialog());
+            ToolStripMenuItem acPauseItem = new ToolStripMenuItem("🎮 Auto-Pause for Anti-Cheat (EAC / BattlEye)", null, (s, e) =>
+            {
+                _settings.AutoPauseForAntiCheat = !_settings.AutoPauseForAntiCheat;
+                _antiCheatMonitor.Enabled = _settings.AutoPauseForAntiCheat;
+                SaveSettings();
+                RebuildDriversMenu();
+                if (_statusBarLabel != null)
+                {
+                    _statusBarLabel.Text = _settings.AutoPauseForAntiCheat
+                        ? "✓ Anti-Cheat Safe Auto-Pause enabled (restores BIOS Auto & unloads legacy driver during EAC/BattlEye)"
+                        : "✓ Anti-Cheat Safe Auto-Pause disabled";
+                }
+            });
+            acPauseItem.Checked = _settings.AutoPauseForAntiCheat;
+            menu.Items.Add(acPauseItem);
             ToolStripMenuItem langMenu = new ToolStripMenuItem("🌐 Language / 语言 / Sprache");
             AddLanguageMenuItem(langMenu, "Auto (System Default)", AppLanguage.Auto);
             AddLanguageMenuItem(langMenu, "English", AppLanguage.English);
@@ -693,20 +714,31 @@ namespace MiniFanControl
         private void ShowKernelDriverSecurityDialog()
         {
             bool hvci = NativeInpOut.IsHvciEnabled();
+            bool pawnSvc = PawnIoDriver.IsServiceInstalledAndRunning();
+            bool vanguardDetected = DriverServiceManager.IsDriverServiceRunning(AntiCheatMonitor.BootVanguardServiceName);
             string drv = NativeInpOut.ActiveDriverName;
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("MiniFanControl Kernel Driver & HVCI Security Status\n");
+            sb.AppendLine("MiniFanControl Kernel Driver, PawnIO & HVCI Security Status\n");
             sb.AppendLine("• Active Kernel Driver Engine: " + drv);
-            sb.AppendLine("• Binary SHA256 Pin Check: " + (NativeInpOut.IsDriverHashVerified
+            sb.AppendLine("• Binary SHA256 / Signature Check: " + (NativeInpOut.IsDriverHashVerified
                 ? ("VERIFIED (" + (NativeInpOut.ActiveDriverSha256 ?? "") + ")")
                 : "Not Verified / Not Loaded"));
             sb.AppendLine("• Windows 11 Memory Integrity (HVCI): " + (hvci ? "ENABLED (Strict Kernel Code Integrity)" : "Disabled"));
+            sb.AppendLine("• PawnIO HVCI Driver Service: " + (pawnSvc ? ("Running (" + PawnIoDriver.LastStatus + ")") : "Not Installed (optional: https://pawnio.eu)"));
+            sb.AppendLine("• Anti-Cheat Safe Auto-Pause (EAC/BattlEye): " + (_settings.AutoPauseForAntiCheat ? "ENABLED" : "Disabled (opt-in via Tools & Drivers)"));
+            if (vanguardDetected)
+                sb.AppendLine("• Boot Anti-Cheat Notice: Riot Vanguard (vgk) is active at boot — PawnIO is recommended if legacy drivers conflict.");
             sb.AppendLine();
-            if (NativeInpOut.ActiveDriver == HardwareDriverEngine.InpOut64)
+            if (NativeInpOut.ActiveDriver == HardwareDriverEngine.PawnIO)
+            {
+                sb.AppendLine("STATUS: PawnIO Active (HVCI / Memory Integrity Compatible)");
+                sb.AppendLine("EV-signed PawnIO bytecode modules are active. You can keep Windows 11 Core Isolation / Memory Integrity enabled.");
+            }
+            else if (NativeInpOut.ActiveDriver == HardwareDriverEngine.InpOut64)
             {
                 sb.AppendLine("STATUS: InpOut64 Active (inpoutx64.dll)");
                 sb.AppendLine("Standard InpOut64 driver passed runtime SHA256 pin verification before loading. Note that with Windows 11 Memory Integrity (HVCI) enabled, Microsoft's vulnerable driver blocklist may block InpOut64 service startup.");
-                if (hvci) sb.AppendLine("HVCI is enabled: If hardware writes fail, run in Demo Mode or disable Memory Integrity in Windows Security.");
+                if (hvci) sb.AppendLine("HVCI is enabled: Install PawnIO (https://pawnio.eu) for signed HVCI support, or run in Safe Read-Only Mode.");
             }
             else if (NativeInpOut.ActiveDriver == HardwareDriverEngine.WinRing0)
             {

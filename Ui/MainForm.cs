@@ -71,7 +71,7 @@ namespace MiniFanControl
         private const int HOTKEY_LOCK_OSD   = 9003;
         private const int HOTKEY_RESET_AUTO = 9004;
 
-        public const string APP_VERSION         = "1.1.3";
+        public const string APP_VERSION         = "1.2.0";
         public const string SCHTASK_NAME        = "MiniFanControl_Autostart";
         public const string URL_GMKTEC_DRIVERS  = "https://www.gmktec.com/pages/drivers-and-software";
         public const string URL_AMD_DRIVERS     = "https://www.amd.com/en/support/download/drivers.html";
@@ -514,6 +514,8 @@ namespace MiniFanControl
         private ToolTip _uiToolTip;
         private PictureBox _headerLogoBox;
         private int _lastSelectedModeCode = 0;
+        private readonly AntiCheatMonitor _antiCheatMonitor = new AntiCheatMonitor();
+        private bool _osdHiddenForAntiCheat = false;
 
         public MainForm(bool startInDemo, bool startMinimized = false, bool isUnitTest = false)
         {
@@ -533,6 +535,7 @@ namespace MiniFanControl
                 catch { }
             }
             LoadSettings();
+            _antiCheatMonitor.Enabled = _settings.AutoPauseForAntiCheat;
             _controller.HasDualFans = _settings.HasDualFans;
             _controller.RefreshIntervalMs = _settings.RefreshIntervalMs;
             EnsureProtectedExamplesPresent();
@@ -619,6 +622,18 @@ namespace MiniFanControl
                     if (_themePref == ThemePreference.System)
                     {
                         CheckAndApplyThemeChanges();
+                    }
+                    if (!_demoMode && !_isSystemSuspended && _antiCheatMonitor.Enabled)
+                    {
+                        AntiCheatAction acAction = _antiCheatMonitor.Poll();
+                        if (acAction == AntiCheatAction.PauseForAntiCheat)
+                        {
+                            OnAntiCheatPause(_antiCheatMonitor.ActiveAntiCheatName);
+                        }
+                        else if (acAction == AntiCheatAction.ResumeAfterAntiCheat)
+                        {
+                            OnAntiCheatResume();
+                        }
                     }
                     if (_emergencyThermalActive)
                     {
@@ -1097,8 +1112,54 @@ namespace MiniFanControl
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            ApplyWin11WindowFrame();
             UpdateGlobalHotkeysRegistration();
             RegisterModernStandbyNotifications();
+        }
+
+        private void OnAntiCheatPause(string antiCheatName)
+        {
+            if (_controller != null) _controller.PauseForSuspend();
+            StopWatchdogSupervisorGracefully();
+            AntiCheatMonitor.ExecuteSafePauseHandoff(
+                delegate { return _hw != null && _hw.SetAuto(); },
+                delegate { NativeInpOut.Shutdown(); },
+                delegate(string svc) { return DriverServiceManager.StopDriverService(svc); },
+                NativeInpOut.ActiveDriver);
+
+            if (_overlayForm != null && _overlayForm.Visible)
+            {
+                _overlayForm.Visible = false;
+                _osdHiddenForAntiCheat = true;
+            }
+            if (_errorBanner != null)
+            {
+                _errorBanner.Text = string.Format("🛡️ Anti-Cheat Safe Pause ({0}) — BIOS Auto restored & legacy kernel driver unloaded until game exits.", antiCheatName);
+                _errorBanner.Visible = true;
+            }
+            if (_statusBarLabel != null)
+            {
+                _statusBarLabel.Text = string.Format("🛡️ Paused for {0} (BIOS Auto active)", antiCheatName);
+            }
+        }
+
+        private void OnAntiCheatResume()
+        {
+            if (_errorBanner != null && _errorBanner.Text != null && _errorBanner.Text.Contains("Anti-Cheat Safe Pause"))
+            {
+                _errorBanner.Visible = false;
+            }
+            if (_controller != null) _controller.ResumeFromSuspend(true);
+            StartWatchdogSupervisor();
+            if (_osdHiddenForAntiCheat && _overlayForm != null && _showOverlay)
+            {
+                _overlayForm.Visible = true;
+            }
+            _osdHiddenForAntiCheat = false;
+            if (_statusBarLabel != null)
+            {
+                _statusBarLabel.Text = "✓ Anti-cheat exited — hardware fan control resumed";
+            }
         }
 
         protected override void OnHandleDestroyed(EventArgs e)

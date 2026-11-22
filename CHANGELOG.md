@@ -4,6 +4,19 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.2.0] - 2026-11-22
+
+### ✨ Windows 11 DWM Visual Polish & Smooth Live Performance Parity
+- **Native Windows 11 DWM Chrome & Card Polish (`Ui/Win11VisualStyle.cs`, `Ui/MainForm.Theme.cs`, `Ui/MainForm.Layout.cs`, `Ui/MainForm.cs`)**: Added zero-dependency `dwmapi.dll` `DwmSetWindowAttribute` theming for dark titlebars, rounded corners, and theme-matched caption/text/border colors across Dark, Light, AMD Radeon, and Afterburner themes; upgraded section cards, telemetry boxes (sensor-tinted ambient top sheen + rounded borders), tooltips, and buttons with crisp 1px hairline borders and hover/pressed feedback while staying High Contrast safe (Tests #95–#96).
+- **Smooth `Live Perf` FPS Curve Parity & Header Polish (`Ui/LivePerformanceCanvas.cs`, `Ui/MainForm.Layout.cs`)**: Matched the Digital Foundry Overlay's smooth rolling FPS curve on the `Live Perf` tab (5-point Gaussian weighted average with exact live leading edge, keeping the Frametime inset raw for true micro-stutter visibility), widened the top `Power:` header label to prevent DPI clipping, and updated the hero showcase screenshot (`assets/ui-main-osd.jpg`).
+
+### 🛡️ PawnIO HVCI Backend, Anti-Cheat Safe Auto-Pause, Headless Daemon & 1-Click Submission
+- **PawnIO (`PawnIOLib`) HVCI-Compatible Driver Backend (`Hardware/PawnIoDriver.cs`, `Hardware/NativeInpOut.cs`, `Program.cs`, `Ui/MainForm.MenusAndTray.cs`)**: Implemented the official `PawnIOLib.dll` C ABI (`pawnio_version`, `pawnio_open`, `pawnio_load`, `pawnio_execute`, `pawnio_close`) loading signed `LpcIO.bin` / `LpcACPIEC.bin` modules as Priority 0 ahead of SHA256-pinned `InpOut64` / `WinRing0`, while keeping every port read/write strictly fail-closed behind `NativeInpOut.IsPortWhitelisted()`. Added live PawnIO & HVCI telemetry to `driver-status` and the Security Status dialog (Test #91).
+- **Opt-In Anti-Cheat Safe Auto-Pause (`Core/AntiCheatMonitor.cs`, `Core/AppSettings.cs`, `Ui/MainForm.cs`, `Ui/MainForm.MenusAndTray.cs`)**: Added an opt-in `🎮 Auto-Pause for Anti-Cheat (EAC / BattlEye)` toggle that strictly restores BIOS Auto / Safe Super I/O Fallback *before* unloading legacy kernel drivers (skipping unload when EV-signed PawnIO is active), pauses OSD cleanly, resumes after a 3s cooldown when the anti-cheat exits, and surfaces boot-time Riot Vanguard (`vgk`) detection in Security Status (Test #92).
+- **Headless Background Daemon Mode (`Core/HeadlessDaemon.cs`, `Program.cs`)**: Added `minifan-helper.exe daemon [--interval <ms>] [--max-ticks <n>] [--quiet] [--demo]` to run `FanControllerService` (curves, anti-stall floor, 90°C tripwire, suspend/resume, and optional anti-cheat safe pause) with zero WinForms/GDI+ UI overhead for 24/7 servers and local LLM hosts (Test #93).
+- **Upgraded 1-Click Hardware Profile Submission (`Core/HardwareProfileSubmission.cs`, `Ui/MainForm.MenusAndTray.cs`, `Program.cs`)**: Added PII-sanitized JSON generation (redacting `C:\Users\<name>` paths), pre-filled GitHub New Issue URLs, and `minifan-helper.exe submit-report` (Test #94).
+- **96/96 Automated Tests (`Tests/SelfTestSuite.cs`, `.github/workflows/ci.yml`, `README.md`, `GUIDE.md`, `HARDWARE_VALIDATION.md`, `CONTRIBUTING.md`)**: Expanded the automated hardware-safety and regression suite to **96/96 passing** across `.NET 4.8` and `.NET 10.0-windows`.
+
 ## [1.1.3] - 2026-11-21
 
 ### 🎛️ Super I/O IT8613E Dynamic Polarity & Native Windows Power Mode Bar

@@ -4728,6 +4728,286 @@ namespace MiniFanControl
                 "Native Windows Power Mode Overlay Mapping (Best Power Efficiency / Balanced / Best Performance)",
                 winPowerModeDetail);
 
+            // 91. PawnIO HVCI Driver Backend, Priority-0 Selection & Fail-Closed Port Whitelist Gating
+            bool pawnIoOk = false;
+            string pawnIoDetail = "";
+            try
+            {
+                NativeInpOut.Shutdown();
+                Dictionary<ushort, byte> fakePorts = new Dictionary<ushort, byte>();
+                Dictionary<byte, byte> fakeEc = new Dictionary<byte, byte>();
+                int blockedCalls = 0;
+
+                PawnIoDriver.SimulatedAvailable = true;
+                PawnIoDriver.SimulatedExecuteHook = delegate(string fn, ulong[] inp)
+                {
+                    if (fn == "ioctl_pio_write" && inp.Length >= 3)
+                    {
+                        ushort p = (ushort)inp[0];
+                        if (p == 0x70 || p == 0xCF9) blockedCalls++;
+                        fakePorts[p] = (byte)(inp[2] & 0xFF);
+                        return new ulong[] { 0 };
+                    }
+                    if (fn == "ioctl_pio_read" && inp.Length >= 1)
+                    {
+                        ushort p = (ushort)inp[0];
+                        if (p == 0x70 || p == 0xCF9) blockedCalls++;
+                        byte v;
+                        fakePorts.TryGetValue(p, out v);
+                        return new ulong[] { v };
+                    }
+                    if (fn == "ioctl_write" && inp.Length >= 2)
+                    {
+                        fakeEc[(byte)inp[0]] = (byte)(inp[1] & 0xFF);
+                        return new ulong[] { 0 };
+                    }
+                    if (fn == "ioctl_read" && inp.Length >= 1)
+                    {
+                        byte v;
+                        fakeEc.TryGetValue((byte)inp[0], out v);
+                        return new ulong[] { v };
+                    }
+                    return null;
+                };
+
+                bool preloaded = NativeInpOut.PreloadDriverDll();
+                bool isPawnActive = (NativeInpOut.ActiveDriver == HardwareDriverEngine.PawnIO)
+                    && NativeInpOut.IsDriverOpen()
+                    && NativeInpOut.ActiveDriverName.Contains("PawnIO");
+
+                // Whitelisted Super I/O port read/write via NativeInpOut -> PawnIO
+                NativeInpOut.DlPortWritePortUchar(0x0A35, 0x5A);
+                byte readBack = NativeInpOut.DlPortReadPortUchar(0x0A35);
+
+                // Dangerous ports must be blocked fail-closed BEFORE reaching PawnIO bytecode
+                NativeInpOut.DlPortWritePortUchar(0x70, 0x11);
+                byte rtcRead = NativeInpOut.DlPortReadPortUchar(0x70);
+                NativeInpOut.DlPortWritePortUchar(0xCF9, 0x06);
+
+                // ACPI EC module round-trip
+                bool ecWriteOk = PawnIoDriver.TryWriteAcpiEcByte(0x33, 0xA5);
+                byte ecReadVal;
+                bool ecReadOk = PawnIoDriver.TryReadAcpiEcByte(0x33, out ecReadVal);
+
+                NativeInpOut.Shutdown();
+                bool cleanShutdown = (NativeInpOut.ActiveDriver == HardwareDriverEngine.None) && !PawnIoDriver.IsAvailable;
+
+                pawnIoOk = preloaded && isPawnActive && (readBack == 0x5A) && (rtcRead == 0xFF)
+                    && (blockedCalls == 0) && ecWriteOk && ecReadOk && (ecReadVal == 0xA5) && cleanShutdown;
+                pawnIoDetail = string.Format("Active={0}, PortRW=0x{1:X2}, Blocked={2}, EcRW={3}/0x{4:X2}, CleanStop={5}",
+                    isPawnActive, readBack, blockedCalls, ecWriteOk && ecReadOk, ecReadVal, cleanShutdown);
+            }
+            catch (Exception ex) { pawnIoDetail = ex.Message; }
+            finally
+            {
+                NativeInpOut.Shutdown();
+                PawnIoDriver.Shutdown();
+            }
+            Check(pawnIoOk,
+                "PawnIO HVCI Driver Backend, Priority-0 Selection & Fail-Closed Port Whitelist Gating",
+                pawnIoDetail);
+
+            // 92. Anti-Cheat Safe Auto-Pause State Machine & Ordered BIOS-Auto-First Handoff
+            bool antiCheatOk = false;
+            string antiCheatDetail = "";
+            try
+            {
+                bool eacRunning = false;
+                bool vgkRunning = true;
+                long fakeClock = 1000;
+
+                AntiCheatMonitor mon = new AntiCheatMonitor(
+                    delegate(string svc)
+                    {
+                        if (svc == "EasyAntiCheat_EOS") return eacRunning;
+                        if (svc == "vgk") return vgkRunning;
+                        return false;
+                    },
+                    delegate { return fakeClock; },
+                    3000);
+
+                // Disabled by default: ignores EAC start
+                eacRunning = true;
+                AntiCheatAction aDisabled = mon.Poll();
+                bool vgkDetected = mon.IsBootVanguardDetected;
+
+                // Enable -> triggers PauseForAntiCheat immediately
+                mon.Enabled = true;
+                AntiCheatAction aPause = mon.Poll();
+                bool pausedFlag = mon.IsPaused && (mon.ActiveAntiCheatName == "Easy Anti-Cheat");
+
+                // While still running -> None
+                AntiCheatAction aHold = mon.Poll();
+
+                // EAC exits -> holds during 3000ms cooldown, then resumes
+                eacRunning = false;
+                fakeClock = 2000;
+                AntiCheatAction aCool1 = mon.Poll();
+                fakeClock = 4500;
+                AntiCheatAction aCool2 = mon.Poll();
+                fakeClock = 5100;
+                AntiCheatAction aResume = mon.Poll();
+                bool resumedClear = !mon.IsPaused;
+
+                // Verify strict ordering: BIOS Auto MUST run BEFORE legacy driver unload
+                List<string> callOrder = new List<string>();
+                bool handoffOk = AntiCheatMonitor.ExecuteSafePauseHandoff(
+                    delegate { callOrder.Add("auto"); return true; },
+                    delegate { callOrder.Add("shutdown"); },
+                    delegate(string svc) { callOrder.Add("stop:" + svc); return true; },
+                    HardwareDriverEngine.InpOut64);
+                bool orderStrict = handoffOk && callOrder.Count >= 3 && callOrder[0] == "auto" && callOrder[1] == "shutdown";
+
+                // Verify PawnIO skips legacy driver unload while still restoring BIOS Auto
+                List<string> pawnOrder = new List<string>();
+                AntiCheatMonitor.ExecuteSafePauseHandoff(
+                    delegate { pawnOrder.Add("auto"); return true; },
+                    delegate { pawnOrder.Add("shutdown"); },
+                    delegate(string svc) { pawnOrder.Add("stop:" + svc); return true; },
+                    HardwareDriverEngine.PawnIO);
+                bool pawnSkippedUnload = (pawnOrder.Count == 1 && pawnOrder[0] == "auto");
+
+                antiCheatOk = (aDisabled == AntiCheatAction.None) && vgkDetected
+                    && (aPause == AntiCheatAction.PauseForAntiCheat) && pausedFlag
+                    && (aHold == AntiCheatAction.None) && (aCool1 == AntiCheatAction.None) && (aCool2 == AntiCheatAction.None)
+                    && (aResume == AntiCheatAction.ResumeAfterAntiCheat) && resumedClear
+                    && orderStrict && pawnSkippedUnload;
+                antiCheatDetail = string.Format("Pause={0}, Cooldown={1}, Resume={2}, Vgk={3}, AutoFirst={4}, PawnSkip={5}",
+                    pausedFlag, (aCool1 == AntiCheatAction.None && aCool2 == AntiCheatAction.None), resumedClear, vgkDetected, orderStrict, pawnSkippedUnload);
+            }
+            catch (Exception ex) { antiCheatDetail = ex.Message; }
+            Check(antiCheatOk,
+                "Anti-Cheat Safe Auto-Pause State Machine (EAC/BattlEye/Vanguard) & Ordered BIOS-Auto Handoff",
+                antiCheatDetail);
+
+            // 93. Headless Background Daemon Mode (Zero-UI FanControllerService Loop & Clean Exit)
+            bool daemonOk = false;
+            string daemonDetail = "";
+            try
+            {
+                FanCurveProfile[] dBuiltIns = HeadlessDaemon.CreateBuiltInProfiles();
+                List<FanCurveProfile> dCustoms = FanCurveProfile.CreateProtectedExamples();
+                FanCurveProfile r1 = HeadlessDaemon.ResolveProfileByName("Silent", dBuiltIns, dCustoms);
+                FanCurveProfile r2 = HeadlessDaemon.ResolveProfileByName("🔒 Gaming Sweet-Spot (Acoustic Knee)", dBuiltIns, dCustoms);
+                FanCurveProfile rFallback = HeadlessDaemon.ResolveProfileByName("DoesNotExist", dBuiltIns, dCustoms);
+
+                int rc = HeadlessDaemon.Run(true, 100, 2, true);
+                daemonOk = (rc == 0) && (r1 != null && r1.Name == "Silent")
+                    && (r2 != null && r2.Name.Contains("Gaming Sweet-Spot"))
+                    && (rFallback != null && rFallback.Name == "Balanced");
+                daemonDetail = string.Format("ExitCode={0}, BuiltIn={1}, Protected={2}, Fallback={3}",
+                    rc, r1 != null ? r1.Name : "null", r2 != null ? r2.Name : "null", rFallback != null ? rFallback.Name : "null");
+            }
+            catch (Exception ex) { daemonDetail = ex.Message; }
+            Check(daemonOk,
+                "Headless Background Daemon Mode (Zero-UI FanControllerService Loop & Profile Resolution)",
+                daemonDetail);
+
+            // 94. Sanitized One-Click Hardware Profile Submission JSON & GitHub Issue URL Builder
+            bool submitOk = false;
+            string submitDetail = "";
+            try
+            {
+                SystemHardwareInfo fakeSys = new SystemHardwareInfo
+                {
+                    Manufacturer = "TOPC",
+                    ProductName = "TS-12C",
+                    BaseBoard = "C:\\Users\\alice\\secret-path",
+                    CpuName = "AMD Ryzen AI 9 HX 370",
+                    BiosVersion = "1.05",
+                    MatchedProfile = DeviceProfile.FindProfile("ryzen-hx370-ec")
+                };
+                HardwareBackend fakeHw = new HardwareBackend(fakeSys.MatchedProfile);
+                fakeHw.SuperIoChipId = 0x8613;
+                fakeHw.SuperIoBaseAddr = 0x0A30;
+                fakeHw.AccessMethod = HardwareBackend.EcAccessMethod.SuperIo2E;
+
+                string json = HardwareProfileSubmission.BuildSanitizedJson(fakeSys, fakeHw, MainForm.APP_VERSION);
+                string url = HardwareProfileSubmission.BuildGitHubIssueUrl(fakeSys, fakeHw, MainForm.APP_VERSION);
+
+                Dictionary<string, string> subParsed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                SimpleJson.ParseFlatObject(json, subParsed, false);
+                bool parsedOk = subParsed.ContainsKey("manufacturer") && subParsed["manufacturer"] == "TOPC"
+                    && subParsed.ContainsKey("superIoChipId") && subParsed["superIoChipId"] == "0x8613"
+                    && subParsed.ContainsKey("superIoBaseAddr") && subParsed["superIoBaseAddr"] == "0x0A30";
+                bool redactedUser = !json.Contains("alice") && json.Contains("<redacted>");
+                bool urlValid = url.StartsWith("https://github.com/kaiserc/MiniFanControl/issues/new?")
+                    && url.Contains("template=unsupported_hardware.md")
+                    && url.Contains("title=") && url.Contains("body=")
+                    && url.Length <= HardwareProfileSubmission.MAX_URL_LENGTH;
+
+                submitOk = parsedOk && redactedUser && urlValid;
+                submitDetail = string.Format("JsonOk={0}, Redacted={1}, UrlLen={2}", parsedOk, redactedUser, url.Length);
+            }
+            catch (Exception ex) { submitDetail = ex.Message; }
+            Check(submitOk,
+                "Sanitized Hardware Profile Submission JSON (PII Redaction) & Pre-Filled GitHub Issue URL",
+                submitDetail);
+
+            // 95. Windows 11 DWM Visual Style, ColorRef Conversion, Rounded Card Chrome & Modern Button Polish
+            bool win11StyleOk = false;
+            string win11StyleDetail = "";
+            try
+            {
+                // Win32 COLORREF is 0x00BBGGRR
+                int cref = Win11VisualStyle.ToColorRef(Color.FromArgb(0x12, 0x34, 0x56));
+                bool crefOk = (cref == 0x00563412);
+
+                Color mid = Win11VisualStyle.Blend(Color.Black, Color.White, 0.5f);
+                bool blendOk = (mid.R >= 127 && mid.R <= 128) && (mid.G == mid.R) && (mid.B == mid.R);
+
+                bool nullFormSafe = !Win11VisualStyle.ApplyWindowFrame(null, true, Color.Black, Color.White, Color.Gray);
+
+                // Draw rounded border & style button without GDI exceptions
+                bool gdiOk = false;
+                using (Bitmap bmp = new Bitmap(220, 90))
+                using (Graphics g = Graphics.FromImage(bmp))
+                {
+                    Win11VisualStyle.DrawRoundedCardBorder(g, new Rectangle(0, 0, 220, 90), Color.CornflowerBlue, 8, 1f);
+                    Win11VisualStyle.DrawRoundedCardBorder(g, new Rectangle(0, 0, 4, 4), Color.CornflowerBlue, 8, 1f);
+                    gdiOk = true;
+                }
+
+                bool btnOk = false;
+                using (Button b = new Button())
+                {
+                    Win11VisualStyle.StyleModernButton(b, Color.FromArgb(0x2E, 0x30, 0x44), Color.White, Color.FromArgb(0x36, 0x3A, 0x52), true);
+                    btnOk = (b.FlatStyle == FlatStyle.Flat) && (b.FlatAppearance.BorderSize == 1)
+                        && (b.FlatAppearance.MouseOverBackColor != b.BackColor);
+                }
+
+                win11StyleOk = crefOk && blendOk && nullFormSafe && gdiOk && btnOk;
+                win11StyleDetail = string.Format("ColorRef=0x{0:X6}, Blend={1}, NullSafe={2}, Gdi={3}, Btn={4}",
+                    cref, blendOk, nullFormSafe, gdiOk, btnOk);
+            }
+            catch (Exception ex) { win11StyleDetail = ex.Message; }
+            Check(win11StyleOk,
+                "Windows 11 DWM Visual Style (COLORREF, Rounded Card Borders & Modern Button Styling)",
+                win11StyleDetail);
+
+            // 96. AppSettings AutoPauseForAntiCheat Default & MainForm Win11 Theme Cycle Safety
+            bool polishUiOk = false;
+            string polishUiDetail = "";
+            try
+            {
+                AppSettings defSettings = new AppSettings();
+                bool defaultOff = !defSettings.AutoPauseForAntiCheat;
+
+                bool formThemesOk = false;
+                using (MainForm f = new MainForm(true, false, true))
+                {
+                    IntPtr h = f.Handle; // Force handle creation -> exercises OnHandleCreated + ApplyWin11WindowFrame
+                    formThemesOk = (h != IntPtr.Zero) && !f.IsDisposed;
+                }
+
+                polishUiOk = defaultOff && formThemesOk;
+                polishUiDetail = string.Format("AntiCheatDefaultOff={0}, MainFormWin11HandleOk={1}", defaultOff, formThemesOk);
+            }
+            catch (Exception ex) { polishUiDetail = ex.Message; }
+            Check(polishUiOk,
+                "AppSettings AutoPauseForAntiCheat Opt-In Default & MainForm Win11 DWM Handle Integration",
+                polishUiDetail);
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));
