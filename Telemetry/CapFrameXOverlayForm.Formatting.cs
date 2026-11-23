@@ -284,7 +284,7 @@ namespace MiniFanControl
             }
             string pwrVal = FormatPowerOverlayValue();
             string f1Val  = (IsEffectivelyReadOnly() && _status.Fan1Rpm <= 0) ? "--" : string.Format("{0}r", _status.Fan1Rpm);
-            string f2Val  = _status.Fan2Rpm > 0 ? string.Format("{0}r", _status.Fan2Rpm) : "--";
+            string f2Val  = (IsEffectivelyReadOnly() && _status.Fan2Rpm <= 0) ? "--" : string.Format("{0}r", _status.Fan2Rpm);
 
             string cpuPeak = FormatCpuOverlayPeak();
             string gpuPeak = FormatGpuOverlayPeak();

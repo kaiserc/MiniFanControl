@@ -50,7 +50,7 @@ namespace MiniFanControl
 
             string pwrVal = FormatPowerOverlayValue();
             string f1Val  = (IsEffectivelyReadOnly() && _status.Fan1Rpm <= 0) ? "--" : string.Format("{0}", _status.Fan1Rpm);
-            string f2Val  = _status.Fan2Rpm > 0 ? string.Format("{0}", _status.Fan2Rpm) : "--";
+            string f2Val  = (IsEffectivelyReadOnly() && _status.Fan2Rpm <= 0) ? "--" : string.Format("{0}", _status.Fan2Rpm);
 
             string cpuPeak = FormatCpuOverlayPeak();
             string gpuPeak = FormatGpuOverlayPeak();
@@ -160,11 +160,10 @@ namespace MiniFanControl
                                 int dfFpsH = GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(22 * sc);
                                 Rectangle fpsRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(14 * sc), dfFpsH);
                                 _dfFpsRect = fpsRect;
-                                DrawDfFramerateGraph(g, fpsRect, sc);
-
                                 int insetW = Math.Max((int)Math.Round(130 * sc), Math.Min((int)Math.Round(240 * sc), (int)(fpsRect.Width * 0.24)));
-                                int availH = Math.Max((int)Math.Round(36 * sc), fpsRect.Height - (int)Math.Round(20 * sc));
-                                int insetH = Math.Min(availH, Math.Max((int)Math.Round(46 * sc), (int)(fpsRect.Height * (fpsRect.Height < 100 * sc ? 0.68 : 0.52))));
+                                DrawDfFramerateGraph(g, fpsRect, sc, insetW + (int)Math.Round(8 * sc));
+
+                                int insetH = Math.Max((int)Math.Round(36 * sc), fpsRect.Height - (int)Math.Round(24 * sc));
                                 Rectangle insetRect = new Rectangle(fpsRect.X + (int)Math.Round(6 * sc), fpsRect.Y + (int)Math.Round(16 * sc), insetW, insetH);
                                 _dfFtRect = insetRect;
                                 DrawDfFrametimeGraph(g, insetRect, sc, true);
@@ -421,11 +420,10 @@ namespace MiniFanControl
                                 int dfFpsH = GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(22 * sc);
                                 Rectangle fpsRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(16 * sc), dfFpsH);
                                 _dfFpsRect = fpsRect;
-                                DrawDfFramerateGraph(g, fpsRect, sc);
-
                                 int insetW = Math.Max((int)Math.Round(112 * sc), Math.Min((int)Math.Round(195 * sc), (int)(fpsRect.Width * 0.44)));
-                                int availH = Math.Max((int)Math.Round(36 * sc), fpsRect.Height - (int)Math.Round(20 * sc));
-                                int insetH = Math.Min(availH, Math.Max((int)Math.Round(46 * sc), (int)(fpsRect.Height * (fpsRect.Height < 100 * sc ? 0.68 : 0.52))));
+                                DrawDfFramerateGraph(g, fpsRect, sc, insetW + (int)Math.Round(8 * sc));
+
+                                int insetH = Math.Max((int)Math.Round(36 * sc), fpsRect.Height - (int)Math.Round(24 * sc));
                                 Rectangle insetRect = new Rectangle(fpsRect.X + (int)Math.Round(6 * sc), fpsRect.Y + (int)Math.Round(16 * sc), insetW, insetH);
                                 _dfFtRect = insetRect;
                                 DrawDfFrametimeGraph(g, insetRect, sc, true);
@@ -484,8 +482,9 @@ namespace MiniFanControl
                 g.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
             }
         }
-        catch (Exception)
+        catch (Exception paintEx)
         {
+            LogPaintErrorOnce("OnPaint", paintEx);
             try
             {
                 e.Graphics.Clear(Color.FromArgb(200, 15, 23, 42));

@@ -122,6 +122,21 @@ namespace MiniFanControl
         public bool DfCornerInset = false;
         public int SampleIntervalMs = 1000;
 
+        private static readonly HashSet<string> _loggedPaintErrors = new HashSet<string>();
+
+        /// <summary>Logs a paint/draw failure once per distinct location so a broken overlay is diagnosable without flooding the log.</summary>
+        private static void LogPaintErrorOnce(string where, Exception ex)
+        {
+            try
+            {
+                bool first;
+                lock (_loggedPaintErrors) { first = _loggedPaintErrors.Add(where); }
+                if (first)
+                    WatchdogSupervisor.LogWatchdogEvent("Overlay paint failure in " + where + ": " + ex);
+            }
+            catch { }
+        }
+
         private bool IsEffectivelyReadOnly()
         {
             return IsReadOnlyMode || string.Equals(_modeSummary, "Read-Only", StringComparison.OrdinalIgnoreCase);
