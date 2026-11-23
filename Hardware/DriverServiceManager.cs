@@ -1,20 +1,5 @@
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
-using System.Drawing.Text;
-using System.Globalization;
-using System.IO;
-using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
-using System.Security.AccessControl;
-using System.Security.Principal;
-using System.Text;
-using System.Threading;
-using System.Windows.Forms;
-using Microsoft.Win32;
 
 namespace MiniFanControl
 {
@@ -48,7 +33,6 @@ namespace MiniFanControl
         }
 
         private const uint SC_MANAGER_CONNECT = 0x0001;
-        private const uint SC_MANAGER_ALL_ACCESS = 0xF003F;
         private const uint SERVICE_QUERY_STATUS = 0x0004;
         private const uint SERVICE_STOP = 0x0020;
         private const uint SERVICE_CONTROL_STOP = 0x00000001;
@@ -86,7 +70,7 @@ namespace MiniFanControl
 
         public static bool StopDriverService(string serviceName = "inpoutx64")
         {
-            IntPtr scm = OpenSCManager(null, null, SC_MANAGER_ALL_ACCESS);
+            IntPtr scm = OpenSCManager(null, null, SC_MANAGER_CONNECT);
             if (scm == IntPtr.Zero) return false;
             try
             {

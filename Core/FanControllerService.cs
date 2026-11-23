@@ -351,18 +351,24 @@ namespace MiniFanControl
             appliedPct = ClampManualFanDuty(fanId, pct, allowBelowFloor, out wasClamped, out minFloor);
             if (IsInherentlyReadOnly) return false;
             bool demo;
+            int prevPct;
+            bool prevOverride;
             lock (_stateLock)
             {
                 if (_readOnlyFailsafeLatched) return false;
                 demo = _demoMode;
                 if (fanId == 1)
                 {
+                    prevPct = _apuManualPct;
+                    prevOverride = _apuManualOverride;
                     _apuManualPct = appliedPct;
                     _apuManualOverride = (_apuManualPct > 0);
                     _lastAppliedApuPct = -1;
                 }
                 else
                 {
+                    prevPct = _sysManualPct;
+                    prevOverride = _sysManualOverride;
                     _sysManualPct = appliedPct;
                     _sysManualOverride = (_sysManualPct > 0);
                     _lastAppliedSysPct = -1;
@@ -385,6 +391,12 @@ namespace MiniFanControl
             }
             else
             {
+                // Roll back so the controller doesn't believe a manual override is active when the write failed.
+                lock (_stateLock)
+                {
+                    if (fanId == 1) { _apuManualPct = prevPct; _apuManualOverride = prevOverride; }
+                    else { _sysManualPct = prevPct; _sysManualOverride = prevOverride; }
+                }
                 RecordHardwareWriteError(string.Format("Manual {0} write ({1}%) verification failed", fanId == 1 ? "APU Fan" : "Sys Fan", appliedPct));
             }
             return ok;
@@ -424,7 +436,12 @@ namespace MiniFanControl
             if (_hw != null && _hw.Profile != null && !_hw.Profile.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase))
             {
                 _hw.Profile.IsReadOnly = false;
-                _hw.ReinitializeHardwareAfterResume();
+                try { _hw.ReinitializeHardwareAfterResume(); }
+                catch (Exception ex)
+                {
+                    // Still attempt SetAuto below: restoring BIOS auto is the safe outcome.
+                    WatchdogSupervisor.LogWatchdogEvent("ApplyAutoAll re-init failed: " + ex.Message);
+                }
             }
 
             bool ok = demo ? _demo.SetAuto() : _hw.SetAuto();
