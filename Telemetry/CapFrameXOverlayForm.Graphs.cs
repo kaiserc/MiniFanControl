@@ -1044,9 +1044,7 @@ namespace MiniFanControl
             }
         }
 
-        /// <param name="leftReservePx">Width reserved at the left of the plot (used by the DF Corner Inset so the
-        /// frame-time inset sits beside the FPS history instead of covering it).</param>
-        private void DrawDfFramerateGraph(Graphics g, Rectangle rect, float sc, int leftReservePx = 0)
+        private void DrawDfFramerateGraph(Graphics g, Rectangle rect, float sc)
         {
             if (rect.Width <= 10 || rect.Height <= 10) return;
 
@@ -1138,9 +1136,7 @@ namespace MiniFanControl
             int topPad = (int)Math.Round(14 * sc);
             int btmPad = (int)Math.Round(9 * sc);
             int rightPad = (int)Math.Round(32 * sc);
-            // Never reserve so much that fewer than ~40% of the width is left for the FPS history.
-            int reserve = Math.Max(0, Math.Min(leftReservePx, (int)(rect.Width * 0.6) - rightPad));
-            Rectangle plot = new Rectangle(rect.X + 2 + reserve, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4 - reserve), Math.Max(6, rect.Height - topPad - btmPad));
+            Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - btmPad));
 
             // Grid lines and Axis Labels
             using (Pen gridPen = new Pen(Color.FromArgb(90, 255, 255, 255), 1f))

@@ -164,10 +164,11 @@ namespace MiniFanControl
                                 int dfFpsH = GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(22 * sc);
                                 Rectangle fpsRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(14 * sc), dfFpsH);
                                 _dfFpsRect = fpsRect;
-                                int insetW = Math.Max((int)Math.Round(130 * sc), Math.Min((int)Math.Round(240 * sc), (int)(fpsRect.Width * 0.24)));
-                                DrawDfFramerateGraph(g, fpsRect, sc, insetW + (int)Math.Round(8 * sc));
+                                DrawDfFramerateGraph(g, fpsRect, sc);
 
-                                int insetH = Math.Max((int)Math.Round(36 * sc), fpsRect.Height - (int)Math.Round(24 * sc));
+                                int insetW = Math.Max((int)Math.Round(126 * sc), Math.Min((int)Math.Round(220 * sc), (int)(fpsRect.Width * 0.28)));
+                                int availH = Math.Max((int)Math.Round(36 * sc), fpsRect.Height - (int)Math.Round(22 * sc));
+                                int insetH = Math.Min(availH, Math.Max((int)Math.Round(46 * sc), (int)(fpsRect.Height * (fpsRect.Height < 100 * sc ? 0.58 : 0.50))));
                                 Rectangle insetRect = new Rectangle(fpsRect.X + (int)Math.Round(6 * sc), fpsRect.Y + (int)Math.Round(16 * sc), insetW, insetH);
                                 _dfFtRect = insetRect;
                                 DrawDfFrametimeGraph(g, insetRect, sc, true);
@@ -384,10 +385,11 @@ namespace MiniFanControl
                                 int dfFpsH = GetDfFramerateHeight(sc, scaledGraphH) + (int)Math.Round(22 * sc);
                                 Rectangle fpsRect = new Rectangle((int)Math.Round(8 * sc), curY, Width - (int)Math.Round(16 * sc), dfFpsH);
                                 _dfFpsRect = fpsRect;
-                                int insetW = Math.Max((int)Math.Round(112 * sc), Math.Min((int)Math.Round(195 * sc), (int)(fpsRect.Width * 0.44)));
-                                DrawDfFramerateGraph(g, fpsRect, sc, insetW + (int)Math.Round(8 * sc));
+                                DrawDfFramerateGraph(g, fpsRect, sc);
 
-                                int insetH = Math.Max((int)Math.Round(36 * sc), fpsRect.Height - (int)Math.Round(24 * sc));
+                                int insetW = Math.Max((int)Math.Round(110 * sc), Math.Min((int)Math.Round(175 * sc), (int)(fpsRect.Width * 0.38)));
+                                int availH = Math.Max((int)Math.Round(36 * sc), fpsRect.Height - (int)Math.Round(22 * sc));
+                                int insetH = Math.Min(availH, Math.Max((int)Math.Round(46 * sc), (int)(fpsRect.Height * (fpsRect.Height < 100 * sc ? 0.58 : 0.50))));
                                 Rectangle insetRect = new Rectangle(fpsRect.X + (int)Math.Round(6 * sc), fpsRect.Y + (int)Math.Round(16 * sc), insetW, insetH);
                                 _dfFtRect = insetRect;
                                 DrawDfFrametimeGraph(g, insetRect, sc, true);
