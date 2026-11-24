@@ -92,6 +92,8 @@ namespace MiniFanControl
                 c == "export-profiles" || c == "--export-profiles" ||
                 c == "driver-stop" ||
                 c == "validate-lang" || c == "--validate-lang" ||
+                c == "validate-profiles" || c == "--validate-profiles" ||
+                c == "service-install" || c == "service-uninstall" || c == "service-status" ||
                 c == "gen-icon" || c == "--gen-icon" ||
                 c == "latency" || c == "--latency")
             {
@@ -232,13 +234,15 @@ namespace MiniFanControl
                     Console.WriteLine("  probe / dump [--json] [--demo]        Analyze hardware registers and EC access methods");
                     Console.WriteLine("  submit-report [--demo]                Generate sanitized hardware profile JSON & GitHub Issue URL");
                     Console.WriteLine("  daemon [--interval ms] [--demo]       Run zero-UI headless background fan control daemon");
+                    Console.WriteLine("  service / service-install / -uninstall Run or manage MiniFanControl as a native Windows Service");
                     Console.WriteLine("  driver-status / driver-stop           Inspect PawnIO/HVCI/driver integrity or stop legacy drivers");
                     Console.WriteLine("  diff-scan / ec-scan [--demo]          Run EC differential sensor scanner (Tier 2 discovery)");
                     Console.WriteLine("  calibrate [passes] [--demo]           Execute multi-pass fan calibration curve analysis");
 
-                    Console.WriteLine("  test                                  Run 111-point automated safety & regression suite");
+                    Console.WriteLine("  test                                  Run 116-point automated safety & regression suite");
                     Console.WriteLine("  hw-matrix                             Run multi-profile hardware validation matrix");
                     Console.WriteLine("  export-profiles [--json]              Export supported hardware profiles & Super I/O IDs");
+                    Console.WriteLine("  validate-profiles                     Validate external JSON hardware profiles in profiles/");
 
                     Console.WriteLine("  watchdog --pid <pid> [--timeout <ms>] Out-of-process safety watchdog supervisor");
 
@@ -381,6 +385,52 @@ namespace MiniFanControl
                     return HeadlessDaemon.Run(demoMode, intervalMs, maxTicks, quiet);
                 }
 
+                if (cmd == "service" || cmd == "--service")
+                {
+                    int intervalMs = 0;
+                    for (int i = 0; i < args.Length; i++)
+                    {
+                        if ((args[i] == "--interval" || args[i] == "-i") && i + 1 < args.Length)
+                            int.TryParse(args[i + 1], out intervalMs);
+                    }
+                    return WindowsServiceHost.RunAsService(demoMode, intervalMs);
+                }
+
+                if (cmd == "service-install")
+                {
+                    string exePath = Process.GetCurrentProcess().MainModule != null
+                        ? Process.GetCurrentProcess().MainModule.FileName
+                        : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "minifan-helper.exe");
+                    string msg;
+                    bool ok = WindowsServiceHost.InstallService(exePath, out msg);
+                    Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                        "{{\"ok\":{0},\"service\":\"{1}\",\"message\":\"{2}\"}}",
+                        ok ? "true" : "false", EscapeJson(WindowsServiceHost.SERVICE_NAME), EscapeJson(msg)));
+                    return ok ? 0 : 1;
+                }
+
+                if (cmd == "service-uninstall")
+                {
+                    string msg;
+                    bool ok = WindowsServiceHost.UninstallService(out msg);
+                    Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                        "{{\"ok\":{0},\"service\":\"{1}\",\"message\":\"{2}\"}}",
+                        ok ? "true" : "false", EscapeJson(WindowsServiceHost.SERVICE_NAME), EscapeJson(msg)));
+                    return ok ? 0 : 1;
+                }
+
+                if (cmd == "service-status")
+                {
+                    bool installed = WindowsServiceHost.IsServiceInstalled();
+                    bool running = WindowsServiceHost.IsServiceRunning();
+                    Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                        "{{\"service\":\"{0}\",\"installed\":{1},\"running\":{2}}}",
+                        EscapeJson(WindowsServiceHost.SERVICE_NAME),
+                        installed ? "true" : "false",
+                        running ? "true" : "false"));
+                    return 0;
+                }
+
                 if (cmd == "submit-report" || cmd == "--submit-report")
                 {
                     SystemHardwareInfo subSys = SystemHardwareInfo.Detect();
@@ -411,7 +461,7 @@ namespace MiniFanControl
                     bool winringRunning = DriverServiceManager.IsDriverServiceRunning("WinRing0_1_2_0");
                     bool hvciEnabled = NativeInpOut.IsHvciEnabled();
                     Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                        "{{\"active_driver\":\"{0}\",\"hash_verified\":{1},\"sha256\":\"{2}\",\"integrity_error\":\"{3}\",\"hvci_enabled\":{4},\"pawnio_service\":{5},\"pawnio_available\":{6},\"winring0_service\":{7},\"inpout_service\":{8}}}",
+                        "{{\"active_driver\":\"{0}\",\"hash_verified\":{1},\"sha256\":\"{2}\",\"integrity_error\":\"{3}\",\"hvci_enabled\":{4},\"pawnio_service\":{5},\"pawnio_available\":{6},\"pawnio_modules\":\"{7}\",\"winring0_service\":{8},\"inpout_service\":{9}}}",
                         EscapeJson(NativeInpOut.ActiveDriverName),
                         NativeInpOut.IsDriverHashVerified ? "true" : "false",
                         EscapeJson(NativeInpOut.ActiveDriverSha256 ?? ""),
@@ -419,6 +469,7 @@ namespace MiniFanControl
                         hvciEnabled ? "true" : "false",
                         pawnRunning ? "true" : "false",
                         PawnIoDriver.IsAvailable ? "true" : "false",
+                        EscapeJson(PawnIoDriver.LoadedModulesSummary),
                         winringRunning ? "true" : "false",
                         inpoutRunning ? "true" : "false"));
                     return 0;
@@ -430,6 +481,32 @@ namespace MiniFanControl
                     Console.WriteLine("{{\"winring0_stopped\":{0},\"inpout_stopped\":{1}}}",
                         s1 ? "true" : "false", s2 ? "true" : "false");
                     return 0;
+                }
+                else if (cmd == "validate-profiles" || cmd == "--validate-profiles")
+                {
+                    string profDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ExternalProfileRegistry.PROFILES_DIR_NAME);
+                    if (!Directory.Exists(profDir))
+                    {
+                        Console.WriteLine("[INFO] No 'profiles/' directory found. Nothing to validate.");
+                        return 0;
+                    }
+                    List<string> profErrors;
+                    int validCount;
+                    bool profOk = ExternalProfileRegistry.ValidateDirectory(profDir, out profErrors, out validCount);
+                    if (profOk)
+                    {
+                        Console.WriteLine(string.Format("[PASS] All external hardware profiles in 'profiles/' are valid ({0} profile(s) loaded).", validCount));
+                        return 0;
+                    }
+                    else
+                    {
+                        Console.Error.WriteLine("[FAIL] External hardware profile validation errors found:");
+                        foreach (string err in profErrors)
+                        {
+                            Console.Error.WriteLine("  • " + err);
+                        }
+                        return 1;
+                    }
                 }
                 else if (cmd == "validate-lang" || cmd == "--validate-lang")
                 {

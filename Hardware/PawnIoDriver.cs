@@ -94,6 +94,7 @@ namespace MiniFanControl
         private static IntPtr _hLib = IntPtr.Zero;
         private static IntPtr _hLpcModule = IntPtr.Zero;
         private static IntPtr _hAcpiEcModule = IntPtr.Zero;
+        private static IntPtr _hAmdSmnModule = IntPtr.Zero;
 
         private static PawnIoVersionDelegate _fnVersion;
         private static PawnIoOpenDelegate _fnOpen;
@@ -110,10 +111,23 @@ namespace MiniFanControl
         public static bool IsSignatureVerified { get; private set; }
         public static bool HasLpcModule { get; private set; }
         public static bool HasAcpiEcModule { get; private set; }
+        public static bool HasAmdSmnModule { get; private set; }
         public static uint DriverVersionRaw { get; private set; }
         public static string LibraryPath { get; private set; }
         public static string LastStatus { get; private set; }
         public static string LastIntegrityError { get; private set; }
+
+        public static string LoadedModulesSummary
+        {
+            get
+            {
+                List<string> mods = new List<string>(3);
+                if (HasLpcModule) mods.Add("LpcIO");
+                if (HasAcpiEcModule) mods.Add("LpcACPIEC");
+                if (HasAmdSmnModule) mods.Add("AMDFamily17");
+                return mods.Count > 0 ? string.Join(", ", mods.ToArray()) : "None";
+            }
+        }
 
         static PawnIoDriver()
         {
@@ -125,7 +139,7 @@ namespace MiniFanControl
             get
             {
                 if (SimulatedAvailable) return true;
-                return IsLibraryLoaded && (HasLpcModule || HasAcpiEcModule);
+                return IsLibraryLoaded && (HasLpcModule || HasAcpiEcModule || HasAmdSmnModule);
             }
         }
 
@@ -291,6 +305,7 @@ namespace MiniFanControl
                     IsSignatureVerified = true;
                     HasLpcModule = true;
                     HasAcpiEcModule = true;
+                    HasAmdSmnModule = true;
                     LastStatus = "PawnIO active (simulated test mode)";
                     return true;
                 }
@@ -397,7 +412,15 @@ namespace MiniFanControl
                     HasAcpiEcModule = (_hAcpiEcModule != IntPtr.Zero);
                 }
 
-                if (!HasLpcModule && !HasAcpiEcModule)
+                // Load signed AMD Zen SMN telemetry module if present (AMDFamily17.bin / RyzenSMU.bin)
+                string smnBlob = FindModuleBlobPath("AMDFamily17") ?? FindModuleBlobPath("RyzenSMU");
+                if (!string.IsNullOrEmpty(smnBlob))
+                {
+                    _hAmdSmnModule = TryOpenAndLoadModule(smnBlob);
+                    HasAmdSmnModule = (_hAmdSmnModule != IntPtr.Zero);
+                }
+
+                if (!HasLpcModule && !HasAcpiEcModule && !HasAmdSmnModule)
                 {
                     string verStr = VersionString;
                     // Release DLL handle & clear delegates so repeated retries never leak HMODULE references
@@ -410,15 +433,12 @@ namespace MiniFanControl
                     _fnClose = null;
                     IsLibraryLoaded = false;
                     IsSignatureVerified = false;
-                    LastStatus = "PawnIOLib verified (v" + verStr + "), awaiting signed LpcIO.bin / LpcACPIEC.bin modules";
+                    LastStatus = "PawnIOLib verified (v" + verStr + "), awaiting signed LpcIO.bin / LpcACPIEC.bin / AMDFamily17.bin modules";
                     return false;
                 }
 
-                List<string> mods = new List<string>();
-                if (HasLpcModule) mods.Add("LpcIO");
-                if (HasAcpiEcModule) mods.Add("LpcACPIEC");
                 LastIntegrityError = null;
-                LastStatus = string.Format("PawnIO v{0} active (HVCI-safe modules: {1})", VersionString, string.Join(", ", mods.ToArray()));
+                LastStatus = string.Format("PawnIO v{0} active (HVCI-safe modules: {1})", VersionString, LoadedModulesSummary);
                 return true;
             }
         }
@@ -607,6 +627,62 @@ namespace MiniFanControl
             }
         }
 
+        /// <summary>
+        /// Fail-closed allowlist for read-only AMD SMN thermal & telemetry registers via PawnIO AMDFamily17.
+        /// </summary>
+        public static bool IsSmnReadAddressAllowed(uint smnAddress)
+        {
+            // THM_TCON_CUR_TMP (0x00059800), THM_TCON_HTC (0x00059808), and Zen CCD Tdie sensors (0x00059954..0x00059970)
+            if (smnAddress == 0x00059800U || smnAddress == 0x00059808U) return true;
+            if (smnAddress >= 0x00059954U && smnAddress <= 0x00059970U && ((smnAddress & 3U) == 0)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Reads a 32-bit AMD SMN telemetry register (e.g. 0x00059800 Tctl/Tdie) via the signed PawnIO AMDFamily17 module.
+        /// Enables HVCI-compatible silicon junction temperature monitoring without legacy vulnerable drivers.
+        /// </summary>
+        public static bool TryReadAmdSmn(uint smnAddress, out uint value)
+        {
+            value = 0;
+            if (!IsSmnReadAddressAllowed(smnAddress)) return false;
+
+            _ioLock.EnterReadLock();
+            try
+            {
+                if (SimulatedAvailable && SimulatedExecuteHook != null)
+                {
+                    ulong[] res = SimulatedExecuteHook("ioctl_read_smn", new ulong[] { smnAddress });
+                    if (res != null && res.Length > 0)
+                    {
+                        value = unchecked((uint)(res[0] & 0xFFFFFFFFUL));
+                        return true;
+                    }
+                    return false;
+                }
+
+                if (!HasAmdSmnModule || _hAmdSmnModule == IntPtr.Zero || _fnExecute == null) return false;
+                try
+                {
+                    ulong[] inp = new ulong[] { smnAddress };
+                    ulong[] outp = new ulong[1];
+                    UIntPtr retSize;
+                    int hr = _fnExecute(_hAmdSmnModule, "ioctl_read_smn", inp, new UIntPtr((uint)inp.Length), outp, new UIntPtr((uint)outp.Length), out retSize);
+                    if (hr == 0 && retSize.ToUInt64() >= 1)
+                    {
+                        value = unchecked((uint)(outp[0] & 0xFFFFFFFFUL));
+                        return true;
+                    }
+                }
+                catch { }
+                return false;
+            }
+            finally
+            {
+                _ioLock.ExitReadLock();
+            }
+        }
+
         public static void Shutdown()
         {
             lock (_sync)
@@ -624,6 +700,11 @@ namespace MiniFanControl
                         try { _fnClose(_hAcpiEcModule); } catch { }
                         _hAcpiEcModule = IntPtr.Zero;
                     }
+                    if (_hAmdSmnModule != IntPtr.Zero && _fnClose != null)
+                    {
+                        try { _fnClose(_hAmdSmnModule); } catch { }
+                        _hAmdSmnModule = IntPtr.Zero;
+                    }
                     _fnVersion = null;
                     _fnOpen = null;
                     _fnLoad = null;
@@ -638,6 +719,7 @@ namespace MiniFanControl
                     IsSignatureVerified = false;
                     HasLpcModule = false;
                     HasAcpiEcModule = false;
+                    HasAmdSmnModule = false;
                     DriverVersionRaw = 0;
                     LastIntegrityError = null;
                     SimulatedAvailable = false;

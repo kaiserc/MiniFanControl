@@ -38,7 +38,7 @@ namespace MiniFanControl
 
 {
 
-    public static class SelfTestSuite
+    public static partial class SelfTestSuite
 
     {
 
@@ -5787,6 +5787,8 @@ namespace MiniFanControl
             Check(splitHystOk,
                 "Independent APU & Sys Fan Cooldown Hysteresis (NVMe Rise Not Masked by APU Dip)",
                 splitHystDetail);
+
+            RunRoadmapTests();
 
             Console.WriteLine("----------------------------------------------------------------------");
 

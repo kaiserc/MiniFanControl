@@ -215,6 +215,7 @@ namespace MiniFanControl
         private bool _isInitialized = false;
 
         private readonly AmdAdlGpuSensor _adlSensor = new AmdAdlGpuSensor();
+        private readonly NvmlGpuSensor _nvmlSensor = new NvmlGpuSensor();
 
         public HardwareBackend()
 
@@ -669,6 +670,27 @@ namespace MiniFanControl
                 out pwrLim, out cpuClk, out gfxClk, out gfxAct, out gfxVolt, out pwrSrc,
                 out memClk, out hotspot, out npuClk, out npuAct, out adlFclk, out adlGfxCurr, out adlSocCurr);
 
+            // Multi-vendor desktop fallback: read WHQL NVIDIA NVML (nvml.dll) when AMD ADL2 reports no GPU
+            NvmlTelemetry nvml = default(NvmlTelemetry);
+            if (adlTemp <= 0 && adlPowerWatts <= 0 && gfxClk <= 0)
+            {
+                nvml = _nvmlSensor.ReadTelemetry();
+                if (nvml.IsAvailable)
+                {
+                    if (nvml.GpuTempC > 0) adlTemp = nvml.GpuTempC;
+                    if (nvml.PowerWatts > 0)
+                    {
+                        adlPowerWatts = nvml.PowerWatts;
+                        gfxPwr = nvml.PowerWatts;
+                        pwrSrc = "NVIDIA NVML (nvml.dll)";
+                    }
+                    if (nvml.PowerLimitWatts > 0) pwrLim = nvml.PowerLimitWatts;
+                    if (nvml.GraphicsClockMhz > 0) gfxClk = nvml.GraphicsClockMhz;
+                    if (nvml.MemoryClockMhz > 0) memClk = nvml.MemoryClockMhz;
+                    if (nvml.GpuLoadPct >= 0) gfxAct = nvml.GpuLoadPct;
+                }
+            }
+
             bool allowActiveSilicon = CanRunActiveSiliconProbes(Profile, _isSimulatedMode);
 
             // High-precision silicon junction resolution (matches HWiNFO64 / LibreHardwareMonitor / Ryzen Master):
@@ -870,7 +892,8 @@ namespace MiniFanControl
                 }
             }
 
-            bool isDiscreteGpu = RadeonSettingsSensor.IsDiscreteGpuDescription(rad.GpuDesc) ||
+            string resolvedGpuName = !string.IsNullOrEmpty(nvml.GpuName) ? nvml.GpuName : rad.GpuDesc;
+            bool isDiscreteGpu = nvml.IsAvailable || RadeonSettingsSensor.IsDiscreteGpuDescription(resolvedGpuName) ||
                 (Profile != null && Profile.IsReadOnly && (rad.SmartAccessMemory || adlPowerWatts > 95 || gfxClk > 2950));
 
             FanStatus st = new FanStatus
@@ -878,7 +901,7 @@ namespace MiniFanControl
                 CpuTemp = cpuTemp,
                 CpuLoadPct = SystemStorageMemorySensor.GetCpuUsage(),
                 GpuTemp = gpuTemp,
-                GpuName = rad.GpuDesc,
+                GpuName = resolvedGpuName,
                 IsDiscreteGpu = isDiscreteGpu,
                 ApuPowerWatts = apuPower,
                 CpuPowerWatts = cpuPwr,
@@ -1162,6 +1185,7 @@ namespace MiniFanControl
         {
 
             _adlSensor.Dispose();
+            _nvmlSensor.Dispose();
 
             if (_linAddr != IntPtr.Zero)
 

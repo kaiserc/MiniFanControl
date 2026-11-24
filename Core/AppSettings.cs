@@ -17,6 +17,8 @@ namespace MiniFanControl
         public bool ShowSetupAssistant = true;
         public bool SilentSleepStandby = true;
         public bool AutoPauseForAntiCheat = false;
+        public bool AutoSwitchWorkloads = false;
+        public readonly List<WorkloadRule> WorkloadRules = new List<WorkloadRule>();
         public bool AlwaysOnTop = false;
         public bool EnableGlobalHotkeys = true;
         public bool HasDualFans = true;
@@ -202,6 +204,25 @@ namespace MiniFanControl
                     else if (k == "UseFahrenheit") UseFahrenheit = ParseBool(v);
                     else if (k == "SilentSleepStandby") SilentSleepStandby = ParseBool(v);
                     else if (k == "AutoPauseForAntiCheat") AutoPauseForAntiCheat = ParseBool(v);
+                    else if (k == "AutoSwitchWorkloads") AutoSwitchWorkloads = ParseBool(v);
+                    else if (k == "WorkloadRule")
+                    {
+                        WorkloadRule rule = WorkloadRule.Parse(v);
+                        if (rule != null)
+                        {
+                            int dupIdx = -1;
+                            for (int ri = 0; ri < WorkloadRules.Count; ri++)
+                            {
+                                if (WorkloadRules[ri].ProcessPattern.Equals(rule.ProcessPattern, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    dupIdx = ri;
+                                    break;
+                                }
+                            }
+                            if (dupIdx >= 0) WorkloadRules[dupIdx] = rule;
+                            else WorkloadRules.Add(rule);
+                        }
+                    }
                     else if (k == "AlwaysOnTop") AlwaysOnTop = ParseBool(v);
                     else if (k == "EnableHotkeys") EnableGlobalHotkeys = ParseBool(v);
                     else if (k == "HasDualFans") HasDualFans = ParseBool(v);
@@ -306,6 +327,12 @@ namespace MiniFanControl
                 lines.Add("ShowSetupAssistant=" + (ShowSetupAssistant ? "1" : "0"));
                 lines.Add("SilentSleepStandby=" + (SilentSleepStandby ? "1" : "0"));
                 lines.Add("AutoPauseForAntiCheat=" + (AutoPauseForAntiCheat ? "1" : "0"));
+                lines.Add("AutoSwitchWorkloads=" + (AutoSwitchWorkloads ? "1" : "0"));
+                for (int ri = 0; ri < WorkloadRules.Count; ri++)
+                {
+                    if (WorkloadRules[ri] != null && !string.IsNullOrWhiteSpace(WorkloadRules[ri].ProcessPattern))
+                        lines.Add("WorkloadRule=" + WorkloadRules[ri].Serialize());
+                }
                 lines.Add("AlwaysOnTop=" + (AlwaysOnTop ? "1" : "0"));
                 lines.Add("EnableHotkeys=" + (EnableGlobalHotkeys ? "1" : "0"));
                 lines.Add("HasDualFans=" + (HasDualFans ? "1" : "0"));

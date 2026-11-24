@@ -678,6 +678,21 @@ namespace MiniFanControl
             });
             acPauseItem.Checked = _settings.AutoPauseForAntiCheat;
             menu.Items.Add(acPauseItem);
+            ToolStripMenuItem autoWorkloadItem = new ToolStripMenuItem("🤖 Auto-Switch Profiles for Games && AI Workloads", null, (s, e) =>
+            {
+                _settings.AutoSwitchWorkloads = !_settings.AutoSwitchWorkloads;
+                _workloadSwitcher.Enabled = _settings.AutoSwitchWorkloads;
+                SaveSettings();
+                RebuildDriversMenu();
+                if (_statusBarLabel != null)
+                {
+                    _statusBarLabel.Text = _settings.AutoSwitchWorkloads
+                        ? "✓ Auto-Switch Profiles enabled (switches to Performance for games & AI Workload for LLMs/NPU)"
+                        : "✓ Auto-Switch Profiles disabled";
+                }
+            });
+            autoWorkloadItem.Checked = _settings.AutoSwitchWorkloads;
+            menu.Items.Add(autoWorkloadItem);
             ToolStripMenuItem langMenu = new ToolStripMenuItem("🌐 Language / 语言 / Sprache");
             AddLanguageMenuItem(langMenu, "Auto (System Default)", AppLanguage.Auto);
             AddLanguageMenuItem(langMenu, "English", AppLanguage.English);
@@ -739,6 +754,7 @@ namespace MiniFanControl
                 : "Not Verified / Not Loaded"));
             sb.AppendLine("• Windows 11 Memory Integrity (HVCI): " + (hvci ? "ENABLED (Strict Kernel Code Integrity)" : "Disabled"));
             sb.AppendLine("• PawnIO HVCI Driver Service: " + (pawnSvc ? ("Running (" + PawnIoDriver.LastStatus + ")") : "Not Installed (optional: https://pawnio.eu)"));
+            sb.AppendLine("• PawnIO Signed Modules Loaded: " + PawnIoDriver.LoadedModulesSummary);
             sb.AppendLine("• Anti-Cheat Safe Auto-Pause (EAC/BattlEye): " + (_settings.AutoPauseForAntiCheat ? "ENABLED" : "Disabled (opt-in via Tools & Drivers)"));
             if (vanguardDetected)
                 sb.AppendLine("• Boot Anti-Cheat Notice: Riot Vanguard (vgk) is active at boot — PawnIO is recommended if legacy drivers conflict.");

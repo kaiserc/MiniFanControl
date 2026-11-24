@@ -528,6 +528,7 @@ namespace MiniFanControl
         private PictureBox _headerLogoBox;
         private int _lastSelectedModeCode = 0;
         private readonly AntiCheatMonitor _antiCheatMonitor = new AntiCheatMonitor();
+        private readonly WorkloadProfileSwitcher _workloadSwitcher = new WorkloadProfileSwitcher();
         private bool _osdHiddenForAntiCheat = false;
 
         public MainForm(bool startInDemo, bool startMinimized = false, bool isUnitTest = false)
@@ -549,6 +550,9 @@ namespace MiniFanControl
             }
             LoadSettings();
             _antiCheatMonitor.Enabled = _settings.AutoPauseForAntiCheat;
+            _workloadSwitcher.Enabled = _settings.AutoSwitchWorkloads;
+            _workloadSwitcher.Rules.Clear();
+            _workloadSwitcher.Rules.AddRange(_settings.WorkloadRules);
             _controller.HasDualFans = _settings.HasDualFans;
             _controller.RefreshIntervalMs = _settings.RefreshIntervalMs;
             EnsureProtectedExamplesPresent();
@@ -1490,6 +1494,39 @@ namespace MiniFanControl
                     PulseWatchdogHeartbeat();
                 }
                 ApplyStatusToUi(st);
+                if (!IsReadOnlyMonitoringMode && !_isSystemSuspended && !_antiCheatMonitor.IsPaused && _workloadSwitcher.Enabled)
+                {
+                    WorkloadSwitchAction wsAction = _workloadSwitcher.Evaluate(
+                        st.RtssProcessName,
+                        st.NpuActivityPct,
+                        _apuProfile != null ? _apuProfile.Name : "Balanced",
+                        _sysProfile != null ? _sysProfile.Name : "Balanced",
+                        _apuManualOverride || _sysManualOverride);
+                    if (wsAction == WorkloadSwitchAction.ApplyWorkloadProfile)
+                    {
+                        FanCurveProfile targetApu = FindProfileByName(_workloadSwitcher.TargetApuProfileName);
+                        FanCurveProfile targetSys = FindProfileByName(_workloadSwitcher.TargetSysProfileName);
+                        if (targetApu != null) { _apuProfile = targetApu; _controller.SetProfileTarget(targetApu, false); }
+                        if (targetSys != null) { _sysProfile = targetSys; _controller.SetProfileTarget(targetSys, true); }
+                        if (_statusBarLabel != null)
+                        {
+                            _statusBarLabel.Text = string.Format("⚡ Auto-switched to {0} for {1}",
+                                _workloadSwitcher.TargetApuProfileName, _workloadSwitcher.ActiveWorkloadReason);
+                        }
+                    }
+                    else if (wsAction == WorkloadSwitchAction.RestoreBaselineProfile)
+                    {
+                        FanCurveProfile baseApu = FindProfileByName(_workloadSwitcher.BaselineApuProfileName);
+                        FanCurveProfile baseSys = FindProfileByName(_workloadSwitcher.BaselineSysProfileName);
+                        if (baseApu != null) { _apuProfile = baseApu; _controller.SetProfileTarget(baseApu, false); }
+                        if (baseSys != null) { _sysProfile = baseSys; _controller.SetProfileTarget(baseSys, true); }
+                        if (_statusBarLabel != null)
+                        {
+                            _statusBarLabel.Text = string.Format("✓ Workload exited — restored baseline profile ({0})",
+                                _workloadSwitcher.BaselineApuProfileName);
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {

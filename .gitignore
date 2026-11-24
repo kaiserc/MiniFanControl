@@ -6,6 +6,8 @@ obj/
 
 # Runtime configurations & logs
 minifancontrol.cfg
+*.cfg.bak
+*.cfg.tmp
 k12-settings.cfg
 ec-probe-report.txt
 hardware-profile-submission.json

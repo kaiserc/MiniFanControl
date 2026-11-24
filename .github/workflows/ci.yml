@@ -62,10 +62,11 @@ jobs:
           set CI=true
           call build-windows.bat
 
-      - name: Validate Community Localization JSON Files
+      - name: Validate Community Localization & External Profile JSON Files
         shell: cmd
         run: |
           minifan-helper.exe validate-lang
+          minifan-helper.exe validate-profiles
 
       - name: Install Inno Setup (for Installer Compilation)
         shell: cmd

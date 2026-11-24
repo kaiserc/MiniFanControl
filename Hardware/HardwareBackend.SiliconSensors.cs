@@ -151,6 +151,16 @@ namespace MiniFanControl
             uint origCf8 = 0;
             try
             {
+                // Tier 0: Official HVCI-safe PawnIO AMDFamily17 module (zero legacy driver / VBS trap issues)
+                if (NativeInpOut.ActiveDriver == HardwareDriverEngine.PawnIO && PawnIoDriver.HasAmdSmnModule)
+                {
+                    uint pawnVal;
+                    if (PawnIoDriver.TryReadAmdSmn(smnAddress, out pawnVal) && pawnVal != 0 && pawnVal != 0xFFFFFFFF)
+                    {
+                        return pawnVal;
+                    }
+                }
+
                 // Tier 1: PCIe MMIO ECAM (MCFG 0xE0000000 / 0xF0000000).
                 // On Windows 11 with Hyper-V / Virtualization-Based Security (VBS), legacy 0xCF8/0xCFC
                 // port I/O is trapped by the hypervisor and returns 0xFFFFFFFF, whereas PCIe MMIO ECAM

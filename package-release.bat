@@ -48,6 +48,7 @@ if exist "%~dp0CONTRIBUTING.md" copy /y "%~dp0CONTRIBUTING.md" "%STAGE_DIR%\" >n
 if exist "%~dp0RELEASE_NOTES.md" copy /y "%~dp0RELEASE_NOTES.md" "%STAGE_DIR%\" >nul
 if exist "%~dp0HARDWARE_VALIDATION.md" copy /y "%~dp0HARDWARE_VALIDATION.md" "%STAGE_DIR%\" >nul
 if exist "%~dp0lang" xcopy /e /i /y "%~dp0lang" "%STAGE_DIR%\lang\" >nul
+if exist "%~dp0profiles" xcopy /e /i /y "%~dp0profiles" "%STAGE_DIR%\profiles\" >nul
 
 echo [3/5] Generating portable release archive .zip...
 powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; Compress-Archive -Path '%STAGE_DIR%\*' -DestinationPath '%ZIP_PATH%' -Force"

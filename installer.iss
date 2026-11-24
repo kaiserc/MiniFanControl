@@ -45,6 +45,7 @@ Source: "inpoutx64.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "PawnIOLib.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "PawnIO\*"; DestDir: "{app}\PawnIO"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "lang\*"; DestDir: "{app}\lang"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "profiles\*"; DestDir: "{app}\profiles"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "app.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app.manifest"; DestDir: "{app}"; Flags: ignoreversion
 Source: "logo.png"; DestDir: "{app}"; Flags: ignoreversion

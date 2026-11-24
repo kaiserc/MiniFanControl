@@ -105,6 +105,11 @@ namespace MiniFanControl
             {
                 list.Add(CustomProfile);
             }
+            List<DeviceProfile> externals = ExternalProfileRegistry.GetLoadedProfiles();
+            for (int i = 0; i < externals.Count; i++)
+            {
+                list.Add(externals[i]);
+            }
             list.AddRange(KnownProfiles);
             return list;
         }
@@ -116,6 +121,11 @@ namespace MiniFanControl
                 if (CustomProfile != null && (CustomProfile.Id.Equals(id, StringComparison.OrdinalIgnoreCase) || id.Equals("custom", StringComparison.OrdinalIgnoreCase)))
                 {
                     return CustomProfile;
+                }
+                DeviceProfile ext = ExternalProfileRegistry.FindById(id);
+                if (ext != null)
+                {
+                    return ext;
                 }
                 foreach (DeviceProfile p in KnownProfiles)
                 {
@@ -599,6 +609,11 @@ namespace MiniFanControl
                 && DeviceProfile.CustomProfile.MatchesDmi(productName, baseBoard, manufacturer))
             {
                 return DeviceProfile.CustomProfile;
+            }
+            DeviceProfile extMatch = ExternalProfileRegistry.MatchExternalProfile(productName, baseBoard, manufacturer);
+            if (extMatch != null)
+            {
+                return extMatch;
             }
             if (combined.Contains("EVO-X1") || combined.Contains("TS-12C"))
                 return DeviceProfile.FindProfile("ryzen-hx370-ec");

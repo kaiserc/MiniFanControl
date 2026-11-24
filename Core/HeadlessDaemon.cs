@@ -97,6 +97,17 @@ namespace MiniFanControl
 
         public static int Run(bool demoMode, int intervalOverrideMs, int maxTicks, bool quiet)
         {
+            return Run(demoMode, intervalOverrideMs, maxTicks, quiet, null, null);
+        }
+
+        public static int Run(
+            bool demoMode,
+            int intervalOverrideMs,
+            int maxTicks,
+            bool quiet,
+            ManualResetEvent externalStopEvent,
+            Action<Action, Action> registerServicePowerCallbacks)
+        {
             SystemHardwareInfo sysInfo = SystemHardwareInfo.Detect();
             HardwareBackend hw = null;
             DemoBackend demo = new DemoBackend();
@@ -126,7 +137,12 @@ namespace MiniFanControl
             AntiCheatMonitor antiCheat = new AntiCheatMonitor();
             antiCheat.Enabled = settings.AutoPauseForAntiCheat;
 
-            ManualResetEvent stopEvent = new ManualResetEvent(false);
+            WorkloadProfileSwitcher workloadSwitcher = new WorkloadProfileSwitcher();
+            workloadSwitcher.Enabled = settings.AutoSwitchWorkloads;
+            workloadSwitcher.Rules.AddRange(settings.WorkloadRules);
+
+            bool ownsStopEvent = (externalStopEvent == null);
+            ManualResetEvent stopEvent = externalStopEvent ?? new ManualResetEvent(false);
             int completedTicks = 0;
             int isSuspended = 0;
             int safeAutoRestored = 0;
@@ -187,23 +203,31 @@ namespace MiniFanControl
                 };
                 AppDomain.CurrentDomain.ProcessExit += processExitHandler;
 
+                Action handleSuspend = delegate
+                {
+                    Interlocked.Exchange(ref isSuspended, 1);
+                    controller.PauseForSuspend();
+                    if (!demoMode && hw != null)
+                    {
+                        try { hw.SetAuto(); } catch { }
+                    }
+                };
+                Action handleResume = delegate
+                {
+                    Interlocked.Exchange(ref isSuspended, 0);
+                    Interlocked.Exchange(ref safeAutoRestored, 0);
+                    controller.ResumeFromSuspend(!demoMode);
+                };
+
+                if (registerServicePowerCallbacks != null)
+                {
+                    registerServicePowerCallbacks(handleSuspend, handleResume);
+                }
+
                 PowerModeChangedEventHandler powerHandler = delegate(object sender, PowerModeChangedEventArgs e)
                 {
-                    if (e.Mode == PowerModes.Suspend)
-                    {
-                        Interlocked.Exchange(ref isSuspended, 1);
-                        controller.PauseForSuspend();
-                        if (!demoMode && hw != null)
-                        {
-                            try { hw.SetAuto(); } catch { }
-                        }
-                    }
-                    else if (e.Mode == PowerModes.Resume)
-                    {
-                        Interlocked.Exchange(ref isSuspended, 0);
-                        Interlocked.Exchange(ref safeAutoRestored, 0);
-                        controller.ResumeFromSuspend(!demoMode);
-                    }
+                    if (e.Mode == PowerModes.Suspend) handleSuspend();
+                    else if (e.Mode == PowerModes.Resume) handleResume();
                 };
                 try { SystemEvents.PowerModeChanged += powerHandler; } catch { }
 
@@ -218,6 +242,32 @@ namespace MiniFanControl
                             apuProf != null ? apuProf.Name : "Balanced",
                             sysProf != null ? sysProf.Name : "Balanced",
                             antiCheat.IsPaused ? " [ANTI-CHEAT PAUSED]" : ""));
+                    }
+
+                    if (workloadSwitcher.Enabled && !antiCheat.IsPaused)
+                    {
+                        WorkloadSwitchAction wsAct = workloadSwitcher.Evaluate(
+                            st.RtssProcessName,
+                            st.NpuActivityPct,
+                            apuProf != null ? apuProf.Name : "Balanced",
+                            sysProf != null ? sysProf.Name : "Balanced",
+                            controller.ApuManualOverride || controller.SysManualOverride);
+                        if (wsAct == WorkloadSwitchAction.ApplyWorkloadProfile)
+                        {
+                            FanCurveProfile nextApu = ResolveProfileByName(workloadSwitcher.TargetApuProfileName, builtIns, customProfiles);
+                            FanCurveProfile nextSys = ResolveProfileByName(workloadSwitcher.TargetSysProfileName, builtIns, customProfiles);
+                            if (nextApu != null) { apuProf = nextApu; controller.SetProfileTarget(nextApu, false); }
+                            if (nextSys != null) { sysProf = nextSys; controller.SetProfileTarget(nextSys, true); }
+                            if (!quiet) Console.WriteLine("[DAEMON] Auto-switched to " + workloadSwitcher.TargetApuProfileName + " for " + workloadSwitcher.ActiveWorkloadReason);
+                        }
+                        else if (wsAct == WorkloadSwitchAction.RestoreBaselineProfile)
+                        {
+                            FanCurveProfile baseApu = ResolveProfileByName(workloadSwitcher.BaselineApuProfileName, builtIns, customProfiles);
+                            FanCurveProfile baseSys = ResolveProfileByName(workloadSwitcher.BaselineSysProfileName, builtIns, customProfiles);
+                            if (baseApu != null) { apuProf = baseApu; controller.SetProfileTarget(baseApu, false); }
+                            if (baseSys != null) { sysProf = baseSys; controller.SetProfileTarget(baseSys, true); }
+                            if (!quiet) Console.WriteLine("[DAEMON] Workload exited — restored baseline profile (" + workloadSwitcher.BaselineApuProfileName + ").");
+                        }
                     }
 
                     if (maxTicks > 0 && tick >= maxTicks)
@@ -285,7 +335,10 @@ namespace MiniFanControl
             {
                 try { hw.Dispose(); } catch { }
             }
-            stopEvent.Close();
+            if (ownsStopEvent)
+            {
+                try { stopEvent.Close(); } catch { }
+            }
             return 0;
         }
     }
