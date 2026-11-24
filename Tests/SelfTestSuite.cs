@@ -5568,6 +5568,226 @@ namespace MiniFanControl
                 "WatchdogSupervisor Log Rotation Rollover Cap & Monotonic Timing",
                 wdRotDetail);
 
+            // 107. Driver ReaderWriterLock Shutdown Safety & Deferred CLI Preload Policy
+            bool drvSyncOk = false;
+            string drvSyncDetail = "";
+            try
+            {
+                bool cliGateOk = !Program.ShouldPreloadDriverForCommand("--help", false)
+                    && !Program.ShouldPreloadDriverForCommand("test", false)
+                    && !Program.ShouldPreloadDriverForCommand("driver-stop", false)
+                    && !Program.ShouldPreloadDriverForCommand("validate-lang", false)
+                    && !Program.ShouldPreloadDriverForCommand("export-profiles", false)
+                    && !Program.ShouldPreloadDriverForCommand("latency", false)
+                    && !Program.ShouldPreloadDriverForCommand("status", true)
+                    && !Program.ShouldPreloadDriverForCommand(null, true)
+                    && Program.ShouldPreloadDriverForCommand("status", false)
+                    && Program.ShouldPreloadDriverForCommand("daemon", false)
+                    && Program.ShouldPreloadDriverForCommand(null, false);
+
+                NativeInpOut.Shutdown();
+                PawnIoDriver.Shutdown();
+                PawnIoDriver.SimulatedAvailable = true;
+                PawnIoDriver.SimulatedExecuteHook = delegate(string fn, ulong[] inp) { return new ulong[] { 0x42 }; };
+                NativeInpOut.PreloadDriverDll();
+
+                int raceExceptions = 0;
+                Thread reader = new Thread(delegate()
+                {
+                    for (int i = 0; i < 200; i++)
+                    {
+                        try { NativeInpOut.DlPortReadPortUchar(0x0A35); }
+                        catch { Interlocked.Increment(ref raceExceptions); }
+                    }
+                });
+                reader.Start();
+                for (int i = 0; i < 10; i++)
+                {
+                    NativeInpOut.Shutdown();
+                    Thread.Sleep(1);
+                }
+                reader.Join(1000);
+                bool cleanStopped = (NativeInpOut.ActiveDriver == HardwareDriverEngine.None) && (raceExceptions == 0);
+
+                drvSyncOk = cliGateOk && cleanStopped;
+                drvSyncDetail = string.Format("CliGate={0}, RaceExceptions={1}, Stopped={2}", cliGateOk, raceExceptions, cleanStopped);
+            }
+            catch (Exception ex) { drvSyncDetail = ex.Message; }
+            finally
+            {
+                NativeInpOut.Shutdown();
+                PawnIoDriver.Shutdown();
+            }
+            Check(drvSyncOk,
+                "Driver ReaderWriterLock Shutdown Safety & Deferred CLI Preload Policy",
+                drvSyncDetail);
+
+            // 108. Atomic AppSettings Write, Profile Clone Non-Mutation & CustomProfile Deduplication
+            bool settingsIsoOk = false;
+            string settingsIsoDetail = "";
+            string tempCfg = null;
+            try
+            {
+                tempCfg = Path.Combine(Path.GetTempPath(), "mfc_cfg_test_" + Guid.NewGuid().ToString("N") + ".cfg");
+                AppSettings.WriteAllLinesAtomic(tempCfg, new string[]
+                {
+                    "HardwareProfile=gmktec-k12",
+                    "RegCpuTemp=0x79",
+                    "CustomProfile=MyTest|40:30;80:100|40:30;80:100"
+                });
+                // Second atomic write exercises File.Replace + .bak creation
+                AppSettings.WriteAllLinesAtomic(tempCfg, new string[]
+                {
+                    "HardwareProfile=gmktec-k12",
+                    "RegCpuTemp=0x7A",
+                    "CustomProfile=MyTest|40:35;80:100|40:35;80:100"
+                });
+
+                byte staticOrig = DeviceProfile.FindProfile("gmktec-k12").RegCpuTemp;
+                HardwareBackend testHw = new HardwareBackend();
+                List<FanCurveProfile> customs = new List<FanCurveProfile>
+                {
+                    new FanCurveProfile("MyTest", false, -1,
+                        new CurvePoint[] { new CurvePoint(40, 20), new CurvePoint(80, 90) },
+                        new CurvePoint[] { new CurvePoint(40, 20), new CurvePoint(80, 90) })
+                };
+                AppSettings loaded = new AppSettings();
+                loaded.LoadFromPath(tempCfg, null, testHw, customs);
+
+                bool hwClonedOverride = (testHw.Profile != null && testHw.Profile.RegCpuTemp == 0x7A);
+                bool staticUntouched = (DeviceProfile.FindProfile("gmktec-k12").RegCpuTemp == staticOrig && staticOrig == 0x70);
+                bool deduped = (customs.Count == 1 && customs[0].ApuPoints[0].Pct == 35);
+                bool noStrayTmp = !File.Exists(tempCfg + ".tmp");
+
+                settingsIsoOk = hwClonedOverride && staticUntouched && deduped && noStrayTmp;
+                settingsIsoDetail = string.Format("Override=0x{0:X2}, StaticOrig=0x{1:X2}, CustomCount={2}, NoTmp={3}",
+                    testHw.Profile != null ? testHw.Profile.RegCpuTemp : 0,
+                    DeviceProfile.FindProfile("gmktec-k12").RegCpuTemp, customs.Count, noStrayTmp);
+            }
+            catch (Exception ex) { settingsIsoDetail = ex.Message; }
+            finally
+            {
+                if (!string.IsNullOrEmpty(tempCfg))
+                {
+                    try { if (File.Exists(tempCfg)) File.Delete(tempCfg); } catch { }
+                    try { if (File.Exists(tempCfg + ".tmp")) File.Delete(tempCfg + ".tmp"); } catch { }
+                    try { if (File.Exists(tempCfg + ".bak")) File.Delete(tempCfg + ".bak"); } catch { }
+                }
+            }
+            Check(settingsIsoOk,
+                "Atomic AppSettings Write, Profile Clone Non-Mutation & CustomProfile Deduplication",
+                settingsIsoDetail);
+
+            // 109. Unverified Profile Read-Only Invariant (IsVerified) & HardwareBackend.SetMode Fail-Safe
+            bool unvInvOk = false;
+            string unvInvDetail = "";
+            try
+            {
+                DeviceProfile customUnv = new DeviceProfile
+                {
+                    Id = "custom-unverified-board",
+                    DisplayName = "Custom Unverified",
+                    IsVerified = false,
+                    IsReadOnly = true
+                };
+                HardwareBackend unvCustomHw = new HardwareBackend(customUnv);
+                var pts = new CurvePoint[] { new CurvePoint(40, 30), new CurvePoint(80, 100) };
+                var builtIns = new FanCurveProfile[] { new FanCurveProfile("Balanced", true, 0, pts, pts) };
+                using (var svc = new FanControllerService(unvCustomHw, new DemoBackend(), builtIns, false))
+                {
+                    svc.ClearStaleWriteErrors();
+                    bool roAfterClear = customUnv.IsReadOnly;
+                    bool autoRes = svc.ApplyAutoAll();
+                    bool roAfterAuto = customUnv.IsReadOnly;
+
+                    // Verify SetMode returns false safely without throwing when driver isn't open
+                    NativeInpOut.Shutdown();
+                    HardwareBackend noDrvHw = new HardwareBackend(DeviceProfile.FindProfile("gmktec-k12"));
+                    bool modeSafeFalse = !noDrvHw.SetMode(1);
+
+                    unvInvOk = roAfterClear && !autoRes && roAfterAuto && modeSafeFalse;
+                    unvInvDetail = string.Format("RoAfterClear={0}, RoAfterAuto={1}, SetModeSafe={2}",
+                        roAfterClear, roAfterAuto, modeSafeFalse);
+                }
+            }
+            catch (Exception ex) { unvInvDetail = ex.Message; }
+            Check(unvInvOk,
+                "Unverified Profile Read-Only Invariant (IsVerified) & HardwareBackend.SetMode Fail-Safe",
+                unvInvDetail);
+
+            // 110. Narrow FpsMonitor Crash Filter & Zero-Alloc EtwPresentTracker Ring Buffer Wrap
+            bool etwFpsPolishOk = false;
+            string etwFpsPolishDetail = "";
+            try
+            {
+                bool gameAllowed = !FpsMonitor.IsIgnoredProcess("CrashBandicoot4.exe")
+                    && !FpsMonitor.IsIgnoredProcess("CrashBandicootNSaneTrilogy.exe");
+                bool crashHandlersIgnored = FpsMonitor.IsIgnoredProcess("UnityCrashHandler64.exe")
+                    && FpsMonitor.IsIgnoredProcess("CrashReporter.exe")
+                    && FpsMonitor.IsIgnoredProcess("crashpad_handler.exe")
+                    && FpsMonitor.IsIgnoredProcess("CrashDumpHelper.exe");
+
+                EtwPresentTracker ringTracker = new EtwPresentTracker(delegate(uint p) { return p == 4242 ? "CrashBandicoot4.exe" : null; });
+                double qFreq = 10000000.0;
+                long t0 = 500000000L;
+                // Push 20 frames without scanout to force multiple 8-slot ring wraps, then flip & scanout
+                for (int i = 0; i < 20; i++)
+                {
+                    long ts = t0 + i * 100000L;
+                    ringTracker.ProcessEvent(EtwPresentTracker.ProviderDxgi, EtwPresentTracker.DXGI_PRESENT_MPO_START, 4242, ts, qFreq);
+                }
+                long lastStart = t0 + 19 * 100000L;
+                ringTracker.ProcessEvent(EtwPresentTracker.ProviderDxgKrnl, EtwPresentTracker.DXGKRNL_MMIO_FLIP_MPO, 4242, lastStart + 40000L, qFreq);
+                ringTracker.ProcessEvent(EtwPresentTracker.ProviderDxgKrnl, EtwPresentTracker.DXGKRNL_HSYNC_DPC_MPO, 0, lastStart + 90000L, qFreq);
+                EtwLatencyTelemetry snap = ringTracker.GetSnapshot(lastStart + 100000L, qFreq, true);
+                bool ringOk = snap.HasLiveFrames && snap.ProcessName == "CrashBandicoot4.exe" && snap.DisplayLatencyMs > 0.0 && snap.FlipMode == "MPO Flip";
+
+                etwFpsPolishOk = gameAllowed && crashHandlersIgnored && ringOk;
+                etwFpsPolishDetail = string.Format("GameAllowed={0}, HandlersIgnored={1}, RingWrapOk={2}(Lat={3:0.0}ms)",
+                    gameAllowed, crashHandlersIgnored, ringOk, snap.DisplayLatencyMs);
+            }
+            catch (Exception ex) { etwFpsPolishDetail = ex.Message; }
+            Check(etwFpsPolishOk,
+                "Narrow FpsMonitor Crash Filter & Zero-Alloc EtwPresentTracker Ring Buffer Wrap",
+                etwFpsPolishDetail);
+
+            // 111. Independent APU & Sys Fan Cooldown Hysteresis (NVMe Rise Not Masked by APU Dip)
+            bool splitHystOk = false;
+            string splitHystDetail = "";
+            try
+            {
+                CurvePoint[] linPts = new CurvePoint[] { new CurvePoint(40, 30), new CurvePoint(60, 50), new CurvePoint(80, 90) };
+                FanCurveProfile customBoth = new FanCurveProfile("CustomSplit", false, -1, linPts, linPts);
+                FanCurveProfile[] builtIns = HeadlessDaemon.CreateBuiltInProfiles();
+                DemoBackend hystDemo = new DemoBackend();
+                using (FanControllerService svc = new FanControllerService(null, hystDemo, builtIns, true))
+                {
+                    svc.HasDualFans = true;
+                    svc.SetProfileTarget(customBoth, false);
+                    svc.SetProfileTarget(customBoth, true);
+
+                    // Step 1: APU=60°C, NVMe=50°C -> both fans settle at 50%
+                    svc.SetInitialStatus(new FanStatus { CpuTemp = 60, GpuTemp = 50, NvmeTemp = 50 });
+                    svc.EvaluateAndApplyFanProfiles(60);
+                    int apu1 = svc.LastAppliedApuPct;
+                    int sys1 = svc.LastAppliedSysPct;
+
+                    // Step 2: APU dips 2°C to 58°C (within 4°C hysteresis -> APU must hold 50%),
+                    // while NVMe spikes to 76°C -> Sys fan MUST immediately ramp to >= 80%!
+                    svc.SetInitialStatus(new FanStatus { CpuTemp = 58, GpuTemp = 50, NvmeTemp = 76 });
+                    svc.EvaluateAndApplyFanProfiles(58);
+                    int apu2 = svc.LastAppliedApuPct;
+                    int sys2 = svc.LastAppliedSysPct;
+
+                    splitHystOk = (apu1 == 50) && (sys1 == 50) && (apu2 == 50) && (sys2 >= 80);
+                    splitHystDetail = string.Format("Step1(APU={0}%,Sys={1}%), Step2(APU={2}%,Sys={3}%)", apu1, sys1, apu2, sys2);
+                }
+            }
+            catch (Exception ex) { splitHystDetail = ex.Message; }
+            Check(splitHystOk,
+                "Independent APU & Sys Fan Cooldown Hysteresis (NVMe Rise Not Masked by APU Dip)",
+                splitHystDetail);
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));

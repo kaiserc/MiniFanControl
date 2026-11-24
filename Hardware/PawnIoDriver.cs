@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace MiniFanControl
 {
@@ -89,6 +90,7 @@ namespace MiniFanControl
         private delegate int PawnIoCloseDelegate(IntPtr handle);
 
         private static readonly object _sync = new object();
+        private static readonly ReaderWriterLockSlim _ioLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         private static IntPtr _hLib = IntPtr.Zero;
         private static IntPtr _hLpcModule = IntPtr.Zero;
         private static IntPtr _hAcpiEcModule = IntPtr.Zero;
@@ -460,32 +462,40 @@ namespace MiniFanControl
             value = 0xFF;
             if (!NativeInpOut.IsPortWhitelisted(port, false)) return false;
 
-            if (SimulatedAvailable && SimulatedExecuteHook != null)
-            {
-                ulong[] res = SimulatedExecuteHook("ioctl_pio_read", new ulong[] { port, 1UL });
-                if (res != null && res.Length > 0)
-                {
-                    value = (byte)(res[0] & 0xFF);
-                    return true;
-                }
-                return false;
-            }
-
-            if (!HasLpcModule || _hLpcModule == IntPtr.Zero || _fnExecute == null) return false;
+            _ioLock.EnterReadLock();
             try
             {
-                ulong[] inp = new ulong[] { port, 1UL };
-                ulong[] outp = new ulong[1];
-                UIntPtr retSize;
-                int hr = _fnExecute(_hLpcModule, "ioctl_pio_read", inp, new UIntPtr((uint)inp.Length), outp, new UIntPtr((uint)outp.Length), out retSize);
-                if (hr == 0 && retSize.ToUInt64() >= 1)
+                if (SimulatedAvailable && SimulatedExecuteHook != null)
                 {
-                    value = (byte)(outp[0] & 0xFF);
-                    return true;
+                    ulong[] res = SimulatedExecuteHook("ioctl_pio_read", new ulong[] { port, 1UL });
+                    if (res != null && res.Length > 0)
+                    {
+                        value = (byte)(res[0] & 0xFF);
+                        return true;
+                    }
+                    return false;
                 }
+
+                if (!HasLpcModule || _hLpcModule == IntPtr.Zero || _fnExecute == null) return false;
+                try
+                {
+                    ulong[] inp = new ulong[] { port, 1UL };
+                    ulong[] outp = new ulong[1];
+                    UIntPtr retSize;
+                    int hr = _fnExecute(_hLpcModule, "ioctl_pio_read", inp, new UIntPtr((uint)inp.Length), outp, new UIntPtr((uint)outp.Length), out retSize);
+                    if (hr == 0 && retSize.ToUInt64() >= 1)
+                    {
+                        value = (byte)(outp[0] & 0xFF);
+                        return true;
+                    }
+                }
+                catch { }
+                return false;
             }
-            catch { }
-            return false;
+            finally
+            {
+                _ioLock.ExitReadLock();
+            }
         }
 
         /// <summary>
@@ -496,23 +506,31 @@ namespace MiniFanControl
         {
             if (!NativeInpOut.IsPortWhitelisted(port, true)) return false;
 
-            if (SimulatedAvailable && SimulatedExecuteHook != null)
-            {
-                ulong[] res = SimulatedExecuteHook("ioctl_pio_write", new ulong[] { port, 1UL, value });
-                return res != null;
-            }
-
-            if (!HasLpcModule || _hLpcModule == IntPtr.Zero || _fnExecute == null) return false;
+            _ioLock.EnterReadLock();
             try
             {
-                ulong[] inp = new ulong[] { port, 1UL, value };
-                ulong[] outp = new ulong[1];
-                UIntPtr retSize;
-                int hr = _fnExecute(_hLpcModule, "ioctl_pio_write", inp, new UIntPtr((uint)inp.Length), outp, new UIntPtr((uint)outp.Length), out retSize);
-                return hr == 0;
+                if (SimulatedAvailable && SimulatedExecuteHook != null)
+                {
+                    ulong[] res = SimulatedExecuteHook("ioctl_pio_write", new ulong[] { port, 1UL, value });
+                    return res != null;
+                }
+
+                if (!HasLpcModule || _hLpcModule == IntPtr.Zero || _fnExecute == null) return false;
+                try
+                {
+                    ulong[] inp = new ulong[] { port, 1UL, value };
+                    ulong[] outp = new ulong[1];
+                    UIntPtr retSize;
+                    int hr = _fnExecute(_hLpcModule, "ioctl_pio_write", inp, new UIntPtr((uint)inp.Length), outp, new UIntPtr((uint)outp.Length), out retSize);
+                    return hr == 0;
+                }
+                catch { }
+                return false;
             }
-            catch { }
-            return false;
+            finally
+            {
+                _ioLock.ExitReadLock();
+            }
         }
 
         /// <summary>
@@ -521,32 +539,40 @@ namespace MiniFanControl
         public static bool TryReadAcpiEcByte(byte reg, out byte value)
         {
             value = 0xFF;
-            if (SimulatedAvailable && SimulatedExecuteHook != null)
-            {
-                ulong[] res = SimulatedExecuteHook("ioctl_read", new ulong[] { reg });
-                if (res != null && res.Length > 0)
-                {
-                    value = (byte)(res[0] & 0xFF);
-                    return true;
-                }
-                return false;
-            }
-
-            if (!HasAcpiEcModule || _hAcpiEcModule == IntPtr.Zero || _fnExecute == null) return false;
+            _ioLock.EnterReadLock();
             try
             {
-                ulong[] inp = new ulong[] { reg };
-                ulong[] outp = new ulong[1];
-                UIntPtr retSize;
-                int hr = _fnExecute(_hAcpiEcModule, "ioctl_read", inp, new UIntPtr((uint)inp.Length), outp, new UIntPtr((uint)outp.Length), out retSize);
-                if (hr == 0 && retSize.ToUInt64() >= 1)
+                if (SimulatedAvailable && SimulatedExecuteHook != null)
                 {
-                    value = (byte)(outp[0] & 0xFF);
-                    return true;
+                    ulong[] res = SimulatedExecuteHook("ioctl_read", new ulong[] { reg });
+                    if (res != null && res.Length > 0)
+                    {
+                        value = (byte)(res[0] & 0xFF);
+                        return true;
+                    }
+                    return false;
                 }
+
+                if (!HasAcpiEcModule || _hAcpiEcModule == IntPtr.Zero || _fnExecute == null) return false;
+                try
+                {
+                    ulong[] inp = new ulong[] { reg };
+                    ulong[] outp = new ulong[1];
+                    UIntPtr retSize;
+                    int hr = _fnExecute(_hAcpiEcModule, "ioctl_read", inp, new UIntPtr((uint)inp.Length), outp, new UIntPtr((uint)outp.Length), out retSize);
+                    if (hr == 0 && retSize.ToUInt64() >= 1)
+                    {
+                        value = (byte)(outp[0] & 0xFF);
+                        return true;
+                    }
+                }
+                catch { }
+                return false;
             }
-            catch { }
-            return false;
+            finally
+            {
+                _ioLock.ExitReadLock();
+            }
         }
 
         /// <summary>
@@ -554,58 +580,74 @@ namespace MiniFanControl
         /// </summary>
         public static bool TryWriteAcpiEcByte(byte reg, byte value)
         {
-            if (SimulatedAvailable && SimulatedExecuteHook != null)
-            {
-                ulong[] res = SimulatedExecuteHook("ioctl_write", new ulong[] { reg, value });
-                return res != null;
-            }
-
-            if (!HasAcpiEcModule || _hAcpiEcModule == IntPtr.Zero || _fnExecute == null) return false;
+            _ioLock.EnterReadLock();
             try
             {
-                ulong[] inp = new ulong[] { reg, value };
-                ulong[] outp = new ulong[1];
-                UIntPtr retSize;
-                int hr = _fnExecute(_hAcpiEcModule, "ioctl_write", inp, new UIntPtr((uint)inp.Length), outp, new UIntPtr((uint)outp.Length), out retSize);
-                return hr == 0;
+                if (SimulatedAvailable && SimulatedExecuteHook != null)
+                {
+                    ulong[] res = SimulatedExecuteHook("ioctl_write", new ulong[] { reg, value });
+                    return res != null;
+                }
+
+                if (!HasAcpiEcModule || _hAcpiEcModule == IntPtr.Zero || _fnExecute == null) return false;
+                try
+                {
+                    ulong[] inp = new ulong[] { reg, value };
+                    ulong[] outp = new ulong[1];
+                    UIntPtr retSize;
+                    int hr = _fnExecute(_hAcpiEcModule, "ioctl_write", inp, new UIntPtr((uint)inp.Length), outp, new UIntPtr((uint)outp.Length), out retSize);
+                    return hr == 0;
+                }
+                catch { }
+                return false;
             }
-            catch { }
-            return false;
+            finally
+            {
+                _ioLock.ExitReadLock();
+            }
         }
 
         public static void Shutdown()
         {
             lock (_sync)
             {
-                if (_hLpcModule != IntPtr.Zero && _fnClose != null)
+                _ioLock.EnterWriteLock();
+                try
                 {
-                    try { _fnClose(_hLpcModule); } catch { }
-                    _hLpcModule = IntPtr.Zero;
+                    if (_hLpcModule != IntPtr.Zero && _fnClose != null)
+                    {
+                        try { _fnClose(_hLpcModule); } catch { }
+                        _hLpcModule = IntPtr.Zero;
+                    }
+                    if (_hAcpiEcModule != IntPtr.Zero && _fnClose != null)
+                    {
+                        try { _fnClose(_hAcpiEcModule); } catch { }
+                        _hAcpiEcModule = IntPtr.Zero;
+                    }
+                    _fnVersion = null;
+                    _fnOpen = null;
+                    _fnLoad = null;
+                    _fnExecute = null;
+                    _fnClose = null;
+                    if (_hLib != IntPtr.Zero)
+                    {
+                        try { FreeLibrary(_hLib); } catch { }
+                        _hLib = IntPtr.Zero;
+                    }
+                    IsLibraryLoaded = false;
+                    IsSignatureVerified = false;
+                    HasLpcModule = false;
+                    HasAcpiEcModule = false;
+                    DriverVersionRaw = 0;
+                    LastIntegrityError = null;
+                    SimulatedAvailable = false;
+                    SimulatedExecuteHook = null;
+                    SimulatedSignatureVerifier = null;
                 }
-                if (_hAcpiEcModule != IntPtr.Zero && _fnClose != null)
+                finally
                 {
-                    try { _fnClose(_hAcpiEcModule); } catch { }
-                    _hAcpiEcModule = IntPtr.Zero;
+                    _ioLock.ExitWriteLock();
                 }
-                if (_hLib != IntPtr.Zero)
-                {
-                    try { FreeLibrary(_hLib); } catch { }
-                    _hLib = IntPtr.Zero;
-                }
-                _fnVersion = null;
-                _fnOpen = null;
-                _fnLoad = null;
-                _fnExecute = null;
-                _fnClose = null;
-                IsLibraryLoaded = false;
-                IsSignatureVerified = false;
-                HasLpcModule = false;
-                HasAcpiEcModule = false;
-                DriverVersionRaw = 0;
-                LastIntegrityError = null;
-                SimulatedAvailable = false;
-                SimulatedExecuteHook = null;
-                SimulatedSignatureVerifier = null;
             }
         }
     }

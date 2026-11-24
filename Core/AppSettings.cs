@@ -113,15 +113,30 @@ namespace MiniFanControl
 
         public void Load(SystemHardwareInfo sysInfo, HardwareBackend hw, List<FanCurveProfile> customProfiles)
         {
+            LoadFromPath(GetSettingsPath(), sysInfo, hw, customProfiles);
+        }
+
+        public void LoadFromPath(string path, SystemHardwareInfo sysInfo, HardwareBackend hw, List<FanCurveProfile> customProfiles)
+        {
             try
             {
-                string path = GetSettingsPath();
-                if (!File.Exists(path)) return;
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
 
                 LegacyCustomName = null;
                 ApuModeName = null;
                 SysModeName = null;
-                DeviceProfile prof = sysInfo != null ? sysInfo.MatchedProfile : DeviceProfile.KnownProfiles[0];
+                DeviceProfile prof = sysInfo != null ? sysInfo.MatchedProfile : (hw != null && hw.Profile != null ? hw.Profile : DeviceProfile.KnownProfiles[0]);
+                bool profCloned = false;
+                Action ensureClonedProfile = delegate
+                {
+                    if (!profCloned && prof != null)
+                    {
+                        prof = prof.Clone();
+                        profCloned = true;
+                        if (sysInfo != null) sysInfo.MatchedProfile = prof;
+                        if (hw != null) hw.Profile = prof;
+                    }
+                };
 
                 foreach (string rawLine in File.ReadAllLines(path))
                 {
@@ -137,10 +152,21 @@ namespace MiniFanControl
                             string name = segments[0].Trim();
                             CurvePoint[] apuPts = ParsePointList(segments[1]);
                             CurvePoint[] sysPts = segments.Length >= 3 ? ParsePointList(segments[2]) : FanCurveProfile.ClonePoints(apuPts);
-                            if (!string.IsNullOrEmpty(name) && apuPts.Length >= 2)
+                            if (!string.IsNullOrEmpty(name) && apuPts.Length >= 2 && customProfiles != null)
                             {
                                 if (sysPts.Length < 2) sysPts = FanCurveProfile.ClonePoints(apuPts);
-                                customProfiles.Add(new FanCurveProfile(name, false, -1, apuPts, sysPts));
+                                FanCurveProfile loadedProf = new FanCurveProfile(name, false, -1, apuPts, sysPts);
+                                int existingIdx = -1;
+                                for (int idx = 0; idx < customProfiles.Count; idx++)
+                                {
+                                    if (customProfiles[idx] != null && customProfiles[idx].Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        existingIdx = idx;
+                                        break;
+                                    }
+                                }
+                                if (existingIdx >= 0) customProfiles[existingIdx] = loadedProf;
+                                else customProfiles.Add(loadedProf);
                             }
                         }
                         continue;
@@ -189,6 +215,7 @@ namespace MiniFanControl
                             if (explicitProf != null)
                             {
                                 prof = explicitProf;
+                                profCloned = false;
                                 if (sysInfo != null) sysInfo.MatchedProfile = explicitProf;
                                 if (hw != null) hw.Profile = explicitProf;
                             }
@@ -208,16 +235,16 @@ namespace MiniFanControl
                     else if (k == "ApuMode") ApuModeName = v;
                     else if (k == "SysMode") SysModeName = v;
                     else if (k == "BiosPowerMode" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal) && intVal >= -1 && intVal <= 2) BiosPowerMode = intVal;
-                    else if (k == "RegModeStatus" && TryParseHexOrDecByte(v, out regByte)) prof.RegModeStatus = regByte;
-                    else if (k == "RegModeCmd" && TryParseHexOrDecByte(v, out regByte)) prof.RegModeCmd = regByte;
-                    else if (k == "RegFan1Ctrl" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan1Ctrl = regByte;
-                    else if (k == "RegFan2Ctrl" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan2Ctrl = regByte;
-                    else if (k == "RegFan1Hi" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan1Hi = regByte;
-                    else if (k == "RegFan1Lo" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan1Lo = regByte;
-                    else if (k == "RegFan2Hi" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan2Hi = regByte;
-                    else if (k == "RegFan2Lo" && TryParseHexOrDecByte(v, out regByte)) prof.RegFan2Lo = regByte;
-                    else if (k == "RegCpuTemp" && TryParseHexOrDecByte(v, out regByte)) prof.RegCpuTemp = regByte;
-                    else if (k == "RegGpuTemp" && TryParseHexOrDecByte(v, out regByte)) prof.RegGpuTemp = regByte;
+                    else if (k == "RegModeStatus" && TryParseHexOrDecByte(v, out regByte)) { ensureClonedProfile(); prof.RegModeStatus = regByte; }
+                    else if (k == "RegModeCmd" && TryParseHexOrDecByte(v, out regByte)) { ensureClonedProfile(); prof.RegModeCmd = regByte; }
+                    else if (k == "RegFan1Ctrl" && TryParseHexOrDecByte(v, out regByte)) { ensureClonedProfile(); prof.RegFan1Ctrl = regByte; }
+                    else if (k == "RegFan2Ctrl" && TryParseHexOrDecByte(v, out regByte)) { ensureClonedProfile(); prof.RegFan2Ctrl = regByte; }
+                    else if (k == "RegFan1Hi" && TryParseHexOrDecByte(v, out regByte)) { ensureClonedProfile(); prof.RegFan1Hi = regByte; }
+                    else if (k == "RegFan1Lo" && TryParseHexOrDecByte(v, out regByte)) { ensureClonedProfile(); prof.RegFan1Lo = regByte; }
+                    else if (k == "RegFan2Hi" && TryParseHexOrDecByte(v, out regByte)) { ensureClonedProfile(); prof.RegFan2Hi = regByte; }
+                    else if (k == "RegFan2Lo" && TryParseHexOrDecByte(v, out regByte)) { ensureClonedProfile(); prof.RegFan2Lo = regByte; }
+                    else if (k == "RegCpuTemp" && TryParseHexOrDecByte(v, out regByte)) { ensureClonedProfile(); prof.RegCpuTemp = regByte; }
+                    else if (k == "RegGpuTemp" && TryParseHexOrDecByte(v, out regByte)) { ensureClonedProfile(); prof.RegGpuTemp = regByte; }
                     else if ((k == "EcAccess" || k == "AccessMethod") && hw != null)
                     {
                         if (v.Equals("PortIo", StringComparison.OrdinalIgnoreCase) || v.Equals("Port", StringComparison.OrdinalIgnoreCase) || v.Equals("0x62", StringComparison.OrdinalIgnoreCase))
@@ -232,6 +259,34 @@ namespace MiniFanControl
             catch (Exception ex)
             {
                 WatchdogSupervisor.LogWatchdogEvent("LoadSettings failed: " + ex.Message);
+            }
+        }
+
+        public static void WriteAllLinesAtomic(string path, string[] lines)
+        {
+            string dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+            string tmpPath = path + ".tmp";
+            string bakPath = path + ".bak";
+            File.WriteAllLines(tmpPath, lines);
+            if (File.Exists(path))
+            {
+                try
+                {
+                    File.Replace(tmpPath, path, bakPath, true);
+                }
+                catch
+                {
+                    File.Copy(tmpPath, path, true);
+                    try { File.Delete(tmpPath); } catch { }
+                }
+            }
+            else
+            {
+                File.Move(tmpPath, path);
             }
         }
 
@@ -278,12 +333,7 @@ namespace MiniFanControl
                 }
 
                 string path = GetSettingsPath();
-                string dir = Path.GetDirectoryName(path);
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-                File.WriteAllLines(path, lines.ToArray());
+                WriteAllLinesAtomic(path, lines.ToArray());
             }
             catch (Exception ex)
             {

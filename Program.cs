@@ -81,13 +81,30 @@ namespace MiniFanControl
             return FanControllerService.ClampManualFanDuty(fanId, requestedPct, force, out wasClamped, out minFloor);
         }
 
+        internal static bool ShouldPreloadDriverForCommand(string cmd, bool demoMode)
+        {
+            if (demoMode) return false;
+            if (string.IsNullOrEmpty(cmd)) return true; // GUI mode (after single-instance check)
+            string c = cmd.Trim().ToLowerInvariant();
+            if (c == "--help" || c == "-h" || c == "/?" || c == "help" ||
+                c == "test" || c == "--test" ||
+                c == "hw-matrix" || c == "--hw-matrix" ||
+                c == "export-profiles" || c == "--export-profiles" ||
+                c == "driver-stop" ||
+                c == "validate-lang" || c == "--validate-lang" ||
+                c == "gen-icon" || c == "--gen-icon" ||
+                c == "latency" || c == "--latency")
+            {
+                return false;
+            }
+            return true;
+        }
+
         [STAThread]
 
         public static int Main(string[] args)
 
         {
-
-            NativeInpOut.PreloadDriverDll();
 
             bool demoMode = false;
 
@@ -168,6 +185,31 @@ namespace MiniFanControl
 
                 AttachConsole(ATTACH_PARENT_PROCESS);
 
+                bool preloadedForCli = false;
+                if (ShouldPreloadDriverForCommand(cmd, demoMode))
+                {
+                    NativeInpOut.PreloadDriverDll();
+                    preloadedForCli = true;
+                }
+
+                try
+                {
+                    return RunCliCommand(cmd, cmdArg1, cmdArg2, args, demoMode, forceWrite);
+                }
+                finally
+                {
+                    if (preloadedForCli)
+                    {
+                        try { NativeInpOut.Shutdown(); } catch { }
+                    }
+                }
+            }
+
+            return RunGuiApplication(demoMode, startMinimized);
+        }
+
+        private static int RunCliCommand(string cmd, string cmdArg1, string cmdArg2, string[] args, bool demoMode, bool forceWrite)
+        {
                 if (cmd == "--help" || cmd == "-h" || cmd == "/?" || cmd == "help")
 
                 {
@@ -194,7 +236,7 @@ namespace MiniFanControl
                     Console.WriteLine("  diff-scan / ec-scan [--demo]          Run EC differential sensor scanner (Tier 2 discovery)");
                     Console.WriteLine("  calibrate [passes] [--demo]           Execute multi-pass fan calibration curve analysis");
 
-                    Console.WriteLine("  test                                  Run 106-point automated safety & regression suite");
+                    Console.WriteLine("  test                                  Run 111-point automated safety & regression suite");
                     Console.WriteLine("  hw-matrix                             Run multi-profile hardware validation matrix");
                     Console.WriteLine("  export-profiles [--json]              Export supported hardware profiles & Super I/O IDs");
 
@@ -819,7 +861,10 @@ namespace MiniFanControl
 
                 }
 
-            }
+        }
+
+        private static int RunGuiApplication(bool demoMode, bool startMinimized)
+        {
 
 #if NET5_0_OR_GREATER
             Application.SetHighDpiMode(HighDpiMode.DpiUnawareGdiScaled);
@@ -925,18 +970,35 @@ namespace MiniFanControl
                     }
 
                     Process current = Process.GetCurrentProcess();
-                    foreach (Process p in Process.GetProcessesByName(current.ProcessName))
+                    Process[] procs = Process.GetProcessesByName(current.ProcessName);
+                    try
                     {
-                        if (p.Id != current.Id && p.MainWindowHandle != IntPtr.Zero)
+                        bool activated = false;
+                        foreach (Process p in procs)
                         {
-                            ShowWindow(p.MainWindowHandle, SW_RESTORE);
-                            SetForegroundWindow(p.MainWindowHandle);
-                            break;
+                            if (!activated && p.Id != current.Id && p.MainWindowHandle != IntPtr.Zero)
+                            {
+                                ShowWindow(p.MainWindowHandle, SW_RESTORE);
+                                SetForegroundWindow(p.MainWindowHandle);
+                                activated = true;
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        foreach (Process p in procs)
+                        {
+                            try { p.Dispose(); } catch { }
                         }
                     }
                 }
                 catch { }
                 return 0;
+            }
+
+            if (ShouldPreloadDriverForCommand(null, demoMode))
+            {
+                NativeInpOut.PreloadDriverDll();
             }
 
             try

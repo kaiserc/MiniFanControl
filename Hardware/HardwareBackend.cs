@@ -253,6 +253,12 @@ namespace MiniFanControl
         public void ReinitializeHardwareAfterResume()
         {
             if (_isSimulatedMode) return;
+            if (_linAddr != IntPtr.Zero)
+            {
+                try { NativeInpOut.UnmapPhysicalMemory(_physHandle, _linAddr); } catch { }
+                _linAddr = IntPtr.Zero;
+                _physHandle = IntPtr.Zero;
+            }
             _isInitialized = false;
             ResetTachometerFilterState();
             ResetSuperIoChannelLatch();
@@ -980,7 +986,7 @@ namespace MiniFanControl
         {
             if (code < 0 || code > 2) return false;
             if (Profile != null && Profile.IsReadOnly) return false; // Fail-closed: read-only unverified hardware protection
-            EnsureOpen();
+            try { EnsureOpen(); } catch { return false; }
             if (SuperIoBaseAddr != 0 || AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
             {
                 // Super I/O chips control PWM outputs directly; ACPI EC mode registers do not apply.

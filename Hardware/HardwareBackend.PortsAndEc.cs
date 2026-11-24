@@ -129,59 +129,30 @@ namespace MiniFanControl
         }
 
         public static byte ReadPortByte(ushort port)
-
         {
-
             if (!IsPortWhitelisted(port, false)) return 0xFF;
-
             try
-
             {
-
-                byte v = NativeInpOut.DlPortReadPortUchar(port);
-
-                if (v != 0xFF) return v;
-
-                int alt = NativeInpOut.Inp32(port);
-
-                return (byte)(alt & 0xFF);
-
+                return NativeInpOut.DlPortReadPortUchar(port);
             }
-
             catch (Exception)
             {
-                // InpOut driver access blocked or port unmapped; return safe 0xFF
+                // Driver access blocked or port unmapped; return safe 0xFF
                 return 0xFF;
             }
-
         }
 
         public static void WritePortByte(ushort port, byte val)
-
         {
-
             if (!IsPortWhitelisted(port, true)) return;
-
             try
-
             {
-
                 NativeInpOut.DlPortWritePortUchar(port, val);
-
             }
-
             catch (Exception)
             {
-                try 
-                { 
-                    NativeInpOut.Out32(port, (short)val); 
-                } 
-                catch (Exception) 
-                { 
-                    // Secondary InpOut fallback write failed safely
-                }
+                // Driver write failed safely
             }
-
         }
 
         private static bool EcWaitIbfClear(ushort cmdPort, int timeoutMs = 30)

@@ -46,6 +46,11 @@ namespace MiniFanControl
         public string BoundProductName  = "";
         public string BoundBaseBoard    = "";
 
+        public DeviceProfile Clone()
+        {
+            return (DeviceProfile)MemberwiseClone();
+        }
+
         public static readonly DeviceProfile[] KnownProfiles = new DeviceProfile[]
         {
             new DeviceProfile

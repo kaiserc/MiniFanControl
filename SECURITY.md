@@ -6,8 +6,8 @@ Security updates and hardware-safety fixes are provided for the current release 
 
 | Version | Supported |
 | :--- | :---: |
-| `1.1.x` (Latest) | :white_check_mark: |
-| `< 1.1.0` | :x: |
+| `1.2.x` (Latest) | :white_check_mark: |
+| `< 1.2.0` | :x: |
 
 ---
 
@@ -35,5 +35,5 @@ MiniFanControl operates close to hardware and follows a **fail-closed, least-pri
 
 - **Fail-Closed Hardware Writes:** If hardware detection, `EcBusMutex` acquisition (`Global\Access_EC`, `Global\Access_ISABUS.HTP.Method`, `Global\Access_SMBUS.HTP.Method`), port validation, or register read-back fails, writes are aborted and the system falls back to safe read-only monitoring or BIOS Auto.
 - **Whitelisted Platforms & Ports:** Writes to unverified platforms, unknown/blocklisted motherboard DMI strings, or unwhitelisted I/O ports are rejected directly inside `NativeInpOut.IsPortWhitelisted()`. Custom profiles (`custom-profile.json`) are bound to the source machine's DMI fingerprint and default fail-closed to read-only if unbound or incomplete.
-- **Runtime SHA256 Driver Pinning & HVCI Read-Only Fallback:** Before calling `LoadLibraryEx`, `NativeInpOut.PreloadDriverDll()` verifies the SHA256 digest of `inpoutx64.dll` (and optional `WinRing0x64.dll`) while holding a `FileShare.Read` handle to prevent DLL planting / TOCTOU swaps. Because legacy port-I/O drivers are included in Microsoft's Vulnerable Driver Blocklist under Windows 11 Memory Integrity (HVCI), MiniFanControl recommends keeping HVCI enabled when only monitoring telemetry—all CPU/iGPU sensors continue via standard Windows APIs and WHQL AMD ADL (`atiadlxx.dll`) with writes locked. Migration to EV-signed PawnIO is on the roadmap. Release checksums are published in `SHA256SUMS.txt`.
+- **EV-Signed PawnIO Priority-0 & SHA256-Pinned Fallbacks:** Priority 0 uses official HVCI-compatible **PawnIO** (`PawnIOLib.dll`, preferring `%ProgramFiles%\PawnIO` and enforcing Windows Authenticode verification via `WinVerifyTrust` under a `FileShare.Read` lock) with signed `LpcIO` / `LpcACPIEC` modules. When PawnIO is unavailable, `NativeInpOut.PreloadDriverDll()` verifies the SHA256 digest of `inpoutx64.dll` (or optional `WinRing0x64.dll`) while holding a `FileShare.Read` handle to prevent DLL planting / TOCTOU swaps. On Windows 11 systems with Memory Integrity (HVCI) enabled and no PawnIO installed, MiniFanControl automatically operates in safe read-only telemetry mode via standard Windows APIs, native DXGI/DxgKrnl ETW, and WHQL AMD ADL (`atiadlxx.dll`) with all hardware writes locked. Release checksums are published in `SHA256SUMS.txt`.
 - **Out-of-Process Watchdog:** `WatchdogSupervisor` monitors heartbeat health and restores BIOS fan control if the main UI/controller exits unexpectedly.

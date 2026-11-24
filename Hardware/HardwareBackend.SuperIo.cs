@@ -250,70 +250,53 @@ namespace MiniFanControl
 
                 sb.AppendLine(string.Format("SuperIoChipId: 0x{0:X4}, SuperIoBaseAddr: 0x{1:X4}", SuperIoChipId, SuperIoBaseAddr));
 
-                
-
-                ushort[] cands = new ushort[] { 0x0A00, 0x0290, 0x0A10, 0x0A20, 0x0A30, 0x02A0 };
-
-                foreach (ushort c in cands)
-
+                using (var lockScope = EcBusMutex.AcquireEc(40))
                 {
+                    if (!lockScope.Acquired) return;
 
-                    ushort ap = (ushort)(c + 5);
+                    // Only probe fallback candidate bases if an active Super I/O base hasn't already been verified
+                    if (SuperIoBaseAddr == 0)
+                    {
+                        ushort[] cands = new ushort[] { 0x0A00, 0x0290, 0x0A10, 0x0A20, 0x0A30, 0x02A0 };
+                        foreach (ushort c in cands)
+                        {
+                            ushort ap = (ushort)(c + 5);
+                            ushort dp = (ushort)(c + 6);
+                            WritePortByte(ap, 0x58);
+                            byte v58 = ReadPortByte(dp);
+                            WritePortByte(ap, 0x00);
+                            byte v00 = ReadPortByte(dp);
+                            sb.AppendFormat("Candidate Base 0x{0:X4}: Reg 0x58=0x{1:X2}, Reg 0x00=0x{2:X2} (Verified: {3})\r\n", c, v58, v00, (v58 == 0x90 || v58 == 0x7F));
+                        }
+                    }
 
-                    ushort dp = (ushort)(c + 6);
+                    if (SuperIoBaseAddr != 0)
+                    {
+                        sb.AppendLine("--- Active HW Monitor Registers ---");
+                        byte reg0C = ReadSuperIoHwReg(0x0C);
+                        byte reg0B = ReadSuperIoHwReg(0x0B);
+                        byte reg13 = ReadSuperIoHwReg(0x13);
+                        byte reg14 = ReadSuperIoHwReg(0x14);
+                        byte reg15 = ReadSuperIoHwReg(0x15);
+                        byte reg16 = ReadSuperIoHwReg(0x16);
+                        byte reg17 = ReadSuperIoHwReg(0x17);
+                        byte reg63 = ReadSuperIoHwReg(0x63);
+                        byte reg6B = ReadSuperIoHwReg(0x6B);
+                        byte reg73 = ReadSuperIoHwReg(0x73);
+                        byte t29 = ReadSuperIoHwReg(0x29);
+                        byte t2A = ReadSuperIoHwReg(0x2A);
+                        byte t2B = ReadSuperIoHwReg(0x2B);
+                        byte t2C = ReadSuperIoHwReg(0x2C);
 
-                    WritePortByte(ap, 0x58);
-
-                    byte v58 = ReadPortByte(dp);
-
-                    WritePortByte(ap, 0x00);
-
-                    byte v00 = ReadPortByte(dp);
-
-                    sb.AppendFormat("Candidate Base 0x{0:X4}: Reg 0x58=0x{1:X2}, Reg 0x00=0x{2:X2} (Verified: {3})\r\n", c, v58, v00, (v58 == 0x90 || v58 == 0x7F));
-
-                }
-
-                if (SuperIoBaseAddr != 0)
-
-                {
-
-                    sb.AppendLine("--- Active HW Monitor Registers ---");
-
-                    byte reg0C = ReadSuperIoHwReg(0x0C);
-
-                    byte reg0B = ReadSuperIoHwReg(0x0B);
-
-                    byte reg13 = ReadSuperIoHwReg(0x13);
-
-                    byte reg14 = ReadSuperIoHwReg(0x14);
-
-                    byte reg15 = ReadSuperIoHwReg(0x15);
-
-                    byte reg16 = ReadSuperIoHwReg(0x16);
-
-                    byte reg17 = ReadSuperIoHwReg(0x17);
-
-                    byte reg63 = ReadSuperIoHwReg(0x63);
-
-                    byte reg6B = ReadSuperIoHwReg(0x6B);
-
-                    byte reg73 = ReadSuperIoHwReg(0x73);
-
-                    byte t29 = ReadSuperIoHwReg(0x29);
-                    byte t2A = ReadSuperIoHwReg(0x2A);
-                    byte t2B = ReadSuperIoHwReg(0x2B);
-                    byte t2C = ReadSuperIoHwReg(0x2C);
-
-                    sb.AppendFormat("Reg 0x0C (TachMode)=0x{0:X2}, 0x0B (Divisor)=0x{1:X2}, 0x13 (MainCtrl)=0x{2:X2}, 0x14 (FanCtl)=0x{3:X2} (Polarity={4})\r\n",
-                        reg0C, reg0B, reg13, reg14, ((reg14 & 0x80) == 0 && reg14 != 0xFF) ? "Active-Low/Inverted" : "Active-High/Direct");
-                    sb.AppendFormat("Fan 1: PWM=0x{0:X2}, ExtPWM=0x{1:X2}, Tach 0x0D=0x{2:X2}, 0x18=0x{3:X2} -> RPM={4}\r\n", reg15, reg63, ReadSuperIoHwReg(0x0D), ReadSuperIoHwReg(0x18), ReadSuperIoFanRpm(1));
-                    sb.AppendFormat("Fan 2: PWM=0x{0:X2}, ExtPWM=0x{1:X2}, Tach 0x0E=0x{2:X2}, 0x19=0x{3:X2} -> RPM={4}\r\n", reg16, reg6B, ReadSuperIoHwReg(0x0E), ReadSuperIoHwReg(0x19), ReadSuperIoFanRpm(2));
-                    sb.AppendFormat("Fan 3: PWM=0x{0:X2}, ExtPWM=0x{1:X2}, Tach 0x0F=0x{2:X2}, 0x1A=0x{3:X2} -> RPM={4}\r\n", reg17, reg73, ReadSuperIoHwReg(0x0F), ReadSuperIoHwReg(0x1A), ReadSuperIoFanRpm(3));
-                    sb.AppendFormat("Fan 4: Tach 0x80=0x{0:X2}, 0x81=0x{1:X2} -> RPM={2}\r\n", ReadSuperIoHwReg(0x80), ReadSuperIoHwReg(0x81), ReadSuperIoFanRpm(4));
-                    sb.AppendFormat("Fan 5: Tach 0x82=0x{0:X2}, 0x83=0x{1:X2} -> RPM={2}\r\n", ReadSuperIoHwReg(0x82), ReadSuperIoHwReg(0x83), ReadSuperIoFanRpm(5));
-                    sb.AppendFormat("Temps: 0x29={0}C (Temp1), 0x2A={1}C (Temp2), 0x2B={2}C (Temp3/CPU), 0x2C={3}C (Temp4/Amb)\r\n", t29, t2A, t2B, t2C);
-
+                        sb.AppendFormat("Reg 0x0C (TachMode)=0x{0:X2}, 0x0B (Divisor)=0x{1:X2}, 0x13 (MainCtrl)=0x{2:X2}, 0x14 (FanCtl)=0x{3:X2} (Polarity={4})\r\n",
+                            reg0C, reg0B, reg13, reg14, ((reg14 & 0x80) == 0 && reg14 != 0xFF) ? "Active-Low/Inverted" : "Active-High/Direct");
+                        sb.AppendFormat("Fan 1: PWM=0x{0:X2}, ExtPWM=0x{1:X2}, Tach 0x0D=0x{2:X2}, 0x18=0x{3:X2} -> RPM={4}\r\n", reg15, reg63, ReadSuperIoHwReg(0x0D), ReadSuperIoHwReg(0x18), ReadSuperIoFanRpm(1));
+                        sb.AppendFormat("Fan 2: PWM=0x{0:X2}, ExtPWM=0x{1:X2}, Tach 0x0E=0x{2:X2}, 0x19=0x{3:X2} -> RPM={4}\r\n", reg16, reg6B, ReadSuperIoHwReg(0x0E), ReadSuperIoHwReg(0x19), ReadSuperIoFanRpm(2));
+                        sb.AppendFormat("Fan 3: PWM=0x{0:X2}, ExtPWM=0x{1:X2}, Tach 0x0F=0x{2:X2}, 0x1A=0x{3:X2} -> RPM={4}\r\n", reg17, reg73, ReadSuperIoHwReg(0x0F), ReadSuperIoHwReg(0x1A), ReadSuperIoFanRpm(3));
+                        sb.AppendFormat("Fan 4: Tach 0x80=0x{0:X2}, 0x81=0x{1:X2} -> RPM={2}\r\n", ReadSuperIoHwReg(0x80), ReadSuperIoHwReg(0x81), ReadSuperIoFanRpm(4));
+                        sb.AppendFormat("Fan 5: Tach 0x82=0x{0:X2}, 0x83=0x{1:X2} -> RPM={2}\r\n", ReadSuperIoHwReg(0x82), ReadSuperIoHwReg(0x83), ReadSuperIoFanRpm(5));
+                        sb.AppendFormat("Temps: 0x29={0}C (Temp1), 0x2A={1}C (Temp2), 0x2B={2}C (Temp3/CPU), 0x2C={3}C (Temp4/Amb)\r\n", t29, t2A, t2B, t2C);
+                    }
                 }
 
                 File.WriteAllText(logFile, sb.ToString());

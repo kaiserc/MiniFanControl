@@ -65,9 +65,11 @@ namespace MiniFanControl
                 n = n.Substring(0, n.Length - 4);
 
             // Filter launchers, installers, updaters, crash handlers, and background helpers
+            // (Avoid matching game titles like "CrashBandicoot" with overly broad substrings.)
             if (n.Contains("launcher") || n.Contains("installer") || n.Contains("updater") ||
                 n.Contains("setup") || n.Contains("helper") || n.Contains("overlay") ||
-                n.Contains("service") || n.Contains("crash") || n.Contains("report"))
+                n.Contains("service") || n.Contains("crashhandler") || n.Contains("crashreporter") ||
+                n.Contains("crashpad") || n.Contains("crashdump") || n.Contains("report"))
                 return true;
 
             // Filter IDEs, editors, AI agents, and dev tools
@@ -147,10 +149,19 @@ namespace MiniFanControl
                     try
                     {
                         string procBase = Path.GetFileNameWithoutExtension(_lastActiveGameProcess);
-                        if (!string.IsNullOrEmpty(procBase) && Process.GetProcessesByName(procBase).Length > 0)
+                        if (!string.IsNullOrEmpty(procBase))
                         {
-                            best.ProcessName = _lastActiveGameProcess;
-                            return;
+                            Process[] procs = Process.GetProcessesByName(procBase);
+                            bool alive = procs.Length > 0;
+                            for (int i = 0; i < procs.Length; i++)
+                            {
+                                try { procs[i].Dispose(); } catch { }
+                            }
+                            if (alive)
+                            {
+                                best.ProcessName = _lastActiveGameProcess;
+                                return;
+                            }
                         }
                     }
                     catch { }

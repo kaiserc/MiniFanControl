@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Threading;
 using Microsoft.Win32;
 
 namespace MiniFanControl
@@ -165,6 +166,7 @@ namespace MiniFanControl
         };
 
         private static readonly object _driverLock = new object();
+        private static readonly ReaderWriterLockSlim _ioLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         private static bool _dllSearchHardened = false;
         private static IntPtr _hDriverDll = IntPtr.Zero;
 
@@ -576,19 +578,27 @@ namespace MiniFanControl
             {
                 PreloadDriverDll();
             }
-            if (ActiveDriver == HardwareDriverEngine.PawnIO)
+            _ioLock.EnterReadLock();
+            try
             {
-                return PawnIoDriver.IsAvailable;
+                if (ActiveDriver == HardwareDriverEngine.PawnIO)
+                {
+                    return PawnIoDriver.IsAvailable;
+                }
+                if (ActiveDriver == HardwareDriverEngine.WinRing0)
+                {
+                    return _winringStatus != null ? (_winringStatus() == 0) : true;
+                }
+                if (ActiveDriver == HardwareDriverEngine.InpOut64)
+                {
+                    return _inpoutIsOpen != null ? (_inpoutIsOpen() != 0) : false;
+                }
+                return false;
             }
-            if (ActiveDriver == HardwareDriverEngine.WinRing0)
+            finally
             {
-                return _winringStatus != null ? (_winringStatus() == 0) : true;
+                _ioLock.ExitReadLock();
             }
-            if (ActiveDriver == HardwareDriverEngine.InpOut64)
-            {
-                return _inpoutIsOpen != null ? (_inpoutIsOpen() != 0) : false;
-            }
-            return false;
         }
 
         public static int IsInpOutDriverOpen()
@@ -602,27 +612,35 @@ namespace MiniFanControl
 
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
-            if (ActiveDriver == HardwareDriverEngine.PawnIO)
+            _ioLock.EnterReadLock();
+            try
             {
-                byte pawnVal;
-                return PawnIoDriver.TryReadPortByte(port, out pawnVal) ? pawnVal : (byte)0xFF;
-            }
-            if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringReadByte != null)
-            {
-                try { return _winringReadByte(port); } catch { return 0xFF; }
-            }
-            if (ActiveDriver == HardwareDriverEngine.InpOut64)
-            {
-                if (_inpoutReadByte != null)
+                if (ActiveDriver == HardwareDriverEngine.PawnIO)
                 {
-                    try { return _inpoutReadByte(port); } catch { }
+                    byte pawnVal;
+                    return PawnIoDriver.TryReadPortByte(port, out pawnVal) ? pawnVal : (byte)0xFF;
                 }
-                if (_inpoutInp32 != null)
+                if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringReadByte != null)
                 {
-                    try { return (byte)(_inpoutInp32(port) & 0xFF); } catch { }
+                    try { return _winringReadByte(port); } catch { return 0xFF; }
                 }
+                if (ActiveDriver == HardwareDriverEngine.InpOut64)
+                {
+                    if (_inpoutReadByte != null)
+                    {
+                        try { return _inpoutReadByte(port); } catch { }
+                    }
+                    if (_inpoutInp32 != null)
+                    {
+                        try { return (byte)(_inpoutInp32(port) & 0xFF); } catch { }
+                    }
+                }
+                return 0xFF;
             }
-            return 0xFF;
+            finally
+            {
+                _ioLock.ExitReadLock();
+            }
         }
 
         public static void DlPortWritePortUchar(ushort port, byte value)
@@ -631,25 +649,33 @@ namespace MiniFanControl
 
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
-            if (ActiveDriver == HardwareDriverEngine.PawnIO)
+            _ioLock.EnterReadLock();
+            try
             {
-                PawnIoDriver.TryWritePortByte(port, value);
-                return;
-            }
-            if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringWriteByte != null)
-            {
-                try { _winringWriteByte(port, value); return; } catch { return; }
-            }
-            if (ActiveDriver == HardwareDriverEngine.InpOut64)
-            {
-                if (_inpoutWriteByte != null)
+                if (ActiveDriver == HardwareDriverEngine.PawnIO)
                 {
-                    try { _inpoutWriteByte(port, value); return; } catch { }
+                    PawnIoDriver.TryWritePortByte(port, value);
+                    return;
                 }
-                if (_inpoutOut32 != null)
+                if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringWriteByte != null)
                 {
-                    try { _inpoutOut32(port, (short)value); return; } catch { }
+                    try { _winringWriteByte(port, value); return; } catch { return; }
                 }
+                if (ActiveDriver == HardwareDriverEngine.InpOut64)
+                {
+                    if (_inpoutWriteByte != null)
+                    {
+                        try { _inpoutWriteByte(port, value); return; } catch { }
+                    }
+                    if (_inpoutOut32 != null)
+                    {
+                        try { _inpoutOut32(port, (short)value); return; } catch { }
+                    }
+                }
+            }
+            finally
+            {
+                _ioLock.ExitReadLock();
             }
         }
 
@@ -660,15 +686,23 @@ namespace MiniFanControl
 
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
-            if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringReadDword != null)
+            _ioLock.EnterReadLock();
+            try
             {
-                try { return _winringReadDword(port); } catch { return 0; }
+                if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringReadDword != null)
+                {
+                    try { return _winringReadDword(port); } catch { return 0; }
+                }
+                if (ActiveDriver == HardwareDriverEngine.InpOut64 && _inpoutReadDword != null)
+                {
+                    try { return _inpoutReadDword(port); } catch { return 0; }
+                }
+                return 0;
             }
-            if (ActiveDriver == HardwareDriverEngine.InpOut64 && _inpoutReadDword != null)
+            finally
             {
-                try { return _inpoutReadDword(port); } catch { return 0; }
+                _ioLock.ExitReadLock();
             }
-            return 0;
         }
 
         public static void DlPortWritePortUlong(ushort port, uint value)
@@ -678,13 +712,21 @@ namespace MiniFanControl
 
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
-            if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringWriteDword != null)
+            _ioLock.EnterReadLock();
+            try
             {
-                try { _winringWriteDword(port, value); return; } catch { return; }
+                if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringWriteDword != null)
+                {
+                    try { _winringWriteDword(port, value); return; } catch { return; }
+                }
+                if (ActiveDriver == HardwareDriverEngine.InpOut64 && _inpoutWriteDword != null)
+                {
+                    try { _inpoutWriteDword(port, value); return; } catch { return; }
+                }
             }
-            if (ActiveDriver == HardwareDriverEngine.InpOut64 && _inpoutWriteDword != null)
+            finally
             {
-                try { _inpoutWriteDword(port, value); return; } catch { return; }
+                _ioLock.ExitReadLock();
             }
         }
 
@@ -709,24 +751,40 @@ namespace MiniFanControl
 
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
-            // WinRing0 does NOT support process virtual linear mapping (it only provides per-access physical R/W IOCTLs).
-            // Never fake a linear mapping with AllocHGlobal as that produces disconnected heap snapshots that defeat write verification.
-            if (ActiveDriver == HardwareDriverEngine.InpOut64 && _inpoutMapPhys != null)
+            _ioLock.EnterReadLock();
+            try
             {
-                try { return _inpoutMapPhys(pbPhysAddr, dwPhysSize, out pPhysicalMemoryHandle); } catch { return IntPtr.Zero; }
+                // WinRing0 does NOT support process virtual linear mapping (it only provides per-access physical R/W IOCTLs).
+                // Never fake a linear mapping with AllocHGlobal as that produces disconnected heap snapshots that defeat write verification.
+                if (ActiveDriver == HardwareDriverEngine.InpOut64 && _inpoutMapPhys != null)
+                {
+                    try { return _inpoutMapPhys(pbPhysAddr, dwPhysSize, out pPhysicalMemoryHandle); } catch { return IntPtr.Zero; }
+                }
+                return IntPtr.Zero;
             }
-            return IntPtr.Zero;
+            finally
+            {
+                _ioLock.ExitReadLock();
+            }
         }
 
         public static int UnmapPhysicalMemory(IntPtr PhysicalMemoryHandle, IntPtr pbLinAddr)
         {
             if (pbLinAddr == IntPtr.Zero) return 0;
 
-            if (ActiveDriver == HardwareDriverEngine.InpOut64 && _inpoutUnmap != null)
+            _ioLock.EnterReadLock();
+            try
             {
-                try { return _inpoutUnmap(PhysicalMemoryHandle, pbLinAddr); } catch { return 0; }
+                if (ActiveDriver == HardwareDriverEngine.InpOut64 && _inpoutUnmap != null)
+                {
+                    try { return _inpoutUnmap(PhysicalMemoryHandle, pbLinAddr); } catch { return 0; }
+                }
+                return 0;
             }
-            return 0;
+            finally
+            {
+                _ioLock.ExitReadLock();
+            }
         }
 
         public static byte ReadPhysicalByteSafe(ulong physAddr)
@@ -734,17 +792,25 @@ namespace MiniFanControl
             if (!IsPhysicalMemoryRangeAllowed(physAddr, 1, isWrite: false)) return 0xFF;
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
-            if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringReadMem != null)
+            _ioLock.EnterReadLock();
+            try
             {
-                try
+                if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringReadMem != null)
                 {
-                    byte[] buffer = new byte[1];
-                    uint ok = _winringReadMem(new UIntPtr(physAddr), buffer, 1, 1);
-                    if (ok != 0) return buffer[0];
+                    try
+                    {
+                        byte[] buffer = new byte[1];
+                        uint ok = _winringReadMem(new UIntPtr(physAddr), buffer, 1, 1);
+                        if (ok != 0) return buffer[0];
+                    }
+                    catch { }
                 }
-                catch { }
+                return 0xFF;
             }
-            return 0xFF;
+            finally
+            {
+                _ioLock.ExitReadLock();
+            }
         }
 
         public static bool WritePhysicalByteSafe(ulong physAddr, byte value)
@@ -752,39 +818,73 @@ namespace MiniFanControl
             if (!IsPhysicalMemoryRangeAllowed(physAddr, 1, isWrite: true)) return false;
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
-            if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringWriteMem != null)
+            _ioLock.EnterReadLock();
+            try
             {
-                try
+                if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringWriteMem != null)
                 {
-                    byte[] buffer = new byte[] { value };
-                    uint ok = _winringWriteMem(new UIntPtr(physAddr), buffer, 1, 1);
-                    return ok != 0;
+                    try
+                    {
+                        byte[] buffer = new byte[] { value };
+                        uint ok = _winringWriteMem(new UIntPtr(physAddr), buffer, 1, 1);
+                        return ok != 0;
+                    }
+                    catch { }
                 }
-                catch { }
+                return false;
             }
-            return false;
+            finally
+            {
+                _ioLock.ExitReadLock();
+            }
         }
 
         public static void Shutdown()
         {
             lock (_driverLock)
             {
-                if (ActiveDriver == HardwareDriverEngine.PawnIO)
+                _ioLock.EnterWriteLock();
+                try
                 {
-                    try { PawnIoDriver.Shutdown(); } catch { }
+                    if (ActiveDriver == HardwareDriverEngine.PawnIO)
+                    {
+                        try { PawnIoDriver.Shutdown(); } catch { }
+                    }
+                    if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringDeinit != null)
+                    {
+                        try { _winringDeinit(); } catch { }
+                    }
+                    _winringInit = null;
+                    _winringDeinit = null;
+                    _winringStatus = null;
+                    _winringReadByte = null;
+                    _winringWriteByte = null;
+                    _winringReadDword = null;
+                    _winringWriteDword = null;
+                    _winringReadMem = null;
+                    _winringWriteMem = null;
+                    _inpoutIsOpen = null;
+                    _inpoutReadByte = null;
+                    _inpoutWriteByte = null;
+                    _inpoutReadDword = null;
+                    _inpoutWriteDword = null;
+                    _inpoutInp32 = null;
+                    _inpoutOut32 = null;
+                    _inpoutMapPhys = null;
+                    _inpoutUnmap = null;
+                    if (_hDriverDll != IntPtr.Zero)
+                    {
+                        try { FreeLibrary(_hDriverDll); } catch { }
+                        _hDriverDll = IntPtr.Zero;
+                    }
+                    ActiveDriver = HardwareDriverEngine.None;
+                    IsDriverHashVerified = false;
+                    ActiveDriverSha256 = null;
                 }
-                if (ActiveDriver == HardwareDriverEngine.WinRing0 && _winringDeinit != null)
+                finally
                 {
-                    try { _winringDeinit(); } catch { }
+                    _ioLock.ExitWriteLock();
                 }
-                if (_hDriverDll != IntPtr.Zero)
-                {
-                    try { FreeLibrary(_hDriverDll); } catch { }
-                    _hDriverDll = IntPtr.Zero;
-                }
-                ActiveDriver = HardwareDriverEngine.None;
-                IsDriverHashVerified = false;
-                ActiveDriverSha256 = null;
             }
         }
     }

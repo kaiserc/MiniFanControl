@@ -61,7 +61,10 @@ namespace MiniFanControl
         }
 
         private readonly object _lock = new object();
-        private readonly Queue<PendingPresent> _inFlight = new Queue<PendingPresent>(16);
+        private const int IN_FLIGHT_CAP = 8;
+        private readonly PendingPresent[] _inFlightBuf = new PendingPresent[IN_FLIGHT_CAP];
+        private int _inFlightHead = 0;
+        private int _inFlightCount = 0;
         private readonly int[] _frameTimeUsRing = new int[1024];
         private int _ringHead = 0;
         private int _ringCount = 0;
@@ -120,7 +123,8 @@ namespace MiniFanControl
         {
             lock (_lock)
             {
-                _inFlight.Clear();
+                _inFlightHead = 0;
+                _inFlightCount = 0;
                 _ringHead = 0;
                 _ringCount = 0;
                 _trackedPid = 0;
@@ -199,7 +203,8 @@ namespace MiniFanControl
 
                     _trackedPid = pid;
                     _trackedProcName = procName;
-                    _inFlight.Clear();
+                    _inFlightHead = 0;
+                    _inFlightCount = 0;
                     _ringHead = 0;
                     _ringCount = 0;
                     _lastPresentStartQpc = 0;
@@ -236,9 +241,15 @@ namespace MiniFanControl
                     UpdateFlipModeLabel();
                 }
 
-                // Queue pending present (cap depth at 8 to prevent runaway if scan-out events are missed)
-                while (_inFlight.Count >= 8) _inFlight.Dequeue();
-                _inFlight.Enqueue(new PendingPresent { StartQpc = qpc, FlipQpc = 0, Flipped = false });
+                // Queue pending present in fixed-size ring (zero allocations, capped at 8)
+                if (_inFlightCount >= IN_FLIGHT_CAP)
+                {
+                    _inFlightHead = (_inFlightHead + 1) & (IN_FLIGHT_CAP - 1);
+                    _inFlightCount--;
+                }
+                int tailIdx = (_inFlightHead + _inFlightCount) & (IN_FLIGHT_CAP - 1);
+                _inFlightBuf[tailIdx] = new PendingPresent { StartQpc = qpc, FlipQpc = 0, Flipped = false };
+                _inFlightCount++;
             }
         }
 
@@ -261,7 +272,7 @@ namespace MiniFanControl
         {
             lock (_lock)
             {
-                if (_trackedPid == 0 || _inFlight.Count == 0) return;
+                if (_trackedPid == 0 || _inFlightCount == 0) return;
                 // Kernel MMIO flips can run on system/DPC PID 0 or 4, so allow pid == 0/4 or tracked pid
                 if (pid != 0 && pid != 4 && pid != _trackedPid) return;
 
@@ -269,28 +280,21 @@ namespace MiniFanControl
                 else _indepFlipCount++;
                 UpdateFlipModeLabel();
 
-                // Attach flip timestamp to the oldest unflipped in-flight present
-                PendingPresent[] arr = _inFlight.ToArray();
-                bool updated = false;
-                for (int i = 0; i < arr.Length; i++)
+                // Attach flip timestamp in-place to the oldest unflipped in-flight present (zero allocations)
+                for (int i = 0; i < _inFlightCount; i++)
                 {
-                    if (!arr[i].Flipped && qpc >= arr[i].StartQpc)
+                    int idx = (_inFlightHead + i) & (IN_FLIGHT_CAP - 1);
+                    if (!_inFlightBuf[idx].Flipped && qpc >= _inFlightBuf[idx].StartQpc)
                     {
-                        double renderMs = (qpc - arr[i].StartQpc) * 1000.0 / qpcFreq;
+                        double renderMs = (qpc - _inFlightBuf[idx].StartQpc) * 1000.0 / qpcFreq;
                         if (renderMs >= 0.1 && renderMs <= 200.0)
                         {
-                            arr[i].FlipQpc = qpc;
-                            arr[i].Flipped = true;
+                            _inFlightBuf[idx].FlipQpc = qpc;
+                            _inFlightBuf[idx].Flipped = true;
                             _smoothedRenderLatMs = (_smoothedRenderLatMs <= 0.0) ? renderMs : (_smoothedRenderLatMs * 0.75 + renderMs * 0.25);
-                            updated = true;
                             break;
                         }
                     }
-                }
-                if (updated)
-                {
-                    _inFlight.Clear();
-                    for (int i = 0; i < arr.Length; i++) _inFlight.Enqueue(arr[i]);
                 }
             }
         }
@@ -309,7 +313,7 @@ namespace MiniFanControl
         {
             lock (_lock)
             {
-                if (_trackedPid == 0 || _inFlight.Count == 0) return;
+                if (_trackedPid == 0 || _inFlightCount == 0) return;
                 // Guard against back-to-back multi-monitor VSync DPCs within 0.5 ms
                 if (_lastScanoutQpc > 0 && ((qpc - _lastScanoutQpc) * 1000.0 / qpcFreq) < 0.5)
                     return;
@@ -318,14 +322,15 @@ namespace MiniFanControl
                 // When hardware flip events are active, require the frame to have flipped first so
                 // unrelated secondary-monitor VSync DPCs never under-report display latency.
                 bool expectFlipBeforeScanout = (_mpoFlipCount + _indepFlipCount) > 0;
-                while (_inFlight.Count > 0)
+                while (_inFlightCount > 0)
                 {
-                    PendingPresent head = _inFlight.Peek();
+                    PendingPresent head = _inFlightBuf[_inFlightHead];
                     if (qpc < head.StartQpc) break;
                     if (expectFlipBeforeScanout && (!head.Flipped || qpc < head.FlipQpc)) break;
 
                     double latMs = (qpc - head.StartQpc) * 1000.0 / qpcFreq;
-                    _inFlight.Dequeue();
+                    _inFlightHead = (_inFlightHead + 1) & (IN_FLIGHT_CAP - 1);
+                    _inFlightCount--;
 
                     if (latMs >= 0.4 && latMs <= 250.0)
                     {
@@ -552,6 +557,10 @@ namespace MiniFanControl
         private static readonly object _sync = new object();
         private static readonly EtwPresentTracker _tracker = new EtwPresentTracker();
         private static readonly double _qpcFreq = (double)Stopwatch.Frequency;
+        private static readonly long _dxgiGuidLo = BitConverter.ToInt64(EtwPresentTracker.ProviderDxgi.ToByteArray(), 0);
+        private static readonly long _dxgiGuidHi = BitConverter.ToInt64(EtwPresentTracker.ProviderDxgi.ToByteArray(), 8);
+        private static readonly long _dxgKrnlGuidLo = BitConverter.ToInt64(EtwPresentTracker.ProviderDxgKrnl.ToByteArray(), 0);
+        private static readonly long _dxgKrnlGuidHi = BitConverter.ToInt64(EtwPresentTracker.ProviderDxgKrnl.ToByteArray(), 8);
 
         private static bool _attemptedStart = false;
         private static volatile bool _running = false;
@@ -702,17 +711,21 @@ namespace MiniFanControl
             if (!_running || pEventRecord == IntPtr.Zero) return;
             try
             {
-                // EVENT_HEADER x64 verified byte offsets:
+                // EVENT_HEADER x64 verified byte offsets (zero managed heap allocations per callback):
                 // 12: uint ProcessId | 16: long TimeStamp (QPC) | 24: Guid ProviderId (16 bytes) | 40: ushort EventId
+                long gLo = Marshal.ReadInt64(pEventRecord, 24);
+                long gHi = Marshal.ReadInt64(pEventRecord, 32);
+                bool isDxgi = (gLo == _dxgiGuidLo && gHi == _dxgiGuidHi);
+                bool isDxgKrnl = !isDxgi && (gLo == _dxgKrnlGuidLo && gHi == _dxgKrnlGuidHi);
+                if (!isDxgi && !isDxgKrnl) return;
+
                 uint pid = unchecked((uint)Marshal.ReadInt32(pEventRecord, 12));
                 long qpc = Marshal.ReadInt64(pEventRecord, 16);
                 ushort eventId = unchecked((ushort)Marshal.ReadInt16(pEventRecord, 40));
 
-                byte[] guidBytes = new byte[16];
-                Marshal.Copy(new IntPtr(pEventRecord.ToInt64() + 24), guidBytes, 0, 16);
-                Guid provider = new Guid(guidBytes);
-
-                _tracker.ProcessEvent(provider, eventId, pid, qpc, _qpcFreq);
+                _tracker.ProcessEvent(
+                    isDxgi ? EtwPresentTracker.ProviderDxgi : EtwPresentTracker.ProviderDxgKrnl,
+                    eventId, pid, qpc, _qpcFreq);
             }
             catch { }
         }

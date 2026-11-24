@@ -26,7 +26,8 @@ namespace MiniFanControl
         private int _lastAppliedSysPct = -1;
         private int _lastAppliedEcMode = -1;
         private int _biosPowerModeOverride = -1;
-        private int _lastCustomEvalTemp = -100;
+        private int _lastApuEvalTemp = -100;
+        private int _lastSysEvalTemp = -100;
         private bool _emergencyThermalActive = false;
 
         private string _lastHardwareWriteError = null;
@@ -201,7 +202,8 @@ namespace MiniFanControl
             {
                 _lastAppliedApuPct = -1;
                 _lastAppliedSysPct = -1;
-                _lastCustomEvalTemp = 0;
+                _lastApuEvalTemp = 0;
+                _lastSysEvalTemp = 0;
                 _emergencyThermalActive = false;
             }
             Interlocked.Exchange(ref _lastWorkerSampleUtcTicks, DateTime.UtcNow.Ticks);
@@ -433,7 +435,7 @@ namespace MiniFanControl
                 return false;
             }
 
-            if (_hw != null && _hw.Profile != null && !_hw.Profile.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase))
+            if (_hw != null && _hw.Profile != null && _hw.Profile.IsVerified && !_hw.Profile.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase))
             {
                 _hw.Profile.IsReadOnly = false;
                 try { _hw.ReinitializeHardwareAfterResume(); }
@@ -543,7 +545,8 @@ namespace MiniFanControl
             int lastSysPct;
             int lastEcMode;
             int biosOverride;
-            int lastEvalTemp;
+            int lastApuEvalTemp;
+            int lastSysEvalTemp;
 
             lock (_stateLock)
             {
@@ -564,7 +567,8 @@ namespace MiniFanControl
                 lastSysPct = _lastAppliedSysPct;
                 lastEcMode = _lastAppliedEcMode;
                 biosOverride = _biosPowerModeOverride;
-                lastEvalTemp = _lastCustomEvalTemp;
+                lastApuEvalTemp = _lastApuEvalTemp;
+                lastSysEvalTemp = _lastSysEvalTemp;
             }
 
             bool wroteHardware = false;
@@ -679,8 +683,10 @@ namespace MiniFanControl
             }
             int effectiveApuTemp = apuTemp + npuBoost;
 
-            // Asymmetric cooldown hysteresis (4°C down, 0°C up) prevents fan hunting on brief temperature dips
-            bool withinCooldownHysteresis = (lastEvalTemp > 0 && effectiveApuTemp < lastEvalTemp && (lastEvalTemp - effectiveApuTemp) < 4);
+            // Asymmetric cooldown hysteresis (4°C down, 0°C up) tracked independently for APU and Sys thermal sources
+            bool withinApuCooldownHysteresis = (lastApuEvalTemp > 0 && effectiveApuTemp < lastApuEvalTemp && (lastApuEvalTemp - effectiveApuTemp) < 4);
+            int sysThermalSource = (snapshot.NvmeTemp > 0) ? Math.Max(effectiveApuTemp, snapshot.NvmeTemp) : effectiveApuTemp;
+            bool withinSysCooldownHysteresis = (lastSysEvalTemp > 0 && sysThermalSource < lastSysEvalTemp && (lastSysEvalTemp - sysThermalSource) < 4);
 
             try
             {
@@ -722,7 +728,7 @@ namespace MiniFanControl
                     {
                         int targetApu = apuProf.EvaluateApu(effectiveApuTemp);
                         int regPct = targetApu <= 0 ? (isSuperIo ? 0 : 1) : targetApu;
-                        if (lastApuPct < 0 || (!withinCooldownHysteresis && Math.Abs(regPct - lastApuPct) >= 2) || regPct == 100)
+                        if (lastApuPct < 0 || (!withinApuCooldownHysteresis && Math.Abs(regPct - lastApuPct) >= 2) || regPct == 100)
                         {
                             bool ok = demo ? _demo.SetFan(1, regPct) : _hw.SetFan(1, regPct);
                             if (ok)
@@ -730,7 +736,7 @@ namespace MiniFanControl
                                 lock (_stateLock)
                                 {
                                     _lastAppliedApuPct = regPct;
-                                    _lastCustomEvalTemp = effectiveApuTemp;
+                                    _lastApuEvalTemp = effectiveApuTemp;
                                 }
                                 wroteHardware = true;
                                 ClearHardwareWriteError();
@@ -771,10 +777,9 @@ namespace MiniFanControl
                     }
                     else
                     {
-                        int sysThermalSource = (snapshot.NvmeTemp > 0) ? Math.Max(effectiveApuTemp, snapshot.NvmeTemp) : effectiveApuTemp;
                         int targetSys = sysProf.EvaluateSys(sysThermalSource);
                         int regPct = targetSys <= 0 ? (isSuperIo ? 0 : 1) : targetSys;
-                        if (lastSysPct < 0 || (!withinCooldownHysteresis && Math.Abs(regPct - lastSysPct) >= 2) || regPct == 100)
+                        if (lastSysPct < 0 || (!withinSysCooldownHysteresis && Math.Abs(regPct - lastSysPct) >= 2) || regPct == 100)
                         {
                             bool ok = demo ? _demo.SetFan(2, regPct) : _hw.SetFan(2, regPct);
                             if (ok)
@@ -782,7 +787,7 @@ namespace MiniFanControl
                                 lock (_stateLock)
                                 {
                                     _lastAppliedSysPct = regPct;
-                                    _lastCustomEvalTemp = effectiveApuTemp;
+                                    _lastSysEvalTemp = sysThermalSource;
                                     _fan2ConsecutiveWriteFailures = 0;
                                 }
                                 wroteHardware = true;
@@ -887,7 +892,7 @@ namespace MiniFanControl
                 _consecutiveWriteFailures = 0;
                 _lastHardwareWriteError = null;
             }
-            if (_hw != null && _hw.Profile != null && !_hw.Profile.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase))
+            if (_hw != null && _hw.Profile != null && _hw.Profile.IsVerified && !_hw.Profile.Id.Equals("unknown-safe", StringComparison.OrdinalIgnoreCase))
             {
                 _hw.Profile.IsReadOnly = false;
             }
