@@ -647,6 +647,12 @@ namespace MiniFanControl
                     if (consHandle == 0 || consHandle == INVALID_PROCESSTRACE_HANDLE)
                     {
                         ControlTraceW(sessHandle, SESSION_NAME, props, EVENT_TRACE_CONTROL_STOP);
+                        if (_loggerNamePtr != IntPtr.Zero)
+                        {
+                            try { Marshal.FreeHGlobal(_loggerNamePtr); } catch { }
+                            _loggerNamePtr = IntPtr.Zero;
+                        }
+                        _pinnedCallback = null;
                         LastDiagnostic = "ETW OpenTrace failed (Win32 " + Marshal.GetLastWin32Error() + ")";
                         return false;
                     }
@@ -725,11 +731,7 @@ namespace MiniFanControl
             lock (_sync)
             {
                 _running = false;
-                if (_consumerHandle != 0 && _consumerHandle != INVALID_PROCESSTRACE_HANDLE)
-                {
-                    try { CloseTrace(_consumerHandle); } catch { }
-                    _consumerHandle = 0;
-                }
+                // Stop the kernel ETW session BEFORE CloseTrace so ProcessTrace drains and exits cleanly.
                 if (_sessionHandle != 0)
                 {
                     IntPtr props = IntPtr.Zero;
@@ -746,17 +748,33 @@ namespace MiniFanControl
                     }
                     _sessionHandle = 0;
                 }
+                if (_consumerHandle != 0 && _consumerHandle != INVALID_PROCESSTRACE_HANDLE)
+                {
+                    try { CloseTrace(_consumerHandle); } catch { }
+                    _consumerHandle = 0;
+                }
+                bool consumerExited = true;
                 if (_consumerThread != null && _consumerThread.IsAlive)
                 {
-                    try { _consumerThread.Join(300); } catch { }
+                    try { consumerExited = _consumerThread.Join(1500); } catch { consumerExited = false; }
+                    if (consumerExited) _consumerThread = null;
+                }
+                else
+                {
                     _consumerThread = null;
                 }
-                if (_loggerNamePtr != IntPtr.Zero)
+                // Only release unmanaged logger name & pinned delegate after ProcessTrace has returned
+                // so native advapi32 code can never invoke a collected callback.
+                if (consumerExited)
                 {
-                    try { Marshal.FreeHGlobal(_loggerNamePtr); } catch { }
-                    _loggerNamePtr = IntPtr.Zero;
+                    if (_loggerNamePtr != IntPtr.Zero)
+                    {
+                        try { Marshal.FreeHGlobal(_loggerNamePtr); } catch { }
+                        _loggerNamePtr = IntPtr.Zero;
+                    }
+                    _pinnedCallback = null;
                 }
-                _pinnedCallback = null;
+                _attemptedStart = false;
                 _tracker.Reset();
             }
         }

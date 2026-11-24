@@ -33,7 +33,8 @@ mkdir "%STAGE_DIR%" 2>nul
 copy /y "%~dp0MiniFanControl.exe" "%STAGE_DIR%\" >nul
 copy /y "%~dp0minifan-helper.exe" "%STAGE_DIR%\" >nul
 copy /y "%~dp0inpoutx64.dll" "%STAGE_DIR%\" >nul
-if exist "%~dp0PawnIo64.dll" copy /y "%~dp0PawnIo64.dll" "%STAGE_DIR%\" >nul
+if exist "%~dp0PawnIOLib.dll" copy /y "%~dp0PawnIOLib.dll" "%STAGE_DIR%\" >nul
+if exist "%~dp0PawnIO" xcopy /e /i /y "%~dp0PawnIO" "%STAGE_DIR%\PawnIO\" >nul
 copy /y "%~dp0app.ico" "%STAGE_DIR%\" >nul
 copy /y "%~dp0app.manifest" "%STAGE_DIR%\" >nul
 copy /y "%~dp0logo.png" "%STAGE_DIR%\" >nul

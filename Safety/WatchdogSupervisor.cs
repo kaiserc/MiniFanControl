@@ -31,6 +31,8 @@ namespace MiniFanControl
         public const string READY_EVENT_PREFIX = "MiniFanControl_Ready_";
         public const int DEFAULT_TIMEOUT_MS = 3500;
         public const int DEFAULT_POLL_INTERVAL_MS = 250;
+        public const long MAX_LOG_BYTES = 1024 * 1024; // 1 MB rollover cap
+        private static readonly object _logSync = new object();
 
         public static string GetHeartbeatEventName(int pid)
         {
@@ -160,6 +162,44 @@ namespace MiniFanControl
             return sec;
         }
 
+        internal static void WriteLogEntryWithRotation(string logPath, string line, long maxBytes = MAX_LOG_BYTES)
+        {
+            if (string.IsNullOrEmpty(logPath) || string.IsNullOrEmpty(line)) return;
+            lock (_logSync)
+            {
+                for (int attempt = 0; attempt < 3; attempt++)
+                {
+                    try
+                    {
+                        if (maxBytes > 0 && File.Exists(logPath))
+                        {
+                            FileInfo fi = new FileInfo(logPath);
+                            if (fi.Length >= maxBytes)
+                            {
+                                string backupPath = logPath + ".1";
+                                try
+                                {
+                                    if (File.Exists(backupPath)) File.Delete(backupPath);
+                                    File.Move(logPath, backupPath);
+                                }
+                                catch { }
+                            }
+                        }
+                        File.AppendAllText(logPath, line);
+                        return;
+                    }
+                    catch (IOException)
+                    {
+                        if (attempt < 2) Thread.Sleep(10);
+                    }
+                    catch
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+
         public static void LogWatchdogEvent(string message)
         {
             try
@@ -170,7 +210,7 @@ namespace MiniFanControl
                 string logPath = Path.Combine(logDir, "watchdog.log");
                 string line = string.Format("{0:yyyy-MM-dd HH:mm:ss.fff} [PID {1}] {2}{3}",
                     DateTime.Now, Process.GetCurrentProcess().Id, message, Environment.NewLine);
-                File.AppendAllText(logPath, line);
+                WriteLogEntryWithRotation(logPath, line, MAX_LOG_BYTES);
             }
             catch { }
         }
@@ -188,6 +228,14 @@ namespace MiniFanControl
 
                 using (HardwareBackend hw = HardwareBackend.CreateAutoDetected())
                 {
+                    // Honor any user-configured hardware profile / EC register overrides from minifancontrol.cfg
+                    try
+                    {
+                        AppSettings saved = new AppSettings();
+                        saved.Load(null, hw, new List<FanCurveProfile>());
+                    }
+                    catch { }
+
                     bool ok = hw.SetAuto();
                     if (ok)
                     {
@@ -302,7 +350,8 @@ namespace MiniFanControl
             {
                 return 1;
             }
-            DateTime lastHeartbeatUtc = DateTime.UtcNow;
+            // Monotonic Stopwatch prevents NTP / manual system-clock jumps from falsely tripping or disabling timeout
+            Stopwatch heartbeatWatch = Stopwatch.StartNew();
             bool triggeredFailsafe = false;
 
             while (true)
@@ -366,7 +415,7 @@ namespace MiniFanControl
                 }
                 else if (waitIndex == 0) // Heartbeat pulse received
                 {
-                    lastHeartbeatUtc = DateTime.UtcNow;
+                    heartbeatWatch.Restart();
                     if (triggeredFailsafe)
                     {
                         triggeredFailsafe = false;
@@ -376,7 +425,7 @@ namespace MiniFanControl
                 }
                 else // Timeout: waitIndex == WaitHandle.WaitTimeout
                 {
-                    double elapsedMs = (DateTime.UtcNow - lastHeartbeatUtc).TotalMilliseconds;
+                    double elapsedMs = heartbeatWatch.Elapsed.TotalMilliseconds;
                     if (elapsedMs >= timeoutMs && !triggeredFailsafe)
                     {
                         Console.WriteLine(string.Format("[WATCHDOG TRIGGER] Parent PID {0} heartbeat missed for {1:0}ms (Timeout: {2}ms)! Main thread hung. Restoring BIOS fan control...", parentPid, elapsedMs, timeoutMs));

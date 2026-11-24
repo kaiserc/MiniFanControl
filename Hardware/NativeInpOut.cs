@@ -424,13 +424,20 @@ namespace MiniFanControl
                 string appDir = AppDomain.CurrentDomain.BaseDirectory;
 
                 // Priority 0: Official EV-signed, HVCI-compatible PawnIO (when installed with signed modules)
-                if (PawnIoDriver.IsServiceInstalledAndRunning() && PawnIoDriver.TryInitialize())
+                if (PawnIoDriver.IsServiceInstalledAndRunning())
                 {
-                    ActiveDriver = HardwareDriverEngine.PawnIO;
-                    IsDriverHashVerified = true;
-                    ActiveDriverSha256 = "EV-SIGNED-PAWNIO";
-                    LastDriverIntegrityError = null;
-                    return true;
+                    if (PawnIoDriver.TryInitialize())
+                    {
+                        ActiveDriver = HardwareDriverEngine.PawnIO;
+                        IsDriverHashVerified = PawnIoDriver.IsSignatureVerified;
+                        ActiveDriverSha256 = PawnIoDriver.IsSignatureVerified ? "AUTHENTICODE-VERIFIED-PAWNIO" : null;
+                        LastDriverIntegrityError = null;
+                        return true;
+                    }
+                    else if (!string.IsNullOrEmpty(PawnIoDriver.LastIntegrityError))
+                    {
+                        LastDriverIntegrityError = PawnIoDriver.LastIntegrityError;
+                    }
                 }
 
                 // Priority 1: Check for bundled InpOut (inpoutx64.dll) in application directory

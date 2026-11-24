@@ -6,11 +6,60 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using Microsoft.Win32;
 
 namespace MiniFanControl
 {
     public partial class HardwareBackend
     {
+        private static bool? _isAmdCpuCached = null;
+        internal static bool? SimulatedIsAmdCpuForTest = null;
+
+        /// <summary>
+        /// Verifies via the Windows registry (zero kernel I/O) whether the host processor is AMD (AuthenticAMD).
+        /// Prevents AMD-specific PCI SMN, SMU mailbox, and FCH SMBus accesses on Intel or non-AMD CPUs.
+        /// </summary>
+        public static bool IsAmdCpuPlatform()
+        {
+            if (SimulatedIsAmdCpuForTest.HasValue) return SimulatedIsAmdCpuForTest.Value;
+            if (_isAmdCpuCached.HasValue) return _isAmdCpuCached.Value;
+
+            bool isAmd = false;
+            try
+            {
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"HARDWARE\DESCRIPTION\System\CentralProcessor\0", false))
+                {
+                    if (key != null)
+                    {
+                        string vendor = key.GetValue("VendorIdentifier") as string;
+                        string name = key.GetValue("ProcessorNameString") as string;
+                        if ((!string.IsNullOrEmpty(vendor) && vendor.IndexOf("AuthenticAMD", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                            (!string.IsNullOrEmpty(name) && name.IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0))
+                        {
+                            isAmd = true;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            _isAmdCpuCached = isAmd;
+            return isAmd;
+        }
+
+        /// <summary>
+        /// True only when running on an AMD CPU with a verified, writable hardware profile.
+        /// Read-only / unverified desktop systems and non-AMD CPUs must never issue active
+        /// SMU MP1 mailbox commands or SMBus host write transactions.
+        /// </summary>
+        public static bool CanRunActiveSiliconProbes(DeviceProfile profile, bool isSimulated = false)
+        {
+            if (isSimulated) return false;
+            if (!IsAmdCpuPlatform()) return false;
+            if (profile == null || profile.IsReadOnly || !profile.IsVerified) return false;
+            return true;
+        }
+
         private static ulong _amdPcieEcamBase = 0;
         private static bool _amdPcieEcamProbed = false;
 
@@ -187,6 +236,7 @@ namespace MiniFanControl
 
         public static int ReadAmdCpuTempTctl()
         {
+            if (!IsAmdCpuPlatform()) return 0;
             try
             {
                 uint raw = ReadAmdSmn(0x00059800); // AMD Zen / Strix Point THM_TCON_CUR_TMP (Tctl/Tdie)
@@ -408,7 +458,7 @@ namespace MiniFanControl
             }
         }
 
-        private static int GetDdrStickCount(double totalGb)
+        private static int GetDdrStickCount(double totalGb, bool allowSmbusProbe = false)
         {
             if (_cachedDdrStickCount > 0) return _cachedDdrStickCount;
 
@@ -420,8 +470,8 @@ namespace MiniFanControl
                 return _cachedDdrStickCount;
             }
 
-            // 2. Probe SPD5118 Hub at 0x50/0x51 (Channel A) and 0x52/0x53 (Channel B) via SMBus
-            ushort smbus = GetAmdSmbusBase();
+            // 2. Probe SPD5118 Hub at 0x50/0x51 (Channel A) and 0x52/0x53 (Channel B) via SMBus (only on verified writable AMD platforms)
+            ushort smbus = allowSmbusProbe ? GetAmdSmbusBase() : (ushort)0;
             if (smbus != 0)
             {
                 int t1, t2;

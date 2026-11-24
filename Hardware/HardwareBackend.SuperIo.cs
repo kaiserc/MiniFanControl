@@ -628,7 +628,20 @@ namespace MiniFanControl
             return (f1 == 0x00 && f2 == 0x00);
         }
 
-        public bool ApplySafeSuperIoFallback()
+        /// <summary>
+        /// Computes the safe Super I/O manual fallback PWM percentage when handing off control
+        /// (exit, crash watchdog, suspend, or anti-cheat pause).
+        /// Preserves quiet 35% baseline at cool/idle temperatures while escalating to 60–75%
+        /// under thermal load or anti-cheat gaming handoff so blowers never stall below cooling demand.
+        /// </summary>
+        public static int ComputeSafeSuperIoFallbackPct(int cpuTempC, bool thermalLoadContext)
+        {
+            if (cpuTempC >= 80 && cpuTempC <= 115) return 75;
+            if (thermalLoadContext || (cpuTempC >= 65 && cpuTempC <= 115)) return 60;
+            return 35;
+        }
+
+        public bool ApplySafeSuperIoFallback(bool thermalLoadContext = false, int? hintCpuTempC = null)
         {
             if (Profile != null && Profile.IsReadOnly) return false;
             if (SuperIoBaseAddr == 0) return true;
@@ -667,9 +680,24 @@ namespace MiniFanControl
                 _simulatedSioRegs[0x17] = autoModeVal;
             }
 
-            // Safe baseline PWM floor duty (~35% / ~1100 RPM quiet cooling safety net: 89 direct or 166 inverted)
-            // matching factory quiet operation regardless of IT8613E Reg 0x14 Bit 7 polarity
-            byte safeDuty = EncodeSuperIoDuty(35, IsSuperIoPwmInverted());
+            // Determine current CPU temperature so hot workloads / anti-cheat pauses never drop to 35%
+            int effectiveCpuTemp = 0;
+            if (hintCpuTempC.HasValue)
+            {
+                effectiveCpuTemp = hintCpuTempC.Value;
+            }
+            else
+            {
+                int t3 = (sbyte)ReadSuperIoHwReg(0x2B);
+                int t1 = (sbyte)ReadSuperIoHwReg(0x29);
+                if (t3 >= 15 && t3 <= 115) effectiveCpuTemp = t3;
+                else if (t1 >= 15 && t1 <= 115) effectiveCpuTemp = t1;
+                else if (_lastStatusCache.CpuTemp >= 15 && _lastStatusCache.CpuTemp <= 115) effectiveCpuTemp = _lastStatusCache.CpuTemp;
+            }
+
+            // Safe baseline PWM duty: 35% quiet floor when cool/idle, 60% under active load / anti-cheat pause, 75% at >= 80°C
+            int safePct = ComputeSafeSuperIoFallbackPct(effectiveCpuTemp, thermalLoadContext);
+            byte safeDuty = EncodeSuperIoDuty(safePct, IsSuperIoPwmInverted());
             if (!WriteSuperIoHwReg(0x63, safeDuty)) allOk = false;
             if (!WriteSuperIoHwReg(0x6B, safeDuty)) allOk = false;
             if (Profile == null || Profile.HasDualFans)

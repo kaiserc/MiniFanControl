@@ -22,6 +22,44 @@ namespace MiniFanControl
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool FreeLibrary(IntPtr hModule);
 
+        [DllImport("wintrust.dll", ExactSpelling = true, SetLastError = false, CharSet = CharSet.Unicode)]
+        private static extern int WinVerifyTrust(IntPtr hwnd, [MarshalAs(UnmanagedType.LPStruct)] Guid pgActionID, ref WINTRUST_DATA pWVTData);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct WINTRUST_FILE_INFO
+        {
+            public uint cbStruct;
+            public IntPtr pcwszFilePath;
+            public IntPtr hFile;
+            public IntPtr pgKnownSubject;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct WINTRUST_DATA
+        {
+            public uint cbStruct;
+            public IntPtr pPolicyCallbackData;
+            public IntPtr pSIPClientData;
+            public uint dwUIChoice;
+            public uint fdwRevocationChecks;
+            public uint dwUnionChoice;
+            public IntPtr pFile;
+            public uint dwStateAction;
+            public IntPtr hWVTStateData;
+            public IntPtr pwszURLReference;
+            public uint dwProvFlags;
+            public uint dwUIContext;
+            public IntPtr pSignatureSettings;
+        }
+
+        private static readonly Guid WINTRUST_ACTION_GENERIC_VERIFY_V2 = new Guid("00AAC56B-CD44-11d0-8CC2-00C04FC295EE");
+        private const uint WTD_UI_NONE = 2;
+        private const uint WTD_REVOKE_NONE = 0;
+        private const uint WTD_CHOICE_FILE = 1;
+        private const uint WTD_STATEACTION_VERIFY = 1;
+        private const uint WTD_STATEACTION_CLOSE = 2;
+        private const uint WTD_CACHE_ONLY_URL_RETRIEVAL = 0x00001000;
+
         private const uint LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR    = 0x00000100;
         private const uint LOAD_LIBRARY_SEARCH_APPLICATION_DIR = 0x00000200;
         private const uint LOAD_LIBRARY_SEARCH_SYSTEM32        = 0x00000800;
@@ -61,16 +99,19 @@ namespace MiniFanControl
         private static PawnIoExecuteDelegate _fnExecute;
         private static PawnIoCloseDelegate _fnClose;
 
-        // Injectable test hook for verifying PawnIO module orchestration without kernel driver
+        // Injectable test hooks for verifying PawnIO module orchestration & Authenticode gating without kernel driver
         internal static Func<string, ulong[], ulong[]> SimulatedExecuteHook = null;
         internal static bool SimulatedAvailable = false;
+        internal static Func<string, bool> SimulatedSignatureVerifier = null;
 
         public static bool IsLibraryLoaded { get; private set; }
+        public static bool IsSignatureVerified { get; private set; }
         public static bool HasLpcModule { get; private set; }
         public static bool HasAcpiEcModule { get; private set; }
         public static uint DriverVersionRaw { get; private set; }
         public static string LibraryPath { get; private set; }
         public static string LastStatus { get; private set; }
+        public static string LastIntegrityError { get; private set; }
 
         static PawnIoDriver()
         {
@@ -106,19 +147,92 @@ namespace MiniFanControl
         }
 
         /// <summary>
-        /// Locates PawnIOLib.dll in the application directory or standard Program Files\PawnIO install directory.
+        /// Verifies the Windows Authenticode signature of a PawnIO DLL fail-closed before LoadLibraryEx
+        /// to prevent DLL planting in writable portable directories.
+        /// </summary>
+        public static bool VerifyLibrarySignature(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) return false;
+            if (SimulatedSignatureVerifier != null)
+            {
+                try { return SimulatedSignatureVerifier(filePath); } catch { return false; }
+            }
+
+            IntPtr pFilePath = IntPtr.Zero;
+            IntPtr pFileInfo = IntPtr.Zero;
+            WINTRUST_DATA data = new WINTRUST_DATA();
+            bool needClose = false;
+            try
+            {
+                pFilePath = Marshal.StringToCoTaskMemUni(filePath);
+                WINTRUST_FILE_INFO fileInfo = new WINTRUST_FILE_INFO
+                {
+                    cbStruct = (uint)Marshal.SizeOf(typeof(WINTRUST_FILE_INFO)),
+                    pcwszFilePath = pFilePath,
+                    hFile = IntPtr.Zero,
+                    pgKnownSubject = IntPtr.Zero
+                };
+                pFileInfo = Marshal.AllocCoTaskMem(Marshal.SizeOf(typeof(WINTRUST_FILE_INFO)));
+                Marshal.StructureToPtr(fileInfo, pFileInfo, false);
+
+                data.cbStruct = (uint)Marshal.SizeOf(typeof(WINTRUST_DATA));
+                data.dwUIChoice = WTD_UI_NONE;
+                data.fdwRevocationChecks = WTD_REVOKE_NONE;
+                data.dwUnionChoice = WTD_CHOICE_FILE;
+                data.pFile = pFileInfo;
+                data.dwStateAction = WTD_STATEACTION_VERIFY;
+                data.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL;
+
+                int result = WinVerifyTrust(IntPtr.Zero, WINTRUST_ACTION_GENERIC_VERIFY_V2, ref data);
+                needClose = true;
+                return result == 0;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                if (needClose)
+                {
+                    try
+                    {
+                        data.dwStateAction = WTD_STATEACTION_CLOSE;
+                        WinVerifyTrust(IntPtr.Zero, WINTRUST_ACTION_GENERIC_VERIFY_V2, ref data);
+                    }
+                    catch { }
+                }
+                if (pFileInfo != IntPtr.Zero) Marshal.FreeCoTaskMem(pFileInfo);
+                if (pFilePath != IntPtr.Zero) Marshal.FreeCoTaskMem(pFilePath);
+            }
+        }
+
+        /// <summary>
+        /// Returns ordered candidate paths for PawnIOLib.dll, strictly prioritizing the protected
+        /// Program Files\PawnIO installation directory over writable portable application folders.
+        /// </summary>
+        public static string[] GetCandidateLibraryPaths(string appBaseDir = null, string programFilesDir = null)
+        {
+            string baseDir = !string.IsNullOrEmpty(appBaseDir) ? appBaseDir : AppDomain.CurrentDomain.BaseDirectory;
+            string progFiles = programFilesDir != null ? programFilesDir : Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            List<string> candidates = new List<string>(3);
+            if (!string.IsNullOrEmpty(progFiles))
+                candidates.Add(Path.Combine(progFiles, "PawnIO", "PawnIOLib.dll"));
+            if (!string.IsNullOrEmpty(baseDir))
+            {
+                candidates.Add(Path.Combine(baseDir, "PawnIO", "PawnIOLib.dll"));
+                candidates.Add(Path.Combine(baseDir, "PawnIOLib.dll"));
+            }
+            return candidates.ToArray();
+        }
+
+        /// <summary>
+        /// Locates PawnIOLib.dll, preferring the admin-protected Program Files\PawnIO install directory
+        /// before falling back to the application directory.
         /// </summary>
         public static string FindPawnIoLibraryPath()
         {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            string progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-            string[] candidates = new string[]
-            {
-                Path.Combine(baseDir, "PawnIOLib.dll"),
-                Path.Combine(baseDir, "PawnIO", "PawnIOLib.dll"),
-                string.IsNullOrEmpty(progFiles) ? "" : Path.Combine(progFiles, "PawnIO", "PawnIOLib.dll")
-            };
-
+            string[] candidates = GetCandidateLibraryPaths();
             for (int i = 0; i < candidates.Length; i++)
             {
                 if (!string.IsNullOrEmpty(candidates[i]) && File.Exists(candidates[i]))
@@ -128,7 +242,8 @@ namespace MiniFanControl
         }
 
         /// <summary>
-        /// Locates a signed PawnIO module blob (.bin / .amx) in appdir\PawnIO or Program Files\PawnIO\modules.
+        /// Locates a signed PawnIO module blob (.bin / .amx), preferring Program Files\PawnIO\modules
+        /// before falling back to appdir\PawnIO.
         /// </summary>
         public static string FindModuleBlobPath(string moduleBaseName)
         {
@@ -138,11 +253,11 @@ namespace MiniFanControl
 
             string[] dirs = new string[]
             {
-                Path.Combine(baseDir, "PawnIO"),
-                Path.Combine(baseDir, "PawnIO", "modules"),
-                baseDir,
                 string.IsNullOrEmpty(progFiles) ? "" : Path.Combine(progFiles, "PawnIO", "modules"),
-                string.IsNullOrEmpty(progFiles) ? "" : Path.Combine(progFiles, "PawnIO")
+                string.IsNullOrEmpty(progFiles) ? "" : Path.Combine(progFiles, "PawnIO"),
+                Path.Combine(baseDir, "PawnIO", "modules"),
+                Path.Combine(baseDir, "PawnIO"),
+                baseDir
             };
             string[] exts = new string[] { ".bin", ".amx" };
 
@@ -160,15 +275,18 @@ namespace MiniFanControl
 
         /// <summary>
         /// Attempts to initialize PawnIOLib.dll and load available signed hardware modules (LpcIO, LpcACPIEC).
-        /// Non-destructive: returns false cleanly if PawnIO is not installed on the system.
+        /// Enforces Authenticode verification under a FileShare.Read lock before LoadLibraryEx to prevent
+        /// DLL planting / TOCTOU swaps, and cleanly releases the library handle if no modules are present.
         /// </summary>
         public static bool TryInitialize()
         {
             lock (_sync)
             {
+                LastIntegrityError = null;
                 if (SimulatedAvailable)
                 {
                     IsLibraryLoaded = true;
+                    IsSignatureVerified = true;
                     HasLpcModule = true;
                     HasAcpiEcModule = true;
                     LastStatus = "PawnIO active (simulated test mode)";
@@ -177,17 +295,54 @@ namespace MiniFanControl
 
                 if (IsAvailable) return true;
 
-                string dllPath = FindPawnIoLibraryPath();
-                if (string.IsNullOrEmpty(dllPath))
+                string[] candidates = GetCandidateLibraryPaths();
+                string dllPath = null;
+                IntPtr hLib = IntPtr.Zero;
+                for (int i = 0; i < candidates.Length; i++)
                 {
-                    LastStatus = "PawnIOLib.dll not found (install PawnIO from https://pawnio.eu for HVCI support)";
-                    return false;
+                    string cand = candidates[i];
+                    if (string.IsNullOrEmpty(cand) || !File.Exists(cand)) continue;
+                    try
+                    {
+                        // Hold a read-only FileShare.Read handle across Authenticode verification and LoadLibraryEx
+                        // to eliminate TOCTOU binary swapping in writable portable directories.
+                        using (FileStream pinLock = new FileStream(cand, FileMode.Open, FileAccess.Read, FileShare.Read))
+                        {
+                            if (!VerifyLibrarySignature(cand))
+                            {
+                                LastIntegrityError = string.Format(
+                                    "Blocked untrusted {0} at '{1}': Authenticode signature verification failed.",
+                                    Path.GetFileName(cand), cand);
+                                LastStatus = LastIntegrityError;
+                                WatchdogSupervisor.LogWatchdogEvent("SECURITY: " + LastIntegrityError);
+                                continue;
+                            }
+
+                            IntPtr loaded = LoadLibraryEx(cand, IntPtr.Zero, SAFE_LOAD_FLAGS);
+                            if (loaded != IntPtr.Zero)
+                            {
+                                hLib = loaded;
+                                dllPath = cand;
+                                break;
+                            }
+                            else
+                            {
+                                LastStatus = "Failed to load PawnIOLib.dll (Win32 error " + Marshal.GetLastWin32Error() + ")";
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LastStatus = "PawnIOLib.dll load error: " + ex.Message;
+                    }
                 }
 
-                IntPtr hLib = LoadLibraryEx(dllPath, IntPtr.Zero, SAFE_LOAD_FLAGS);
                 if (hLib == IntPtr.Zero)
                 {
-                    LastStatus = "Failed to load PawnIOLib.dll (Win32 error " + Marshal.GetLastWin32Error() + ")";
+                    if (string.IsNullOrEmpty(LastIntegrityError))
+                    {
+                        LastStatus = "PawnIOLib.dll not found (install PawnIO from https://pawnio.eu for HVCI support)";
+                    }
                     return false;
                 }
 
@@ -206,6 +361,7 @@ namespace MiniFanControl
 
                 _hLib = hLib;
                 LibraryPath = dllPath;
+                IsSignatureVerified = true;
                 _fnOpen = (PawnIoOpenDelegate)Marshal.GetDelegateForFunctionPointer(pOpen, typeof(PawnIoOpenDelegate));
                 _fnLoad = (PawnIoLoadDelegate)Marshal.GetDelegateForFunctionPointer(pLoad, typeof(PawnIoLoadDelegate));
                 _fnExecute = (PawnIoExecuteDelegate)Marshal.GetDelegateForFunctionPointer(pExec, typeof(PawnIoExecuteDelegate));
@@ -241,13 +397,25 @@ namespace MiniFanControl
 
                 if (!HasLpcModule && !HasAcpiEcModule)
                 {
-                    LastStatus = "PawnIOLib loaded (v" + VersionString + "), awaiting signed LpcIO.bin / LpcACPIEC.bin modules";
+                    string verStr = VersionString;
+                    // Release DLL handle & clear delegates so repeated retries never leak HMODULE references
+                    try { FreeLibrary(_hLib); } catch { }
+                    _hLib = IntPtr.Zero;
+                    _fnVersion = null;
+                    _fnOpen = null;
+                    _fnLoad = null;
+                    _fnExecute = null;
+                    _fnClose = null;
+                    IsLibraryLoaded = false;
+                    IsSignatureVerified = false;
+                    LastStatus = "PawnIOLib verified (v" + verStr + "), awaiting signed LpcIO.bin / LpcACPIEC.bin modules";
                     return false;
                 }
 
                 List<string> mods = new List<string>();
                 if (HasLpcModule) mods.Add("LpcIO");
                 if (HasAcpiEcModule) mods.Add("LpcACPIEC");
+                LastIntegrityError = null;
                 LastStatus = string.Format("PawnIO v{0} active (HVCI-safe modules: {1})", VersionString, string.Join(", ", mods.ToArray()));
                 return true;
             }
@@ -430,11 +598,14 @@ namespace MiniFanControl
                 _fnExecute = null;
                 _fnClose = null;
                 IsLibraryLoaded = false;
+                IsSignatureVerified = false;
                 HasLpcModule = false;
                 HasAcpiEcModule = false;
                 DriverVersionRaw = 0;
+                LastIntegrityError = null;
                 SimulatedAvailable = false;
                 SimulatedExecuteHook = null;
+                SimulatedSignatureVerifier = null;
             }
         }
     }

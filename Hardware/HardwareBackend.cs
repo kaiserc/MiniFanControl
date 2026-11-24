@@ -275,18 +275,6 @@ namespace MiniFanControl
 
                 return;
 
-            string appDir = AppDomain.CurrentDomain.BaseDirectory;
-            bool winringExists = File.Exists(Path.Combine(appDir, "WinRing0x64.dll")) ||
-                                 File.Exists(Path.Combine(appDir, "WinRing0.dll"));
-            bool inpoutExists = File.Exists(Path.Combine(appDir, "inpoutx64.dll"));
-
-            if (!winringExists && !inpoutExists)
-            {
-                throw new InvalidOperationException(
-                    "No supported hardware driver DLL (WinRing0x64.dll or inpoutx64.dll) found in application folder.\n" +
-                    "Place WinRing0x64.dll or inpoutx64.dll in this folder and run as Administrator (or enable Demo Mode below).");
-            }
-
             try
 
             {
@@ -295,10 +283,14 @@ namespace MiniFanControl
 
                 {
 
+                    string integrityNote = !string.IsNullOrEmpty(NativeInpOut.LastDriverIntegrityError)
+                        ? ("\nIntegrity check: " + NativeInpOut.LastDriverIntegrityError)
+                        : "";
                     throw new InvalidOperationException(
-                        string.Format("Hardware access driver could not be opened ({0}). Please run as Administrator " +
-                        "(and check Windows Vulnerable Driver Blocklist / HVCI in Core Isolation if blocked).",
-                        NativeInpOut.ActiveDriverName));
+                        string.Format("No supported hardware access driver could be opened ({0}). " +
+                        "Install HVCI-safe PawnIO (https://pawnio.eu) or place inpoutx64.dll / WinRing0x64.dll in the application folder and run as Administrator " +
+                        "(or enable Demo Mode).{1}",
+                        NativeInpOut.ActiveDriverName, integrityNote));
 
                 }
 
@@ -381,9 +373,11 @@ namespace MiniFanControl
 
                 }
 
-                // 3. Probe standard ACPI EC Port I/O (0x62 / 0x66)
+                // 3. Probe standard ACPI EC Port I/O (0x62 / 0x66) or PawnIO LpcACPIEC module directly
 
-                byte sc66 = ReadPortByte(0x66);
+                bool pawnAcpiEcReady = (NativeInpOut.ActiveDriver == HardwareDriverEngine.PawnIO && PawnIoDriver.HasAcpiEcModule);
+
+                byte sc66 = pawnAcpiEcReady ? (byte)0x00 : ReadPortByte(0x66);
 
                 if (sc66 != 0xFF)
 
@@ -520,6 +514,8 @@ namespace MiniFanControl
 
 
         private FanStatus _lastStatusCache;
+
+        public bool AllowEtwAutoStart = true;
 
         public bool IsDriverAvailable { get { return NativeInpOut.ActiveDriver != HardwareDriverEngine.None; } }
 
@@ -667,23 +663,33 @@ namespace MiniFanControl
                 out pwrLim, out cpuClk, out gfxClk, out gfxAct, out gfxVolt, out pwrSrc,
                 out memClk, out hotspot, out npuClk, out npuAct, out adlFclk, out adlGfxCurr, out adlSocCurr);
 
+            bool allowActiveSilicon = CanRunActiveSiliconProbes(Profile, _isSimulatedMode);
+
             // High-precision silicon junction resolution (matches HWiNFO64 / LibreHardwareMonitor / Ryzen Master):
             // Tier 1: AMD SMN silicon register 0x00059800 (Tctl/Tdie) - exact silicon die junction temperature
             // Tier 2: AMD ADL2 PMLOG (via atiadlxx.dll) - official Radeon driver on-die CPU junction temperature
             // Tier 3: Super I/O CPU Socket Thermistor (Register 0x2B on IT8613 = HWiNFO64 Temperature 3)
+            // In read-only desktop mode, prefer WHQL ADL2 first so PCI config space isn't touched unnecessarily.
             int cpuTemp = 0;
-            int smnTctl = ReadAmdCpuTempTctl();
-            if (smnTctl >= 15 && smnTctl <= 115)
-            {
-                cpuTemp = smnTctl;
-            }
-            else if (adlCpuTemp >= 15 && adlCpuTemp <= 115)
+            if (!allowActiveSilicon && adlCpuTemp >= 15 && adlCpuTemp <= 115)
             {
                 cpuTemp = adlCpuTemp;
             }
-            else if (ecCpuTemp >= 15 && ecCpuTemp <= 115)
+            else
             {
-                cpuTemp = ecCpuTemp;
+                int smnTctl = (IsAmdCpuPlatform() && NativeInpOut.ActiveDriver != HardwareDriverEngine.None) ? ReadAmdCpuTempTctl() : 0;
+                if (smnTctl >= 15 && smnTctl <= 115)
+                {
+                    cpuTemp = smnTctl;
+                }
+                else if (adlCpuTemp >= 15 && adlCpuTemp <= 115)
+                {
+                    cpuTemp = adlCpuTemp;
+                }
+                else if (ecCpuTemp >= 15 && ecCpuTemp <= 115)
+                {
+                    cpuTemp = ecCpuTemp;
+                }
             }
 
             int gpuTemp = (adlTemp > 0)
@@ -754,20 +760,21 @@ namespace MiniFanControl
 
             AmdSmuTelemetry smu = AmdSmuSiliconSensor.Sample(
                 cpuPwr > 0 ? cpuPwr : (apuPower > 0 ? apuPower : 15),
-                cpuClk, memClk, gfxVolt, adlFclk, adlGfxCurr, adlSocCurr);
+                cpuClk, memClk, gfxVolt, adlFclk, adlGfxCurr, adlSocCurr,
+                false, allowActiveSilicon);
 
             RtssTelemetry rtss = FpsMonitor.GetTelemetry();
-            EtwLatencyTelemetry etw = EtwLatencyMonitor.GetTelemetry(!_isSimulatedMode);
+            EtwLatencyTelemetry etw = EtwLatencyMonitor.GetTelemetry(AllowEtwAutoStart && !_isSimulatedMode);
             string activeGameProc = !string.IsNullOrEmpty(rtss.ProcessName) ? rtss.ProcessName : etw.ProcessName;
             RadeonSettingsTelemetry rad = RadeonSettingsSensor.Sample(activeGameProc);
 
             // DDR5 Dual Stacked SO-DIMM Thermal Resolution
-            int ddrCount = GetDdrStickCount(mem.TotalGb);
+            int ddrCount = GetDdrStickCount(mem.TotalGb, allowActiveSilicon);
             int ddrTemp1 = 0;
             int ddrTemp2 = 0;
             int ddrComposite = 0;
 
-            ushort smbusBase = GetAmdSmbusBase();
+            ushort smbusBase = allowActiveSilicon ? GetAmdSmbusBase() : (ushort)0;
             if (smbusBase != 0)
             {
                 if (_spdThrottleStick0.TryBegin() || !_cachedSpd1Ok)
@@ -1098,6 +1105,11 @@ namespace MiniFanControl
 
         public bool SetAuto()
         {
+            return SetAuto(false);
+        }
+
+        public bool SetAuto(bool thermalLoadContext)
+        {
             if (Profile != null && Profile.IsReadOnly) return false; // Fail-closed: read-only unverified hardware protection
             try { EnsureOpen(); } catch { return false; }
             // Escalating backoff retry loop (5 attempts: 50ms, 100ms, 170ms, 260ms, 370ms)
@@ -1115,7 +1127,7 @@ namespace MiniFanControl
 
                     if (SuperIoBaseAddr != 0 || AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
                     {
-                        bool sioOk = ApplySafeSuperIoFallback();
+                        bool sioOk = ApplySafeSuperIoFallback(thermalLoadContext);
                         if (sioOk)
                         {
                             LastAutoRestoreMode = AutoRestoreMode.SafeSuperIoThermalFallbackAndEcAuto;

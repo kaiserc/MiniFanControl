@@ -256,6 +256,7 @@ namespace MiniFanControl
             Graphics g, float sc, bool showSpark,
             Brush bLabel, Brush bCpu, Brush bGpu, Brush bNvme, Brush bPwr, Brush bRam,
             Brush bFps, Brush bLow, Brush bLoad, Brush bApu, Brush bSys, Brush bWhite, Brush bPeak,
+            Brush bFclk, Brush bVrm, Brush bNpu,
             Color cpuCol, Color gpuCol, Color pwrCol, Color loadCol, Color apuCol, Color sysCol)
         {
             List<HorizColumn> list = new List<HorizColumn>();
@@ -342,7 +343,6 @@ namespace MiniFanControl
                 string fclkVal = string.Format("{0,4}MHz", _status.FabricClockMhz);
                 string fclkPeak = ShowFclkSync ? (_status.IsFabricSynced ? "1:1 Sync" : "Async") : null;
                 Color fclkCol = Color.FromArgb(0x10, 0xB9, 0x81);
-                Brush bFclk = new SolidBrush(fclkCol);
                 list.Add(new HorizColumn {
                     Key = "FCLK", Label = "FCLK", Value = fclkVal, Peak = fclkPeak,
                     LabelBrush = bLabel, ValueBrush = bFclk, PeakBrush = bPeak,
@@ -389,7 +389,6 @@ namespace MiniFanControl
                         vrmPeak = string.Format("▲{0:0}A", _status.VddEdcCurrentAmps);
                 }
                 Color vrmCol = Color.FromArgb(0xF5, 0x9E, 0x0B);
-                Brush bVrm = new SolidBrush(vrmCol);
                 list.Add(new HorizColumn {
                     Key = "VRM", Label = "VRM", Value = vrmVal, Peak = vrmPeak,
                     LabelBrush = bLabel, ValueBrush = bVrm, PeakBrush = bPeak,
@@ -416,7 +415,6 @@ namespace MiniFanControl
                     : string.Format("{0}%", _status.NpuActivityPct);
                 string npuPeak = FormatSingleTracker(Stats != null ? Stats.MinNpuActivityPct : int.MaxValue, Stats != null ? Stats.MaxNpuActivityPct : 0, Stats != null ? Stats.AvgNpuActivityPct : 0.0, "%", true);
                 Color npuCol = Color.FromArgb(0x38, 0xBD, 0xF8);
-                Brush bNpu = new SolidBrush(npuCol);
                 list.Add(new HorizColumn {
                     Key = "NPU", Label = "◈ NPU", Value = npuVal, Peak = npuPeak,
                     LabelBrush = bLabel, ValueBrush = bNpu, PeakBrush = bPeak,
@@ -588,6 +586,7 @@ namespace MiniFanControl
                 List<HorizColumn> cols = BuildHorizontalColumns(
                     g, sc, showSpark,
                     null, null, null, null, null, null, null, null, null, null, null, null, null,
+                    null, null, null,
                     Color.Empty, Color.Empty, Color.Empty, Color.Empty, Color.Empty, Color.Empty);
                 float total = 0f;
                 foreach (var c in cols)

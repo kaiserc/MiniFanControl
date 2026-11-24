@@ -82,10 +82,14 @@ namespace MiniFanControl
                     using (Brush bFps = new SolidBrush(fpsCol))
                     using (Brush bLow = new SolidBrush(lowCol))
                     using (Brush bLoad = new SolidBrush(loadCol))
+                    using (Brush bFclk = new SolidBrush(Color.FromArgb(0x10, 0xB9, 0x81)))
+                    using (Brush bVrm = new SolidBrush(Color.FromArgb(0xF5, 0x9E, 0x0B)))
+                    using (Brush bNpu = new SolidBrush(Color.FromArgb(0x38, 0xBD, 0xF8)))
                     {
                         List<HorizColumn> horizCols = BuildHorizontalColumns(
                             g, sc, showSpark,
                             bLabel, bCpu, bGpu, bNvme, bPwr, bRam, bFps, bLow, bLoad, bApu, bSys, bWhite, bPeak,
+                            bFclk, bVrm, bNpu,
                             cpuCol, gpuCol, pwrCol, loadCol, apuCol, sysCol);
 
                         float totalMinW = 0f;

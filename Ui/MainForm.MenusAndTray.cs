@@ -203,7 +203,7 @@ namespace MiniFanControl
                     PopulateCustomCombo();
                 }
                 SaveSettings();
-                _driversMenu = CreateDriversAndToolsMenu();
+                RebuildDriversMenu();
                 _statusBarLabel.Text = "✓ Imported custom curve '" + name + "'!";
                 MessageBox.Show(this, "Successfully imported and applied custom curve:\n" + name, "Curve Imported", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }

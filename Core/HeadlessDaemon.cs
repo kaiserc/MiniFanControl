@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Win32;
 
@@ -14,6 +15,43 @@ namespace MiniFanControl
     /// </summary>
     public static class HeadlessDaemon
     {
+        private delegate bool ConsoleCtrlHandlerDelegate(uint ctrlType);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetConsoleCtrlHandler(ConsoleCtrlHandlerDelegate handler, bool add);
+
+        private const uint CTRL_C_EVENT = 0;
+        private const uint CTRL_BREAK_EVENT = 1;
+        private const uint CTRL_CLOSE_EVENT = 2;
+        private const uint CTRL_LOGOFF_EVENT = 5;
+        private const uint CTRL_SHUTDOWN_EVENT = 6;
+
+        /// <summary>
+        /// Polls the anti-cheat state machine from WorkerIterationCompleted (which continues firing
+        /// even while FanControllerService is paused, preventing pause/resume deadlocks).
+        /// </summary>
+        internal static AntiCheatAction PollAntiCheatOnWorkerTick(
+            AntiCheatMonitor antiCheat,
+            FanControllerService controller,
+            bool isSuspended,
+            Action pauseHandoff,
+            Action<bool> resumeAction)
+        {
+            if (antiCheat == null || !antiCheat.Enabled || isSuspended) return AntiCheatAction.None;
+
+            AntiCheatAction act = antiCheat.Poll();
+            if (act == AntiCheatAction.PauseForAntiCheat)
+            {
+                if (controller != null) controller.PauseForSuspend();
+                if (pauseHandoff != null) pauseHandoff();
+            }
+            else if (act == AntiCheatAction.ResumeAfterAntiCheat)
+            {
+                if (resumeAction != null) resumeAction(true);
+                else if (controller != null) controller.ResumeFromSuspend(true);
+            }
+            return act;
+        }
         public static FanCurveProfile[] CreateBuiltInProfiles()
         {
             return new FanCurveProfile[]
@@ -90,6 +128,22 @@ namespace MiniFanControl
 
             ManualResetEvent stopEvent = new ManualResetEvent(false);
             int completedTicks = 0;
+            int isSuspended = 0;
+            int safeAutoRestored = 0;
+
+            Action restoreAutoOnce = delegate
+            {
+                if (!settings.RestoreAutoOnExit) return;
+                if (Interlocked.Exchange(ref safeAutoRestored, 1) != 0) return;
+                if (demoMode)
+                {
+                    try { demo.SetAuto(); } catch { }
+                }
+                else if (hw != null)
+                {
+                    try { hw.SetAuto(); } catch { }
+                }
+            };
 
             using (FanControllerService controller = new FanControllerService(hw, demo, builtIns, demoMode))
             {
@@ -109,10 +163,35 @@ namespace MiniFanControl
                 };
                 Console.CancelKeyPress += cancelHandler;
 
+                ConsoleCtrlHandlerDelegate ctrlHandler = delegate(uint ctrlType)
+                {
+                    if (ctrlType == CTRL_CLOSE_EVENT || ctrlType == CTRL_LOGOFF_EVENT || ctrlType == CTRL_SHUTDOWN_EVENT)
+                    {
+                        try { controller.PauseForSuspend(); } catch { }
+                        restoreAutoOnce();
+                        try { stopEvent.Set(); } catch { }
+                    }
+                    else if (ctrlType == CTRL_C_EVENT || ctrlType == CTRL_BREAK_EVENT)
+                    {
+                        try { stopEvent.Set(); } catch { }
+                        return true;
+                    }
+                    return false;
+                };
+                bool ctrlHandlerRegistered = false;
+                try { ctrlHandlerRegistered = SetConsoleCtrlHandler(ctrlHandler, true); } catch { }
+
+                EventHandler processExitHandler = delegate(object sender, EventArgs e)
+                {
+                    restoreAutoOnce();
+                };
+                AppDomain.CurrentDomain.ProcessExit += processExitHandler;
+
                 PowerModeChangedEventHandler powerHandler = delegate(object sender, PowerModeChangedEventArgs e)
                 {
                     if (e.Mode == PowerModes.Suspend)
                     {
+                        Interlocked.Exchange(ref isSuspended, 1);
                         controller.PauseForSuspend();
                         if (!demoMode && hw != null)
                         {
@@ -121,6 +200,8 @@ namespace MiniFanControl
                     }
                     else if (e.Mode == PowerModes.Resume)
                     {
+                        Interlocked.Exchange(ref isSuspended, 0);
+                        Interlocked.Exchange(ref safeAutoRestored, 0);
                         controller.ResumeFromSuspend(!demoMode);
                     }
                 };
@@ -139,29 +220,36 @@ namespace MiniFanControl
                             antiCheat.IsPaused ? " [ANTI-CHEAT PAUSED]" : ""));
                     }
 
-                    if (!demoMode && antiCheat.Enabled)
-                    {
-                        AntiCheatAction act = antiCheat.Poll();
-                        if (act == AntiCheatAction.PauseForAntiCheat)
-                        {
-                            if (!quiet) Console.WriteLine("[DAEMON] Anti-cheat detected (" + antiCheat.ActiveAntiCheatName + ") — restoring BIOS Auto and unloading legacy driver.");
-                            controller.PauseForSuspend();
-                            AntiCheatMonitor.ExecuteSafePauseHandoff(
-                                delegate { return hw != null && hw.SetAuto(); },
-                                delegate { NativeInpOut.Shutdown(); },
-                                delegate(string svc) { return DriverServiceManager.StopDriverService(svc); },
-                                NativeInpOut.ActiveDriver);
-                        }
-                        else if (act == AntiCheatAction.ResumeAfterAntiCheat)
-                        {
-                            if (!quiet) Console.WriteLine("[DAEMON] Anti-cheat exited — resuming hardware fan control.");
-                            controller.ResumeFromSuspend(true);
-                        }
-                    }
-
                     if (maxTicks > 0 && tick >= maxTicks)
                     {
                         stopEvent.Set();
+                    }
+                };
+
+                // Poll anti-cheat in WorkerIterationCompleted so it continues monitoring even while
+                // FanControllerService is paused, allowing automatic resume once the game exits.
+                controller.WorkerIterationCompleted += delegate
+                {
+                    if (!demoMode && antiCheat.Enabled)
+                    {
+                        PollAntiCheatOnWorkerTick(
+                            antiCheat,
+                            controller,
+                            Volatile.Read(ref isSuspended) != 0,
+                            delegate
+                            {
+                                if (!quiet) Console.WriteLine("[DAEMON] Anti-cheat detected (" + antiCheat.ActiveAntiCheatName + ") — restoring BIOS Auto and unloading legacy driver.");
+                                AntiCheatMonitor.ExecuteSafePauseHandoff(
+                                    delegate { return hw != null && hw.SetAuto(true); },
+                                    delegate { NativeInpOut.Shutdown(); },
+                                    delegate(string svc) { return DriverServiceManager.StopDriverService(svc); },
+                                    NativeInpOut.ActiveDriver);
+                            },
+                            delegate(bool reinit)
+                            {
+                                if (!quiet) Console.WriteLine("[DAEMON] Anti-cheat exited — resuming hardware fan control.");
+                                controller.ResumeFromSuspend(reinit);
+                            });
                     }
                 };
 
@@ -182,19 +270,15 @@ namespace MiniFanControl
                 controller.Stop(1000);
 
                 try { SystemEvents.PowerModeChanged -= powerHandler; } catch { }
+                AppDomain.CurrentDomain.ProcessExit -= processExitHandler;
+                if (ctrlHandlerRegistered)
+                {
+                    try { SetConsoleCtrlHandler(ctrlHandler, false); } catch { }
+                }
+                GC.KeepAlive(ctrlHandler);
                 Console.CancelKeyPress -= cancelHandler;
 
-                if (settings.RestoreAutoOnExit)
-                {
-                    if (demoMode)
-                    {
-                        demo.SetAuto();
-                    }
-                    else if (hw != null)
-                    {
-                        try { hw.SetAuto(); } catch { }
-                    }
-                }
+                restoreAutoOnce();
             }
 
             if (!demoMode && hw != null)

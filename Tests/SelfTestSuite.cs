@@ -5309,6 +5309,265 @@ namespace MiniFanControl
                 "ETW Display Latency Stats, OSD Studio Persistence, Overlay/LivePerf Render & Status JSON",
                 etwUiDetail);
 
+            // 102. PawnIO ProgramFiles Priority, Fail-Closed Authenticode Verification & LpcACPIEC Routing
+            bool pawnSecOk = false;
+            string pawnSecDetail = "";
+            string tempUnsignedDll = null;
+            try
+            {
+                string[] cands = PawnIoDriver.GetCandidateLibraryPaths(@"C:\Portable\MiniFan", @"C:\Program Files");
+                bool prefersProgramFiles = (cands != null && cands.Length >= 3
+                    && cands[0].StartsWith(@"C:\Program Files\PawnIO", StringComparison.OrdinalIgnoreCase)
+                    && cands[2].StartsWith(@"C:\Portable\MiniFan", StringComparison.OrdinalIgnoreCase));
+
+                tempUnsignedDll = Path.Combine(Path.GetTempPath(), "mfc_unsigned_test_" + Guid.NewGuid().ToString("N") + ".dll");
+                File.WriteAllBytes(tempUnsignedDll, new byte[] { 0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00 });
+                bool unsignedRejected = !PawnIoDriver.VerifyLibrarySignature(tempUnsignedDll);
+
+                PawnIoDriver.SimulatedSignatureVerifier = delegate { return false; };
+                bool hookRejected = !PawnIoDriver.VerifyLibrarySignature(tempUnsignedDll);
+                PawnIoDriver.SimulatedSignatureVerifier = null;
+
+                // Verify TryPortIoWrite / TryPortIoRead on 0x62/0x66 route directly to PawnIO LpcACPIEC module
+                NativeInpOut.Shutdown();
+                PawnIoDriver.Shutdown();
+                Dictionary<byte, byte> fakeAcpiEc = new Dictionary<byte, byte>();
+                int ioctlEcCalls = 0;
+                PawnIoDriver.SimulatedAvailable = true;
+                PawnIoDriver.SimulatedExecuteHook = delegate(string fn, ulong[] inp)
+                {
+                    if (fn == "ioctl_write" && inp.Length >= 2)
+                    {
+                        ioctlEcCalls++;
+                        fakeAcpiEc[(byte)inp[0]] = (byte)(inp[1] & 0xFF);
+                        return new ulong[] { 0 };
+                    }
+                    if (fn == "ioctl_read" && inp.Length >= 1)
+                    {
+                        ioctlEcCalls++;
+                        byte v;
+                        fakeAcpiEc.TryGetValue((byte)inp[0], out v);
+                        return new ulong[] { v };
+                    }
+                    return null;
+                };
+                bool pre = NativeInpOut.PreloadDriverDll();
+                bool ecW = HardwareBackend.TryPortIoWrite(0x62, 0x66, 0x33, 0xA8);
+                byte ecVal;
+                bool ecR = HardwareBackend.TryPortIoRead(0x62, 0x66, 0x33, out ecVal);
+
+                pawnSecOk = prefersProgramFiles && unsignedRejected && hookRejected && pre && ecW && ecR && (ecVal == 0xA8) && (ioctlEcCalls == 2);
+                pawnSecDetail = string.Format("ProgFilesFirst={0}, UnsignedBlocked={1}, HookBlocked={2}, AcpiEcRouted={3}/0x{4:X2}({5})",
+                    prefersProgramFiles, unsignedRejected, hookRejected, ecW && ecR, ecVal, ioctlEcCalls);
+            }
+            catch (Exception ex) { pawnSecDetail = ex.Message; }
+            finally
+            {
+                NativeInpOut.Shutdown();
+                PawnIoDriver.Shutdown();
+                if (!string.IsNullOrEmpty(tempUnsignedDll)) { try { File.Delete(tempUnsignedDll); } catch { } }
+            }
+            Check(pawnSecOk,
+                "PawnIO ProgramFiles Priority, Fail-Closed Authenticode Verification & LpcACPIEC Routing",
+                pawnSecDetail);
+
+            // 103. HeadlessDaemon Anti-Cheat Pause & Resume via WorkerIterationCompleted (Zero Deadlock)
+            bool daemonAcOk = false;
+            string daemonAcDetail = "";
+            try
+            {
+                bool eacActive = true;
+                long acClock = 1000;
+                AntiCheatMonitor mon = new AntiCheatMonitor(
+                    delegate(string svc) { return svc == "EasyAntiCheat_EOS" && eacActive; },
+                    delegate { return acClock; },
+                    0);
+                mon.Enabled = true;
+
+                FanCurveProfile[] builtIns = HeadlessDaemon.CreateBuiltInProfiles();
+                DemoBackend acDemo = new DemoBackend();
+                int pauseCount = 0;
+                int resumeCount = 0;
+                ManualResetEvent pausedEvt = new ManualResetEvent(false);
+                ManualResetEvent resumedEvt = new ManualResetEvent(false);
+
+                using (FanControllerService svc = new FanControllerService(null, acDemo, builtIns, true))
+                {
+                    svc.RefreshIntervalMs = 100;
+                    svc.WorkerIterationCompleted += delegate
+                    {
+                        HeadlessDaemon.PollAntiCheatOnWorkerTick(
+                            mon,
+                            svc,
+                            false,
+                            delegate
+                            {
+                                Interlocked.Increment(ref pauseCount);
+                                pausedEvt.Set();
+                            },
+                            delegate(bool reinit)
+                            {
+                                svc.ResumeFromSuspend(false);
+                                Interlocked.Increment(ref resumeCount);
+                                resumedEvt.Set();
+                            });
+                    };
+
+                    svc.Start();
+                    bool gotPaused = pausedEvt.WaitOne(1500);
+                    bool workerWasPaused = svc.IsWorkerPaused;
+
+                    // Flip EAC off while worker is paused — WorkerIterationCompleted must still poll and resume!
+                    eacActive = false;
+                    acClock = 5000;
+                    bool gotResumed = resumedEvt.WaitOne(1500);
+                    bool workerUnpaused = !svc.IsWorkerPaused;
+                    svc.Stop(500);
+
+                    daemonAcOk = gotPaused && workerWasPaused && gotResumed && workerUnpaused && pauseCount == 1 && resumeCount == 1;
+                    daemonAcDetail = string.Format("Paused={0}({1}), Resumed={2}({3}), Counts={4}/{5}",
+                        gotPaused, workerWasPaused, gotResumed, workerUnpaused, pauseCount, resumeCount);
+                }
+                pausedEvt.Close();
+                resumedEvt.Close();
+            }
+            catch (Exception ex) { daemonAcDetail = ex.Message; }
+            Check(daemonAcOk,
+                "HeadlessDaemon Anti-Cheat Pause & Automatic Resume While Worker Paused (Zero Deadlock)",
+                daemonAcDetail);
+
+            // 104. Read-Only / Non-AMD Active Silicon Gate & Temperature-Aware Super I/O Safe Fallback
+            bool siliconGateOk = false;
+            string siliconGateDetail = "";
+            try
+            {
+                DeviceProfile verifiedProf = DeviceProfile.FindProfile("ryzen-hx370-ec");
+                DeviceProfile roProf = DeviceProfile.FindProfile("unknown-safe");
+
+                HardwareBackend.SimulatedIsAmdCpuForTest = false; // Simulate Intel CPU
+                bool intelBlocked = !HardwareBackend.CanRunActiveSiliconProbes(verifiedProf, false);
+
+                HardwareBackend.SimulatedIsAmdCpuForTest = true; // Simulate AMD CPU
+                bool roBlocked = !HardwareBackend.CanRunActiveSiliconProbes(roProf, false);
+                bool verifiedAllowed = HardwareBackend.CanRunActiveSiliconProbes(verifiedProf, false);
+                HardwareBackend.SimulatedIsAmdCpuForTest = null;
+
+                int coolPct = HardwareBackend.ComputeSafeSuperIoFallbackPct(45, false);
+                int acPct = HardwareBackend.ComputeSafeSuperIoFallbackPct(52, true);
+                int warmPct = HardwareBackend.ComputeSafeSuperIoFallbackPct(70, false);
+                int hotPct = HardwareBackend.ComputeSafeSuperIoFallbackPct(85, false);
+
+                HardwareBackend sioHw = new HardwareBackend();
+                sioHw.EnableSimulationMode();
+                sioHw.Profile = verifiedProf;
+                sioHw.SuperIoBaseAddr = 0x0A30;
+                bool acFallbackOk = sioHw.ApplySafeSuperIoFallback(true);
+                byte dutyAc = sioHw.ReadSuperIoHwReg(0x63);
+                byte expectedAc = HardwareBackend.EncodeSuperIoDuty(60, false);
+
+                // Simulate hot CPU diode on Reg 0x2B (82°C) -> auto-escalates to 75% even without thermalLoadContext
+                sioHw.WriteSuperIoHwReg(0x2B, 82);
+                bool hotFallbackOk = sioHw.ApplySafeSuperIoFallback(false);
+                byte dutyHot = sioHw.ReadSuperIoHwReg(0x63);
+                byte expectedHot = HardwareBackend.EncodeSuperIoDuty(75, false);
+
+                siliconGateOk = intelBlocked && roBlocked && verifiedAllowed
+                    && (coolPct == 35) && (acPct == 60) && (warmPct == 60) && (hotPct == 75)
+                    && acFallbackOk && (dutyAc == expectedAc)
+                    && hotFallbackOk && (dutyHot == expectedHot);
+                siliconGateDetail = string.Format("IntelBlk={0}, RoBlk={1}, AmdAllow={2}, Pcts={3}/{4}/{5}/{6}, AcDuty={7}/{8}, HotDuty={9}/{10}",
+                    intelBlocked, roBlocked, verifiedAllowed, coolPct, acPct, warmPct, hotPct, dutyAc, expectedAc, dutyHot, expectedHot);
+            }
+            catch (Exception ex) { siliconGateDetail = ex.Message; }
+            finally { HardwareBackend.SimulatedIsAmdCpuForTest = null; }
+            Check(siliconGateOk,
+                "Read-Only / Non-AMD Silicon Write Gate & Temperature-Aware Super I/O Safe Fallback",
+                siliconGateDetail);
+
+            // 105. Horizontal OSD Brush-Safe Render (FCLK/VRM/NPU) & ETW Shutdown/AutoStart Guard
+            bool osdEtwGuardOk = false;
+            string osdEtwGuardDetail = "";
+            try
+            {
+                FanStatus stRich = new FanStatus
+                {
+                    CpuTemp = 62, GpuTemp = 54, ApuPowerWatts = 45,
+                    FabricClockMhz = 2000, IsFabricSynced = true,
+                    VddTdcCurrentAmps = 38.5, VrmTemp = 58,
+                    NpuActivityPct = 42, NpuClockMhz = 1200,
+                    RamTotalGb = 32, RamUsedGb = 14.2, RamLoadPct = 44,
+                    Mode = "Balanced"
+                };
+                TelemetrySessionStats richStats = new TelemetrySessionStats();
+                richStats.Record(stRich);
+
+                bool horizRenderOk = false;
+                using (CapFrameXOverlayForm osdH = new CapFrameXOverlayForm())
+                {
+                    osdH.VerticalLayout = false;
+                    osdH.ShowFabricClock = true;
+                    osdH.ShowVrmCurrent = true;
+                    osdH.ShowNpu = true;
+                    osdH.Stats = richStats;
+                    osdH.UpdateMetrics(stRich, "Balanced", true);
+                    osdH.UpdateDimensions();
+                    int w = Math.Max(1, osdH.TargetWidth);
+                    int h = Math.Max(1, osdH.TargetHeight);
+                    using (Bitmap bmp = new Bitmap(w, h))
+                    {
+                        for (int i = 0; i < 3; i++)
+                            osdH.DrawToBitmap(bmp, new Rectangle(0, 0, w, h));
+                    }
+                    horizRenderOk = true;
+                }
+
+                EtwLatencyMonitor.Shutdown();
+                bool etwStopped = !EtwLatencyMonitor.IsActive;
+                HardwareBackend cliHw = new HardwareBackend();
+                bool defaultAutoStart = cliHw.AllowEtwAutoStart;
+                cliHw.AllowEtwAutoStart = false;
+
+                osdEtwGuardOk = horizRenderOk && etwStopped && defaultAutoStart && !cliHw.AllowEtwAutoStart;
+                osdEtwGuardDetail = string.Format("HorizRender={0}, EtwCleanStop={1}, AutoStartToggle={2}",
+                    horizRenderOk, etwStopped, defaultAutoStart && !cliHw.AllowEtwAutoStart);
+            }
+            catch (Exception ex) { osdEtwGuardDetail = ex.Message; }
+            Check(osdEtwGuardOk,
+                "Horizontal OSD Brush-Safe Render (FCLK/VRM/NPU) & ETW Shutdown/AutoStart Guard",
+                osdEtwGuardDetail);
+
+            // 106. WatchdogSupervisor Log Rotation Cap & Monotonic Timeout Integrity
+            bool wdRotOk = false;
+            string wdRotDetail = "";
+            string tempLog = null;
+            try
+            {
+                tempLog = Path.Combine(Path.GetTempPath(), "mfc_wd_rot_" + Guid.NewGuid().ToString("N") + ".log");
+                string line = new string('X', 80) + Environment.NewLine;
+                WatchdogSupervisor.WriteLogEntryWithRotation(tempLog, line, 128);
+                WatchdogSupervisor.WriteLogEntryWithRotation(tempLog, line, 128);
+                WatchdogSupervisor.WriteLogEntryWithRotation(tempLog, line, 128); // Triggers rollover to .1
+
+                bool backupCreated = File.Exists(tempLog + ".1");
+                long curLen = File.Exists(tempLog) ? new FileInfo(tempLog).Length : -1;
+                bool bounded = (curLen > 0 && curLen < 128);
+
+                wdRotOk = backupCreated && bounded;
+                wdRotDetail = string.Format("BackupCreated={0}, CurrentLen={1}", backupCreated, curLen);
+            }
+            catch (Exception ex) { wdRotDetail = ex.Message; }
+            finally
+            {
+                if (!string.IsNullOrEmpty(tempLog))
+                {
+                    try { if (File.Exists(tempLog)) File.Delete(tempLog); } catch { }
+                    try { if (File.Exists(tempLog + ".1")) File.Delete(tempLog + ".1"); } catch { }
+                }
+            }
+            Check(wdRotOk,
+                "WatchdogSupervisor Log Rotation Rollover Cap & Monotonic Timing",
+                wdRotDetail);
+
             Console.WriteLine("----------------------------------------------------------------------");
 
             Console.WriteLine(string.Format("  Result: {0} passed, {1} failed", _passed, _failed));

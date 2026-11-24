@@ -711,7 +711,7 @@ namespace MiniFanControl
                 biosX += w + 4;
             }
 
-            _driversMenu = CreateDriversAndToolsMenu();
+            RebuildDriversMenu();
 
             _driversMenuBtn = new Button
             {

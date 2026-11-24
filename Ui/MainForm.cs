@@ -1142,7 +1142,7 @@ namespace MiniFanControl
             if (_controller != null) _controller.PauseForSuspend();
             StopWatchdogSupervisorGracefully();
             AntiCheatMonitor.ExecuteSafePauseHandoff(
-                delegate { return _hw != null && _hw.SetAuto(); },
+                delegate { return _hw != null && _hw.SetAuto(true); },
                 delegate { NativeInpOut.Shutdown(); },
                 delegate(string svc) { return DriverServiceManager.StopDriverService(svc); },
                 NativeInpOut.ActiveDriver);
@@ -1331,7 +1331,7 @@ namespace MiniFanControl
             if (_controller != null) _controller.ClearStaleWriteErrors();
             UpdateReadOnlyUiState();
             SaveSettings();
-            _driversMenu = CreateDriversAndToolsMenu();
+            RebuildDriversMenu();
             _statusBarLabel.Text = string.Format("✓ Profile: {0}", _sysInfo.MatchedProfile.DisplayName);
             RefreshStatus();
         }
@@ -1391,7 +1391,7 @@ namespace MiniFanControl
                     }
                 }
             }
-            _driversMenu = CreateDriversAndToolsMenu();
+            RebuildDriversMenu();
             SaveSettings();
             if (_statusBarLabel != null)
             {

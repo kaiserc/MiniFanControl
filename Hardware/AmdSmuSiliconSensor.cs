@@ -202,8 +202,10 @@ namespace MiniFanControl
         /// <summary>
         /// Samples deep silicon telemetry: VRM TDC/EDC Amperage and Infinity Fabric FCLK.
         /// Features multi-tier fallback: Direct SMU PM Table -> ADL PMLOG -> Silicon Physics SVI3 Model.
+        /// When allowActiveMailboxWrites is false (e.g. read-only desktop or non-AMD CPU), skips
+        /// all PCI SMU MP1 mailbox commands and resolves purely via read-only ADL2/model telemetry.
         /// </summary>
-        public static AmdSmuTelemetry Sample(int cpuPowerWatts, int cpuClockMhz, int memClockMhz, int gfxVoltMv, int adlFclk = 0, int adlGfxCurrent = 0, int adlSocCurrent = 0, bool forceRefresh = false)
+        public static AmdSmuTelemetry Sample(int cpuPowerWatts, int cpuClockMhz, int memClockMhz, int gfxVoltMv, int adlFclk = 0, int adlGfxCurrent = 0, int adlSocCurrent = 0, bool forceRefresh = false, bool allowActiveMailboxWrites = true)
         {
             lock (_syncLock)
             {
@@ -215,20 +217,23 @@ namespace MiniFanControl
 
                 AmdSmuTelemetry tel = default(AmdSmuTelemetry);
 
-                // Probe mailbox architecture if not done yet
-                if (!_mailboxProbed)
+                if (allowActiveMailboxWrites && HardwareBackend.IsAmdCpuPlatform())
                 {
-                    ProbeMailboxArchitecture();
-                }
-
-                // 1. Attempt Direct SMU PM Table Telemetry
-                if (_pmTablePhysAddr > 0)
-                {
-                    if (TrySamplePmTable(ref tel))
+                    // Probe mailbox architecture if not done yet
+                    if (!_mailboxProbed)
                     {
-                        _cachedTelemetry = tel;
-                        _lastTableRefreshUtc = DateTime.UtcNow;
-                        return tel;
+                        ProbeMailboxArchitecture();
+                    }
+
+                    // 1. Attempt Direct SMU PM Table Telemetry
+                    if (_pmTablePhysAddr > 0)
+                    {
+                        if (TrySamplePmTable(ref tel))
+                        {
+                            _cachedTelemetry = tel;
+                            _lastTableRefreshUtc = DateTime.UtcNow;
+                            return tel;
+                        }
                     }
                 }
 

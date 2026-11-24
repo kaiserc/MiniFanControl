@@ -42,7 +42,8 @@ Name: "startupicon"; Description: "Start MiniFanControl automatically on Windows
 Source: "{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#MyAppHelperExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "inpoutx64.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "PawnIo64.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "PawnIOLib.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "PawnIO\*"; DestDir: "{app}\PawnIO"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "lang\*"; DestDir: "{app}\lang"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "app.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app.manifest"; DestDir: "{app}"; Flags: ignoreversion

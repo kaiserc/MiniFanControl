@@ -194,7 +194,7 @@ namespace MiniFanControl
                     Console.WriteLine("  diff-scan / ec-scan [--demo]          Run EC differential sensor scanner (Tier 2 discovery)");
                     Console.WriteLine("  calibrate [passes] [--demo]           Execute multi-pass fan calibration curve analysis");
 
-                    Console.WriteLine("  test                                  Run 101-point automated safety & regression suite");
+                    Console.WriteLine("  test                                  Run 106-point automated safety & regression suite");
                     Console.WriteLine("  hw-matrix                             Run multi-profile hardware validation matrix");
                     Console.WriteLine("  export-profiles [--json]              Export supported hardware profiles & Super I/O IDs");
 
@@ -295,23 +295,29 @@ namespace MiniFanControl
                         Console.WriteLine("{\"etw_active\":true,\"has_live_frames\":true,\"display_latency_ms\":11.4,\"render_latency_ms\":6.8,\"present_api_ms\":0.24,\"flip_mode\":\"MPO Flip\",\"fps\":98,\"frametime_ms\":10.2,\"process\":\"ES2-Win64-Shipping.exe\",\"diagnostic\":\"Demo Mode\"}");
                         return 0;
                     }
-                    EtwLatencyMonitor.EnsureStarted();
-                    Thread.Sleep(350);
-                    EtwLatencyTelemetry etw = EtwLatencyMonitor.GetTelemetry(false);
-                    Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                        "{{\"etw_active\":{0},\"has_live_frames\":{1},\"display_latency_ms\":{2:0.0},\"render_latency_ms\":{3:0.0},\"present_api_ms\":{4:0.00},\"flip_mode\":\"{5}\",\"fps\":{6},\"frametime_ms\":{7:0.00},\"process\":\"{8}\",\"diagnostic\":\"{9}\"}}",
-                        etw.IsEtwActive ? "true" : "false",
-                        etw.HasLiveFrames ? "true" : "false",
-                        etw.DisplayLatencyMs,
-                        etw.RenderLatencyMs,
-                        etw.PresentApiMs,
-                        EscapeJson(etw.FlipMode ?? ""),
-                        etw.Fps,
-                        etw.FrametimeMs,
-                        EscapeJson(etw.ProcessName ?? ""),
-                        EscapeJson(EtwLatencyMonitor.LastDiagnostic ?? "")));
-                    EtwLatencyMonitor.Shutdown();
-                    return 0;
+                    try
+                    {
+                        EtwLatencyMonitor.EnsureStarted();
+                        Thread.Sleep(350);
+                        EtwLatencyTelemetry etw = EtwLatencyMonitor.GetTelemetry(false);
+                        Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                            "{{\"etw_active\":{0},\"has_live_frames\":{1},\"display_latency_ms\":{2:0.0},\"render_latency_ms\":{3:0.0},\"present_api_ms\":{4:0.00},\"flip_mode\":\"{5}\",\"fps\":{6},\"frametime_ms\":{7:0.00},\"process\":\"{8}\",\"diagnostic\":\"{9}\"}}",
+                            etw.IsEtwActive ? "true" : "false",
+                            etw.HasLiveFrames ? "true" : "false",
+                            etw.DisplayLatencyMs,
+                            etw.RenderLatencyMs,
+                            etw.PresentApiMs,
+                            EscapeJson(etw.FlipMode ?? ""),
+                            etw.Fps,
+                            etw.FrametimeMs,
+                            EscapeJson(etw.ProcessName ?? ""),
+                            EscapeJson(EtwLatencyMonitor.LastDiagnostic ?? "")));
+                        return 0;
+                    }
+                    finally
+                    {
+                        try { EtwLatencyMonitor.Shutdown(); } catch { }
+                    }
                 }
 
                 if (cmd == "daemon" || cmd == "--daemon" || cmd == "headless" || cmd == "--headless")
@@ -460,6 +466,8 @@ namespace MiniFanControl
                     using (HardwareBackend hw = HardwareBackend.CreateAutoDetected())
 
                     {
+                        // One-shot CLI commands must never auto-start a persistent kernel ETW trace session
+                        hw.AllowEtwAutoStart = false;
 
                         DemoBackend demo = new DemoBackend();
 

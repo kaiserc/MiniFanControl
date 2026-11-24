@@ -266,6 +266,13 @@ namespace MiniFanControl
 
             val = 0xFF;
 
+            if (dataPort == 0x62 && cmdPort == 0x66 &&
+                NativeInpOut.ActiveDriver == HardwareDriverEngine.PawnIO &&
+                PawnIoDriver.HasAcpiEcModule)
+            {
+                return PawnIoDriver.TryReadAcpiEcByte(reg, out val);
+            }
+
             EcDrainObf(dataPort, cmdPort);
 
             if (!EcWaitIbfClear(cmdPort)) return false;
@@ -287,6 +294,13 @@ namespace MiniFanControl
         public static bool TryPortIoWrite(ushort dataPort, ushort cmdPort, byte reg, byte val)
 
         {
+
+            if (dataPort == 0x62 && cmdPort == 0x66 &&
+                NativeInpOut.ActiveDriver == HardwareDriverEngine.PawnIO &&
+                PawnIoDriver.HasAcpiEcModule)
+            {
+                return PawnIoDriver.TryWriteAcpiEcByte(reg, val);
+            }
 
             EcDrainObf(dataPort, cmdPort);
 
