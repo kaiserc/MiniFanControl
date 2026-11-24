@@ -31,7 +31,7 @@ if exist minifan-helper.exe (
     ren minifan-helper.exe "minifan-helper.%RANDOM%%RANDOM%.old.exe" >nul 2>&1
 )
 
-"%CSC%" /nologo /platform:x64 /target:exe /out:minifan-helper.exe /recurse:*.cs > "%TEMP%\csc_helper.log" 2>&1
+"%CSC%" /nologo /warn:4 /codepage:65001 /platform:x64 /target:exe /out:minifan-helper.exe /recurse:*.cs > "%TEMP%\csc_helper.log" 2>&1
 set CSC_ERR=%ERRORLEVEL%
 type "%TEMP%\csc_helper.log"
 if %CSC_ERR% neq 0 (
@@ -57,9 +57,9 @@ if exist obj (
 )
 
 if exist app.ico (
-    "%CSC%" /nologo /platform:x64 /target:winexe /win32icon:app.ico %MANIFEST_FLAG% /out:MiniFanControl.exe /recurse:*.cs > "%TEMP%\csc_gui.log" 2>&1
+    "%CSC%" /nologo /warn:4 /codepage:65001 /platform:x64 /target:winexe /win32icon:app.ico %MANIFEST_FLAG% /out:MiniFanControl.exe /recurse:*.cs > "%TEMP%\csc_gui.log" 2>&1
 ) else (
-    "%CSC%" /nologo /platform:x64 /target:winexe %MANIFEST_FLAG% /out:MiniFanControl.exe /recurse:*.cs > "%TEMP%\csc_gui.log" 2>&1
+    "%CSC%" /nologo /warn:4 /codepage:65001 /platform:x64 /target:winexe %MANIFEST_FLAG% /out:MiniFanControl.exe /recurse:*.cs > "%TEMP%\csc_gui.log" 2>&1
 )
 set CSC_GUI_ERR=%ERRORLEVEL%
 type "%TEMP%\csc_gui.log"

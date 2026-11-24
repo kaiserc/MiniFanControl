@@ -242,60 +242,24 @@ namespace MiniFanControl
                     }
                     if (ShowFabricClock && _status.FabricClockMhz > 0)
                     {
-                        string fclkVal = string.Format("{0,4}MHz", _status.FabricClockMhz);
-                        string fclkPeak = ShowFclkSync ? (_status.IsFabricSynced ? "1:1 Sync" : "Async") : null;
                         Color fclkCol = Color.FromArgb(0x10, 0xB9, 0x81);
                         using (Brush bFclk = new SolidBrush(fclkCol))
                         {
-                            DrawVertRow(g, row++, rowH, "FCLK", fclkVal, fclkPeak, bLabel, bFclk, bPeak, showSpark ? (Stats != null ? Stats.FabricClockHistory : null) : null, fclkCol, sc);
+                            DrawVertRow(g, row++, rowH, "FCLK", FormatFclkOverlayValue(), FormatFclkOverlayPeak(), bLabel, bFclk, bPeak, showSpark ? (Stats != null ? Stats.FabricClockHistory : null) : null, fclkCol, sc);
                         }
                     }
                     if (ShowNvme && _status.NvmeTemp > 0)
                     {
-                        string tUnit = TelemetrySessionStats.TempUnit(UseFahrenheit);
-                        int nvmeT = TelemetrySessionStats.ToDisplayTemp(_status.NvmeTemp, UseFahrenheit);
-                        string nvmePwrPart = (ShowNvmePower && _status.NvmePowerWatts > 0) ? string.Format(" ~{0:0.0}W", _status.NvmePowerWatts) : "";
-                        string vertNvmeVal = string.Format("{0}{1}{2}", nvmeT, tUnit, nvmePwrPart);
-                        if (ShowNvmeIo && (_status.NvmeReadMBs > 0.1 || _status.NvmeWriteMBs > 0.1))
-                        {
-                            if (_status.NvmeReadMBs > 0.1 && _status.NvmeWriteMBs > 0.1)
-                                vertNvmeVal = string.Format("{0}{1}{2} ({3:0.0}R / {4:0.0}W MB/s)", nvmeT, tUnit, nvmePwrPart, _status.NvmeReadMBs, _status.NvmeWriteMBs);
-                            else if (_status.NvmeReadMBs > 0.1)
-                                vertNvmeVal = string.Format("{0}{1}{2} ({3:0.0} MB/s R)", nvmeT, tUnit, nvmePwrPart, _status.NvmeReadMBs);
-                            else
-                                vertNvmeVal = string.Format("{0}{1}{2} ({3:0.0} MB/s W)", nvmeT, tUnit, nvmePwrPart, _status.NvmeWriteMBs);
-                        }
-                        else if (ShowNvmeDual && _status.Nvme2Temp > 0)
-                        {
-                            int nvme2T = TelemetrySessionStats.ToDisplayTemp(_status.Nvme2Temp, UseFahrenheit);
-                            vertNvmeVal = string.Format("{0}{1} / {2}{1}{3}", nvmeT, tUnit, nvme2T, nvmePwrPart);
-                        }
-                        DrawVertRow(g, row++, rowH, "NVMe", vertNvmeVal, nvmePeak, bLabel, bNvme, bPeak, showSpark ? (Stats != null ? Stats.NvmeHistory : null) : null, CfxTeal, sc);
+                        DrawVertRow(g, row++, rowH, "NVMe", FormatNvmeOverlayValue(true), nvmePeak, bLabel, bNvme, bPeak, showSpark ? (Stats != null ? Stats.NvmeHistory : null) : null, CfxTeal, sc);
                     }
                     if (ShowPower)
                         DrawVertRow(g, row++, rowH, "Power", pwrVal, pwrPeak, bLabel, bPwr, bPeak, showSpark ? (Stats != null ? Stats.PowerHistory : null) : null, pwrCol, sc);
                     if (ShowVrmCurrent && (_status.VddTdcCurrentAmps > 0 || _status.VrmTemp > 0))
                     {
-                        string tUnit = TelemetrySessionStats.TempUnit(UseFahrenheit);
-                        string vrmEst = _status.IsVrmEstimated ? " [Est]" : "";
-                        string vrmTempPart = _status.VrmTemp > 0 ? string.Format(" ({0}{1}{2})", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit), tUnit, vrmEst) : "";
-                        string vrmVal = _status.VddTdcCurrentAmps > 0
-                            ? string.Format("{0:0.0}A{1}", _status.VddTdcCurrentAmps, vrmTempPart)
-                            : string.Format("{0}{1}{2}", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit), tUnit, vrmEst);
-                        string vrmPeak = null;
-                        if (ShowPeaks)
-                        {
-                            if (Stats != null && Stats.MaxVrmTemp > 0)
-                                vrmPeak = string.Format("▲{0}°", TelemetrySessionStats.ToDisplayTemp(Stats.MaxVrmTemp, UseFahrenheit));
-                            else if (_status.VrmTemp > 0)
-                                vrmPeak = string.Format("▲{0}°", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit));
-                            else if (_status.VddEdcCurrentAmps > 0)
-                                vrmPeak = string.Format("▲{0:0}A", _status.VddEdcCurrentAmps);
-                        }
                         Color vrmCol = Color.FromArgb(0xF5, 0x9E, 0x0B);
                         using (Brush bVrm = new SolidBrush(vrmCol))
                         {
-                            DrawVertRow(g, row++, rowH, "VRM", vrmVal, vrmPeak, bLabel, bVrm, bPeak, showSpark ? (Stats != null ? Stats.VrmHistory : null) : null, vrmCol, sc);
+                            DrawVertRow(g, row++, rowH, "VRM", FormatVrmOverlayValue(true), FormatVrmOverlayPeak(), bLabel, bVrm, bPeak, showSpark ? (Stats != null ? Stats.VrmHistory : null) : null, vrmCol, sc);
                         }
                     }
                     if (ShowAmbient && _status.AmbientTemp > 0)
@@ -305,14 +269,10 @@ namespace MiniFanControl
                     }
                     if (ShowNpu && _status.NpuActivityPct >= 0)
                     {
-                        string npuVal = (ShowClocks && _status.NpuClockMhz > 0)
-                            ? string.Format("{0}% @ {1} MHz", _status.NpuActivityPct, _status.NpuClockMhz)
-                            : string.Format("{0}%", _status.NpuActivityPct);
-                        string npuPeak = FormatSingleTracker(Stats != null ? Stats.MinNpuActivityPct : int.MaxValue, Stats != null ? Stats.MaxNpuActivityPct : 0, Stats != null ? Stats.AvgNpuActivityPct : 0.0, "%", true);
                         Color npuCol = Color.FromArgb(0x38, 0xBD, 0xF8);
                         using (Brush bNpu = new SolidBrush(npuCol))
                         {
-                            DrawVertRow(g, row++, rowH, "◈ NPU", npuVal, npuPeak, bLabel, bNpu, bPeak, showSpark ? (Stats != null ? Stats.NpuHistory : null) : null, npuCol, sc);
+                            DrawVertRow(g, row++, rowH, "◈ NPU", FormatNpuOverlayValue(true), FormatNpuOverlayPeak(), bLabel, bNpu, bPeak, showSpark ? (Stats != null ? Stats.NpuHistory : null) : null, npuCol, sc);
                         }
                     }
                     if (ShowFps)

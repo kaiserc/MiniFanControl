@@ -252,22 +252,8 @@ namespace MiniFanControl
         private int _rampTargetFan = 0;
 
         // 4 Built-in EC profiles with separate APU (Fan 1) & System RAM/NVMe (Fan 2) curves
-        // Note: Minimum spinning PWM on K12 fans is 30% (0% = Fan Off / Idle).
-        private readonly FanCurveProfile[] _builtInProfiles = new FanCurveProfile[]
-        {
-            new FanCurveProfile("Balanced", true, 0,
-                new CurvePoint[] { new CurvePoint(40, 0),  new CurvePoint(48, 35), new CurvePoint(65, 55), new CurvePoint(78, 80), new CurvePoint(88, 100) },
-                new CurvePoint[] { new CurvePoint(40, 35), new CurvePoint(55, 42), new CurvePoint(70, 52), new CurvePoint(80, 65), new CurvePoint(90, 80) }),
-            new FanCurveProfile("Performance", true, 1,
-                new CurvePoint[] { new CurvePoint(38, 40), new CurvePoint(50, 55), new CurvePoint(62, 75), new CurvePoint(74, 92), new CurvePoint(84, 100) },
-                new CurvePoint[] { new CurvePoint(38, 45), new CurvePoint(52, 58), new CurvePoint(66, 72), new CurvePoint(78, 85), new CurvePoint(88, 100) }),
-            new FanCurveProfile("Silent", true, 2,
-                new CurvePoint[] { new CurvePoint(48, 0),  new CurvePoint(56, 30), new CurvePoint(70, 45), new CurvePoint(82, 70), new CurvePoint(92, 100) },
-                new CurvePoint[] { new CurvePoint(45, 30), new CurvePoint(60, 34), new CurvePoint(72, 42), new CurvePoint(84, 52), new CurvePoint(92, 65) }),
-            new FanCurveProfile("AI Workload", true, 3,
-                new CurvePoint[] { new CurvePoint(38, 35), new CurvePoint(48, 50), new CurvePoint(60, 70), new CurvePoint(72, 88), new CurvePoint(82, 100) },
-                new CurvePoint[] { new CurvePoint(35, 45), new CurvePoint(46, 60), new CurvePoint(58, 75), new CurvePoint(70, 90), new CurvePoint(80, 100) })
-        };
+        // Single source of truth shared with HeadlessDaemon via FanCurveProfile.CreateBuiltInProfiles()
+        private readonly FanCurveProfile[] _builtInProfiles = FanCurveProfile.CreateBuiltInProfiles();
 
         private readonly List<FanCurveProfile> _customProfiles = new List<FanCurveProfile>();
         private FanCurveProfile _apuProfile
@@ -1494,38 +1480,25 @@ namespace MiniFanControl
                     PulseWatchdogHeartbeat();
                 }
                 ApplyStatusToUi(st);
-                if (!IsReadOnlyMonitoringMode && !_isSystemSuspended && !_antiCheatMonitor.IsPaused && _workloadSwitcher.Enabled)
+                FanCurveProfile curApu = _apuProfile;
+                FanCurveProfile curSys = _sysProfile;
+                string wsMsg;
+                WorkloadSwitchAction wsAction = AutomationCoordinator.EvaluateAndApplyWorkloadSwitch(
+                    _workloadSwitcher,
+                    _controller,
+                    st,
+                    IsReadOnlyMonitoringMode || _isSystemSuspended,
+                    _antiCheatMonitor.IsPaused,
+                    FindProfileByName,
+                    ref curApu,
+                    ref curSys,
+                    out wsMsg);
+                if (wsAction != WorkloadSwitchAction.None)
                 {
-                    WorkloadSwitchAction wsAction = _workloadSwitcher.Evaluate(
-                        st.RtssProcessName,
-                        st.NpuActivityPct,
-                        _apuProfile != null ? _apuProfile.Name : "Balanced",
-                        _sysProfile != null ? _sysProfile.Name : "Balanced",
-                        _apuManualOverride || _sysManualOverride);
-                    if (wsAction == WorkloadSwitchAction.ApplyWorkloadProfile)
-                    {
-                        FanCurveProfile targetApu = FindProfileByName(_workloadSwitcher.TargetApuProfileName);
-                        FanCurveProfile targetSys = FindProfileByName(_workloadSwitcher.TargetSysProfileName);
-                        if (targetApu != null) { _apuProfile = targetApu; _controller.SetProfileTarget(targetApu, false); }
-                        if (targetSys != null) { _sysProfile = targetSys; _controller.SetProfileTarget(targetSys, true); }
-                        if (_statusBarLabel != null)
-                        {
-                            _statusBarLabel.Text = string.Format("⚡ Auto-switched to {0} for {1}",
-                                _workloadSwitcher.TargetApuProfileName, _workloadSwitcher.ActiveWorkloadReason);
-                        }
-                    }
-                    else if (wsAction == WorkloadSwitchAction.RestoreBaselineProfile)
-                    {
-                        FanCurveProfile baseApu = FindProfileByName(_workloadSwitcher.BaselineApuProfileName);
-                        FanCurveProfile baseSys = FindProfileByName(_workloadSwitcher.BaselineSysProfileName);
-                        if (baseApu != null) { _apuProfile = baseApu; _controller.SetProfileTarget(baseApu, false); }
-                        if (baseSys != null) { _sysProfile = baseSys; _controller.SetProfileTarget(baseSys, true); }
-                        if (_statusBarLabel != null)
-                        {
-                            _statusBarLabel.Text = string.Format("✓ Workload exited — restored baseline profile ({0})",
-                                _workloadSwitcher.BaselineApuProfileName);
-                        }
-                    }
+                    _apuProfile = curApu;
+                    _sysProfile = curSys;
+                    if (!string.IsNullOrEmpty(wsMsg) && _statusBarLabel != null)
+                        _statusBarLabel.Text = wsMsg;
                 }
             }
             catch (Exception ex)

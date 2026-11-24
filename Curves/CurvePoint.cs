@@ -1,20 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
-using System.Drawing.Text;
 using System.Globalization;
-using System.IO;
-using System.IO.MemoryMappedFiles;
-using System.Runtime.InteropServices;
-using System.Security.AccessControl;
-using System.Security.Principal;
-using System.Text;
-using System.Threading;
-using System.Windows.Forms;
-using Microsoft.Win32;
 
 namespace MiniFanControl
 {
@@ -101,6 +87,25 @@ namespace MiniFanControl
                 ApuPoints = ClonePoints(DefaultApuPoints);
             if (DefaultSysPoints != null && DefaultSysPoints.Length >= 2)
                 SysPoints = ClonePoints(DefaultSysPoints);
+        }
+
+        public static FanCurveProfile[] CreateBuiltInProfiles()
+        {
+            return new FanCurveProfile[]
+            {
+                new FanCurveProfile("Balanced", true, 0,
+                    new CurvePoint[] { new CurvePoint(40, 0),  new CurvePoint(48, 35), new CurvePoint(65, 55), new CurvePoint(78, 80), new CurvePoint(88, 100) },
+                    new CurvePoint[] { new CurvePoint(40, 35), new CurvePoint(55, 42), new CurvePoint(70, 52), new CurvePoint(80, 65), new CurvePoint(90, 80) }),
+                new FanCurveProfile("Performance", true, 1,
+                    new CurvePoint[] { new CurvePoint(38, 40), new CurvePoint(50, 55), new CurvePoint(62, 75), new CurvePoint(74, 92), new CurvePoint(84, 100) },
+                    new CurvePoint[] { new CurvePoint(38, 45), new CurvePoint(52, 58), new CurvePoint(66, 72), new CurvePoint(78, 85), new CurvePoint(88, 100) }),
+                new FanCurveProfile("Silent", true, 2,
+                    new CurvePoint[] { new CurvePoint(48, 0),  new CurvePoint(56, 30), new CurvePoint(70, 45), new CurvePoint(82, 70), new CurvePoint(92, 100) },
+                    new CurvePoint[] { new CurvePoint(45, 30), new CurvePoint(60, 34), new CurvePoint(72, 42), new CurvePoint(84, 52), new CurvePoint(92, 65) }),
+                new FanCurveProfile("AI Workload", true, 3,
+                    new CurvePoint[] { new CurvePoint(38, 35), new CurvePoint(48, 50), new CurvePoint(60, 70), new CurvePoint(72, 88), new CurvePoint(82, 100) },
+                    new CurvePoint[] { new CurvePoint(35, 45), new CurvePoint(46, 60), new CurvePoint(58, 75), new CurvePoint(70, 90), new CurvePoint(80, 100) })
+            };
         }
 
         public static List<FanCurveProfile> CreateProtectedExamples()

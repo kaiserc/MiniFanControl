@@ -1,20 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
-using System.Drawing.Text;
-using System.Globalization;
 using System.IO;
-using System.IO.MemoryMappedFiles;
-using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
-using System.Text;
 using System.Threading;
-using System.Windows.Forms;
-using Microsoft.Win32;
 
 namespace MiniFanControl
 {
@@ -204,9 +194,7 @@ namespace MiniFanControl
         {
             try
             {
-                string localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                string logDir = !string.IsNullOrEmpty(localApp) ? Path.Combine(localApp, "MiniFanControl") : AppDomain.CurrentDomain.BaseDirectory;
-                try { Directory.CreateDirectory(logDir); } catch { }
+                string logDir = AppPaths.GetAppDataDir(true);
                 string logPath = Path.Combine(logDir, "watchdog.log");
                 string line = string.Format("{0:yyyy-MM-dd HH:mm:ss.fff} [PID {1}] {2}{3}",
                     DateTime.Now, Process.GetCurrentProcess().Id, message, Environment.NewLine);

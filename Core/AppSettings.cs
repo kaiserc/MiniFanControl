@@ -41,27 +41,12 @@ namespace MiniFanControl
             if (File.Exists(primary)) return primary;
             if (File.Exists(legacy)) return legacy;
 
-            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string appDataDir = Path.Combine(localAppData, "MiniFanControl");
-            string appDataConfig = Path.Combine(appDataDir, "minifancontrol.cfg");
+            string appDataConfig = Path.Combine(AppPaths.GetAppDataDir(false), "minifancontrol.cfg");
             if (File.Exists(appDataConfig)) return appDataConfig;
 
-            string progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-            string progFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-            bool inProgramFiles = (!string.IsNullOrEmpty(progFiles) && baseDir.StartsWith(progFiles, StringComparison.OrdinalIgnoreCase)) ||
-                                  (!string.IsNullOrEmpty(progFilesX86) && baseDir.StartsWith(progFilesX86, StringComparison.OrdinalIgnoreCase));
-
-            if (inProgramFiles)
+            if (AppPaths.IsInstalledInProgramFiles())
             {
-                try
-                {
-                    if (!Directory.Exists(appDataDir)) Directory.CreateDirectory(appDataDir);
-                    return appDataConfig;
-                }
-                catch (Exception ex)
-                {
-                    WatchdogSupervisor.LogWatchdogEvent("GetSettingsPath AppData directory fallback failed: " + ex.Message);
-                }
+                return Path.Combine(AppPaths.GetAppDataDir(true), "minifancontrol.cfg");
             }
 
             return primary;

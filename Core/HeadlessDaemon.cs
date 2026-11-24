@@ -54,21 +54,7 @@ namespace MiniFanControl
         }
         public static FanCurveProfile[] CreateBuiltInProfiles()
         {
-            return new FanCurveProfile[]
-            {
-                new FanCurveProfile("Balanced", true, 0,
-                    new CurvePoint[] { new CurvePoint(40, 0),  new CurvePoint(48, 35), new CurvePoint(65, 55), new CurvePoint(78, 80), new CurvePoint(88, 100) },
-                    new CurvePoint[] { new CurvePoint(40, 35), new CurvePoint(55, 42), new CurvePoint(70, 52), new CurvePoint(80, 65), new CurvePoint(90, 80) }),
-                new FanCurveProfile("Performance", true, 1,
-                    new CurvePoint[] { new CurvePoint(38, 40), new CurvePoint(50, 55), new CurvePoint(62, 75), new CurvePoint(74, 92), new CurvePoint(84, 100) },
-                    new CurvePoint[] { new CurvePoint(38, 45), new CurvePoint(52, 58), new CurvePoint(66, 72), new CurvePoint(78, 85), new CurvePoint(88, 100) }),
-                new FanCurveProfile("Silent", true, 2,
-                    new CurvePoint[] { new CurvePoint(48, 0),  new CurvePoint(56, 30), new CurvePoint(70, 45), new CurvePoint(82, 70), new CurvePoint(92, 100) },
-                    new CurvePoint[] { new CurvePoint(45, 30), new CurvePoint(60, 34), new CurvePoint(72, 42), new CurvePoint(84, 52), new CurvePoint(92, 65) }),
-                new FanCurveProfile("AI Workload", true, 3,
-                    new CurvePoint[] { new CurvePoint(38, 35), new CurvePoint(48, 50), new CurvePoint(60, 70), new CurvePoint(72, 88), new CurvePoint(82, 100) },
-                    new CurvePoint[] { new CurvePoint(35, 45), new CurvePoint(46, 60), new CurvePoint(58, 75), new CurvePoint(70, 90), new CurvePoint(80, 100) })
-            };
+            return FanCurveProfile.CreateBuiltInProfiles();
         }
 
         public static FanCurveProfile ResolveProfileByName(string name, FanCurveProfile[] builtIns, List<FanCurveProfile> customs)
@@ -244,30 +230,20 @@ namespace MiniFanControl
                             antiCheat.IsPaused ? " [ANTI-CHEAT PAUSED]" : ""));
                     }
 
-                    if (workloadSwitcher.Enabled && !antiCheat.IsPaused)
+                    string wsMsg;
+                    WorkloadSwitchAction wsAct = AutomationCoordinator.EvaluateAndApplyWorkloadSwitch(
+                        workloadSwitcher,
+                        controller,
+                        st,
+                        Volatile.Read(ref isSuspended) != 0,
+                        antiCheat.IsPaused,
+                        delegate(string profName) { return ResolveProfileByName(profName, builtIns, customProfiles); },
+                        ref apuProf,
+                        ref sysProf,
+                        out wsMsg);
+                    if (wsAct != WorkloadSwitchAction.None && !quiet && !string.IsNullOrEmpty(wsMsg))
                     {
-                        WorkloadSwitchAction wsAct = workloadSwitcher.Evaluate(
-                            st.RtssProcessName,
-                            st.NpuActivityPct,
-                            apuProf != null ? apuProf.Name : "Balanced",
-                            sysProf != null ? sysProf.Name : "Balanced",
-                            controller.ApuManualOverride || controller.SysManualOverride);
-                        if (wsAct == WorkloadSwitchAction.ApplyWorkloadProfile)
-                        {
-                            FanCurveProfile nextApu = ResolveProfileByName(workloadSwitcher.TargetApuProfileName, builtIns, customProfiles);
-                            FanCurveProfile nextSys = ResolveProfileByName(workloadSwitcher.TargetSysProfileName, builtIns, customProfiles);
-                            if (nextApu != null) { apuProf = nextApu; controller.SetProfileTarget(nextApu, false); }
-                            if (nextSys != null) { sysProf = nextSys; controller.SetProfileTarget(nextSys, true); }
-                            if (!quiet) Console.WriteLine("[DAEMON] Auto-switched to " + workloadSwitcher.TargetApuProfileName + " for " + workloadSwitcher.ActiveWorkloadReason);
-                        }
-                        else if (wsAct == WorkloadSwitchAction.RestoreBaselineProfile)
-                        {
-                            FanCurveProfile baseApu = ResolveProfileByName(workloadSwitcher.BaselineApuProfileName, builtIns, customProfiles);
-                            FanCurveProfile baseSys = ResolveProfileByName(workloadSwitcher.BaselineSysProfileName, builtIns, customProfiles);
-                            if (baseApu != null) { apuProf = baseApu; controller.SetProfileTarget(baseApu, false); }
-                            if (baseSys != null) { sysProf = baseSys; controller.SetProfileTarget(baseSys, true); }
-                            if (!quiet) Console.WriteLine("[DAEMON] Workload exited — restored baseline profile (" + workloadSwitcher.BaselineApuProfileName + ").");
-                        }
+                        Console.WriteLine("[DAEMON] " + wsMsg);
                     }
 
                     if (maxTicks > 0 && tick >= maxTicks)

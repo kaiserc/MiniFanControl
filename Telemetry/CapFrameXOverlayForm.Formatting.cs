@@ -252,6 +252,79 @@ namespace MiniFanControl
             return null;
         }
 
+        private string FormatNvmeOverlayValue(bool verboseIo)
+        {
+            string tUnit = TelemetrySessionStats.TempUnit(UseFahrenheit);
+            int nvmeT = TelemetrySessionStats.ToDisplayTemp(_status.NvmeTemp, UseFahrenheit);
+            string nvmePwrPart = (ShowNvmePower && _status.NvmePowerWatts > 0) ? string.Format(" ~{0:0.0}W", _status.NvmePowerWatts) : "";
+            if (ShowNvmeIo && (_status.NvmeReadMBs > 0.1 || _status.NvmeWriteMBs > 0.1))
+            {
+                if (verboseIo)
+                {
+                    if (_status.NvmeReadMBs > 0.1 && _status.NvmeWriteMBs > 0.1)
+                        return string.Format("{0}{1}{2} ({3:0.0}R / {4:0.0}W MB/s)", nvmeT, tUnit, nvmePwrPart, _status.NvmeReadMBs, _status.NvmeWriteMBs);
+                    if (_status.NvmeReadMBs > 0.1)
+                        return string.Format("{0}{1}{2} ({3:0.0} MB/s R)", nvmeT, tUnit, nvmePwrPart, _status.NvmeReadMBs);
+                    return string.Format("{0}{1}{2} ({3:0.0} MB/s W)", nvmeT, tUnit, nvmePwrPart, _status.NvmeWriteMBs);
+                }
+                if (_status.NvmeReadMBs > 0.1 && _status.NvmeWriteMBs > 0.1)
+                    return string.Format("{0}{1}{2} {3:0.0}R/{4:0.0}W", nvmeT, tUnit, nvmePwrPart, _status.NvmeReadMBs, _status.NvmeWriteMBs);
+                if (_status.NvmeReadMBs > 0.1)
+                    return string.Format("{0}{1}{2} {3:0.0}R", nvmeT, tUnit, nvmePwrPart, _status.NvmeReadMBs);
+                return string.Format("{0}{1}{2} {3:0.0}W", nvmeT, tUnit, nvmePwrPart, _status.NvmeWriteMBs);
+            }
+            if (ShowNvmeDual && _status.Nvme2Temp > 0)
+            {
+                int nvme2T = TelemetrySessionStats.ToDisplayTemp(_status.Nvme2Temp, UseFahrenheit);
+                return string.Format("{0}{1} / {2}{1}{3}", nvmeT, tUnit, nvme2T, nvmePwrPart);
+            }
+            return string.Format("{0}{1}{2}", nvmeT, tUnit, nvmePwrPart);
+        }
+
+        private string FormatVrmOverlayValue(bool oneDecimalAmps)
+        {
+            string tUnit = TelemetrySessionStats.TempUnit(UseFahrenheit);
+            string vrmEst = _status.IsVrmEstimated ? " [Est]" : "";
+            string vrmTempPart = _status.VrmTemp > 0 ? string.Format(" ({0}{1}{2})", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit), tUnit, vrmEst) : "";
+            if (_status.VddTdcCurrentAmps > 0)
+                return string.Format(oneDecimalAmps ? "{0:0.0}A{1}" : "{0:0}A{1}", _status.VddTdcCurrentAmps, vrmTempPart);
+            return string.Format("{0}{1}{2}", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit), tUnit, vrmEst);
+        }
+
+        private string FormatVrmOverlayPeak()
+        {
+            if (!ShowPeaks) return null;
+            if (Stats != null && Stats.MaxVrmTemp > 0)
+                return string.Format("▲{0}°", TelemetrySessionStats.ToDisplayTemp(Stats.MaxVrmTemp, UseFahrenheit));
+            if (_status.VrmTemp > 0)
+                return string.Format("▲{0}°", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit));
+            if (_status.VddEdcCurrentAmps > 0)
+                return string.Format("▲{0:0}A", _status.VddEdcCurrentAmps);
+            return null;
+        }
+
+        private string FormatFclkOverlayValue()
+        {
+            return string.Format("{0,4}MHz", _status.FabricClockMhz);
+        }
+
+        private string FormatFclkOverlayPeak()
+        {
+            return ShowFclkSync ? (_status.IsFabricSynced ? "1:1 Sync" : "Async") : null;
+        }
+
+        private string FormatNpuOverlayValue(bool verboseClock)
+        {
+            if (ShowClocks && _status.NpuClockMhz > 0)
+                return string.Format(verboseClock ? "{0}% @ {1} MHz" : "{0}% @ {1}M", _status.NpuActivityPct, _status.NpuClockMhz);
+            return string.Format("{0}%", _status.NpuActivityPct);
+        }
+
+        private string FormatNpuOverlayPeak()
+        {
+            return FormatSingleTracker(Stats != null ? Stats.MinNpuActivityPct : int.MaxValue, Stats != null ? Stats.MaxNpuActivityPct : 0, Stats != null ? Stats.AvgNpuActivityPct : 0.0, "%", true);
+        }
+
         private List<HorizColumn> BuildHorizontalColumns(
             Graphics g, float sc, bool showSpark,
             Brush bLabel, Brush bCpu, Brush bGpu, Brush bNvme, Brush bPwr, Brush bRam,
@@ -264,25 +337,7 @@ namespace MiniFanControl
             string cpuVal = FormatCpuOverlayValue();
             bool showGpuTemp = ShowGpu;
             string gpuVal = FormatGpuOverlayValue();
-
-            string tUnit = TelemetrySessionStats.TempUnit(UseFahrenheit);
-            int nvmeT = TelemetrySessionStats.ToDisplayTemp(_status.NvmeTemp, UseFahrenheit);
-            string nvmePwrPart = (ShowNvmePower && _status.NvmePowerWatts > 0) ? string.Format(" ~{0:0.0}W", _status.NvmePowerWatts) : "";
-            string nvmeVal = string.Format("{0}{1}{2}", nvmeT, tUnit, nvmePwrPart);
-            if (ShowNvmeIo && (_status.NvmeReadMBs > 0.1 || _status.NvmeWriteMBs > 0.1))
-            {
-                if (_status.NvmeReadMBs > 0.1 && _status.NvmeWriteMBs > 0.1)
-                    nvmeVal = string.Format("{0}{1}{2} {3:0.0}R/{4:0.0}W", nvmeT, tUnit, nvmePwrPart, _status.NvmeReadMBs, _status.NvmeWriteMBs);
-                else if (_status.NvmeReadMBs > 0.1)
-                    nvmeVal = string.Format("{0}{1}{2} {3:0.0}R", nvmeT, tUnit, nvmePwrPart, _status.NvmeReadMBs);
-                else
-                    nvmeVal = string.Format("{0}{1}{2} {3:0.0}W", nvmeT, tUnit, nvmePwrPart, _status.NvmeWriteMBs);
-            }
-            else if (ShowNvmeDual && _status.Nvme2Temp > 0)
-            {
-                int nvme2T = TelemetrySessionStats.ToDisplayTemp(_status.Nvme2Temp, UseFahrenheit);
-                nvmeVal = string.Format("{0}{1} / {2}{1}{3}", nvmeT, tUnit, nvme2T, nvmePwrPart);
-            }
+            string nvmeVal = FormatNvmeOverlayValue(false);
             string pwrVal = FormatPowerOverlayValue();
             string f1Val  = (IsEffectivelyReadOnly() && _status.Fan1Rpm <= 0) ? "--" : string.Format("{0}r", _status.Fan1Rpm);
             string f2Val  = (IsEffectivelyReadOnly() && _status.Fan2Rpm <= 0) ? "--" : string.Format("{0}r", _status.Fan2Rpm);
@@ -340,11 +395,9 @@ namespace MiniFanControl
 
             if (ShowFabricClock && _status.FabricClockMhz > 0)
             {
-                string fclkVal = string.Format("{0,4}MHz", _status.FabricClockMhz);
-                string fclkPeak = ShowFclkSync ? (_status.IsFabricSynced ? "1:1 Sync" : "Async") : null;
                 Color fclkCol = Color.FromArgb(0x10, 0xB9, 0x81);
                 list.Add(new HorizColumn {
-                    Key = "FCLK", Label = "FCLK", Value = fclkVal, Peak = fclkPeak,
+                    Key = "FCLK", Label = "FCLK", Value = FormatFclkOverlayValue(), Peak = FormatFclkOverlayPeak(),
                     LabelBrush = bLabel, ValueBrush = bFclk, PeakBrush = bPeak,
                     SparkSamples = showSpark ? (Stats != null ? Stats.FabricClockHistory : null) : null,
                     SparkColor = fclkCol
@@ -373,24 +426,9 @@ namespace MiniFanControl
 
             if (ShowVrmCurrent && (_status.VddTdcCurrentAmps > 0 || _status.VrmTemp > 0))
             {
-                string vrmEst = _status.IsVrmEstimated ? " [Est]" : "";
-                string vrmTempPart = _status.VrmTemp > 0 ? string.Format(" ({0}{1}{2})", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit), tUnit, vrmEst) : "";
-                string vrmVal = _status.VddTdcCurrentAmps > 0
-                    ? string.Format("{0:0}A{1}", _status.VddTdcCurrentAmps, vrmTempPart)
-                    : string.Format("{0}{1}{2}", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit), tUnit, vrmEst);
-                string vrmPeak = null;
-                if (ShowPeaks)
-                {
-                    if (Stats != null && Stats.MaxVrmTemp > 0)
-                        vrmPeak = string.Format("▲{0}°", TelemetrySessionStats.ToDisplayTemp(Stats.MaxVrmTemp, UseFahrenheit));
-                    else if (_status.VrmTemp > 0)
-                        vrmPeak = string.Format("▲{0}°", TelemetrySessionStats.ToDisplayTemp(_status.VrmTemp, UseFahrenheit));
-                    else if (_status.VddEdcCurrentAmps > 0)
-                        vrmPeak = string.Format("▲{0:0}A", _status.VddEdcCurrentAmps);
-                }
                 Color vrmCol = Color.FromArgb(0xF5, 0x9E, 0x0B);
                 list.Add(new HorizColumn {
-                    Key = "VRM", Label = "VRM", Value = vrmVal, Peak = vrmPeak,
+                    Key = "VRM", Label = "VRM", Value = FormatVrmOverlayValue(false), Peak = FormatVrmOverlayPeak(),
                     LabelBrush = bLabel, ValueBrush = bVrm, PeakBrush = bPeak,
                     SparkSamples = showSpark ? (Stats != null ? Stats.VrmHistory : null) : null,
                     SparkColor = vrmCol
@@ -410,13 +448,9 @@ namespace MiniFanControl
 
             if (ShowNpu && _status.NpuActivityPct >= 0)
             {
-                string npuVal = (ShowClocks && _status.NpuClockMhz > 0)
-                    ? string.Format("{0}% @ {1}M", _status.NpuActivityPct, _status.NpuClockMhz)
-                    : string.Format("{0}%", _status.NpuActivityPct);
-                string npuPeak = FormatSingleTracker(Stats != null ? Stats.MinNpuActivityPct : int.MaxValue, Stats != null ? Stats.MaxNpuActivityPct : 0, Stats != null ? Stats.AvgNpuActivityPct : 0.0, "%", true);
                 Color npuCol = Color.FromArgb(0x38, 0xBD, 0xF8);
                 list.Add(new HorizColumn {
-                    Key = "NPU", Label = "◈ NPU", Value = npuVal, Peak = npuPeak,
+                    Key = "NPU", Label = "◈ NPU", Value = FormatNpuOverlayValue(false), Peak = FormatNpuOverlayPeak(),
                     LabelBrush = bLabel, ValueBrush = bNpu, PeakBrush = bPeak,
                     SparkSamples = showSpark ? (Stats != null ? Stats.NpuHistory : null) : null,
                     SparkColor = npuCol
