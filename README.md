@@ -274,26 +274,27 @@ To ensure zero driver conflicts and maximum stability, MiniFanControl strictly i
 ### Multi-Driver Support: Bundled InpOut64 & WinRing0 Dynamic Abstraction
 Mini PCs communicate with their embedded controller via raw ACPI I/O ports (`0x62/0x66`, `0x6C/0x6E`) and LPC Super I/O ports (`0x2E/0x2F`, `0x4E/0x4F`, `0x0A30–0x0A37`). Because 64-bit Windows prohibits user-mode processes from executing raw x86 `IN`/`OUT` CPU instructions, a kernel-mode driver service is required.
 
-MiniFanControl features a **unified multi-driver abstraction** in [`Hardware/NativeInpOut.cs`](Hardware/NativeInpOut.cs) with dynamic API loading (`LoadLibraryEx` + `GetProcAddress`), supporting multiple hardware access driver engines:
+MiniFanControl features a **unified multi-driver abstraction** in [`Hardware/NativeInpOut.cs`](Hardware/NativeInpOut.cs) and [`Hardware/PawnIoDriver.cs`](Hardware/PawnIoDriver.cs) with dynamic API loading (`LoadLibraryEx` + `GetProcAddress`), supporting multiple hardware access driver engines:
 
-1. **InpOut64 (`inpoutx64.dll` / `inpoutx64.sys`) — Primary Bundled Engine**:
+1. **PawnIO (`https://pawnio.eu`) — Priority 0 Recommended HVCI-Safe Engine**:
+   - Official EV-signed, Windows 11 Memory Integrity (HVCI)-compatible kernel driver by `namazso`.
+   - MiniFanControl **bundles the official signed PawnIO bytecode modules** (`PawnIO\modules\LpcIO.bin`, `LpcACPIEC.bin`, `AMDFamily17.bin`), so fresh users only need to install PawnIO from [pawnio.eu](https://pawnio.eu) (or reuse an existing PawnIO install from CapFrameX, FanControl, or HWiNFO via direct `\Device\PawnIO` IOCTL fallback).
+   - Verifies `PawnIOLib.dll` Authenticode signatures via `WinVerifyTrust` under a `FileShare.Read` lock (preferring `%ProgramFiles%\PawnIO`) and enforces `NativeInpOut.IsPortWhitelisted()` fail-closed before executing any module call.
+   - If neither PawnIO nor a legacy driver can open on startup (e.g. Windows 11 HVCI blocked `inpoutx64`), MiniFanControl displays a guided **Kernel Driver Setup** dialog with one-click download and live **Re-check Driver** activation (no restart required).
+2. **InpOut64 (`inpoutx64.dll` / `inpoutx64.sys`) — Priority 1 Bundled Fallback**:
    - Developed by Phillip Gibbons (Highresolution Enterprises / Red Fox UK), v1.5.0.0.
-   - Bundled with MiniFanControl and prioritized directly from the application directory.
+   - Bundled with MiniFanControl and prioritized directly from the application directory when PawnIO is not installed.
    - Runtime-enforced SHA256 binary pin verified before `LoadLibraryEx` (with a `FileShare.Read` handle held across hash + load to block TOCTOU DLL swaps): `5F27ED4D5CD58A1EE23DEEB802E09E73F3A1D884CE2135F6E827F67B171269E7`.
    - Isolated port I/O and linear memory mapping.
-2. **WinRing0 1.3.1b (`WinRing0x64.dll` / `WinRing0.sys`) — Optional Fallback**:
+3. **WinRing0 1.3.1b (`WinRing0x64.dll` / `WinRing0.sys`) — Priority 2 Optional Fallback**:
    - Engine used by LibreHardwareMonitor and OpenHardwareMonitor.
    - Loaded as secondary fallback only if placed in the application folder (**System32 is never probed**) and after passing runtime SHA256 pin verification (`11BD2C9F9E2397C9A16E0990E4ED2CF0679498FE0FD418A3DFDAC60B5C160EE5`).
    - Direct port I/O and per-access direct physical memory IOCTLs with live read-back verification.
-3. **PawnIO Integration (Architectural Roadmap)**:
-   - Real PawnIO executes scriptable Pawn bytecode modules via `PawnIOLib` (`pawnio_open` / `pawnio_load` / `pawnio_execute`).
-   - Integration with the authentic PawnIO SDK is planned on the roadmap to enable certified, EV-signed, HVCI-compatible hardware control without relying on vulnerable legacy drivers.
 
 ### Windows 11 Memory Integrity (HVCI) & Security Recommendations
-1. **Memory Integrity (HVCI) Compatibility**: Both legacy `WinRing0.sys` (CVE-2020-14979) and `inpoutx64.sys` are flagged by Microsoft under the Windows 11 Microsoft Vulnerable Driver Blocklist because they permit raw port and physical memory access.
-2. **Safe Read-Only Telemetry Default**: MiniFanControl **recommends keeping Memory Integrity ENABLED**. If Windows Defender blocks kernel driver loading or if launched without elevation, MiniFanControl does not crash—it automatically engages **Safe Read-Only Telemetry Monitoring Mode**. All CPU/iGPU temperatures, APU package power, GPU load, clocks, voltages, NVMe temperatures, and RAM load continue updating natively via AMD's official WHQL-certified driver interface (`atiadlxx.dll` / `amdfendrm.sys`) and Windows APIs, requiring zero unsigned kernel drivers and zero raw port I/O, while fan writes are safely disabled fail-closed.
-3. **If You Choose to Enable Hardware Fan Control**: If you decide to toggle off Memory Integrity to allow custom fan curve writing, remember that you are reducing kernel memory isolation protections. Always ensure you download MiniFanControl from official repository releases and re-enable Memory Integrity if you cease using custom hardware fan curve writers.
-4. **Anti-Cheat Conflicts**: Competitive kernel-level anti-cheat software (such as Riot Vanguard, Easy Anti-Cheat, and BattlEye) may flag kernel drivers while running. Use `minifan-helper.exe driver-stop` before launching competitive games.
+1. **Memory Integrity (HVCI) Compatibility**: Legacy `WinRing0.sys` (CVE-2020-14979) and `inpoutx64.sys` may be blocked by Microsoft's Vulnerable Driver Blocklist when Windows 11 Memory Integrity (HVCI) is enabled. **Install EV-signed [PawnIO](https://pawnio.eu)** to keep Memory Integrity **ENABLED** while using full custom fan curves and EC/SMN telemetry.
+2. **Safe Read-Only Telemetry Default**: If no kernel driver is installed or Windows blocks legacy drivers, MiniFanControl never crashes—it offers the guided PawnIO setup dialog and automatically operates in **Safe Read-Only Telemetry Monitoring Mode**. All CPU/iGPU/NVIDIA temperatures, package power, clocks, NVMe temperatures, and RAM load continue updating natively via WHQL AMD ADL (`atiadlxx.dll`), NVIDIA NVML (`nvml.dll`), and Windows APIs, while fan writes remain safely disabled fail-closed.
+3. **Anti-Cheat Compatibility**: Competitive kernel-level anti-cheat software (such as Riot Vanguard, Easy Anti-Cheat, and BattlEye) may flag legacy drivers (`inpoutx64` / `WinRing0`). Use **PawnIO** (HVCI-safe) or enable **Tools & Drivers → Anti-Cheat Safe Auto-Pause** (or run `minifan-helper.exe driver-stop`) before launching competitive games.
 
 ### How MiniFanControl Hardens Driver Access (Defense-in-Depth)
 MiniFanControl wraps all ring-0 driver operations inside a strict user-mode defense layer in [`Hardware/NativeInpOut.cs`](Hardware/NativeInpOut.cs):
@@ -303,7 +304,7 @@ MiniFanControl wraps all ring-0 driver operations inside a strict user-mode defe
   ```powershell
   .\minifan-helper.exe driver-stop
   ```
-- **Future Roadmap**: The project is architected so the `NativeInpOut` wrapper can transition to modern, cryptographically signed driver frameworks (such as PawnIO) as certified open-source driver signing becomes accessible.
+- **EV-Signed HVCI Support**: Priority 0 uses official signed **PawnIO** with bundled `LpcIO.bin`, `LpcACPIEC.bin`, and `AMDFamily17.bin` modules so Windows 11 Core Isolation / Memory Integrity can remain enabled.
 
 ---
 

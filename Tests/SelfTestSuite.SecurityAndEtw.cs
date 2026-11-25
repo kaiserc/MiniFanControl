@@ -984,19 +984,25 @@ namespace MiniFanControl
                 NativeInpOut.Shutdown();
                 Dictionary<ushort, byte> fakePorts = new Dictionary<ushort, byte>();
                 Dictionary<byte, byte> fakeEc = new Dictionary<byte, byte>();
+                byte ecPendingCmd = 0;
+                int ecArgStage = 0;
+                byte ecPendingReg = 0;
+                byte ecObfData = 0;
+                bool ecObfReady = false;
                 int blockedCalls = 0;
 
                 PawnIoDriver.SimulatedAvailable = true;
                 PawnIoDriver.SimulatedExecuteHook = delegate(string fn, ulong[] inp)
                 {
-                    if (fn == "ioctl_pio_write" && inp.Length >= 3)
+                    // Official LpcIO.bin ABI: ioctl_pio_outb(port, val) / ioctl_pio_inb(port)
+                    if (fn == "ioctl_pio_outb" && inp.Length >= 2)
                     {
                         ushort p = (ushort)inp[0];
                         if (p == 0x70 || p == 0xCF9) blockedCalls++;
-                        fakePorts[p] = (byte)(inp[2] & 0xFF);
+                        fakePorts[p] = (byte)(inp[1] & 0xFF);
                         return new ulong[] { 0 };
                     }
-                    if (fn == "ioctl_pio_read" && inp.Length >= 1)
+                    if (fn == "ioctl_pio_inb" && inp.Length >= 1)
                     {
                         ushort p = (ushort)inp[0];
                         if (p == 0x70 || p == 0xCF9) blockedCalls++;
@@ -1004,16 +1010,52 @@ namespace MiniFanControl
                         fakePorts.TryGetValue(p, out v);
                         return new ulong[] { v };
                     }
-                    if (fn == "ioctl_write" && inp.Length >= 2)
+                    // Official LpcACPIEC.bin ABI: ioctl_pio_write(port, val) / ioctl_pio_read(port) on 0x62/0x66
+                    if (fn == "ioctl_pio_write" && inp.Length >= 2)
                     {
-                        fakeEc[(byte)inp[0]] = (byte)(inp[1] & 0xFF);
+                        byte p = (byte)inp[0];
+                        byte val = (byte)(inp[1] & 0xFF);
+                        if (p == 0x66)
+                        {
+                            ecPendingCmd = val;
+                            ecArgStage = 1;
+                            ecObfReady = false;
+                        }
+                        else if (p == 0x62)
+                        {
+                            if (ecPendingCmd == 0x80 && ecArgStage == 1)
+                            {
+                                byte v;
+                                fakeEc.TryGetValue(val, out v);
+                                ecObfData = v;
+                                ecObfReady = true;
+                                ecArgStage = 0;
+                            }
+                            else if (ecPendingCmd == 0x81 && ecArgStage == 1)
+                            {
+                                ecPendingReg = val;
+                                ecArgStage = 2;
+                            }
+                            else if (ecPendingCmd == 0x81 && ecArgStage == 2)
+                            {
+                                fakeEc[ecPendingReg] = val;
+                                ecArgStage = 0;
+                            }
+                        }
                         return new ulong[] { 0 };
                     }
-                    if (fn == "ioctl_read" && inp.Length >= 1)
+                    if (fn == "ioctl_pio_read" && inp.Length >= 1)
                     {
-                        byte v;
-                        fakeEc.TryGetValue((byte)inp[0], out v);
-                        return new ulong[] { v };
+                        byte p = (byte)inp[0];
+                        if (p == 0x66)
+                        {
+                            return new ulong[] { ecObfReady ? 0x01UL : 0x00UL };
+                        }
+                        if (p == 0x62)
+                        {
+                            ecObfReady = false;
+                            return new ulong[] { ecObfData };
+                        }
                     }
                     return null;
                 };
@@ -1567,26 +1609,46 @@ namespace MiniFanControl
                 bool hookRejected = !PawnIoDriver.VerifyLibrarySignature(tempUnsignedDll);
                 PawnIoDriver.SimulatedSignatureVerifier = null;
 
-                // Verify TryPortIoWrite / TryPortIoRead on 0x62/0x66 route directly to PawnIO LpcACPIEC module
+                // Verify TryPortIoWrite / TryPortIoRead on 0x62/0x66 route directly to PawnIO LpcACPIEC module (ioctl_pio_read/write)
                 NativeInpOut.Shutdown();
                 PawnIoDriver.Shutdown();
                 Dictionary<byte, byte> fakeAcpiEc = new Dictionary<byte, byte>();
+                byte ecCmd = 0;
+                int ecStage = 0;
+                byte ecReg = 0;
+                byte ecOut = 0;
+                bool ecObf = false;
                 int ioctlEcCalls = 0;
                 PawnIoDriver.SimulatedAvailable = true;
                 PawnIoDriver.SimulatedExecuteHook = delegate(string fn, ulong[] inp)
                 {
-                    if (fn == "ioctl_write" && inp.Length >= 2)
+                    if (fn == "ioctl_pio_write" && inp.Length >= 2)
                     {
                         ioctlEcCalls++;
-                        fakeAcpiEc[(byte)inp[0]] = (byte)(inp[1] & 0xFF);
+                        byte p = (byte)inp[0];
+                        byte val = (byte)(inp[1] & 0xFF);
+                        if (p == 0x66) { ecCmd = val; ecStage = 1; ecObf = false; }
+                        else if (p == 0x62)
+                        {
+                            if (ecCmd == 0x80 && ecStage == 1)
+                            {
+                                byte v;
+                                fakeAcpiEc.TryGetValue(val, out v);
+                                ecOut = v;
+                                ecObf = true;
+                                ecStage = 0;
+                            }
+                            else if (ecCmd == 0x81 && ecStage == 1) { ecReg = val; ecStage = 2; }
+                            else if (ecCmd == 0x81 && ecStage == 2) { fakeAcpiEc[ecReg] = val; ecStage = 0; }
+                        }
                         return new ulong[] { 0 };
                     }
-                    if (fn == "ioctl_read" && inp.Length >= 1)
+                    if (fn == "ioctl_pio_read" && inp.Length >= 1)
                     {
                         ioctlEcCalls++;
-                        byte v;
-                        fakeAcpiEc.TryGetValue((byte)inp[0], out v);
-                        return new ulong[] { v };
+                        byte p = (byte)inp[0];
+                        if (p == 0x66) return new ulong[] { ecObf ? 0x01UL : 0x00UL };
+                        if (p == 0x62) { ecObf = false; return new ulong[] { ecOut }; }
                     }
                     return null;
                 };
@@ -1595,7 +1657,7 @@ namespace MiniFanControl
                 byte ecVal;
                 bool ecR = HardwareBackend.TryPortIoRead(0x62, 0x66, 0x33, out ecVal);
 
-                pawnSecOk = prefersProgramFiles && unsignedRejected && hookRejected && pre && ecW && ecR && (ecVal == 0xA8) && (ioctlEcCalls == 2);
+                pawnSecOk = prefersProgramFiles && unsignedRejected && hookRejected && pre && ecW && ecR && (ecVal == 0xA8) && (ioctlEcCalls >= 8);
                 pawnSecDetail = string.Format("ProgFilesFirst={0}, UnsignedBlocked={1}, HookBlocked={2}, AcpiEcRouted={3}/0x{4:X2}({5})",
                     prefersProgramFiles, unsignedRejected, hookRejected, ecW && ecR, ecVal, ioctlEcCalls);
             }

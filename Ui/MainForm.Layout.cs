@@ -1746,6 +1746,13 @@ namespace MiniFanControl
                 Padding = new Padding(8),
                 Visible = false
             };
+            _errorBanner.Click += (s, e) =>
+            {
+                if (_errorBanner.Text != null && _errorBanner.Text.Contains("pawnio.eu"))
+                {
+                    ShowKernelDriverSecurityDialog(false);
+                }
+            };
             Controls.Add(_errorBanner);
             _errorBanner.BringToFront();
 

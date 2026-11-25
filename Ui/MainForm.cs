@@ -663,6 +663,10 @@ namespace MiniFanControl
                     {
                         MinimizeToTray();
                     }
+                    else if (!_isUnitTest && !_demoMode && _settings.ShowDriverInstallPrompt && !NativeInpOut.IsDriverOpen())
+                    {
+                        BeginInvoke((Action)(() => ShowKernelDriverSecurityDialog(true)));
+                    }
                     else if (!_isUnitTest && !IsReadOnlyMonitoringMode && _showSetupAssistant && string.IsNullOrEmpty(FanCurveProfile.LastCalibratedDate))
                     {
                         BeginInvoke((Action)(() => ShowSetupAssistantDialog(false)));
@@ -1592,11 +1596,19 @@ namespace MiniFanControl
                     _hwSubLabel.Text.IndexOf("Radeon Driver-Only", StringComparison.Ordinal) < 0)
                     _hwSubLabel.Text = _hwSubLabel.Text + " • " + drvTag;
             }
-            if (!_demoMode && NativeInpOut.ActiveDriver == HardwareDriverEngine.None &&
+            if (!_demoMode && !NativeInpOut.IsDriverOpen() &&
                 _errorBanner != null && string.IsNullOrEmpty(_uiWriteErrorBannerDetail))
             {
-                _errorBanner.Text = "⚠ No EC kernel driver loaded (InpOut64/WinRing0 missing or blocked) — fan control & EC telemetry won't work. Run as Administrator or check Tools & Drivers → Kernel Driver Status.";
+                _errorBanner.Text = "⚠ No active kernel driver (Windows 11 HVCI may have blocked InpOut64) — click here to install HVCI-safe PawnIO (pawnio.eu) or inspect Kernel Driver Status.";
+                _errorBanner.Cursor = Cursors.Hand;
                 if (!_errorBanner.Visible) _errorBanner.Visible = true;
+            }
+            else if (!_demoMode && NativeInpOut.IsDriverOpen() &&
+                _errorBanner != null && _errorBanner.Visible &&
+                _errorBanner.Text != null && _errorBanner.Text.Contains("pawnio.eu"))
+            {
+                _errorBanner.Visible = false;
+                _errorBanner.Cursor = Cursors.Default;
             }
 
             int apuTemp = Math.Max(st.CpuTemp, st.GpuTemp);

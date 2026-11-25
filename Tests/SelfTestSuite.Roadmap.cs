@@ -265,6 +265,54 @@ namespace MiniFanControl
             Check(winSvcOk,
                 "Native Windows Service Host (Quoted ImagePath & External Stop/Power Lifecycle Hooks)",
                 winSvcDetail);
+
+            // 117. Bundled Signed PawnIO Modules, Guided Driver Onboarding Dialog & Startup Prompt Persistence
+            bool pawnUiOk = false;
+            string pawnUiDetail = "";
+            string tempDrvCfg = null;
+            try
+            {
+                string lpcPath = PawnIoDriver.FindModuleBlobPath("LpcIO");
+                string ecPath = PawnIoDriver.FindModuleBlobPath("LpcACPIEC");
+                string smnPath = PawnIoDriver.FindModuleBlobPath("AMDFamily17");
+                bool allBundled = !string.IsNullOrEmpty(lpcPath) && File.Exists(lpcPath)
+                    && !string.IsNullOrEmpty(ecPath) && File.Exists(ecPath)
+                    && !string.IsNullOrEmpty(smnPath) && File.Exists(smnPath);
+
+                string diag = KernelDriverDialog.BuildDiagnosticsReport(false);
+                bool diagOk = !string.IsNullOrEmpty(diag)
+                    && diag.Contains("LpcIO.bin")
+                    && diag.Contains("LpcACPIEC.bin")
+                    && diag.Contains("AMDFamily17.bin");
+
+                bool dialogCreated = false;
+                using (KernelDriverDialog dlg = new KernelDriverDialog(true, ThemePreference.Dark, true, false, true, null))
+                {
+                    dialogCreated = (dlg.ShowPromptOnStartup == true && dlg.Text.Contains("PawnIO"));
+                }
+
+                tempDrvCfg = Path.Combine(Path.GetTempPath(), "mfc_drv_prompt_" + Guid.NewGuid().ToString("N") + ".cfg");
+                AppSettings.WriteAllLinesAtomic(tempDrvCfg, new string[] { "ShowDriverInstallPrompt=0" });
+                AppSettings loadedCfg = new AppSettings();
+                loadedCfg.LoadFromPath(tempDrvCfg, null, null, new List<FanCurveProfile>());
+                bool settingRoundTrip = !loadedCfg.ShowDriverInstallPrompt;
+
+                pawnUiOk = allBundled && diagOk && dialogCreated && settingRoundTrip;
+                pawnUiDetail = string.Format("Bundled={0} ({1}), Diag={2}, Dlg={3}, Cfg={4}",
+                    allBundled, PawnIoDriver.AvailableBundledModulesSummary, diagOk, dialogCreated, settingRoundTrip);
+            }
+            catch (Exception ex) { pawnUiDetail = ex.Message; }
+            finally
+            {
+                if (!string.IsNullOrEmpty(tempDrvCfg))
+                {
+                    try { if (File.Exists(tempDrvCfg)) File.Delete(tempDrvCfg); } catch { }
+                    try { if (File.Exists(tempDrvCfg + ".bak")) File.Delete(tempDrvCfg + ".bak"); } catch { }
+                }
+            }
+            Check(pawnUiOk,
+                "Bundled Signed PawnIO Modules, Guided Driver Onboarding Dialog & Startup Prompt Persistence",
+                pawnUiDetail);
         }
     }
 }

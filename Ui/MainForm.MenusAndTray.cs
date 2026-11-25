@@ -740,51 +740,45 @@ namespace MiniFanControl
             UpdateCustomRowButtons();
         }
 
-        private void ShowKernelDriverSecurityDialog()
+        private void ShowKernelDriverSecurityDialog(bool isStartupPrompt = false)
         {
-            bool hvci = NativeInpOut.IsHvciEnabled();
-            bool pawnSvc = PawnIoDriver.IsServiceInstalledAndRunning();
-            bool vanguardDetected = DriverServiceManager.IsDriverServiceRunning(AntiCheatMonitor.BootVanguardServiceName);
-            string drv = NativeInpOut.ActiveDriverName;
-            StringBuilder sb = new StringBuilder();
-            sb.AppendLine("MiniFanControl Kernel Driver, PawnIO & HVCI Security Status\n");
-            sb.AppendLine("• Active Kernel Driver Engine: " + drv);
-            sb.AppendLine("• Binary SHA256 / Signature Check: " + (NativeInpOut.IsDriverHashVerified
-                ? ("VERIFIED (" + (NativeInpOut.ActiveDriverSha256 ?? "") + ")")
-                : "Not Verified / Not Loaded"));
-            sb.AppendLine("• Windows 11 Memory Integrity (HVCI): " + (hvci ? "ENABLED (Strict Kernel Code Integrity)" : "Disabled"));
-            sb.AppendLine("• PawnIO HVCI Driver Service: " + (pawnSvc ? ("Running (" + PawnIoDriver.LastStatus + ")") : "Not Installed (optional: https://pawnio.eu)"));
-            sb.AppendLine("• PawnIO Signed Modules Loaded: " + PawnIoDriver.LoadedModulesSummary);
-            sb.AppendLine("• Anti-Cheat Safe Auto-Pause (EAC/BattlEye): " + (_settings.AutoPauseForAntiCheat ? "ENABLED" : "Disabled (opt-in via Tools & Drivers)"));
-            if (vanguardDetected)
-                sb.AppendLine("• Boot Anti-Cheat Notice: Riot Vanguard (vgk) is active at boot — PawnIO is recommended if legacy drivers conflict.");
-            sb.AppendLine();
-            if (NativeInpOut.ActiveDriver == HardwareDriverEngine.PawnIO)
-            {
-                sb.AppendLine("STATUS: PawnIO Active (HVCI / Memory Integrity Compatible)");
-                sb.AppendLine("EV-signed PawnIO bytecode modules are active. You can keep Windows 11 Core Isolation / Memory Integrity enabled.");
-            }
-            else if (NativeInpOut.ActiveDriver == HardwareDriverEngine.InpOut64)
-            {
-                sb.AppendLine("STATUS: InpOut64 Active (inpoutx64.dll)");
-                sb.AppendLine("Standard InpOut64 driver passed runtime SHA256 pin verification before loading. Note that with Windows 11 Memory Integrity (HVCI) enabled, Microsoft's vulnerable driver blocklist may block InpOut64 service startup.");
-                if (hvci) sb.AppendLine("HVCI is enabled: Install PawnIO (https://pawnio.eu) for signed HVCI support, or run in Safe Read-Only Mode.");
-            }
-            else if (NativeInpOut.ActiveDriver == HardwareDriverEngine.WinRing0)
-            {
-                sb.AppendLine("STATUS: WinRing0 Active (WinRing0x64.dll)");
-                sb.AppendLine("WinRing0 driver passed runtime SHA256 pin verification before loading. Note that HVCI blocklists block older WinRing0 drivers.");
-            }
-            else
-            {
-                sb.AppendLine("STATUS: NO KERNEL DRIVER LOADED (Demo Mode / Read-Only)");
-                if (!string.IsNullOrEmpty(NativeInpOut.LastDriverIntegrityError))
+            if (_isUnitTest) return;
+            using (KernelDriverDialog dlg = new KernelDriverDialog(
+                _isDarkMode,
+                _themePref,
+                isStartupPrompt,
+                _settings.AutoPauseForAntiCheat,
+                _settings.ShowDriverInstallPrompt,
+                delegate
                 {
-                    sb.AppendLine("SECURITY ALERT: " + NativeInpOut.LastDriverIntegrityError);
+                    bool ok = NativeInpOut.TryReloadDriver(true);
+                    if (ok && NativeInpOut.IsDriverOpen())
+                    {
+                        if (_hw != null) _hw.ResetDriverInitialization();
+                        if (_controller != null) _controller.ClearStaleWriteErrors();
+                        if (_errorBanner != null && _errorBanner.Text != null && _errorBanner.Text.Contains("pawnio.eu"))
+                        {
+                            _errorBanner.Visible = false;
+                            _errorBanner.Cursor = Cursors.Default;
+                        }
+                        UpdateReadOnlyUiState();
+                        RefreshStatus();
+                    }
+                    return ok;
+                }))
+            {
+                dlg.ShowDialog(this);
+                if (isStartupPrompt)
+                {
+                    _settings.ShowDriverInstallPrompt = dlg.ShowPromptOnStartup;
+                    SaveSettings();
                 }
-                sb.AppendLine("Hardware port I/O is disabled; running in safe read-only monitoring/simulation mode.");
+                if (dlg.DriverActivatedDuringSession)
+                {
+                    UpdateReadOnlyUiState();
+                    RefreshStatus();
+                }
             }
-            MessageBox.Show(sb.ToString(), "Kernel Driver & Security Status", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private static bool IsMouseOverControl(Control c)

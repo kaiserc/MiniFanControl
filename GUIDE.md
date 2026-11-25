@@ -87,22 +87,23 @@ AMD Ryzen Mini PCs—such as the **GMKtec NucBox K12**, **K8 Plus**, **K11**, **
 
 MiniFanControl features an enterprise-grade multi-driver abstraction in `Hardware/NativeInpOut.cs`, prioritizing secure, verified hardware access:
 
-#### Primary Engine: Bundled InpOut64 (`inpoutx64.dll`)
+#### Recommended Engine (Windows 11 HVCI-Safe): PawnIO (`https://pawnio.eu`)
+1. Download and install the free, EV-signed **PawnIO** driver from [https://pawnio.eu](https://pawnio.eu) (or reuse an existing PawnIO installation from CapFrameX, FanControl, or HWiNFO).
+2. MiniFanControl **already bundles** the official signed PawnIO modules (`PawnIO\modules\LpcIO.bin`, `LpcACPIEC.bin`, `AMDFamily17.bin`) — no manual `.bin` downloads needed.
+3. Click **Re-check Driver** in the guided setup dialog (or **Tools & Drivers ▾ → Kernel Driver & HVCI Security Status...**) to activate PawnIO immediately without restarting, while keeping Windows 11 Memory Integrity (HVCI) enabled.
 
-1. MiniFanControl bundles Phillip Gibbons' verified InpOut64 driver (Highresolution Enterprises v1.5.0.0), SHA256 pinned: `5F27ED4D5CD58A1EE23DEEB802E09E73F3A1D884CE2135F6E827F67B171269E7`.
+#### Fallback Engine: Bundled InpOut64 (`inpoutx64.dll`)
+
+1. If PawnIO is not installed, MiniFanControl automatically falls back to Phillip Gibbons' verified InpOut64 driver (Highresolution Enterprises v1.5.0.0), SHA256 pinned: `5F27ED4D5CD58A1EE23DEEB802E09E73F3A1D884CE2135F6E827F67B171269E7`.
 2. Ensure `inpoutx64.dll` resides in the same directory as `MiniFanControl.exe`.
 3. **First-time launch for fan curve writing**: Right-click `MiniFanControl.exe` and select **Run as Administrator** (or install via the scheduled task option).
-   - This allows `inpoutx64.dll` to initialize its kernel driver handle (`inpoutx64.sys`).
-4. Subsequent launches can be run as a standard user or configured to start automatically on Windows logon.
+   - This allows `inpoutx64.dll` to initialize its kernel driver handle (`inpoutx64.sys`) on systems where Windows does not block legacy drivers.
 
-#### Safe Read-Only Telemetry Mode (Windows 11 Memory Integrity / HVCI Default)
-If Windows 11 Memory Integrity (HVCI) blocks kernel port access or if MiniFanControl is run non-elevated:
-1. MiniFanControl engages **Safe Read-Only Telemetry Mode**.
-2. CPU and iGPU temperatures, package power, clocks, and NVMe health continue updating natively via AMD's official WHQL driver interface (`atiadlxx.dll`) without any unsigned or blocked drivers.
+#### Safe Read-Only Telemetry Mode (No Driver / HVCI Blocked Default)
+If Windows 11 Memory Integrity (HVCI) blocks `inpoutx64` and PawnIO is not installed yet (or if MiniFanControl is run non-elevated):
+1. MiniFanControl displays the **Kernel Driver Setup** prompt with a one-click link to [pawnio.eu](https://pawnio.eu) and a **Re-check Driver** button, or lets you continue in **Safe Read-Only Telemetry Mode**.
+2. CPU and iGPU/dGPU temperatures, package power, clocks, and NVMe health continue updating natively via WHQL AMD ADL (`atiadlxx.dll`), NVIDIA NVML (`nvml.dll`), and Windows APIs.
 3. Fan speed writes remain locked fail-closed, ensuring 100% stability.
-
-#### PawnIO Architectural Roadmap
-Full integration with the modern scriptable PawnIO kernel driver via `PawnIOLib` bytecode modules (`pawnio_open`/`load`/`execute`) is planned on the roadmap to enable certified EV-signed, HVCI-compatible fan control without vulnerable legacy driver blocklist concerns.
 
 ### 2.1 First-Time Setup & Auto-Tune Walkthrough (The Recommended 2-Step Flow)
 

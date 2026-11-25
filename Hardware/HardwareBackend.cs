@@ -224,6 +224,18 @@ namespace MiniFanControl
             return IsSuperIoControlled ? 0 : 1;
         }
 
+        public void ResetDriverInitialization()
+        {
+            if (_isSimulatedMode) return;
+            if (_linAddr != IntPtr.Zero)
+            {
+                try { NativeInpOut.UnmapPhysicalMemory(_physHandle, _linAddr); } catch { }
+                _linAddr = IntPtr.Zero;
+                _physHandle = IntPtr.Zero;
+            }
+            _isInitialized = false;
+        }
+
         public void ReinitializeHardwareAfterResume()
         {
             if (_isSimulatedMode) return;

@@ -15,6 +15,7 @@ namespace MiniFanControl
         public bool CloseToTray = false;
         public bool UseFahrenheit = false;
         public bool ShowSetupAssistant = true;
+        public bool ShowDriverInstallPrompt = true;
         public bool SilentSleepStandby = true;
         public bool AutoPauseForAntiCheat = false;
         public bool AutoSwitchWorkloads = false;
@@ -212,6 +213,7 @@ namespace MiniFanControl
                     else if (k == "EnableHotkeys") EnableGlobalHotkeys = ParseBool(v);
                     else if (k == "HasDualFans") HasDualFans = ParseBool(v);
                     else if (k == "ShowSetupAssistant") ShowSetupAssistant = ParseBool(v);
+                    else if (k == "ShowDriverInstallPrompt") ShowDriverInstallPrompt = ParseBool(v);
                     else if (k == "HardwareProfile" || k == "ProfileId")
                     {
                         ProfileOverrideId = v;
@@ -310,6 +312,7 @@ namespace MiniFanControl
                 lines.Add("CloseToTray=" + (CloseToTray ? "1" : "0"));
                 lines.Add("UseFahrenheit=" + (UseFahrenheit ? "1" : "0"));
                 lines.Add("ShowSetupAssistant=" + (ShowSetupAssistant ? "1" : "0"));
+                lines.Add("ShowDriverInstallPrompt=" + (ShowDriverInstallPrompt ? "1" : "0"));
                 lines.Add("SilentSleepStandby=" + (SilentSleepStandby ? "1" : "0"));
                 lines.Add("AutoPauseForAntiCheat=" + (AutoPauseForAntiCheat ? "1" : "0"));
                 lines.Add("AutoSwitchWorkloads=" + (AutoSwitchWorkloads ? "1" : "0"));

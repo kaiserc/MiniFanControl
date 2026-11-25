@@ -280,7 +280,9 @@ namespace MiniFanControl
                 switch (ActiveDriver)
                 {
                     case HardwareDriverEngine.PawnIO:
-                        return "PawnIO v" + PawnIoDriver.VersionString + " (HVCI-Compatible)";
+                        return PawnIoDriver.IsDirectDeviceMode
+                            ? "PawnIO (Direct Kernel Device — HVCI-Compatible)"
+                            : ("PawnIO v" + PawnIoDriver.VersionString + " (HVCI-Compatible)");
                     case HardwareDriverEngine.WinRing0:
                         return "WinRing0 1.3.1b (WinRing0x64.dll)";
                     case HardwareDriverEngine.InpOut64:
@@ -570,6 +572,33 @@ namespace MiniFanControl
                 ActiveDriver = HardwareDriverEngine.None;
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Re-probes kernel drivers on demand (for example, after the user installs PawnIO from pawnio.eu).
+        /// If no driver is loaded — or if PawnIO has just become available while running a legacy driver —
+        /// cleanly reloads and switches to the highest-priority verified driver without restarting the app.
+        /// </summary>
+        public static bool TryReloadDriver(bool preferUpgradeToPawnIo = true)
+        {
+            bool currentlyOpen = IsDriverOpen();
+            if (ActiveDriver == HardwareDriverEngine.None)
+            {
+                return PreloadDriverDll() && IsDriverOpen();
+            }
+            if (!currentlyOpen)
+            {
+                Shutdown();
+                return PreloadDriverDll() && IsDriverOpen();
+            }
+            if (preferUpgradeToPawnIo &&
+                ActiveDriver != HardwareDriverEngine.PawnIO &&
+                PawnIoDriver.IsServiceInstalledAndRunning())
+            {
+                Shutdown();
+                return PreloadDriverDll() && IsDriverOpen();
+            }
+            return true;
         }
 
         public static bool IsDriverOpen()
