@@ -193,7 +193,12 @@ namespace MiniFanControl
                                     int sharp = GetDword(umdKey, "Sharpness_Enable");
                                     if (cas != 0 || sharp != 0) t.Ris = true;
 
-                                    // Note: UMD\FsrOverride=1 is a driver capability flag (paired with FsrOvrDLLPath), not an active toggle
+                                    // Live Adrenalin 26.x toggle for "AMD FSR Upscaling" (ML-based FSR upgrade):
+                                    // UMD\FsrOverride flips cleanly between "0" (Disabled) and "1" (Enabled).
+                                    if (IsStringFlagEnabled(umdKey.GetValue("FsrOverride")))
+                                    {
+                                        t.Fsr = true;
+                                    }
                                     int fsrActive = GetDword(umdKey, "FsrEnabled");
                                     if (fsrActive == 0) fsrActive = GetDword(umdKey, "ML_FSR_Enable");
                                     if (fsrActive == 0) fsrActive = GetDword(umdKey, "FsrUpgrade");
@@ -263,7 +268,7 @@ namespace MiniFanControl
             }
         }
 
-        private static bool IsStringFlagEnabled(object val)
+        internal static bool IsStringFlagEnabled(object val)
         {
             if (val == null) return false;
             if (val is int) return ((int)val) != 0;

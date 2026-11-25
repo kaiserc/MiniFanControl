@@ -1653,6 +1653,17 @@ namespace MiniFanControl
                         idleTel.Fsr, idleTel.AntiLag, gameTel.Fsr, gameTel.AntiLag);
                 }
 
+                // 1c. Validate UMD\FsrOverride REG_SZ/DWORD flag helper ("1" -> true, "0"/"" -> false)
+                if (!RadeonSettingsSensor.IsStringFlagEnabled("1")
+                    || RadeonSettingsSensor.IsStringFlagEnabled("0")
+                    || RadeonSettingsSensor.IsStringFlagEnabled("")
+                    || !RadeonSettingsSensor.IsStringFlagEnabled(1)
+                    || RadeonSettingsSensor.IsStringFlagEnabled(0))
+                {
+                    fsrAndNvmeOk = false;
+                    fsrAndNvmeDetails = "UMD\\FsrOverride flag parser failed!";
+                }
+
                 // 2. Validate Multi-NVMe & Read/Write throughput tracking in FanStatus & Tooltip
                 FanStatus dualNvme = new FanStatus
                 {
