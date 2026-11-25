@@ -252,6 +252,9 @@ namespace MiniFanControl
                 _linAddr = IntPtr.Zero;
                 _physHandle = IntPtr.Zero;
             }
+            SuperIoBaseAddr = 0;
+            SuperIoChipId = 0;
+            AccessMethod = EcAccessMethod.Unknown;
             _isInitialized = false;
             ResetTachometerFilterState();
             ResetSuperIoChannelLatch();
@@ -516,6 +519,14 @@ namespace MiniFanControl
 
         public bool AllowEtwAutoStart = true;
 
+        /// <summary>
+        /// When enabled (used by HeadlessDaemon / Windows Service), skips heavy GUI-only telemetry
+        /// (ETW PresentMon, RTSS FPS, Radeon Settings, SMU PM tables, DDR5 SMBus polling, and
+        /// unnecessary ADL/NVML native DLL loads when EC/SMN temperatures are already available)
+        /// to keep background memory usage minimal.
+        /// </summary>
+        public bool LeanServiceMode = false;
+
         public bool IsDriverAvailable { get { return NativeInpOut.ActiveDriver != HardwareDriverEngine.None; } }
 
         public bool IsEcActive { get { return _isInitialized && AccessMethod != EcAccessMethod.Unknown; } }
@@ -655,35 +666,43 @@ namespace MiniFanControl
                 }
             }
 
-            int adlTemp, adlCpuTemp, adlPowerWatts, cpuPwr, gfxPwr, socPwr, pwrLim, cpuClk, gfxClk, gfxAct, gfxVolt, memClk, hotspot, npuClk, npuAct;
-            int adlFclk, adlGfxCurr, adlSocCurr;
-            string pwrSrc;
-            _adlSensor.ReadTelemetryDetailed(out adlTemp, out adlCpuTemp, out adlPowerWatts, out cpuPwr, out gfxPwr, out socPwr,
-                out pwrLim, out cpuClk, out gfxClk, out gfxAct, out gfxVolt, out pwrSrc,
-                out memClk, out hotspot, out npuClk, out npuAct, out adlFclk, out adlGfxCurr, out adlSocCurr);
-
-            // Multi-vendor desktop fallback: read WHQL NVIDIA NVML (nvml.dll) when AMD ADL2 reports no GPU
+            int adlTemp = 0, adlCpuTemp = 0, adlPowerWatts = 0, cpuPwr = 0, gfxPwr = 0, socPwr = 0, pwrLim = 0, cpuClk = 0, gfxClk = 0, gfxAct = 0, gfxVolt = 0, memClk = 0, hotspot = 0, npuClk = 0, npuAct = 0;
+            int adlFclk = 0, adlGfxCurr = 0, adlSocCurr = 0;
+            string pwrSrc = "";
             NvmlTelemetry nvml = default(NvmlTelemetry);
-            if (adlTemp <= 0 && adlPowerWatts <= 0 && gfxClk <= 0)
-            {
-                nvml = _nvmlSensor.ReadTelemetry();
-                if (nvml.IsAvailable)
-                {
-                    if (nvml.GpuTempC > 0) adlTemp = nvml.GpuTempC;
-                    if (nvml.PowerWatts > 0)
-                    {
-                        adlPowerWatts = nvml.PowerWatts;
-                        gfxPwr = nvml.PowerWatts;
-                        pwrSrc = "NVIDIA NVML (nvml.dll)";
-                    }
-                    if (nvml.PowerLimitWatts > 0) pwrLim = nvml.PowerLimitWatts;
-                    if (nvml.GraphicsClockMhz > 0) gfxClk = nvml.GraphicsClockMhz;
-                    if (nvml.MemoryClockMhz > 0) memClk = nvml.MemoryClockMhz;
-                    if (nvml.GpuLoadPct >= 0) gfxAct = nvml.GpuLoadPct;
-                }
-            }
 
             bool allowActiveSilicon = CanRunActiveSiliconProbes(Profile, _isSimulatedMode);
+            int preSmnTctl = (LeanServiceMode && IsAmdCpuPlatform() && NativeInpOut.ActiveDriver != HardwareDriverEngine.None)
+                ? ReadAmdCpuTempTctl()
+                : 0;
+            bool skipHeavyGpuDlls = LeanServiceMode && (preSmnTctl >= 15 && preSmnTctl <= 115 || (ecCpuTemp >= 15 && ecCpuTemp <= 115));
+
+            if (!skipHeavyGpuDlls)
+            {
+                _adlSensor.ReadTelemetryDetailed(out adlTemp, out adlCpuTemp, out adlPowerWatts, out cpuPwr, out gfxPwr, out socPwr,
+                    out pwrLim, out cpuClk, out gfxClk, out gfxAct, out gfxVolt, out pwrSrc,
+                    out memClk, out hotspot, out npuClk, out npuAct, out adlFclk, out adlGfxCurr, out adlSocCurr);
+
+                // Multi-vendor desktop fallback: read WHQL NVIDIA NVML (nvml.dll) when AMD ADL2 reports no GPU
+                if (adlTemp <= 0 && adlPowerWatts <= 0 && gfxClk <= 0)
+                {
+                    nvml = _nvmlSensor.ReadTelemetry();
+                    if (nvml.IsAvailable)
+                    {
+                        if (nvml.GpuTempC > 0) adlTemp = nvml.GpuTempC;
+                        if (nvml.PowerWatts > 0)
+                        {
+                            adlPowerWatts = nvml.PowerWatts;
+                            gfxPwr = nvml.PowerWatts;
+                            pwrSrc = "NVIDIA NVML (nvml.dll)";
+                        }
+                        if (nvml.PowerLimitWatts > 0) pwrLim = nvml.PowerLimitWatts;
+                        if (nvml.GraphicsClockMhz > 0) gfxClk = nvml.GraphicsClockMhz;
+                        if (nvml.MemoryClockMhz > 0) memClk = nvml.MemoryClockMhz;
+                        if (nvml.GpuLoadPct >= 0) gfxAct = nvml.GpuLoadPct;
+                    }
+                }
+            }
 
             // High-precision silicon junction resolution (matches HWiNFO64 / LibreHardwareMonitor / Ryzen Master):
             // Tier 1: AMD SMN silicon register 0x00059800 (Tctl/Tdie) - exact silicon die junction temperature
@@ -697,7 +716,9 @@ namespace MiniFanControl
             }
             else
             {
-                int smnTctl = (IsAmdCpuPlatform() && NativeInpOut.ActiveDriver != HardwareDriverEngine.None) ? ReadAmdCpuTempTctl() : 0;
+                int smnTctl = (preSmnTctl >= 15 && preSmnTctl <= 115)
+                    ? preSmnTctl
+                    : ((IsAmdCpuPlatform() && NativeInpOut.ActiveDriver != HardwareDriverEngine.None) ? ReadAmdCpuTempTctl() : 0);
                 if (smnTctl >= 15 && smnTctl <= 115)
                 {
                     cpuTemp = smnTctl;
@@ -774,27 +795,39 @@ namespace MiniFanControl
                 pwrSrc = "EC Thermal-TDP Model (CPU/iGPU Temp + Active BIOS Mode)";
             }
 
-            NvmeTelemetry nvme;
-            MemoryTelemetry mem;
-            SystemStorageMemorySensor.Sample(out nvme, out mem);
+            NvmeTelemetry nvme = default(NvmeTelemetry);
+            MemoryTelemetry mem = default(MemoryTelemetry);
+            AmdSmuTelemetry smu = default(AmdSmuTelemetry);
+            RtssTelemetry rtss = default(RtssTelemetry);
+            EtwLatencyTelemetry etw = default(EtwLatencyTelemetry);
+            RadeonSettingsTelemetry rad = default(RadeonSettingsTelemetry);
+            string activeGameProc = null;
 
-            AmdSmuTelemetry smu = AmdSmuSiliconSensor.Sample(
-                cpuPwr > 0 ? cpuPwr : (apuPower > 0 ? apuPower : 15),
-                cpuClk, memClk, gfxVolt, adlFclk, adlGfxCurr, adlSocCurr,
-                false, allowActiveSilicon);
+            if (!LeanServiceMode)
+            {
+                SystemStorageMemorySensor.Sample(out nvme, out mem);
+                smu = AmdSmuSiliconSensor.Sample(
+                    cpuPwr > 0 ? cpuPwr : (apuPower > 0 ? apuPower : 15),
+                    cpuClk, memClk, gfxVolt, adlFclk, adlGfxCurr, adlSocCurr,
+                    false, allowActiveSilicon);
+                rtss = FpsMonitor.GetTelemetry();
+                etw = EtwLatencyMonitor.GetTelemetry(AllowEtwAutoStart && !_isSimulatedMode);
+                activeGameProc = !string.IsNullOrEmpty(rtss.ProcessName) ? rtss.ProcessName : etw.ProcessName;
+                rad = RadeonSettingsSensor.Sample(activeGameProc);
+            }
+            else if (Profile == null || Profile.HasDualFans)
+            {
+                // Keep lightweight NVMe temp sampling on dual-fan boards so Sys Fan reacts to NVMe >= 65C
+                SystemStorageMemorySensor.Sample(out nvme, out mem);
+            }
 
-            RtssTelemetry rtss = FpsMonitor.GetTelemetry();
-            EtwLatencyTelemetry etw = EtwLatencyMonitor.GetTelemetry(AllowEtwAutoStart && !_isSimulatedMode);
-            string activeGameProc = !string.IsNullOrEmpty(rtss.ProcessName) ? rtss.ProcessName : etw.ProcessName;
-            RadeonSettingsTelemetry rad = RadeonSettingsSensor.Sample(activeGameProc);
-
-            // DDR5 Dual Stacked SO-DIMM Thermal Resolution
-            int ddrCount = GetDdrStickCount(mem.TotalGb, allowActiveSilicon);
+            // DDR5 Dual Stacked SO-DIMM Thermal Resolution (skipped in LeanServiceMode)
+            int ddrCount = LeanServiceMode ? 0 : GetDdrStickCount(mem.TotalGb, allowActiveSilicon);
             int ddrTemp1 = 0;
             int ddrTemp2 = 0;
             int ddrComposite = 0;
 
-            ushort smbusBase = allowActiveSilicon ? GetAmdSmbusBase() : (ushort)0;
+            ushort smbusBase = (!LeanServiceMode && allowActiveSilicon) ? GetAmdSmbusBase() : (ushort)0;
             if (smbusBase != 0)
             {
                 if (_spdThrottleStick0.TryBegin() || !_cachedSpd1Ok)
@@ -891,7 +924,7 @@ namespace MiniFanControl
             FanStatus st = new FanStatus
             {
                 CpuTemp = cpuTemp,
-                CpuLoadPct = SystemStorageMemorySensor.GetCpuUsage(),
+                CpuLoadPct = LeanServiceMode ? 0 : SystemStorageMemorySensor.GetCpuUsage(),
                 GpuTemp = gpuTemp,
                 GpuName = resolvedGpuName,
                 IsDiscreteGpu = isDiscreteGpu,

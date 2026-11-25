@@ -42,6 +42,10 @@ namespace MiniFanControl
             if (File.Exists(primary)) return primary;
             if (File.Exists(legacy)) return legacy;
 
+            string sharedConfig = AppPaths.GetSharedServiceConfigPath(false);
+            if (AppPaths.IsInstalledInProgramFiles() && File.Exists(sharedConfig))
+                return sharedConfig;
+
             string appDataConfig = Path.Combine(AppPaths.GetAppDataDir(false), "minifancontrol.cfg");
             if (File.Exists(appDataConfig)) return appDataConfig;
 
@@ -51,6 +55,43 @@ namespace MiniFanControl
             }
 
             return primary;
+        }
+
+        /// <summary>
+        /// Resolves the canonical config file path shared between the interactive GUI and
+        /// MiniFanControlService (running as LocalSystem). Portable installs share the local
+        /// folder config; Program Files installs share %ProgramData%\MiniFanControl\minifancontrol.cfg.
+        /// </summary>
+        public static string ResolveServiceConfigPath(bool ensureDir = false)
+        {
+            if (AppPaths.IsInstalledInProgramFiles())
+            {
+                return AppPaths.GetSharedServiceConfigPath(ensureDir);
+            }
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "minifancontrol.cfg");
+        }
+
+        /// <summary>
+        /// Copies an existing user config atomically to the shared service config path when
+        /// they differ (e.g. Program Files GUI config -> %ProgramData%\MiniFanControl\minifancontrol.cfg).
+        /// </summary>
+        public static bool SyncConfigToServicePath(string sourceConfigPath)
+        {
+            if (string.IsNullOrEmpty(sourceConfigPath) || !File.Exists(sourceConfigPath)) return false;
+            try
+            {
+                string targetPath = ResolveServiceConfigPath(true);
+                string srcFull = Path.GetFullPath(sourceConfigPath);
+                string dstFull = Path.GetFullPath(targetPath);
+                if (srcFull.Equals(dstFull, StringComparison.OrdinalIgnoreCase)) return true;
+                string[] lines = File.ReadAllLines(srcFull);
+                WriteAllLinesAtomic(dstFull, lines);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public static CurvePoint[] ParsePointList(string str)

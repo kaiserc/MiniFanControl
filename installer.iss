@@ -36,7 +36,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "startupicon"; Description: "Start MiniFanControl automatically on Windows login"; GroupDescription: "Windows Integration:"
+Name: "startupicon"; Description: "Start MiniFanControl GUI automatically on Windows login"; GroupDescription: "Windows Integration:"
+Name: "servicemode"; Description: "Install Background Service Mode (Zero-UI fan control at boot before login)"; GroupDescription: "Windows Integration:"; Flags: unchecked
 
 [Files]
 Source: "{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
@@ -62,7 +63,10 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 
 [Run]
 Filename: "{sys}\schtasks.exe"; Parameters: "/Create /F /RL HIGHEST /SC ONLOGON /TN ""MiniFanControl_Autostart"" /TR """"{app}\{#MyAppExeName}"""" --minimized"""; Flags: runhidden; Tasks: startupicon
+Filename: "{app}\{#MyAppHelperExe}"; Parameters: "service-install"; Flags: runhidden; Tasks: servicemode
+Filename: "{app}\{#MyAppHelperExe}"; Parameters: "service-start"; Flags: runhidden; Tasks: servicemode
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runascurrentuser
 
 [UninstallRun]
+Filename: "{app}\{#MyAppHelperExe}"; Parameters: "service-uninstall"; Flags: runhidden
 Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /F /TN ""MiniFanControl_Autostart"""; Flags: runhidden

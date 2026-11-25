@@ -663,6 +663,15 @@ namespace MiniFanControl
             menu.Items.Add("AMD Software: Adrenalin && Chipset Drivers...", null, (s, e) => OpenUrlSafe(URL_AMD_DRIVERS));
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("🛡️ Kernel Driver && HVCI Security Status...", null, (s, e) => ShowKernelDriverSecurityDialog());
+            bool svcInstalled = !_isUnitTest && WindowsServiceHost.IsServiceInstalled();
+            string svcMenuText = svcInstalled
+                ? (_servicePausedByGui || _serviceResumeOnExit
+                    ? "⚙ Background Service Mode (Active — Resumes on Close)..."
+                    : "⚙ Background Service Mode (Installed)...")
+                : "⚙ Enable Background Service Mode (Zero-UI / Boot Autostart)...";
+            ToolStripMenuItem svcModeItem = new ToolStripMenuItem(svcMenuText, null, (s, e) => ToggleBackgroundServiceMode());
+            svcModeItem.Checked = svcInstalled;
+            menu.Items.Add(svcModeItem);
             ToolStripMenuItem acPauseItem = new ToolStripMenuItem("🎮 Auto-Pause for Anti-Cheat (EAC / BattlEye)", null, (s, e) =>
             {
                 _settings.AutoPauseForAntiCheat = !_settings.AutoPauseForAntiCheat;
@@ -779,6 +788,111 @@ namespace MiniFanControl
                 {
                     UpdateReadOnlyUiState();
                     RefreshStatus();
+                }
+            }
+        }
+
+        private void ToggleBackgroundServiceMode()
+        {
+            if (_isUnitTest) return;
+            bool installed = WindowsServiceHost.IsServiceInstalled();
+            string helperPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "minifan-helper.exe");
+
+            if (!installed)
+            {
+                if (!File.Exists(helperPath))
+                {
+                    MessageBox.Show(this,
+                        "Could not locate minifan-helper.exe next to MiniFanControl.exe.\n\nKeep minifan-helper.exe in the same folder to enable Background Service Mode.",
+                        "Background Service Mode",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                string cfgPath = AppSettings.ResolveServiceConfigPath(true);
+                DialogResult dr = MessageBox.Show(this,
+                    "Enable Zero-UI Background Service Mode?\n\n" +
+                    "• Starts automatically at Windows boot (before login — ideal for headless Mini PCs, servers & HTPCs)\n" +
+                    "• Runs with minimal background RAM (~5-10 MB) and zero tray icon clutter\n" +
+                    "• Shares your fan curves & profiles via:\n  " + cfgPath + "\n" +
+                    "• Whenever you open MiniFanControl to adjust curves, the service pauses automatically and resumes seamlessly when you close the app.\n\n" +
+                    "Install MiniFanControlService now?",
+                    "Background Service Mode (Zero-UI Autostart)",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+                if (dr != DialogResult.Yes) return;
+
+                SaveSettings();
+                AppSettings.SyncConfigToServicePath(AppSettings.GetSettingsPath());
+
+                string msg;
+                bool ok = WindowsServiceHost.InstallService(helperPath, cfgPath, out msg);
+                if (!ok)
+                {
+                    MessageBox.Show(this,
+                        "Failed to install Background Service:\n\n" + msg + "\n\nEnsure MiniFanControl is running as Administrator.",
+                        "Background Service Mode",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+
+                _serviceResumeOnExit = true;
+                RebuildDriversMenu();
+                if (_statusBarLabel != null)
+                {
+                    _statusBarLabel.Text = "✓ Background Service installed — close GUI whenever you're ready to hand control to the service";
+                }
+
+                DialogResult closeNow = MessageBox.Show(this,
+                    "Background Service Mode is now installed!\n\n" +
+                    "Would you like to close the GUI right now and hand fan control over to the low-RAM background service immediately?\n\n" +
+                    "(Click 'No' to keep tweaking curves — the service will start automatically as soon as you close MiniFanControl.)",
+                    "Background Service Ready",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information);
+                if (closeNow == DialogResult.Yes)
+                {
+                    _forceFullExit = true;
+                    Close();
+                }
+            }
+            else
+            {
+                string stateDesc = WindowsServiceHost.IsServiceRunning()
+                    ? "Running"
+                    : (_servicePausedByGui || _serviceResumeOnExit ? "Paused while GUI is open (resumes on close)" : "Installed (Stopped)");
+                DialogResult dr = MessageBox.Show(this,
+                    "MiniFanControlService is currently installed.\n" +
+                    "Status: " + stateDesc + "\n" +
+                    "Shared Config: " + AppSettings.ResolveServiceConfigPath(false) + "\n\n" +
+                    "Do you want to STOP and UNINSTALL Background Service Mode?",
+                    "Background Service Mode",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+                if (dr != DialogResult.Yes) return;
+
+                string msg;
+                bool ok = WindowsServiceHost.UninstallService(out msg);
+                if (ok)
+                {
+                    _servicePausedByGui = false;
+                    _serviceResumeOnExit = false;
+                    RebuildDriversMenu();
+                    if (_statusBarLabel != null)
+                    {
+                        _statusBarLabel.Text = "✓ Background Service uninstalled (interactive GUI mode active)";
+                    }
+                    MessageBox.Show(this, msg, "Background Service Mode", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show(this,
+                        "Failed to uninstall Background Service:\n\n" + msg + "\n\nEnsure MiniFanControl is running as Administrator.",
+                        "Background Service Mode",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
                 }
             }
         }

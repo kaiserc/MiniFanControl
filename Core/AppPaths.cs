@@ -33,6 +33,23 @@ namespace MiniFanControl
             return dir;
         }
 
+        public static string GetSharedMachineDataDir(bool ensureCreated = false)
+        {
+            string commonAppData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            if (string.IsNullOrEmpty(commonAppData)) return AppDomain.CurrentDomain.BaseDirectory;
+            string dir = Path.Combine(commonAppData, "MiniFanControl");
+            if (ensureCreated)
+            {
+                try { if (!Directory.Exists(dir)) Directory.CreateDirectory(dir); } catch { }
+            }
+            return dir;
+        }
+
+        public static string GetSharedServiceConfigPath(bool ensureCreated = false)
+        {
+            return Path.Combine(GetSharedMachineDataDir(ensureCreated), "minifancontrol.cfg");
+        }
+
         public static string GetWritablePath(string fileName)
         {
             if (IsInstalledInProgramFiles())

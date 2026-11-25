@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Win32;
@@ -9,9 +10,9 @@ namespace MiniFanControl
 {
     /// <summary>
     /// Zero-UI headless background fan control daemon for 24/7 servers, local LLM hosts,
-    /// and low-overhead Scheduled Task / startup execution.
+    /// and low-overhead Scheduled Task / Windows Service execution.
     /// Uses the exact same FanControllerService safety state machine (anti-stall floor clamping,
-    /// 90°C thermal tripwire, sleep/resume protection, and optional anti-cheat safe pause).
+    /// 90°C thermal tripwire, sleep/resume protection, live config hot-reload, and optional anti-cheat safe pause).
     /// </summary>
     public static class HeadlessDaemon
     {
@@ -19,6 +20,28 @@ namespace MiniFanControl
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool SetConsoleCtrlHandler(ConsoleCtrlHandlerDelegate handler, bool add);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr GetCurrentProcess();
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetProcessWorkingSetSize(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize);
+
+        /// <summary>
+        /// Compacts managed startup allocations and trims unused OS working-set pages so the
+        /// background service (and minimized tray GUI) maintain a minimal RAM footprint.
+        /// </summary>
+        public static void TrimProcessWorkingSet()
+        {
+            try
+            {
+                GC.Collect(2, GCCollectionMode.Forced, true);
+                GC.WaitForPendingFinalizers();
+                GC.Collect(2, GCCollectionMode.Forced, true);
+                SetProcessWorkingSetSize(GetCurrentProcess(), new IntPtr(-1), new IntPtr(-1));
+            }
+            catch { }
+        }
 
         private const uint CTRL_C_EVENT = 0;
         private const uint CTRL_BREAK_EVENT = 1;
@@ -83,7 +106,7 @@ namespace MiniFanControl
 
         public static int Run(bool demoMode, int intervalOverrideMs, int maxTicks, bool quiet)
         {
-            return Run(demoMode, intervalOverrideMs, maxTicks, quiet, null, null);
+            return Run(demoMode, intervalOverrideMs, maxTicks, quiet, null, null, null);
         }
 
         public static int Run(
@@ -94,9 +117,61 @@ namespace MiniFanControl
             ManualResetEvent externalStopEvent,
             Action<Action, Action> registerServicePowerCallbacks)
         {
+            return Run(demoMode, intervalOverrideMs, maxTicks, quiet, externalStopEvent, registerServicePowerCallbacks, null);
+        }
+
+        /// <summary>
+        /// Applies freshly reloaded settings from minifancontrol.cfg to a running daemon/service
+        /// controller without restarting the service process.
+        /// </summary>
+        internal static void ApplyReloadedSettings(
+            AppSettings newSettings,
+            int intervalOverrideMs,
+            FanCurveProfile[] builtIns,
+            List<FanCurveProfile> customProfiles,
+            FanControllerService controller,
+            AntiCheatMonitor antiCheat,
+            WorkloadProfileSwitcher workloadSwitcher,
+            ref FanCurveProfile apuProf,
+            ref FanCurveProfile sysProf)
+        {
+            if (newSettings == null || controller == null) return;
+            FanCurveProfile nextApu = ResolveProfileByName(newSettings.ApuModeName, builtIns, customProfiles);
+            FanCurveProfile nextSys = ResolveProfileByName(newSettings.SysModeName, builtIns, customProfiles);
+            apuProf = nextApu;
+            sysProf = nextSys;
+
+            int nextPollMs = (intervalOverrideMs >= 100 && intervalOverrideMs <= 10000)
+                ? intervalOverrideMs
+                : Math.Max(250, Math.Min(10000, newSettings.RefreshIntervalMs));
+            controller.RefreshIntervalMs = nextPollMs;
+            controller.HasDualFans = newSettings.HasDualFans;
+            if (nextApu != null) controller.SetProfileTarget(nextApu, false);
+            if (nextSys != null) controller.SetProfileTarget(nextSys, true);
+            controller.BiosPowerModeOverride = (newSettings.BiosPowerMode >= 0 && newSettings.BiosPowerMode <= 2)
+                ? newSettings.BiosPowerMode
+                : -1;
+            if (antiCheat != null) antiCheat.Enabled = newSettings.AutoPauseForAntiCheat;
+            if (workloadSwitcher != null)
+            {
+                workloadSwitcher.Enabled = newSettings.AutoSwitchWorkloads;
+                workloadSwitcher.Rules.Clear();
+                workloadSwitcher.Rules.AddRange(newSettings.WorkloadRules);
+            }
+        }
+
+        public static int Run(
+            bool demoMode,
+            int intervalOverrideMs,
+            int maxTicks,
+            bool quiet,
+            ManualResetEvent externalStopEvent,
+            Action<Action, Action> registerServicePowerCallbacks,
+            string configPathOverride)
+        {
             SystemHardwareInfo sysInfo = SystemHardwareInfo.Detect();
             HardwareBackend hw = null;
-            DemoBackend demo = new DemoBackend();
+            DemoBackend demo = demoMode ? new DemoBackend() : null;
 
             if (!demoMode)
             {
@@ -106,11 +181,36 @@ namespace MiniFanControl
                     Console.Error.WriteLine("[DAEMON ERROR] Hardware initialization failed.");
                     return 1;
                 }
+                hw.AllowEtwAutoStart = false;
+                hw.LeanServiceMode = true;
             }
 
+            string activeConfigPath = !string.IsNullOrEmpty(configPathOverride)
+                ? configPathOverride
+                : AppSettings.GetSettingsPath();
             AppSettings settings = new AppSettings();
             List<FanCurveProfile> customProfiles = FanCurveProfile.CreateProtectedExamples();
-            settings.Load(sysInfo, hw, customProfiles);
+            if (!string.IsNullOrEmpty(activeConfigPath) && File.Exists(activeConfigPath))
+            {
+                settings.LoadFromPath(activeConfigPath, sysInfo, hw, customProfiles);
+            }
+            else
+            {
+                settings.Load(sysInfo, hw, customProfiles);
+            }
+
+            DateTime lastConfigWriteUtc = DateTime.MinValue;
+            long lastConfigLen = -1;
+            try
+            {
+                if (!string.IsNullOrEmpty(activeConfigPath) && File.Exists(activeConfigPath))
+                {
+                    FileInfo fi = new FileInfo(activeConfigPath);
+                    lastConfigWriteUtc = fi.LastWriteTimeUtc;
+                    lastConfigLen = fi.Length;
+                }
+            }
+            catch { }
 
             FanCurveProfile[] builtIns = CreateBuiltInProfiles();
             FanCurveProfile apuProf = ResolveProfileByName(settings.ApuModeName, builtIns, customProfiles);
@@ -205,21 +305,64 @@ namespace MiniFanControl
                     controller.ResumeFromSuspend(!demoMode);
                 };
 
+                bool registeredSystemEvents = false;
+                PowerModeChangedEventHandler powerHandler = null;
                 if (registerServicePowerCallbacks != null)
                 {
                     registerServicePowerCallbacks(handleSuspend, handleResume);
                 }
-
-                PowerModeChangedEventHandler powerHandler = delegate(object sender, PowerModeChangedEventArgs e)
+                else
                 {
-                    if (e.Mode == PowerModes.Suspend) handleSuspend();
-                    else if (e.Mode == PowerModes.Resume) handleResume();
-                };
-                try { SystemEvents.PowerModeChanged += powerHandler; } catch { }
+                    // Console daemon mode uses SystemEvents; SCM service mode receives native
+                    // SERVICE_CONTROL_POWEREVENT directly without spinning up a hidden message pump.
+                    powerHandler = delegate(object sender, PowerModeChangedEventArgs e)
+                    {
+                        if (e.Mode == PowerModes.Suspend) handleSuspend();
+                        else if (e.Mode == PowerModes.Resume) handleResume();
+                    };
+                    try
+                    {
+                        SystemEvents.PowerModeChanged += powerHandler;
+                        registeredSystemEvents = true;
+                    }
+                    catch { }
+                }
 
                 controller.SampleReceived += delegate(FanStatus st)
                 {
                     int tick = Interlocked.Increment(ref completedTicks);
+                    if (tick == 2 || (tick > 2 && tick % 300 == 0))
+                    {
+                        TrimProcessWorkingSet();
+                    }
+
+                    // Lightweight live config hot-reload (checks mtime/size every 2 ticks)
+                    if (tick % 2 == 0 && !string.IsNullOrEmpty(activeConfigPath))
+                    {
+                        try
+                        {
+                            if (File.Exists(activeConfigPath))
+                            {
+                                FileInfo fi = new FileInfo(activeConfigPath);
+                                if (fi.LastWriteTimeUtc != lastConfigWriteUtc || fi.Length != lastConfigLen)
+                                {
+                                    lastConfigWriteUtc = fi.LastWriteTimeUtc;
+                                    lastConfigLen = fi.Length;
+                                    AppSettings reloaded = new AppSettings();
+                                    List<FanCurveProfile> reloadedCustoms = FanCurveProfile.CreateProtectedExamples();
+                                    reloaded.LoadFromPath(activeConfigPath, sysInfo, hw, reloadedCustoms);
+                                    settings = reloaded;
+                                    customProfiles = reloadedCustoms;
+                                    ApplyReloadedSettings(
+                                        reloaded, intervalOverrideMs, builtIns, customProfiles,
+                                        controller, antiCheat, workloadSwitcher, ref apuProf, ref sysProf);
+                                    if (!quiet) Console.WriteLine("[DAEMON] Live-reloaded updated config from " + activeConfigPath);
+                                    WatchdogSupervisor.LogWatchdogEvent("Headless daemon hot-reloaded updated config: " + activeConfigPath);
+                                }
+                            }
+                        }
+                        catch { }
+                    }
                     if (!quiet && (tick == 1 || tick % 10 == 0 || maxTicks > 0))
                     {
                         Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
@@ -295,7 +438,10 @@ namespace MiniFanControl
                 stopEvent.WaitOne();
                 controller.Stop(1000);
 
-                try { SystemEvents.PowerModeChanged -= powerHandler; } catch { }
+                if (registeredSystemEvents && powerHandler != null)
+                {
+                    try { SystemEvents.PowerModeChanged -= powerHandler; } catch { }
+                }
                 AppDomain.CurrentDomain.ProcessExit -= processExitHandler;
                 if (ctrlHandlerRegistered)
                 {

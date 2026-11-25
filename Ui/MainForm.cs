@@ -516,12 +516,26 @@ namespace MiniFanControl
         private readonly AntiCheatMonitor _antiCheatMonitor = new AntiCheatMonitor();
         private readonly WorkloadProfileSwitcher _workloadSwitcher = new WorkloadProfileSwitcher();
         private bool _osdHiddenForAntiCheat = false;
+        private bool _servicePausedByGui = false;
+        private bool _serviceResumeOnExit = false;
 
         public MainForm(bool startInDemo, bool startMinimized = false, bool isUnitTest = false)
         {
             _initialDemoMode = startInDemo;
             _startMinimized = startMinimized;
             _isUnitTest = isUnitTest;
+            // Seamless GUI <-> Background Service Mode handoff: pause MiniFanControlService
+            // while the interactive GUI is open so curves, Auto-Tune & calibration never contend
+            // over EC registers, and resume it automatically when the GUI closes.
+            if (!isUnitTest && !startInDemo && WindowsServiceHost.IsServiceRunning())
+            {
+                string svcStopMsg;
+                if (WindowsServiceHost.StopService(out svcStopMsg, 4000))
+                {
+                    _servicePausedByGui = true;
+                    _serviceResumeOnExit = true;
+                }
+            }
             _sysInfo = SystemHardwareInfo.Detect();
             _hw.Profile = _sysInfo.MatchedProfile;
             _controller = new FanControllerService(_hw, _demo, _builtInProfiles, startInDemo);
@@ -659,6 +673,10 @@ namespace MiniFanControl
                 Shown += (s, e) =>
                 {
                     UpdateGlobalHotkeysRegistration();
+                    if (_servicePausedByGui && _statusBarLabel != null)
+                    {
+                        _statusBarLabel.Text = "⚙ Background Service paused while GUI is open — close app to hand control back seamlessly";
+                    }
                     if (_startMinimized)
                     {
                         MinimizeToTray();
@@ -1452,6 +1470,10 @@ namespace MiniFanControl
                 _settings.BiosPowerMode = _controller.BiosPowerModeOverride;
             }
             _settings.Save(_apuProfile, _sysProfile, _customProfiles);
+            if (!_isUnitTest && (_servicePausedByGui || _serviceResumeOnExit || WindowsServiceHost.IsServiceInstalled()))
+            {
+                AppSettings.SyncConfigToServicePath(AppSettings.GetSettingsPath());
+            }
             RebuildTrayContextMenus();
         }
 
@@ -2336,6 +2358,7 @@ namespace MiniFanControl
                 _cpuTrayIcon.Visible = true;
             }
             Hide();
+            HeadlessDaemon.TrimProcessWorkingSet();
         }
 
         private void RestoreFromTray()
@@ -2385,7 +2408,15 @@ namespace MiniFanControl
                 _refreshTimer.Dispose();
                 _refreshTimer = null;
             }
-            RestoreHardwareSafeAutoIfNeeded();
+            bool handoffToService = (!_isUnitTest && !_demoMode && (_servicePausedByGui || _serviceResumeOnExit) && WindowsServiceHost.IsServiceInstalled());
+            if (handoffToService)
+            {
+                try { SaveSettings(); } catch { }
+            }
+            else
+            {
+                RestoreHardwareSafeAutoIfNeeded();
+            }
             try { EtwLatencyMonitor.Shutdown(); } catch { }
             if (_headerLogoBox != null && _headerLogoBox.Image != null)
             {
@@ -2452,6 +2483,15 @@ namespace MiniFanControl
                 _controller = null;
             }
             _hw.Dispose();
+            if (handoffToService)
+            {
+                try
+                {
+                    string svcStartMsg;
+                    WindowsServiceHost.StartService(out svcStartMsg, 4000);
+                }
+                catch { }
+            }
         }
 
         protected override void Dispose(bool disposing)

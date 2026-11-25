@@ -94,6 +94,7 @@ namespace MiniFanControl
                 c == "validate-lang" || c == "--validate-lang" ||
                 c == "validate-profiles" || c == "--validate-profiles" ||
                 c == "service-install" || c == "service-uninstall" || c == "service-status" ||
+                c == "service-start" || c == "service-stop" ||
                 c == "gen-icon" || c == "--gen-icon" ||
                 c == "latency" || c == "--latency")
             {
@@ -371,29 +372,35 @@ namespace MiniFanControl
                     int intervalMs = 0;
                     int maxTicks = 0;
                     bool quiet = false;
+                    string cfgPath = null;
                     for (int i = 0; i < args.Length; i++)
                     {
                         if ((args[i] == "--interval" || args[i] == "-i") && i + 1 < args.Length)
                             int.TryParse(args[i + 1], out intervalMs);
                         else if (args[i] == "--max-ticks" && i + 1 < args.Length)
                             int.TryParse(args[i + 1], out maxTicks);
+                        else if (args[i] == "--config" && i + 1 < args.Length)
+                            cfgPath = args[i + 1];
                         else if (args[i] == "--once")
                             maxTicks = 1;
                         else if (args[i] == "--quiet" || args[i] == "-q")
                             quiet = true;
                     }
-                    return HeadlessDaemon.Run(demoMode, intervalMs, maxTicks, quiet);
+                    return HeadlessDaemon.Run(demoMode, intervalMs, maxTicks, quiet, null, null, cfgPath);
                 }
 
                 if (cmd == "service" || cmd == "--service")
                 {
                     int intervalMs = 0;
+                    string cfgPath = null;
                     for (int i = 0; i < args.Length; i++)
                     {
                         if ((args[i] == "--interval" || args[i] == "-i") && i + 1 < args.Length)
                             int.TryParse(args[i + 1], out intervalMs);
+                        else if (args[i] == "--config" && i + 1 < args.Length)
+                            cfgPath = args[i + 1];
                     }
-                    return WindowsServiceHost.RunAsService(demoMode, intervalMs);
+                    return WindowsServiceHost.RunAsService(demoMode, intervalMs, cfgPath);
                 }
 
                 if (cmd == "service-install")
@@ -401,8 +408,39 @@ namespace MiniFanControl
                     string exePath = Process.GetCurrentProcess().MainModule != null
                         ? Process.GetCurrentProcess().MainModule.FileName
                         : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "minifan-helper.exe");
+                    string cfgPath = null;
+                    for (int i = 0; i < args.Length; i++)
+                    {
+                        if (args[i] == "--config" && i + 1 < args.Length)
+                            cfgPath = args[i + 1];
+                    }
+                    if (string.IsNullOrEmpty(cfgPath))
+                    {
+                        AppSettings.SyncConfigToServicePath(AppSettings.GetSettingsPath());
+                        cfgPath = AppSettings.ResolveServiceConfigPath(true);
+                    }
                     string msg;
-                    bool ok = WindowsServiceHost.InstallService(exePath, out msg);
+                    bool ok = WindowsServiceHost.InstallService(exePath, cfgPath, out msg);
+                    Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                        "{{\"ok\":{0},\"service\":\"{1}\",\"config\":\"{2}\",\"message\":\"{3}\"}}",
+                        ok ? "true" : "false", EscapeJson(WindowsServiceHost.SERVICE_NAME), EscapeJson(cfgPath ?? ""), EscapeJson(msg)));
+                    return ok ? 0 : 1;
+                }
+
+                if (cmd == "service-start")
+                {
+                    string msg;
+                    bool ok = WindowsServiceHost.StartService(out msg);
+                    Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                        "{{\"ok\":{0},\"service\":\"{1}\",\"message\":\"{2}\"}}",
+                        ok ? "true" : "false", EscapeJson(WindowsServiceHost.SERVICE_NAME), EscapeJson(msg)));
+                    return ok ? 0 : 1;
+                }
+
+                if (cmd == "service-stop")
+                {
+                    string msg;
+                    bool ok = WindowsServiceHost.StopService(out msg);
                     Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
                         "{{\"ok\":{0},\"service\":\"{1}\",\"message\":\"{2}\"}}",
                         ok ? "true" : "false", EscapeJson(WindowsServiceHost.SERVICE_NAME), EscapeJson(msg)));

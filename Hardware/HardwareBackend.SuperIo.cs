@@ -387,6 +387,8 @@ namespace MiniFanControl
             return Math.Max(0, Math.Min(100, (int)Math.Round(effective * 100.0 / 255.0)));
         }
 
+        private DateTime _lastSioAutoRecoverUtc = DateTime.MinValue;
+
         public bool WriteSuperIoHwReg(byte reg, byte val)
         {
             if (SuperIoBaseAddr == 0) return false;
@@ -410,7 +412,34 @@ namespace MiniFanControl
                     System.Threading.Thread.Sleep(1);
                     readBack = ReadSuperIoHwReg(reg);
                 }
-                return (readBack == val);
+                if (readBack == val) return true;
+
+                // Self-healing Modern Standby (S0ix) recovery:
+                // When Windows 11 enters/exits S0ix sleep without a legacy S3 Resume broadcast,
+                // ITE IT8613E resets LDN4 (0x0A30) so reads return 0xFF. Re-probe Super I/O +
+                // PawnIO LpcIO BARs (throttled to once per 5s) and retry the write once.
+                if (readBack == 0xFF && val != 0xFF && (DateTime.UtcNow - _lastSioAutoRecoverUtc).TotalSeconds >= 5.0)
+                {
+                    _lastSioAutoRecoverUtc = DateTime.UtcNow;
+                    WatchdogSupervisor.LogWatchdogEvent(string.Format(
+                        "Super I/O write read-back returned 0xFF on reg 0x{0:X2} (possible S0ix reset) — reinitializing Super I/O & PawnIO BARs.", reg));
+                    ReinitializeHardwareAfterResume();
+                    if (SuperIoBaseAddr != 0)
+                    {
+                        addrPort = (ushort)(SuperIoBaseAddr + 5);
+                        dataPort = (ushort)(SuperIoBaseAddr + 6);
+                        WritePortByte(addrPort, reg);
+                        WritePortByte(dataPort, val);
+                        readBack = ReadSuperIoHwReg(reg);
+                        if (readBack != val)
+                        {
+                            System.Threading.Thread.Sleep(1);
+                            readBack = ReadSuperIoHwReg(reg);
+                        }
+                        return (readBack == val);
+                    }
+                }
+                return false;
             }
             catch
             {

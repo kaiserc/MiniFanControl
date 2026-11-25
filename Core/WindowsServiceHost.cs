@@ -133,6 +133,9 @@ namespace MiniFanControl
         [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern IntPtr OpenServiceW(IntPtr hSCManager, string lpServiceName, uint dwDesiredAccess);
 
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool StartServiceW(IntPtr hService, uint dwNumServiceArgs, IntPtr lpServiceArgVectors);
+
         [DllImport("advapi32.dll", SetLastError = true)]
         private static extern bool DeleteService(IntPtr hService);
 
@@ -141,6 +144,10 @@ namespace MiniFanControl
 
         [DllImport("advapi32.dll", SetLastError = true)]
         private static extern bool CloseServiceHandle(IntPtr hSCObject);
+
+        private const uint SERVICE_START = 0x0010;
+        private const uint SERVICE_QUERY_STATUS = 0x0004;
+        private const int ERROR_SERVICE_ALREADY_RUNNING = 1056;
 
         private static IntPtr _statusHandle = IntPtr.Zero;
         private static SERVICE_STATUS _status;
@@ -151,6 +158,7 @@ namespace MiniFanControl
         private static ServiceCtrlHandlerExDelegate _pinnedHandler;
         private static bool _serviceDemoMode = false;
         private static int _serviceIntervalMs = 0;
+        private static string _serviceConfigPath = null;
 
         /// <summary>
         /// Builds a strictly quoted ImagePath for SCM service registration to prevent
@@ -158,8 +166,18 @@ namespace MiniFanControl
         /// </summary>
         public static string BuildServiceBinaryPath(string executablePath)
         {
+            return BuildServiceBinaryPath(executablePath, null);
+        }
+
+        public static string BuildServiceBinaryPath(string executablePath, string configPath)
+        {
             if (string.IsNullOrWhiteSpace(executablePath)) return "";
             string full = Path.GetFullPath(executablePath.Trim().Trim('"'));
+            if (!string.IsNullOrWhiteSpace(configPath))
+            {
+                string fullCfg = Path.GetFullPath(configPath.Trim().Trim('"'));
+                return string.Format("\"{0}\" service --config \"{1}\"", full, fullCfg);
+            }
             return string.Format("\"{0}\" service", full);
         }
 
@@ -187,7 +205,12 @@ namespace MiniFanControl
 
         public static bool InstallService(string executablePath, out string message)
         {
-            string binPath = BuildServiceBinaryPath(executablePath);
+            return InstallService(executablePath, null, out message);
+        }
+
+        public static bool InstallService(string executablePath, string configPath, out string message)
+        {
+            string binPath = BuildServiceBinaryPath(executablePath, configPath);
             if (string.IsNullOrEmpty(binPath))
             {
                 message = "Executable path is empty.";
@@ -328,10 +351,95 @@ namespace MiniFanControl
             }
         }
 
+        public static bool StartService(out string message, int waitTimeoutMs = 5000)
+        {
+            IntPtr scm = OpenSCManagerW(null, null, SC_MANAGER_CONNECT);
+            if (scm == IntPtr.Zero)
+            {
+                message = "Failed to open SCM (run as Administrator). Win32 error: " + Marshal.GetLastWin32Error();
+                return false;
+            }
+            try
+            {
+                IntPtr svc = OpenServiceW(scm, SERVICE_NAME, SERVICE_START | SERVICE_QUERY_STATUS);
+                if (svc == IntPtr.Zero)
+                {
+                    message = "Service '" + SERVICE_NAME + "' is not installed.";
+                    return false;
+                }
+                try
+                {
+                    if (!StartServiceW(svc, 0, IntPtr.Zero))
+                    {
+                        int err = Marshal.GetLastWin32Error();
+                        if (err == ERROR_SERVICE_ALREADY_RUNNING)
+                        {
+                            message = "Service '" + SERVICE_NAME + "' is already running.";
+                            return true;
+                        }
+                        message = "StartService failed (Win32 error " + err + ").";
+                        return false;
+                    }
+                }
+                finally
+                {
+                    CloseServiceHandle(svc);
+                }
+            }
+            finally
+            {
+                CloseServiceHandle(scm);
+            }
+
+            Stopwatch sw = Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < waitTimeoutMs)
+            {
+                if (IsServiceRunning())
+                {
+                    message = "Started Windows Service '" + SERVICE_NAME + "'.";
+                    return true;
+                }
+                Thread.Sleep(100);
+            }
+            message = "Start requested for '" + SERVICE_NAME + "' (still starting).";
+            return IsServiceRunning();
+        }
+
+        public static bool StopService(out string message, int waitTimeoutMs = 5000)
+        {
+            if (!IsServiceInstalled())
+            {
+                message = "Service '" + SERVICE_NAME + "' is not installed.";
+                return false;
+            }
+            if (!IsServiceRunning())
+            {
+                message = "Service '" + SERVICE_NAME + "' is already stopped.";
+                return true;
+            }
+            bool ok = DriverServiceManager.StopDriverService(SERVICE_NAME);
+            Stopwatch sw = Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < waitTimeoutMs && IsServiceRunning())
+            {
+                Thread.Sleep(100);
+            }
+            bool stopped = !IsServiceRunning();
+            message = stopped
+                ? "Stopped Windows Service '" + SERVICE_NAME + "'."
+                : (ok ? "Stop requested for '" + SERVICE_NAME + "' (stop pending)." : "Failed to stop '" + SERVICE_NAME + "'.");
+            return stopped;
+        }
+
         public static int RunAsService(bool demoMode, int intervalOverrideMs)
+        {
+            return RunAsService(demoMode, intervalOverrideMs, null);
+        }
+
+        public static int RunAsService(bool demoMode, int intervalOverrideMs, string configPath)
         {
             _serviceDemoMode = demoMode;
             _serviceIntervalMs = intervalOverrideMs;
+            _serviceConfigPath = configPath;
             _pinnedMain = new ServiceMainDelegate(ServiceMain);
 
             SERVICE_TABLE_ENTRY[] table = new SERVICE_TABLE_ENTRY[]
@@ -395,7 +503,8 @@ namespace MiniFanControl
                     {
                         _onSuspend = onSusp;
                         _onResume = onRes;
-                    });
+                    },
+                    _serviceConfigPath);
             }
             catch (Exception ex)
             {

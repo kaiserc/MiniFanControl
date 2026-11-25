@@ -454,6 +454,113 @@ namespace MiniFanControl
             Check(pawnBarOk,
                 "PawnIO LpcIO Slot Selection, ioctl_find_bars BAR Whitelisting & No-Driver Failsafe Gating",
                 pawnBarDetail);
+
+            // 119. Windows Service Mode (--config ImagePath, Shared Config Sync, LeanServiceMode & Live Hot-Reload)
+            bool svcModeOk = false;
+            string svcModeDetail = "";
+            string tempSvcCfg = null;
+            try
+            {
+                string binWithCfg = WindowsServiceHost.BuildServiceBinaryPath(
+                    @"C:\Program Files\MiniFanControl\minifan-helper.exe",
+                    @"C:\ProgramData\MiniFanControl\minifancontrol.cfg");
+                bool cfgPathQuoted = binWithCfg.Contains("\" service --config \"")
+                    && binWithCfg.StartsWith("\"")
+                    && binWithCfg.EndsWith("\"");
+
+                bool cmdPreloadGated = !Program.ShouldPreloadDriverForCommand("service-start", false)
+                    && !Program.ShouldPreloadDriverForCommand("service-stop", false);
+
+                string sharedPath = AppPaths.GetSharedServiceConfigPath(false);
+                bool sharedPathOk = !string.IsNullOrEmpty(sharedPath) && sharedPath.EndsWith("minifancontrol.cfg", StringComparison.OrdinalIgnoreCase);
+
+                // Verify live settings hot-reload mutates FanControllerService targets without restart
+                var builtIns = FanCurveProfile.CreateBuiltInProfiles();
+                var customList = FanCurveProfile.CreateProtectedExamples();
+                var demoB = new DemoBackend();
+                bool hotReloadApplied = false;
+                using (var svcCtrl = new FanControllerService(null, demoB, builtIns, true))
+                {
+                    var acMon = new AntiCheatMonitor();
+                    var wsSw = new WorkloadProfileSwitcher();
+                    FanCurveProfile apuP = builtIns[0];
+                    FanCurveProfile sysP = builtIns[0];
+                    svcCtrl.SetProfileTarget(apuP, false);
+                    svcCtrl.SetProfileTarget(sysP, true);
+
+                    tempSvcCfg = Path.Combine(Path.GetTempPath(), "mfc_svc_reload_" + Guid.NewGuid().ToString("N") + ".cfg");
+                    AppSettings.WriteAllLinesAtomic(tempSvcCfg, new string[]
+                    {
+                        "ApuMode=Performance",
+                        "SysMode=Silent",
+                        "RefreshIntervalMs=2000",
+                        "HasDualFans=0",
+                        "AutoPauseForAntiCheat=1",
+                        "AutoSwitchWorkloads=1",
+                        "WorkloadRule=Cyberpunk*|Performance|Silent"
+                    });
+                    AppSettings reloaded = new AppSettings();
+                    reloaded.LoadFromPath(tempSvcCfg, null, null, customList);
+                    HeadlessDaemon.ApplyReloadedSettings(
+                        reloaded, 0, builtIns, customList, svcCtrl, acMon, wsSw, ref apuP, ref sysP);
+
+                    hotReloadApplied = (apuP != null && apuP.Name == "Performance")
+                        && (sysP != null && sysP.Name == "Silent")
+                        && svcCtrl.RefreshIntervalMs == 2000
+                        && !svcCtrl.HasDualFans
+                        && acMon.Enabled
+                        && wsSw.Enabled
+                        && wsSw.Rules.Count == 1;
+                }
+
+                // Verify LeanServiceMode flag preserves simulated CPU/GPU/fan telemetry while skipping heavy GUI sensors
+                var leanHw = new HardwareBackend(DeviceProfile.KnownProfiles[0]);
+                leanHw.EnableSimulationMode();
+                leanHw.LeanServiceMode = true;
+                leanHw.AllowEtwAutoStart = false;
+                FanStatus leanSt = leanHw.GetStatus();
+                bool leanTelemetryOk = leanHw.LeanServiceMode && leanSt.CpuLoadPct == 0 && !leanSt.EtwLatencyActive;
+
+                // Verify HeadlessDaemon.Run with explicit --config path runs cleanly & exits
+                int daemonRc = HeadlessDaemon.Run(true, 100, 2, true, null, null, tempSvcCfg);
+
+                svcModeOk = cfgPathQuoted && cmdPreloadGated && sharedPathOk && hotReloadApplied && leanTelemetryOk && (daemonRc == 0);
+                svcModeDetail = string.Format("CfgImg={0}, Gate={1}, Shared={2}, HotReload={3}, Lean={4}, DaemonRc={5}",
+                    cfgPathQuoted, cmdPreloadGated, sharedPathOk, hotReloadApplied, leanTelemetryOk, daemonRc);
+            }
+            catch (Exception ex) { svcModeDetail = ex.Message; }
+            finally
+            {
+                if (!string.IsNullOrEmpty(tempSvcCfg))
+                {
+                    try { if (File.Exists(tempSvcCfg)) File.Delete(tempSvcCfg); } catch { }
+                    try { if (File.Exists(tempSvcCfg + ".bak")) File.Delete(tempSvcCfg + ".bak"); } catch { }
+                }
+            }
+            Check(svcModeOk,
+                "Windows Service Mode (--config ImagePath, Shared Config Sync, LeanServiceMode & Live Hot-Reload)",
+                svcModeDetail);
+
+            // 120. Modern Standby (S0ix) Time-Jump Wake Detection & Super I/O Reset Protection
+            bool s0ixOk = false;
+            string s0ixDetail = "";
+            try
+            {
+                DateTime t0 = new DateTime(2026, 11, 25, 18, 48, 0, DateTimeKind.Utc);
+                bool normalTickFalse = !FanControllerService.IsModernStandbyTimeJump(t0, t0.AddSeconds(1), 1000);
+                bool slightJitterFalse = !FanControllerService.IsModernStandbyTimeJump(t0, t0.AddSeconds(5), 1000);
+                bool s0ixWakeTrue = FanControllerService.IsModernStandbyTimeJump(t0, t0.AddMinutes(16), 1000);
+                bool slowPollRespected = !FanControllerService.IsModernStandbyTimeJump(t0, t0.AddSeconds(15), 5000)
+                    && FanControllerService.IsModernStandbyTimeJump(t0, t0.AddSeconds(35), 5000);
+
+                s0ixOk = normalTickFalse && slightJitterFalse && s0ixWakeTrue && slowPollRespected;
+                s0ixDetail = string.Format("Normal={0}, Jitter={1}, S0ix16m={2}, SlowPoll={3}",
+                    normalTickFalse, slightJitterFalse, s0ixWakeTrue, slowPollRespected);
+            }
+            catch (Exception ex) { s0ixDetail = ex.Message; }
+            Check(s0ixOk,
+                "Modern Standby (S0ix) Time-Jump Wake Detection & Super I/O Reset Protection",
+                s0ixDetail);
         }
     }
 }

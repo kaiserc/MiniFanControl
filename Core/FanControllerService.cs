@@ -923,16 +923,53 @@ namespace MiniFanControl
             }
         }
 
+        /// <summary>
+        /// Detects a Modern Standby (S0ix) wake where the CPU froze for an extended period
+        /// without Windows firing legacy S3 Suspend/Resume power broadcasts.
+        /// </summary>
+        internal static bool IsModernStandbyTimeJump(DateTime prevLoopUtc, DateTime nowUtc, int refreshIntervalMs)
+        {
+            if (prevLoopUtc == DateTime.MinValue || nowUtc <= prevLoopUtc) return false;
+            double thresholdSec = Math.Max(12.0, (Math.Max(250, refreshIntervalMs) / 1000.0) * 6.0);
+            return (nowUtc - prevLoopUtc).TotalSeconds >= thresholdSec;
+        }
+
         private void WorkerLoop()
         {
+            DateTime lastLoopUtc = DateTime.UtcNow;
             while (_hwThreadRunning)
             {
+                DateTime nowLoopUtc = DateTime.UtcNow;
                 if (!_hwWorkerPaused)
                 {
                     try
                     {
                         bool demo;
-                        lock (_stateLock) { demo = _demoMode; }
+                        int pollIntervalMs;
+                        lock (_stateLock)
+                        {
+                            demo = _demoMode;
+                            pollIntervalMs = _refreshIntervalMs;
+                        }
+
+                        // Modern Standby (S0ix) self-healing: if wall-clock jumped across a sleep gap,
+                        // reinitialize Super I/O LDN4 + PawnIO BARs and reset cached fan targets BEFORE
+                        // polling or writing so S0ix chip resets never trigger 10x failsafe read-only.
+                        if (!demo && _hw != null && !_hw.IsSimulatedMode &&
+                            IsModernStandbyTimeJump(lastLoopUtc, nowLoopUtc, pollIntervalMs))
+                        {
+                            WatchdogSupervisor.LogWatchdogEvent(string.Format(
+                                "Modern Standby (S0ix) wake detected (worker gap {0:F0}s) — reinitializing hardware & resetting fan targets.",
+                                (nowLoopUtc - lastLoopUtc).TotalSeconds));
+                            _hw.ReinitializeHardwareAfterResume();
+                            lock (_stateLock)
+                            {
+                                _lastAppliedApuPct = -1;
+                                _lastAppliedSysPct = -1;
+                                _lastApuEvalTemp = 0;
+                                _lastSysEvalTemp = 0;
+                            }
+                        }
 
                         FanStatus st = demo ? _demo.GetStatus() : _hw.GetStatus();
                         lock (_stateLock) { _lastStatus = st; }
@@ -955,7 +992,8 @@ namespace MiniFanControl
                     }
                 }
 
-                Interlocked.Exchange(ref _lastWorkerSampleUtcTicks, DateTime.UtcNow.Ticks);
+                lastLoopUtc = DateTime.UtcNow;
+                Interlocked.Exchange(ref _lastWorkerSampleUtcTicks, lastLoopUtc.Ticks);
 
                 if (WorkerIterationCompleted != null) WorkerIterationCompleted();
 
