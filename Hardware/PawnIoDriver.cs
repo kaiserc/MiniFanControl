@@ -515,9 +515,8 @@ namespace MiniFanControl
                     if (HasLpcModule)
                     {
                         // Initialize default primary Super I/O slot (0x2E/0x2F) on LpcIO.bin (best-effort)
-                        ulong[] dummyOut = new ulong[1];
                         ulong retSz;
-                        ExecuteModuleFunction(_hLpcModule, "ioctl_select_slot", new ulong[] { 0UL }, dummyOut, out retSz);
+                        ExecuteModuleFunction(_hLpcModule, "ioctl_select_slot", new ulong[] { 0UL }, null, out retSz);
                     }
                 }
 
@@ -669,7 +668,7 @@ namespace MiniFanControl
                 {
                     if (_fnExecute == null) return false;
                     ulong[] safeIn = input ?? new ulong[0];
-                    ulong[] safeOut = output ?? new ulong[1];
+                    ulong[] safeOut = output ?? new ulong[0];
                     UIntPtr retSz;
                     int hr = _fnExecute(handle, fnName, safeIn, new UIntPtr((uint)safeIn.Length), safeOut, new UIntPtr((uint)safeOut.Length), out retSz);
                     if (hr == 0)
@@ -721,9 +720,63 @@ namespace MiniFanControl
             }
 
             if (!HasAcpiEcModule || _hAcpiEcModule == IntPtr.Zero) return false;
-            ulong[] outp = new ulong[1];
             ulong retSize;
-            return ExecuteModuleFunction(_hAcpiEcModule, "ioctl_pio_write", new ulong[] { port, value }, outp, out retSize);
+            return ExecuteModuleFunction(_hAcpiEcModule, "ioctl_pio_write", new ulong[] { port, value }, null, out retSize);
+        }
+
+        /// <summary>
+        /// Selects the active LPC Super I/O configuration port slot in PawnIO LpcIO.bin
+        /// (slot 0 = 0x2E/0x2F, slot 1 = 0x4E/0x4F). Note: LpcIO resets its discovered BAR list
+        /// whenever the slot changes, so TryFindSuperIoBars() must be called after entering config mode.
+        /// </summary>
+        public static bool TrySelectSuperIoSlot(int slot)
+        {
+            if (slot != 0 && slot != 1) return false;
+
+            _ioLock.EnterReadLock();
+            try
+            {
+                if (SimulatedAvailable && SimulatedExecuteHook != null)
+                {
+                    ulong[] res = SimulatedExecuteHook("ioctl_select_slot", new ulong[] { (ulong)slot });
+                    return res != null;
+                }
+
+                if (!HasLpcModule || _hLpcModule == IntPtr.Zero) return false;
+                ulong retSize;
+                return ExecuteModuleFunction(_hLpcModule, "ioctl_select_slot", new ulong[] { (ulong)slot }, null, out retSize);
+            }
+            finally
+            {
+                _ioLock.ExitReadLock();
+            }
+        }
+
+        /// <summary>
+        /// Invokes LpcIO.bin ioctl_find_bars while the Super I/O chip is in configuration mode so PawnIO
+        /// populates its internal allowed BAR table (e.g. IT8613E Hardware Monitor @ 0x0A30) before
+        /// subsequent ioctl_pio_inb / ioctl_pio_outb calls on those hardware monitor ports.
+        /// Caller must hold the global ISA/EC mutex and re-select LDN (Reg 0x07) afterwards if needed.
+        /// </summary>
+        public static bool TryFindSuperIoBars()
+        {
+            _ioLock.EnterReadLock();
+            try
+            {
+                if (SimulatedAvailable && SimulatedExecuteHook != null)
+                {
+                    ulong[] res = SimulatedExecuteHook("ioctl_find_bars", new ulong[0]);
+                    return res != null;
+                }
+
+                if (!HasLpcModule || _hLpcModule == IntPtr.Zero) return false;
+                ulong retSize;
+                return ExecuteModuleFunction(_hLpcModule, "ioctl_find_bars", null, null, out retSize);
+            }
+            finally
+            {
+                _ioLock.ExitReadLock();
+            }
         }
 
         /// <summary>
@@ -797,9 +850,8 @@ namespace MiniFanControl
                 }
 
                 if (!HasLpcModule || _hLpcModule == IntPtr.Zero) return false;
-                ulong[] outp = new ulong[1];
                 ulong retSize;
-                return ExecuteModuleFunction(_hLpcModule, "ioctl_pio_outb", new ulong[] { port, value }, outp, out retSize);
+                return ExecuteModuleFunction(_hLpcModule, "ioctl_pio_outb", new ulong[] { port, value }, null, out retSize);
             }
             finally
             {

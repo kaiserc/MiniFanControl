@@ -313,6 +313,147 @@ namespace MiniFanControl
             Check(pawnUiOk,
                 "Bundled Signed PawnIO Modules, Guided Driver Onboarding Dialog & Startup Prompt Persistence",
                 pawnUiDetail);
+
+            // 118. PawnIO LpcIO Slot Selection, ioctl_find_bars BAR Whitelisting & No-Driver Failsafe Gating
+            bool pawnBarOk = false;
+            string pawnBarDetail = "";
+            try
+            {
+                NativeInpOut.Shutdown();
+                PawnIoDriver.Shutdown();
+
+                int selectedSlot = -1;
+                int findBarsCalls = 0;
+                bool barsDiscovered = false;
+                byte lastCfgIndex = 0;
+                byte lastHwIndex = 0;
+                byte curLdn = 0;
+                int enterStep = 0;
+                bool inConfigMode = false;
+
+                PawnIoDriver.SimulatedAvailable = true;
+                PawnIoDriver.SimulatedExecuteHook = delegate(string fn, ulong[] inp)
+                {
+                    if (fn == "ioctl_select_slot" && inp != null && inp.Length == 1)
+                    {
+                        selectedSlot = (int)inp[0];
+                        barsDiscovered = false;
+                        return new ulong[0];
+                    }
+                    if (fn == "ioctl_find_bars")
+                    {
+                        findBarsCalls++;
+                        if (selectedSlot == 0 && inConfigMode)
+                        {
+                            barsDiscovered = true;
+                            curLdn = 0xFE; // Mirror real LpcIO.p find_bars() scanning LDNs 0..0xFE
+                            return new ulong[0];
+                        }
+                        return null;
+                    }
+                    if (fn == "ioctl_pio_outb" && inp != null && inp.Length == 2)
+                    {
+                        ushort port = (ushort)inp[0];
+                        byte val = (byte)inp[1];
+                        if (port == 0x2E)
+                        {
+                            if (!inConfigMode)
+                            {
+                                byte[] seq = new byte[] { 0x87, 0x01, 0x55, 0x55 };
+                                if (val == seq[enterStep])
+                                {
+                                    enterStep++;
+                                    if (enterStep == 4) { inConfigMode = true; enterStep = 0; }
+                                }
+                                else enterStep = (val == 0x87) ? 1 : 0;
+                            }
+                            else
+                            {
+                                lastCfgIndex = val;
+                            }
+                            return new ulong[0];
+                        }
+                        if (port == 0x2F && inConfigMode)
+                        {
+                            if (lastCfgIndex == 0x07) curLdn = val;
+                            else if (lastCfgIndex == 0x02 && val == 0x02) inConfigMode = false;
+                            return new ulong[0];
+                        }
+                        if (port == 0x0A35 || port == 0x0A36)
+                        {
+                            // Strictly enforce real LpcIO.p g_bars[] gate: fail unless ioctl_find_bars ran
+                            if (!barsDiscovered) return null;
+                            if (port == 0x0A35) lastHwIndex = val;
+                            return new ulong[0];
+                        }
+                        return null;
+                    }
+                    if (fn == "ioctl_pio_inb" && inp != null && inp.Length == 1)
+                    {
+                        ushort port = (ushort)inp[0];
+                        if (port == 0x2F && inConfigMode)
+                        {
+                            byte v = 0xFF;
+                            if (lastCfgIndex == 0x20) v = 0x86;
+                            else if (lastCfgIndex == 0x21) v = 0x13;
+                            else if (curLdn == 0x04 && lastCfgIndex == 0x60) v = 0x0A;
+                            else if (curLdn == 0x04 && lastCfgIndex == 0x61) v = 0x30;
+                            return new ulong[] { v };
+                        }
+                        if (port == 0x0A36)
+                        {
+                            if (!barsDiscovered) return null;
+                            byte v = (lastHwIndex == 0x58) ? (byte)0x90 : (byte)0x01;
+                            return new ulong[] { v };
+                        }
+                        return null;
+                    }
+                    return null;
+                };
+
+                bool preOk = NativeInpOut.PreloadDriverDll();
+                ushort chipId, hwBase;
+                bool probed = HardwareBackend.ProbeSuperIo(0x2E, out chipId, out hwBase, false);
+
+                // Also verify live FanControllerService skips writes cleanly (no false failsafe latch)
+                // when no kernel driver is open yet (fresh-user onboarding state).
+                NativeInpOut.Shutdown();
+                PawnIoDriver.Shutdown();
+                bool noDriverGated = false;
+                if (!NativeInpOut.IsDriverOpen())
+                {
+                    var liveHw = new HardwareBackend(DeviceProfile.KnownProfiles[0]);
+                    var pts = new CurvePoint[] { new CurvePoint(40, 30), new CurvePoint(80, 100) };
+                    var builtIns = new FanCurveProfile[] { new FanCurveProfile("Balanced", true, 0, pts, pts) };
+                    using (var svc = new FanControllerService(liveHw, null, builtIns, false))
+                    {
+                        for (int i = 0; i < 12; i++)
+                        {
+                            svc.EvaluateAndApplyFanProfiles(55);
+                        }
+                        noDriverGated = (svc.ConsecutiveWriteFailures == 0 && !svc.ReadOnlyFailsafeLatched);
+                    }
+                }
+                else
+                {
+                    // If a real kernel driver happens to be loaded during test, accept as N/A
+                    noDriverGated = true;
+                }
+
+                pawnBarOk = preOk && probed && (selectedSlot == 0) && (findBarsCalls >= 1)
+                    && barsDiscovered && (chipId == 0x8613) && (hwBase == 0x0A30) && noDriverGated;
+                pawnBarDetail = string.Format("Slot={0}, FindBars={1}, Chip=0x{2:X4}, Base=0x{3:X4}, NoDrvGate={4}",
+                    selectedSlot, findBarsCalls, chipId, hwBase, noDriverGated);
+            }
+            catch (Exception ex) { pawnBarDetail = ex.Message; }
+            finally
+            {
+                NativeInpOut.Shutdown();
+                PawnIoDriver.Shutdown();
+            }
+            Check(pawnBarOk,
+                "PawnIO LpcIO Slot Selection, ioctl_find_bars BAR Whitelisting & No-Driver Failsafe Gating",
+                pawnBarDetail);
         }
     }
 }

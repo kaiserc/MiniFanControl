@@ -689,6 +689,12 @@ namespace MiniFanControl
                 {
                     s2eOk = HardwareBackend.ProbeSuperIo(0x2E, out s2eChip, out s2eBase, allowWrites);
                     s4eOk = HardwareBackend.ProbeSuperIo(0x4E, out s4eChip, out s4eBase, allowWrites);
+                    // Preserve active PawnIO LpcIO slot 0 BAR table if 0x2E matched and 0x4E probe reset the slot
+                    if (s2eOk && !s4eOk && NativeInpOut.ActiveDriver == HardwareDriverEngine.PawnIO && PawnIoDriver.HasLpcModule)
+                    {
+                        ushort rChip, rBase;
+                        HardwareBackend.ProbeSuperIo(0x2E, out rChip, out rBase, allowWrites);
+                    }
                 }
                 catch { }
             }
@@ -769,6 +775,11 @@ namespace MiniFanControl
 
                     ushort s4eChip, s4eBase;
                     bool s4eOk = HardwareBackend.ProbeSuperIo(0x4E, out s4eChip, out s4eBase, allowWrites);
+                    if (s2eOk && !s4eOk && NativeInpOut.ActiveDriver == HardwareDriverEngine.PawnIO && PawnIoDriver.HasLpcModule)
+                    {
+                        ushort rChip, rBase;
+                        HardwareBackend.ProbeSuperIo(0x2E, out rChip, out rBase, allowWrites);
+                    }
                     string s4eName = DescribeSuperIoChip(s4eChip);
                     string s4eStatus = s4eOk ? "FOUND" : (s4eChip != 0 ? "CHIP DETECTED (NO LDN4)" : "Not Detected");
                     sb.AppendFormat("  Super I/O Port 0x4E Probe     : {0} (Chip ID: 0x{1:X4}{2}, Base: 0x{3:X4})\r\n",

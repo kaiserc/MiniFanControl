@@ -255,7 +255,18 @@ namespace MiniFanControl
 
         public void ClearStaleWriteErrors()
         {
+            lock (_stateLock)
+            {
+                _latchedAutoRestored = false;
+                _fan2ConsecutiveWriteFailures = 0;
+                _lastAppliedApuPct = -1;
+                _lastAppliedSysPct = -1;
+                _lastAppliedEcMode = -1;
+                _lastApuEvalTemp = 0;
+                _lastSysEvalTemp = 0;
+            }
             ClearHardwareWriteError();
+            RequestImmediateRefresh();
         }
 
         /// <summary>
@@ -526,6 +537,16 @@ namespace MiniFanControl
             // Never attempt fan/EC register writes or escalate failsafe errors on inherently
             // read-only unverified hardware (e.g. desktop motherboards matched to unknown-safe).
             if (IsInherentlyReadOnly)
+            {
+                return false;
+            }
+
+            // Fresh-user / no-driver safety: when running live without an open kernel driver
+            // (e.g. before installing HVCI-safe PawnIO), stay cleanly in Safe Read-Only telemetry
+            // instead of hammering failing writes and tripping a false Escalated Failsafe banner.
+            bool isDemoLiveCheck;
+            lock (_stateLock) { isDemoLiveCheck = _demoMode; }
+            if (!isDemoLiveCheck && _hw != null && !_hw.IsSimulatedMode && !NativeInpOut.IsDriverOpen())
             {
                 return false;
             }

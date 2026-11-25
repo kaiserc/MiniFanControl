@@ -19,8 +19,14 @@ namespace MiniFanControl
             {
                 if (!lockScope.Acquired) return false; // Fail-closed: synchronize discovery with HWiNFO / LibreHardwareMonitor
                 ushort valPort = (ushort)(cfgPort + 1);
+                bool usePawnLpc = (NativeInpOut.ActiveDriver == HardwareDriverEngine.PawnIO && PawnIoDriver.HasLpcModule);
                 try
                 {
+                    if (usePawnLpc)
+                    {
+                        PawnIoDriver.TrySelectSuperIoSlot(cfgPort == 0x4E ? 1 : 0);
+                    }
+
                     // IT87 enter sequence: 0x87, 0x01, 0x55, (0xAA on 0x4E, 0x55 on 0x2E)
                     WritePortByte(cfgPort, 0x87);
                     WritePortByte(cfgPort, 0x01);
@@ -48,11 +54,22 @@ namespace MiniFanControl
                         byte baseLo = ReadPortByte(valPort);
                         ushort candidateBase = (ushort)((baseHi << 8) | baseLo);
 
+                        // PawnIO LpcIO.bin only permits ioctl_pio_inb/outb on BARs discovered via ioctl_find_bars
+                        // while the Super I/O chip is in config mode. Re-select LDN 4 afterwards since find_bars scans LDNs.
+                        if (usePawnLpc)
+                        {
+                            PawnIoDriver.TryFindSuperIoBars();
+                            WritePortByte(cfgPort, 0x07);
+                            WritePortByte(valPort, 0x04);
+                        }
+
                         bool verified = (candidateBase != 0 && candidateBase != 0xFFFF && VerifyIt87HwBase(candidateBase, allowConfigWrites));
 
                         // Only reprogram base address or activate LDN4 if explicitly allowed for an active verified profile
                         if (!verified && allowConfigWrites)
                         {
+                            WritePortByte(cfgPort, 0x07);
+                            WritePortByte(valPort, 0x04);
                             WritePortByte(cfgPort, 0x30);
                             byte actVal = ReadPortByte(valPort);
                             if ((actVal & 0x01) == 0)
@@ -65,10 +82,18 @@ namespace MiniFanControl
                             ushort[] candidates = new ushort[] { 0x0A30, 0x0A00, 0x0A10, 0x0A20, 0x0290, 0x02A0 };
                             foreach (ushort cand in candidates)
                             {
+                                WritePortByte(cfgPort, 0x07);
+                                WritePortByte(valPort, 0x04);
                                 WritePortByte(cfgPort, 0x60);
                                 WritePortByte(valPort, (byte)(cand >> 8));
                                 WritePortByte(cfgPort, 0x61);
                                 WritePortByte(valPort, (byte)(cand & 0xFF));
+                                if (usePawnLpc)
+                                {
+                                    PawnIoDriver.TryFindSuperIoBars();
+                                    WritePortByte(cfgPort, 0x07);
+                                    WritePortByte(valPort, 0x04);
+                                }
                                 if (VerifyIt87HwBase(cand, true))
                                 {
                                     candidateBase = cand;
@@ -143,6 +168,10 @@ namespace MiniFanControl
                         WritePortByte(cfgPort, 0x61);
                         byte nBaseLo = ReadPortByte(valPort);
                         hwBase = (ushort)((nBaseHi << 8) | nBaseLo);
+                        if (usePawnLpc && hwBase != 0 && hwBase != 0xFFFF)
+                        {
+                            PawnIoDriver.TryFindSuperIoBars();
+                        }
                         WritePortByte(cfgPort, 0xAA); // exit
                         return hwBase != 0 && hwBase != 0xFFFF;
                     }

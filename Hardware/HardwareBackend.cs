@@ -50,6 +50,7 @@ namespace MiniFanControl
         }
 
         private bool _isSimulatedMode = false;
+        public bool IsSimulatedMode { get { return _isSimulatedMode; } }
         private readonly byte[] _simulatedEcRegs = new byte[EC_SIZE];
         private readonly byte[] _simulatedSioRegs = new byte[256];
         public bool SimulateSuperIoWriteFailure { get; set; }
@@ -233,7 +234,13 @@ namespace MiniFanControl
                 _linAddr = IntPtr.Zero;
                 _physHandle = IntPtr.Zero;
             }
+            SuperIoBaseAddr = 0;
+            SuperIoChipId = 0;
+            AccessMethod = EcAccessMethod.Unknown;
             _isInitialized = false;
+            ResetTachometerFilterState();
+            ResetSuperIoChannelLatch();
+            SetSuperIoPolarityOverride(null);
         }
 
         public void ReinitializeHardwareAfterResume()

@@ -755,8 +755,10 @@ namespace MiniFanControl
                     if (ok && NativeInpOut.IsDriverOpen())
                     {
                         if (_hw != null) _hw.ResetDriverInitialization();
+                        _uiWriteErrorBannerDetail = null;
+                        _uiWriteErrorFailCount = 0;
                         if (_controller != null) _controller.ClearStaleWriteErrors();
-                        if (_errorBanner != null && _errorBanner.Text != null && _errorBanner.Text.Contains("pawnio.eu"))
+                        if (_errorBanner != null)
                         {
                             _errorBanner.Visible = false;
                             _errorBanner.Cursor = Cursors.Default;
