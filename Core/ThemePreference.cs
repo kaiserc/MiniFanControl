@@ -8,7 +8,8 @@ namespace MiniFanControl
         Dark = 1,
         Light = 2,
         Radeon = 3,
-        Afterburner = 4
+        Afterburner = 4,
+        Xmas = 5
     }
 
 }

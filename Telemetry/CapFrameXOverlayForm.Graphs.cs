@@ -148,7 +148,7 @@ namespace MiniFanControl
             public bool Dashed;
         }
 
-        private static void DrawEndpointBadges(Graphics g, Rectangle plot, Rectangle bounds, List<EndpointBadge> badges, Font font, float sc)
+        private static void DrawEndpointBadges(Graphics g, Rectangle plot, Rectangle bounds, List<EndpointBadge> badges, Font font, float sc, bool isXmas = false)
         {
             if (badges == null || badges.Count == 0) return;
 
@@ -186,7 +186,7 @@ namespace MiniFanControl
             int badgeX = plot.Right + (int)Math.Round(2 * sc);
             int maxBadgeW = Math.Max(12, bounds.Right - badgeX - rightMargin);
 
-            using (SolidBrush bgBr = new SolidBrush(Color.FromArgb(195, 15, 23, 42)))
+            using (SolidBrush bgBr = new SolidBrush(isXmas ? Color.FromArgb(245, 255, 255, 255) : Color.FromArgb(195, 15, 23, 42)))
             {
                 for (int i = 0; i < badges.Count; i++)
                 {
@@ -199,13 +199,13 @@ namespace MiniFanControl
                     if (curX < plot.Right + 1) curX = plot.Right + 1;
                     Rectangle badgeRect = new Rectangle(curX, by, bw, bh);
 
-                    using (Pen tickPen = new Pen(Color.FromArgb(130, b.Color), 1f))
+                    using (Pen tickPen = new Pen(Color.FromArgb(isXmas ? 180 : 130, b.Color), 1f))
                     {
                         g.DrawLine(tickPen, plot.Right, b.TargetY, curX, b.DisplayY);
                     }
 
                     g.FillRectangle(bgBr, badgeRect);
-                    using (Pen borderPen = new Pen(Color.FromArgb(150, b.Color), 1f))
+                    using (Pen borderPen = new Pen(Color.FromArgb(isXmas ? 210 : 150, b.Color), 1f))
                     {
                         if (b.Dashed) borderPen.DashStyle = DashStyle.Dash;
                         g.DrawRectangle(borderPen, badgeRect);
@@ -246,12 +246,15 @@ namespace MiniFanControl
             if (rect.Width < 20 || rect.Height < 16) return;
             float sc = GetScaleMultiplier();
 
-            bool afterburner = MatchAppTheme && IsAfterburnerTheme;
-            Color chartBg = afterburner
-                ? Color.FromArgb(222, 12, 14, 18)
-                : ((MatchAppTheme && IsRadeonTheme)
-                    ? Color.FromArgb(215, 10, 4, 6)
-                    : Color.FromArgb(215, 10, 12, 18));
+            bool xmas = IsXmasTheme;
+            bool afterburner = !xmas && MatchAppTheme && IsAfterburnerTheme;
+            Color chartBg = xmas
+                ? Color.White
+                : (afterburner
+                    ? Color.FromArgb(222, 12, 14, 18)
+                    : ((MatchAppTheme && IsRadeonTheme)
+                        ? Color.FromArgb(215, 10, 4, 6)
+                        : Color.FromArgb(215, 10, 12, 18)));
 
             using (SolidBrush bgBr = new SolidBrush(chartBg))
             using (Pen borderPen = new Pen(gridCol, 1f))
@@ -410,13 +413,18 @@ namespace MiniFanControl
             }
 
             string gpuLbl = _status.GpuShortLabel;
+            Color ramCol = xmas ? XmasBlack : Color.FromArgb(0x81, 0x8C, 0xF8);
+            Color nvmeCol = xmas ? XmasCharcoal : CfxTeal;
+            Color ambCol = xmas ? Color.FromArgb(0x52, 0x52, 0x5B) : Color.FromArgb(0xE2, 0xE8, 0xF0);
+            Color fpsTrendCol = xmas ? XmasBlack : Color.FromArgb(0x38, 0xBD, 0xF8);
+            Color lowTrendCol = xmas ? XmasRedDeep : Color.FromArgb(0xFB, 0x71, 0x85);
             List<KeyValuePair<string, Color>> legendItems = new List<KeyValuePair<string, Color>>();
             if (TrendCpu) legendItems.Add(new KeyValuePair<string, Color>("● CPU", cpuCol));
             if (TrendGpu) legendItems.Add(new KeyValuePair<string, Color>("● " + gpuLbl, gpuCol));
-            if (TrendRam && _status.RamTotalGb > 0) legendItems.Add(new KeyValuePair<string, Color>("● RAM", Color.FromArgb(0x81, 0x8C, 0xF8)));
-            if (TrendNvme && _status.NvmeTemp > 0) legendItems.Add(new KeyValuePair<string, Color>("● NVMe", CfxTeal));
+            if (TrendRam && _status.RamTotalGb > 0) legendItems.Add(new KeyValuePair<string, Color>("● RAM", ramCol));
+            if (TrendNvme && _status.NvmeTemp > 0) legendItems.Add(new KeyValuePair<string, Color>("● NVMe", nvmeCol));
             if (TrendPower) legendItems.Add(new KeyValuePair<string, Color>("● PWR", pwrCol));
-            if (TrendAmbient && _status.AmbientTemp > 0) legendItems.Add(new KeyValuePair<string, Color>("● CHAS", Color.FromArgb(0xE2, 0xE8, 0xF0)));
+            if (TrendAmbient && _status.AmbientTemp > 0) legendItems.Add(new KeyValuePair<string, Color>("● CHAS", ambCol));
             if (showApuTrend) legendItems.Add(new KeyValuePair<string, Color>("● APU", apuCol));
             if (showSysTrend) legendItems.Add(new KeyValuePair<string, Color>("● SYS", sysCol));
 
@@ -467,36 +475,36 @@ namespace MiniFanControl
             }
             if (plotFpsHere && ShowLows && Stats.P01LowHistory.Count > 0)
             {
-                PointF? pt = DrawCombinedSubSeries(g, plot, Stats.P01LowHistory, start, take, leftLo, leftHi, Color.FromArgb(0xFB, 0x71, 0x85), false, false, sc);
-                if (pt.HasValue) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = Stats.P01LowHistory[Stats.P01LowHistory.Count - 1].ToString(), Color = Color.FromArgb(0xFB, 0x71, 0x85) });
+                PointF? pt = DrawCombinedSubSeries(g, plot, Stats.P01LowHistory, start, take, leftLo, leftHi, lowTrendCol, false, false, sc);
+                if (pt.HasValue) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = Stats.P01LowHistory[Stats.P01LowHistory.Count - 1].ToString(), Color = lowTrendCol });
             }
             if (plotFpsHere && (ShowFps || ShowLows) && Stats.AvgFpsHistory.Count > 0)
             {
-                PointF? pt = DrawCombinedSubSeries(g, plot, Stats.AvgFpsHistory, start, take, leftLo, leftHi, Color.FromArgb(0x38, 0xBD, 0xF8), false, true, sc);
-                if (pt.HasValue) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = "Avg:" + Stats.AvgFpsHistory[Stats.AvgFpsHistory.Count - 1], Color = Color.FromArgb(0x38, 0xBD, 0xF8), Dashed = true });
+                PointF? pt = DrawCombinedSubSeries(g, plot, Stats.AvgFpsHistory, start, take, leftLo, leftHi, fpsTrendCol, false, true, sc);
+                if (pt.HasValue) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = "Avg:" + Stats.AvgFpsHistory[Stats.AvgFpsHistory.Count - 1], Color = fpsTrendCol, Dashed = true });
             }
             if (plotFpsHere && ShowFps && Stats.FpsHistory.Count > 0)
             {
-                PointF? pt = DrawCombinedSubSeries(g, plot, Stats.FpsHistory, start, take, leftLo, leftHi, Color.FromArgb(0x38, 0xBD, 0xF8), false, false, sc);
-                if (pt.HasValue) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = Stats.FpsHistory[Stats.FpsHistory.Count - 1].ToString(), Color = Color.FromArgb(0x38, 0xBD, 0xF8) });
+                PointF? pt = DrawCombinedSubSeries(g, plot, Stats.FpsHistory, start, take, leftLo, leftHi, fpsTrendCol, false, false, sc);
+                if (pt.HasValue) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = Stats.FpsHistory[Stats.FpsHistory.Count - 1].ToString(), Color = fpsTrendCol });
             }
             if (TrendAmbient && _status.AmbientTemp > 0)
             {
-                PointF? pt = DrawCombinedSubSeries(g, plot, Stats.AmbientHistory, start, take, leftLo, leftHi, Color.FromArgb(0xE2, 0xE8, 0xF0), false, false, sc);
+                PointF? pt = DrawCombinedSubSeries(g, plot, Stats.AmbientHistory, start, take, leftLo, leftHi, ambCol, false, false, sc);
                 if (pt.HasValue && Stats.AmbientHistory.Count > 0 && Stats.AmbientHistory[Stats.AmbientHistory.Count - 1] > 0)
-                    badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.AmbientHistory[Stats.AmbientHistory.Count - 1], UseFahrenheit) + "°", Color = Color.FromArgb(0xE2, 0xE8, 0xF0) });
+                    badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.AmbientHistory[Stats.AmbientHistory.Count - 1], UseFahrenheit) + "°", Color = ambCol });
             }
             if (TrendRam && _status.RamTotalGb > 0)
             {
                 if (ramHasTemp)
                 {
-                    PointF? pt = DrawCombinedSubSeries(g, plot, Stats.RamTempHistory, start, take, leftLo, leftHi, Color.FromArgb(0x81, 0x8C, 0xF8), false, false, sc);
-                    if (pt.HasValue) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.RamTempHistory[Stats.RamTempHistory.Count - 1], UseFahrenheit) + "°", Color = Color.FromArgb(0x81, 0x8C, 0xF8) });
+                    PointF? pt = DrawCombinedSubSeries(g, plot, Stats.RamTempHistory, start, take, leftLo, leftHi, ramCol, false, false, sc);
+                    if (pt.HasValue) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.RamTempHistory[Stats.RamTempHistory.Count - 1], UseFahrenheit) + "°", Color = ramCol });
                 }
                 else if (_status.RamPowerWatts > 0)
                 {
-                    PointF? pt = DrawCombinedSubSeries(g, plot, Stats.RamPowerHistory, start, take, pwrLo * 10f, pwrHi * 10f, Color.FromArgb(0x81, 0x8C, 0xF8), false, true, sc);
-                    if (pt.HasValue && Stats.RamPowerHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = string.Format("{0:0}W", Stats.RamPowerHistory[Stats.RamPowerHistory.Count - 1] / 10.0), Color = Color.FromArgb(0x81, 0x8C, 0xF8), Dashed = true });
+                    PointF? pt = DrawCombinedSubSeries(g, plot, Stats.RamPowerHistory, start, take, pwrLo * 10f, pwrHi * 10f, ramCol, false, true, sc);
+                    if (pt.HasValue && Stats.RamPowerHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = string.Format("{0:0}W", Stats.RamPowerHistory[Stats.RamPowerHistory.Count - 1] / 10.0), Color = ramCol, Dashed = true });
                 }
             }
             if (TrendPower)
@@ -506,8 +514,8 @@ namespace MiniFanControl
             }
             if (TrendNvme && _status.NvmeTemp > 0)
             {
-                PointF? pt = DrawCombinedSubSeries(g, plot, Stats.NvmeHistory, start, take, leftLo, leftHi, CfxTeal, false, false, sc);
-                if (pt.HasValue && Stats.NvmeHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.NvmeHistory[Stats.NvmeHistory.Count - 1], UseFahrenheit) + "°", Color = CfxTeal });
+                PointF? pt = DrawCombinedSubSeries(g, plot, Stats.NvmeHistory, start, take, leftLo, leftHi, nvmeCol, false, false, sc);
+                if (pt.HasValue && Stats.NvmeHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.NvmeHistory[Stats.NvmeHistory.Count - 1], UseFahrenheit) + "°", Color = nvmeCol });
             }
             if (TrendGpu)
             {
@@ -520,10 +528,10 @@ namespace MiniFanControl
                 if (pt.HasValue && Stats.CpuHistory.Count > 0) badges.Add(new EndpointBadge { TargetY = pt.Value.Y, Text = TelemetrySessionStats.ToDisplayTemp(Stats.CpuHistory[Stats.CpuHistory.Count - 1], UseFahrenheit) + "°", Color = cpuCol });
             }
 
-            DrawEndpointBadges(g, plot, rect, badges, _fontTrace, sc);
+            DrawEndpointBadges(g, plot, rect, badges, _fontTrace, sc, xmas);
 
             // Compact Wrapping Legend & Scale Header inside the top of the Combined OSD Graph
-            TextRenderer.DrawText(g, hdr, _fontChart, new Point(hdrLeftX, rect.Y + 1), Color.FromArgb(200, 226, 232, 240), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, hdr, _fontChart, new Point(hdrLeftX, rect.Y + 1), xmas ? XmasBlack : Color.FromArgb(200, 226, 232, 240), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             int legX = hdrLeftX + hdrW + (int)Math.Round(6 * sc);
             int legY = rect.Y + 1;
@@ -544,7 +552,7 @@ namespace MiniFanControl
             // Interactive Hover Scrubbing Crosshair & Readout Card
             if (_hoverMouseX >= plot.Left && _hoverMouseX <= plot.Right && rect.Contains(_hoverMouseX, _hoverMouseY))
             {
-                using (Pen crossPen = new Pen(Color.FromArgb(160, 255, 255, 255), 1f) { DashStyle = DashStyle.Dot })
+                using (Pen crossPen = new Pen(xmas ? Color.FromArgb(165, 0x18, 0x18, 0x1B) : Color.FromArgb(160, 255, 255, 255), 1f) { DashStyle = DashStyle.Dot })
                 {
                     g.DrawLine(crossPen, _hoverMouseX, plot.Top, _hoverMouseX, plot.Bottom);
                 }
@@ -658,8 +666,9 @@ namespace MiniFanControl
         private void DrawFpsOsdGraph(Graphics g, Rectangle rect, Color border, float sc)
         {
             if (rect.Width <= 4 || rect.Height <= 4) return;
+            bool xmas = IsXmasTheme;
 
-            using (Brush bgBr = new SolidBrush(Color.FromArgb(170, 15, 23, 42)))
+            using (Brush bgBr = new SolidBrush(xmas ? Color.White : Color.FromArgb(170, 15, 23, 42)))
             using (Pen borderPen = new Pen(border, 1f))
             {
                 g.FillRectangle(bgBr, rect);
@@ -674,7 +683,7 @@ namespace MiniFanControl
 
             if (Stats == null || Stats.FpsHistory == null || Stats.FpsHistory.Count == 0)
             {
-                TextRenderer.DrawText(g, "FPS & FRAMETIME (Standby)", _fontChart, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + 1), Color.FromArgb(200, 226, 232, 240), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(g, "FPS & FRAMETIME (Standby)", _fontChart, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + 1), xmas ? XmasBlack : Color.FromArgb(200, 226, 232, 240), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
                 return;
             }
 
@@ -721,15 +730,15 @@ namespace MiniFanControl
             {
                 float norm60 = (60f - fpsLo) / (fpsHi - fpsLo);
                 float y60 = plot.Bottom - norm60 * plot.Height;
-                using (Pen guidePen = new Pen(Color.FromArgb(45, 255, 255, 255), 1f) { DashStyle = DashStyle.Dot })
+                using (Pen guidePen = new Pen(xmas ? Color.FromArgb(45, 0x18, 0x18, 0x1B) : Color.FromArgb(45, 255, 255, 255), 1f) { DashStyle = DashStyle.Dot })
                 {
                     g.DrawLine(guidePen, plot.Left, y60, plot.Right, y60);
                 }
             }
 
-            Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8);  // Cyan
-            Color lowCol = Color.FromArgb(0xFB, 0x71, 0x85);  // Coral/Rose
-            Color ftCol  = Color.FromArgb(0xFB, 0xBF, 0x24);  // Amber Gold
+            Color fpsCol = xmas ? XmasRed : Color.FromArgb(0x38, 0xBD, 0xF8);      // Crimson / Cyan
+            Color lowCol = xmas ? XmasRedDeep : Color.FromArgb(0xFB, 0x71, 0x85);  // Deep Red / Coral
+            Color ftCol  = xmas ? XmasBlack : Color.FromArgb(0xFB, 0xBF, 0x24);    // Jet Black / Amber Gold
 
             // Frametime range (stored as 0.1ms, so 33.3ms is 333)
             float ftLo = 0f;
@@ -781,7 +790,7 @@ namespace MiniFanControl
                 }
             }
 
-            DrawEndpointBadges(g, plot, rect, badges, _fontTrace, sc);
+            DrawEndpointBadges(g, plot, rect, badges, _fontTrace, sc, xmas);
 
             // Legend / Scale Header
             string hdr;
@@ -794,7 +803,7 @@ namespace MiniFanControl
             {
                 hdr = "FPS & FRAMETIME";
             }
-            TextRenderer.DrawText(g, hdr, _fontChart, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + 1), Color.FromArgb(200, 226, 232, 240), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, hdr, _fontChart, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + 1), xmas ? XmasBlack : Color.FromArgb(200, 226, 232, 240), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             int legX = rect.X + (int)Math.Round(4 * sc) + TextRenderer.MeasureText(g, hdr, _fontChart, new Size(240, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width + (int)Math.Round(6 * sc);
             DrawLegendDot(g, ref legX, rect.Right - 4, rect.Y + 1, "● FPS", fpsCol, _fontTrace);
@@ -805,7 +814,7 @@ namespace MiniFanControl
             // Interactive Hover Scrubbing Crosshair & Readout Card
             if (_hoverMouseX >= plot.Left && _hoverMouseX <= plot.Right && rect.Contains(_hoverMouseX, _hoverMouseY))
             {
-                using (Pen crossPen = new Pen(Color.FromArgb(160, 255, 255, 255), 1f) { DashStyle = DashStyle.Dot })
+                using (Pen crossPen = new Pen(xmas ? Color.FromArgb(165, 0x18, 0x18, 0x1B) : Color.FromArgb(160, 255, 255, 255), 1f) { DashStyle = DashStyle.Dot })
                 {
                     g.DrawLine(crossPen, _hoverMouseX, plot.Top, _hoverMouseX, plot.Bottom);
                 }
@@ -832,9 +841,14 @@ namespace MiniFanControl
         private void DrawDfFrametimeGraph(Graphics g, Rectangle rect, float sc, bool compactCorner = false)
         {
             if (rect.Width <= 10 || rect.Height <= 10) return;
+            bool xmas = IsXmasTheme;
 
-            Color bgCol = compactCorner ? Color.FromArgb(242, 10, 14, 22) : Color.FromArgb(222, 10, 14, 20);
-            Color brdCol = compactCorner ? Color.FromArgb(195, 0x22, 0xD3, 0xEE) : Color.FromArgb(220, 255, 255, 255);
+            Color bgCol = xmas
+                ? (compactCorner ? Color.FromArgb(248, 255, 255, 255) : Color.White)
+                : (compactCorner ? Color.FromArgb(242, 10, 14, 22) : Color.FromArgb(222, 10, 14, 20));
+            Color brdCol = xmas
+                ? (compactCorner ? XmasRed : XmasBlack)
+                : (compactCorner ? Color.FromArgb(195, 0x22, 0xD3, 0xEE) : Color.FromArgb(220, 255, 255, 255));
             using (SolidBrush bgBr = new SolidBrush(bgCol))
             using (Pen borderPen = new Pen(brdCol, 1.2f))
             {
@@ -856,7 +870,7 @@ namespace MiniFanControl
                 : ((curFt > 0)
                     ? string.Format("FRAME-TIME (MS)  •  NOW: {0:0.0} ms", curFt)
                     : "FRAME-TIME (MS)");
-            TextRenderer.DrawText(g, ftHdr, _fontDfHdr, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + (int)Math.Round(1.5f * sc)), compactCorner ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, ftHdr, _fontDfHdr, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + (int)Math.Round(1.5f * sc)), IsXmasTheme ? XmasRed : (compactCorner ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.White), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             int topPad = (int)Math.Round((compactCorner ? 12 : 14) * sc);
             int btmPad = (int)Math.Round((compactCorner ? 4 : 8) * sc);
@@ -888,18 +902,18 @@ namespace MiniFanControl
 
             // Vertical center dividing line inside plot
             int midX = plot.Left + plot.Width / 2;
-            using (Pen divPen = new Pen(Color.FromArgb(140, 255, 255, 255), 1f))
+            using (Pen divPen = new Pen(xmas ? Color.FromArgb(55, 0x18, 0x18, 0x1B) : Color.FromArgb(140, 255, 255, 255), 1f))
             {
                 g.DrawLine(divPen, midX, plot.Top, midX, plot.Bottom);
             }
             // Vertical right border line closing the plot area
-            using (Pen boundPen = new Pen(Color.FromArgb(180, 255, 255, 255), 1f))
+            using (Pen boundPen = new Pen(xmas ? Color.FromArgb(130, 0x18, 0x18, 0x1B) : Color.FromArgb(180, 255, 255, 255), 1f))
             {
                 g.DrawLine(boundPen, plot.Right, plot.Top, plot.Right, plot.Bottom);
             }
 
             // Subtle dashed midpoint horizontal reference line + 16.6ms (60 FPS) & 33.3ms (30 FPS) pacing guides
-            using (Pen midGridPen = new Pen(Color.FromArgb(45, 255, 255, 255), 1f) { DashStyle = DashStyle.Dash })
+            using (Pen midGridPen = new Pen(xmas ? Color.FromArgb(35, 0x18, 0x18, 0x1B) : Color.FromArgb(45, 255, 255, 255), 1f) { DashStyle = DashStyle.Dash })
             {
                 float midY = plot.Top + plot.Height / 2f;
                 g.DrawLine(midGridPen, plot.Left, midY, plot.Right, midY);
@@ -907,7 +921,7 @@ namespace MiniFanControl
             if (16.6f <= ftCeiling)
             {
                 float y16 = plot.Bottom - (16.6f / ftCeiling) * plot.Height;
-                using (Pen p16 = new Pen(Color.FromArgb(65, 0x22, 0xC5, 0x5E), 1f) { DashStyle = DashStyle.Dot })
+                using (Pen p16 = new Pen(xmas ? Color.FromArgb(80, 0x18, 0x18, 0x1B) : Color.FromArgb(65, 0x22, 0xC5, 0x5E), 1f) { DashStyle = DashStyle.Dot })
                 {
                     g.DrawLine(p16, plot.Left, y16, plot.Right, y16);
                 }
@@ -915,7 +929,7 @@ namespace MiniFanControl
             if (33.3f <= ftCeiling)
             {
                 float y33 = plot.Bottom - (33.3f / ftCeiling) * plot.Height;
-                using (Pen p33 = new Pen(Color.FromArgb(65, 0xF5, 0x9E, 0x0B), 1f) { DashStyle = DashStyle.Dot })
+                using (Pen p33 = new Pen(xmas ? Color.FromArgb(80, 0xDC, 0x26, 0x26) : Color.FromArgb(65, 0xF5, 0x9E, 0x0B), 1f) { DashStyle = DashStyle.Dot })
                 {
                     g.DrawLine(p33, plot.Left, y33, plot.Right, y33);
                 }
@@ -934,12 +948,13 @@ namespace MiniFanControl
             int yMid = (int)Math.Round(plot.Top + plot.Height / 2f - szMid.Height / 2f);
             int y0 = Math.Min(rect.Bottom - 2 - sz0.Height, (int)Math.Round(plot.Bottom - sz0.Height / 2f));
 
-            TextRenderer.DrawText(g, lblMax, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), yMax), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            Color ftAxisCol = IsXmasTheme ? XmasBlack : Color.White;
+            TextRenderer.DrawText(g, lblMax, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), yMax), ftAxisCol, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
             if (!compactCorner || plot.Height >= (int)Math.Round(34 * sc))
             {
-                TextRenderer.DrawText(g, lblMid, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), yMid), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(g, lblMid, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), yMid), ftAxisCol, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
             }
-            TextRenderer.DrawText(g, lbl0, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y0), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, lbl0, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), y0), ftAxisCol, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             if (Stats == null || Stats.FrametimeHistory == null || Stats.FrametimeHistory.Count == 0)
                 return;
@@ -975,8 +990,8 @@ namespace MiniFanControl
                 }
             }
 
-            // Neon Cyan / Lime Jitter Line
-            Color ftCol = Color.FromArgb(0x22, 0xD3, 0xEE); // Electric Cyan
+            // Neon Cyan / Lime Jitter Line (Festive Crimson on Snow White in Xmas Edition)
+            Color ftCol = xmas ? XmasRed : Color.FromArgb(0x22, 0xD3, 0xEE); // Crimson / Electric Cyan
             using (Pen ftPen = new Pen(ftCol, 1.4f * Math.Max(1f, sc * 0.9f)))
             {
                 ftPen.LineJoin = LineJoin.Round;
@@ -1011,7 +1026,7 @@ namespace MiniFanControl
                     {
                         g.DrawLine(tickPen, last.X, last.Y, ftBx + ftBw, ftBy + ftBh / 2f);
                     }
-                    using (SolidBrush bgPill = new SolidBrush(Color.FromArgb(225, 10, 14, 20)))
+                    using (SolidBrush bgPill = new SolidBrush(xmas ? Color.White : Color.FromArgb(225, 10, 14, 20)))
                     {
                         g.FillRectangle(bgPill, ftBadgeRect);
                     }
@@ -1026,7 +1041,7 @@ namespace MiniFanControl
             // Hover scrubbing tooltip
             if (_hoverMouseX >= plot.Left && _hoverMouseX <= plot.Right && rect.Contains(_hoverMouseX, _hoverMouseY))
             {
-                using (Pen crossPen = new Pen(Color.FromArgb(160, 255, 255, 255), 1f) { DashStyle = DashStyle.Dot })
+                using (Pen crossPen = new Pen(xmas ? Color.FromArgb(165, 0x18, 0x18, 0x1B) : Color.FromArgb(160, 255, 255, 255), 1f) { DashStyle = DashStyle.Dot })
                 {
                     g.DrawLine(crossPen, _hoverMouseX, plot.Top, _hoverMouseX, plot.Bottom);
                 }
@@ -1102,8 +1117,9 @@ namespace MiniFanControl
                 levels = new int[] { fpsCeiling, step * 2, step, 0 };
             }
 
-            using (SolidBrush bgBr = new SolidBrush(Color.FromArgb(222, 10, 14, 20)))
-            using (Pen borderPen = new Pen(Color.FromArgb(220, 255, 255, 255), 1.2f))
+            bool xmas = IsXmasTheme;
+            using (SolidBrush bgBr = new SolidBrush(xmas ? Color.White : Color.FromArgb(222, 10, 14, 20)))
+            using (Pen borderPen = new Pen(xmas ? XmasBlack : Color.FromArgb(220, 255, 255, 255), 1.2f))
             {
                 g.FillRectangle(bgBr, rect);
                 g.DrawRectangle(borderPen, rect.X, rect.Y, rect.Width - 1, rect.Height - 1);
@@ -1131,7 +1147,7 @@ namespace MiniFanControl
             {
                 fpsHdr = "FRAME-RATE (FPS)";
             }
-            TextRenderer.DrawText(g, fpsHdr, _fontDfHdr, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + (int)Math.Round(1.5f * sc)), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, fpsHdr, _fontDfHdr, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + (int)Math.Round(1.5f * sc)), IsXmasTheme ? XmasRed : Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             int topPad = (int)Math.Round(14 * sc);
             int btmPad = (int)Math.Round(9 * sc);
@@ -1139,9 +1155,9 @@ namespace MiniFanControl
             Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - btmPad));
 
             // Grid lines and Axis Labels
-            using (Pen gridPen = new Pen(Color.FromArgb(90, 255, 255, 255), 1f))
-            using (Pen boundPen = new Pen(Color.FromArgb(180, 255, 255, 255), 1f))
-            using (Pen tickPen = new Pen(Color.FromArgb(35, 255, 255, 255), 1f))
+            using (Pen gridPen = new Pen(xmas ? Color.FromArgb(45, 0x18, 0x18, 0x1B) : Color.FromArgb(90, 255, 255, 255), 1f))
+            using (Pen boundPen = new Pen(xmas ? Color.FromArgb(145, 0x18, 0x18, 0x1B) : Color.FromArgb(180, 255, 255, 255), 1f))
+            using (Pen tickPen = new Pen(xmas ? Color.FromArgb(24, 0x18, 0x18, 0x1B) : Color.FromArgb(35, 255, 255, 255), 1f))
             {
                 // Vertical division ticks
                 for (int t = 1; t <= 4; t++)
@@ -1161,7 +1177,7 @@ namespace MiniFanControl
                     int lblY = (int)Math.Round(y - sz.Height / 2f);
                     if (lblY < rect.Y + 2) lblY = rect.Y + 2;
                     if (lblY + sz.Height > rect.Bottom - 2) lblY = rect.Bottom - 2 - sz.Height;
-                    TextRenderer.DrawText(g, lbl, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), lblY), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    TextRenderer.DrawText(g, lbl, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), lblY), IsXmasTheme ? XmasBlack : Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
                 }
 
                 // Vertical boundary line separating the plot from the axis labels
@@ -1206,12 +1222,12 @@ namespace MiniFanControl
                         lowPath.AddLines(lowPts);
                         lowPath.AddLine(lowPts[lowPts.Length - 1].X, lowPts[lowPts.Length - 1].Y, plot.Right, plot.Bottom);
                         lowPath.CloseFigure();
-                        using (SolidBrush lowFill = new SolidBrush(Color.FromArgb(42, 0xFB, 0x71, 0x85)))
+                        using (SolidBrush lowFill = new SolidBrush(xmas ? Color.FromArgb(26, 0xDC, 0x26, 0x26) : Color.FromArgb(42, 0xFB, 0x71, 0x85)))
                         {
                             g.FillPath(lowFill, lowPath);
                         }
                     }
-                    using (Pen lowPen = new Pen(Color.FromArgb(170, 0xFB, 0x71, 0x85), 1.1f * Math.Max(1f, sc * 0.85f)))
+                    using (Pen lowPen = new Pen(xmas ? Color.FromArgb(155, 0xB9, 0x1C, 0x1C) : Color.FromArgb(170, 0xFB, 0x71, 0x85), 1.1f * Math.Max(1f, sc * 0.85f)))
                     {
                         lowPen.DashStyle = DashStyle.Dot;
                         g.DrawLines(lowPen, lowPts);
@@ -1248,7 +1264,7 @@ namespace MiniFanControl
                 }
                 if (hasAnyP1)
                 {
-                    using (Pen p1Pen = new Pen(Color.FromArgb(185, 0xFB, 0x92, 0x3C), 1.15f * Math.Max(1f, sc * 0.85f)))
+                    using (Pen p1Pen = new Pen(xmas ? Color.FromArgb(155, 0x52, 0x52, 0x5B) : Color.FromArgb(185, 0xFB, 0x92, 0x3C), 1.15f * Math.Max(1f, sc * 0.85f)))
                     {
                         p1Pen.DashStyle = DashStyle.Dash;
                         g.DrawLines(p1Pen, p1Pts);
@@ -1256,7 +1272,7 @@ namespace MiniFanControl
                 }
             }
 
-            // Session Avg line (Smooth Blue / Cyan)
+            // Session Avg line (Jet Black in Xmas Edition / Smooth Blue-Cyan)
             if (Stats.AvgFpsHistory != null && Stats.AvgFpsHistory.Count > 0)
             {
                 PointF[] avgPts = new PointF[Math.Max(2, take)];
@@ -1280,7 +1296,7 @@ namespace MiniFanControl
                         avgPts[i] = new PointF(x, y);
                     }
                 }
-                using (Pen avgPen = new Pen(Color.FromArgb(0x38, 0xBD, 0xF8), 1.4f * Math.Max(1f, sc * 0.9f)))
+                using (Pen avgPen = new Pen(xmas ? XmasBlack : Color.FromArgb(0x38, 0xBD, 0xF8), 1.4f * Math.Max(1f, sc * 0.9f)))
                 {
                     avgPen.DashStyle = DashStyle.Dash;
                     g.DrawLines(avgPen, avgPts);
@@ -1332,7 +1348,7 @@ namespace MiniFanControl
                     fpsPts[i] = new PointF(x, y);
                 }
             }
-            Color neonGreen = Color.FromArgb(0x4A, 0xDE, 0x80); // Neon Lime Green
+            Color neonGreen = xmas ? XmasRed : Color.FromArgb(0x4A, 0xDE, 0x80); // Festive Crimson / Neon Lime Green
             using (Pen fpsPen = new Pen(neonGreen, 1.85f * Math.Max(1f, sc * 0.9f)))
             {
                 fpsPen.LineJoin = LineJoin.Round;
@@ -1363,7 +1379,7 @@ namespace MiniFanControl
                 {
                     g.DrawLine(tickPen, last.X, last.Y, bx + bw, by + bh / 2f);
                 }
-                using (SolidBrush bgPill = new SolidBrush(Color.FromArgb(225, 10, 14, 20)))
+                using (SolidBrush bgPill = new SolidBrush(xmas ? Color.White : Color.FromArgb(225, 10, 14, 20)))
                 {
                     g.FillRectangle(bgPill, badgeRect);
                 }
@@ -1390,8 +1406,8 @@ namespace MiniFanControl
                         if (aby + bh > plot.Bottom - 1) aby = plot.Bottom - 1 - bh;
                         Rectangle aRect = new Rectangle(abx, aby, abw, bh);
 
-                        Color avgCol = Color.FromArgb(0x38, 0xBD, 0xF8);
-                        using (SolidBrush bgPill = new SolidBrush(Color.FromArgb(225, 10, 14, 20)))
+                        Color avgCol = xmas ? XmasBlack : Color.FromArgb(0x38, 0xBD, 0xF8);
+                        using (SolidBrush bgPill = new SolidBrush(xmas ? Color.White : Color.FromArgb(225, 10, 14, 20)))
                         {
                             g.FillRectangle(bgPill, aRect);
                         }
@@ -1408,7 +1424,7 @@ namespace MiniFanControl
             bool mouseOverFtInset = (DfGraphStyle && DfCornerInset && !_dfFtRect.IsEmpty && _dfFtRect.Contains(_hoverMouseX, _hoverMouseY));
             if (!mouseOverFtInset && _hoverMouseX >= plot.Left && _hoverMouseX <= plot.Right && rect.Contains(_hoverMouseX, _hoverMouseY))
             {
-                using (Pen crossPen = new Pen(Color.FromArgb(160, 255, 255, 255), 1f) { DashStyle = DashStyle.Dot })
+                using (Pen crossPen = new Pen(xmas ? Color.FromArgb(165, 0x18, 0x18, 0x1B) : Color.FromArgb(160, 255, 255, 255), 1f) { DashStyle = DashStyle.Dot })
                 {
                     g.DrawLine(crossPen, _hoverMouseX, plot.Top, _hoverMouseX, plot.Bottom);
                 }

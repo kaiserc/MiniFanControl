@@ -152,5 +152,54 @@ namespace MiniFanControl
             btn.FlatAppearance.MouseOverBackColor = Blend(bg, isDark ? Color.White : Color.Black, isDark ? 0.11f : 0.06f);
             btn.FlatAppearance.MouseDownBackColor = Blend(bg, isDark ? Color.White : Color.Black, isDark ? 0.19f : 0.12f);
         }
+
+        /// <summary>
+        /// Draws a crisp 6-point crystalline vector snowflake watermark for the White/Black/Red Xmas theme.
+        /// </summary>
+        public static void DrawSnowflake(Graphics g, float cx, float cy, float radius, Color color, float penWidth = 1.25f)
+        {
+            if (g == null || radius < 3f) return;
+            SmoothingMode prev = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            try
+            {
+                using (Pen pen = new Pen(color, penWidth))
+                {
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    for (int i = 0; i < 6; i++)
+                    {
+                        double rad = (i * 60.0 - 90.0) * Math.PI / 180.0;
+                        float dx = (float)Math.Cos(rad);
+                        float dy = (float)Math.Sin(rad);
+                        float x2 = cx + dx * radius;
+                        float y2 = cy + dy * radius;
+                        g.DrawLine(pen, cx, cy, x2, y2);
+
+                        // Delicate crystalline V-branches at 62% along each spoke
+                        float bx = cx + dx * (radius * 0.62f);
+                        float by = cy + dy * (radius * 0.62f);
+                        float branchLen = radius * 0.30f;
+                        double a1 = rad + 0.62;
+                        double a2 = rad - 0.62;
+                        g.DrawLine(pen, bx, by, bx + (float)Math.Cos(a1) * branchLen, by + (float)Math.Sin(a1) * branchLen);
+                        g.DrawLine(pen, bx, by, bx + (float)Math.Cos(a2) * branchLen, by + (float)Math.Sin(a2) * branchLen);
+                    }
+                    // Inner crystalline hexagon ring
+                    float innerR = radius * 0.28f;
+                    PointF[] hex = new PointF[6];
+                    for (int i = 0; i < 6; i++)
+                    {
+                        double rad = (i * 60.0 - 90.0) * Math.PI / 180.0;
+                        hex[i] = new PointF(cx + (float)Math.Cos(rad) * innerR, cy + (float)Math.Sin(rad) * innerR);
+                    }
+                    g.DrawPolygon(pen, hex);
+                }
+            }
+            finally
+            {
+                g.SmoothingMode = prev;
+            }
+        }
     }
 }

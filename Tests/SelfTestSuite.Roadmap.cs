@@ -561,6 +561,55 @@ namespace MiniFanControl
             Check(s0ixOk,
                 "Modern Standby (S0ix) Time-Jump Wake Detection & Super I/O Reset Protection",
                 s0ixDetail);
+
+            // 121. Xmas Edition Theme (White/Black/Red Palette, Concept #6 Logo, Settings Persistence & OSD Sync)
+            bool xmasOk = false;
+            string xmasDetail = "";
+            string tempXmasCfg = null;
+            try
+            {
+                tempXmasCfg = Path.Combine(Path.GetTempPath(), "mfc_xmas_theme_" + Guid.NewGuid().ToString("N") + ".cfg");
+                AppSettings.WriteAllLinesAtomic(tempXmasCfg, new string[] { "Theme=5" });
+                AppSettings loadedXmas = new AppSettings();
+                loadedXmas.LoadFromPath(tempXmasCfg, null, null, new List<FanCurveProfile>());
+                bool cfgRoundTrip = (loadedXmas.ThemePref == ThemePreference.Xmas);
+
+                bool logoOk = false;
+                using (System.Drawing.Bitmap bmp = AppLogoRenderer.RenderConcept(6, 128))
+                {
+                    logoOk = (bmp != null && bmp.Width == 128 && bmp.Height == 128);
+                }
+
+                bool osdSynced = false;
+                using (CapFrameXOverlayForm ov = new CapFrameXOverlayForm())
+                {
+                    OsdOverlayConfig oc = new OsdOverlayConfig();
+                    oc.ApplyToOverlay(ov, ThemePreference.Xmas, true, false);
+                    osdSynced = ov.IsXmasTheme && !ov.IsRadeonTheme && !ov.IsAfterburnerTheme;
+                }
+
+                bool dialogOk = false;
+                using (KernelDriverDialog dlg = new KernelDriverDialog(false, ThemePreference.Xmas, false, false, true, null))
+                {
+                    dialogOk = (dlg.BackColor == System.Drawing.Color.White);
+                }
+
+                xmasOk = cfgRoundTrip && logoOk && osdSynced && dialogOk;
+                xmasDetail = string.Format("Cfg={0}, Logo6={1}, Osd={2}, WhiteBg={3}",
+                    cfgRoundTrip, logoOk, osdSynced, dialogOk);
+            }
+            catch (Exception ex) { xmasDetail = ex.Message; }
+            finally
+            {
+                if (!string.IsNullOrEmpty(tempXmasCfg))
+                {
+                    try { if (File.Exists(tempXmasCfg)) File.Delete(tempXmasCfg); } catch { }
+                    try { if (File.Exists(tempXmasCfg + ".bak")) File.Delete(tempXmasCfg + ".bak"); } catch { }
+                }
+            }
+            Check(xmasOk,
+                "Xmas Edition Theme (White/Black/Red Palette, Concept #6 Logo, Settings Persistence & OSD Sync)",
+                xmasDetail);
         }
     }
 }

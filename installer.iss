@@ -2,7 +2,7 @@
 ; Native EC Fan Control & Thermal Monitor for AMD Ryzen Mini PCs
 
 #define MyAppName "MiniFanControl"
-#define MyAppVersion "1.2.2"
+#define MyAppVersion "1.3.0"
 #define MyAppPublisher "Christian Kaiser"
 #define MyAppExeName "MiniFanControl.exe"
 #define MyAppHelperExe "minifan-helper.exe"

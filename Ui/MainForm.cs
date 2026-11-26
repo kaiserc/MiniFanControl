@@ -71,7 +71,7 @@ namespace MiniFanControl
         private const int HOTKEY_LOCK_OSD   = 9003;
         private const int HOTKEY_RESET_AUTO = 9004;
 
-        public const string APP_VERSION         = "1.2.2";
+        public const string APP_VERSION         = "1.3.0";
         public const string SCHTASK_NAME        = "MiniFanControl_Autostart";
         public const string URL_GMKTEC_DRIVERS  = "https://www.gmktec.com/pages/drivers-and-software";
         public const string URL_AMD_DRIVERS     = "https://www.amd.com/en/support/download/drivers.html";
@@ -116,6 +116,16 @@ namespace MiniFanControl
         private static readonly Color AbCyan     = Color.FromArgb(0x00, 0xE5, 0xFF);
         private static readonly Color AbOrange   = Color.FromArgb(0xFF, 0x91, 0x00);
 
+        // Xmas Edition Palette (Crisp Snow-White background, Jet Obsidian Black ink & borders, Festive Crimson Red accents)
+        private static readonly Color XmasBg        = Color.FromArgb(0xFF, 0xFF, 0xFF);
+        private static readonly Color XmasSurface   = Color.FromArgb(0xFF, 0xFF, 0xFF);
+        private static readonly Color XmasSurface2  = Color.FromArgb(0xF4, 0xF4, 0xF5);
+        private static readonly Color XmasText      = Color.FromArgb(0x09, 0x09, 0x0B);
+        private static readonly Color XmasTextDim   = Color.FromArgb(0x3F, 0x3F, 0x46);
+        private static readonly Color XmasRed       = Color.FromArgb(0xDC, 0x26, 0x26);
+        private static readonly Color XmasRedDeep   = Color.FromArgb(0x99, 0x1B, 0x1B);
+        private static readonly Color XmasBlack     = Color.FromArgb(0x18, 0x18, 0x1B);
+
         private static readonly Color ErrorBgDark   = Color.FromArgb(0x3A, 0x1A, 0x1A);
         private static readonly Color ErrorFgDark   = Color.FromArgb(0xF3, 0x8B, 0xA8);
         private static readonly Color ErrorBgLight  = Color.FromArgb(0xFE, 0xE2, 0xE2);
@@ -145,6 +155,7 @@ namespace MiniFanControl
         private bool _initialDemoMode;
 
         private bool IsAb { get { return _themePref == ThemePreference.Afterburner; } }
+        private bool IsXmas { get { return _themePref == ThemePreference.Xmas; } }
         private ThemePreference _themePref
         {
             get { return _settings.ThemePref; }
@@ -1677,14 +1688,15 @@ namespace MiniFanControl
                 _overlayForm.SampleIntervalMs = _refreshIntervalMs;
             }
 
-            Color tempFg = _isDarkMode ? DarkText : LightText;
-            Color dimText = _isDarkMode ? Color.FromArgb(0x93, 0x99, 0xB2) : Color.FromArgb(0x6C, 0x70, 0x86);
-            Color rampColor = _isDarkMode ? Color.FromArgb(0xFA, 0xB3, 0x87) : Color.FromArgb(0xEA, 0x58, 0x0C);
             bool isRadeon = (_themePref == ThemePreference.Radeon);
+            bool isXmas = (_themePref == ThemePreference.Xmas);
+            Color tempFg = isXmas ? XmasText : (_isDarkMode ? DarkText : LightText);
+            Color dimText = isXmas ? XmasTextDim : (_isDarkMode ? Color.FromArgb(0x93, 0x99, 0xB2) : Color.FromArgb(0x6C, 0x70, 0x86));
+            Color rampColor = isXmas ? XmasRed : (_isDarkMode ? Color.FromArgb(0xFA, 0xB3, 0x87) : Color.FromArgb(0xEA, 0x58, 0x0C));
 
-            Color autoColor = _isDarkMode ? Color.FromArgb(0xA6, 0xE3, 0xA1) : Color.FromArgb(0x15, 0x80, 0x3D);
-            Color manColor = isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (_isDarkMode ? DarkAccent : LightAccent);
-            Color warnRose = Color.FromArgb(0xFB, 0x71, 0x85);
+            Color autoColor = isXmas ? XmasRed : (_isDarkMode ? Color.FromArgb(0xA6, 0xE3, 0xA1) : Color.FromArgb(0x15, 0x80, 0x3D));
+            Color manColor = isXmas ? XmasBlack : (isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (_isDarkMode ? DarkAccent : LightAccent));
+            Color warnRose = isXmas ? XmasRedDeep : Color.FromArgb(0xFB, 0x71, 0x85);
 
             // 1. CPU Box (Row 1, Col 0)
             string cpuValTxt = st.CpuTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.CpuTemp, _useFahrenheit), tUnit) : "N/A";

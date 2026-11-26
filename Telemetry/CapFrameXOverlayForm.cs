@@ -53,6 +53,12 @@ namespace MiniFanControl
         // MSI Afterburner Homage Palette (Gunmetal carbon, toxic neon green & cyberpunk cyan)
         private static readonly Color OsdBgAfterburner     = Color.FromArgb(17, 19, 23);
         private static readonly Color OsdBorderAfterburner = Color.FromArgb(0x00, 0xCE, 0x68);
+        private static readonly Color OsdBgXmas            = Color.FromArgb(250, 250, 250);
+        private static readonly Color OsdBorderXmas        = Color.FromArgb(0xDC, 0x26, 0x26);
+        private static readonly Color XmasRed              = Color.FromArgb(0xDC, 0x26, 0x26);
+        private static readonly Color XmasRedDeep          = Color.FromArgb(0x99, 0x1B, 0x1B);
+        private static readonly Color XmasBlack            = Color.FromArgb(0x09, 0x09, 0x0B);
+        private static readonly Color XmasCharcoal         = Color.FromArgb(0x3F, 0x3F, 0x46);
         private static readonly Color AbGreen  = Color.FromArgb(0x00, 0xE6, 0x76);
         private static readonly Color AbCyan   = Color.FromArgb(0x00, 0xE5, 0xFF);
         private static readonly Color AbAmber  = Color.FromArgb(0xFF, 0x91, 0x00);
@@ -82,6 +88,7 @@ namespace MiniFanControl
         public bool MatchAppTheme = true;
         public bool IsRadeonTheme = false;
         public bool IsAfterburnerTheme = false;
+        public bool IsXmasTheme = false;
 
         public bool ShowCpu = true;
         public bool ShowGpu = true;

@@ -31,6 +31,8 @@ namespace MiniFanControl
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool IsAfterburnerTheme { get; set; }
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public bool IsXmasTheme { get; set; }
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool HasDualFans { get; set; }
 
         // 0 = All / Default (CPU), 1 = Highlight CPU Temp, 2 = Highlight iGPU Temp, 3 = Highlight Power W, 7 = RAM, 8 = FCLK, 9 = Ambient
@@ -511,45 +513,61 @@ namespace MiniFanControl
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
-            Color bg = IsAfterburnerTheme
-                ? Color.FromArgb(0x13, 0x15, 0x19)
-                : (IsRadeonTheme
-                    ? Color.FromArgb(0x16, 0x0A, 0x0E)
-                    : (IsDarkMode ? Color.FromArgb(0x16, 0x16, 0x22) : Color.FromArgb(0xF8, 0xFA, 0xFC)));
-            Color gridColor = IsAfterburnerTheme
-                ? Color.FromArgb(0x28, 0x30, 0x3A)
-                : (IsRadeonTheme
-                    ? Color.FromArgb(0x42, 0x1C, 0x26)
-                    : (IsDarkMode ? Color.FromArgb(0x2D, 0x2F, 0x42) : Color.FromArgb(0xE2, 0xE8, 0xF0)));
-            Color labelColor = IsAfterburnerTheme
-                ? Color.FromArgb(0x8A, 0x96, 0xA8)
-                : (IsRadeonTheme
-                    ? Color.FromArgb(0xD6, 0xA8, 0xB4)
-                    : (IsDarkMode ? Color.FromArgb(0x94, 0x99, 0xB0) : Color.FromArgb(0x47, 0x55, 0x69)));
+            Color bg = IsXmasTheme
+                ? Color.White
+                : (IsAfterburnerTheme
+                    ? Color.FromArgb(0x13, 0x15, 0x19)
+                    : (IsRadeonTheme
+                        ? Color.FromArgb(0x16, 0x0A, 0x0E)
+                        : (IsDarkMode ? Color.FromArgb(0x16, 0x16, 0x22) : Color.FromArgb(0xF8, 0xFA, 0xFC))));
+            Color gridColor = IsXmasTheme
+                ? Color.FromArgb(0xE4, 0xE4, 0xE7)
+                : (IsAfterburnerTheme
+                    ? Color.FromArgb(0x28, 0x30, 0x3A)
+                    : (IsRadeonTheme
+                        ? Color.FromArgb(0x42, 0x1C, 0x26)
+                        : (IsDarkMode ? Color.FromArgb(0x2D, 0x2F, 0x42) : Color.FromArgb(0xE2, 0xE8, 0xF0))));
+            Color labelColor = IsXmasTheme
+                ? Color.FromArgb(0x18, 0x18, 0x1B)
+                : (IsAfterburnerTheme
+                    ? Color.FromArgb(0x8A, 0x96, 0xA8)
+                    : (IsRadeonTheme
+                        ? Color.FromArgb(0xD6, 0xA8, 0xB4)
+                        : (IsDarkMode ? Color.FromArgb(0x94, 0x99, 0xB0) : Color.FromArgb(0x47, 0x55, 0x69))));
 
-            Color cpuColor = IsAfterburnerTheme
-                ? Color.FromArgb(0x00, 0xE6, 0x76)
-                : (IsRadeonTheme
-                    ? Color.FromArgb(0xF4, 0x3F, 0x5E)
-                    : (IsDarkMode ? Color.FromArgb(0x60, 0xA5, 0xFA) : Color.FromArgb(0x25, 0x63, 0xEB)));
-            Color gpuColor = IsAfterburnerTheme
-                ? Color.FromArgb(0x00, 0xE5, 0xFF)
-                : (IsRadeonTheme
-                    ? Color.FromArgb(0x38, 0xBD, 0xF8)
-                    : (IsDarkMode ? Color.FromArgb(0x4A, 0xDE, 0x80) : Color.FromArgb(0x16, 0xA3, 0x4A)));
-            Color nvmeColor = IsDarkMode ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.FromArgb(0x08, 0x91, 0xB2);
-            Color pwrColor = IsAfterburnerTheme
-                ? Color.FromArgb(0xFF, 0x91, 0x00)
-                : (IsRadeonTheme
-                    ? Color.FromArgb(0xFB, 0x92, 0x3C)
-                    : (IsDarkMode ? Color.FromArgb(0xFB, 0xBF, 0x24) : Color.FromArgb(0xD9, 0x77, 0x06)));
-            Color ramColor = IsDarkMode ? Color.FromArgb(0x81, 0x8C, 0xF8) : Color.FromArgb(0x4F, 0x46, 0xE5);
-            Color fclkColor = Color.FromArgb(0x10, 0xB9, 0x81);
-            Color ambColor = IsDarkMode ? Color.FromArgb(0xE2, 0xE8, 0xF0) : Color.FromArgb(0x47, 0x55, 0x69);
-            Color apuRpmColor = IsAfterburnerTheme ? Color.FromArgb(0x00, 0xE6, 0x76) : (IsDarkMode ? Color.FromArgb(0xC0, 0x84, 0xFC) : Color.FromArgb(0x7C, 0x3A, 0xED));
-            Color sysRpmColor = IsAfterburnerTheme ? Color.FromArgb(0x00, 0xE5, 0xFF) : (IsDarkMode ? Color.FromArgb(0x2D, 0xD4, 0xBF) : Color.FromArgb(0x0D, 0x94, 0x88));
+            Color cpuColor = IsXmasTheme
+                ? Color.FromArgb(0xDC, 0x26, 0x26)
+                : (IsAfterburnerTheme
+                    ? Color.FromArgb(0x00, 0xE6, 0x76)
+                    : (IsRadeonTheme
+                        ? Color.FromArgb(0xF4, 0x3F, 0x5E)
+                        : (IsDarkMode ? Color.FromArgb(0x60, 0xA5, 0xFA) : Color.FromArgb(0x25, 0x63, 0xEB))));
+            Color gpuColor = IsXmasTheme
+                ? Color.FromArgb(0x18, 0x18, 0x1B)
+                : (IsAfterburnerTheme
+                    ? Color.FromArgb(0x00, 0xE5, 0xFF)
+                    : (IsRadeonTheme
+                        ? Color.FromArgb(0x38, 0xBD, 0xF8)
+                        : (IsDarkMode ? Color.FromArgb(0x4A, 0xDE, 0x80) : Color.FromArgb(0x16, 0xA3, 0x4A))));
+            Color nvmeColor = IsXmasTheme ? Color.FromArgb(0x99, 0x1B, 0x1B) : (IsDarkMode ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.FromArgb(0x08, 0x91, 0xB2));
+            Color pwrColor = IsXmasTheme
+                ? Color.FromArgb(0xEF, 0x44, 0x44)
+                : (IsAfterburnerTheme
+                    ? Color.FromArgb(0xFF, 0x91, 0x00)
+                    : (IsRadeonTheme
+                        ? Color.FromArgb(0xFB, 0x92, 0x3C)
+                        : (IsDarkMode ? Color.FromArgb(0xFB, 0xBF, 0x24) : Color.FromArgb(0xD9, 0x77, 0x06))));
+            Color ramColor = IsXmasTheme ? Color.FromArgb(0x3F, 0x3F, 0x46) : (IsDarkMode ? Color.FromArgb(0x81, 0x8C, 0xF8) : Color.FromArgb(0x4F, 0x46, 0xE5));
+            Color fclkColor = IsXmasTheme ? Color.FromArgb(0x52, 0x52, 0x5B) : Color.FromArgb(0x10, 0xB9, 0x81);
+            Color ambColor = IsXmasTheme ? Color.FromArgb(0x71, 0x71, 0x7A) : (IsDarkMode ? Color.FromArgb(0xE2, 0xE8, 0xF0) : Color.FromArgb(0x47, 0x55, 0x69));
+            Color apuRpmColor = IsXmasTheme ? Color.FromArgb(0xB9, 0x1C, 0x1C) : (IsAfterburnerTheme ? Color.FromArgb(0x00, 0xE6, 0x76) : (IsDarkMode ? Color.FromArgb(0xC0, 0x84, 0xFC) : Color.FromArgb(0x7C, 0x3A, 0xED)));
+            Color sysRpmColor = IsXmasTheme ? Color.FromArgb(0x09, 0x09, 0x0B) : (IsAfterburnerTheme ? Color.FromArgb(0x00, 0xE5, 0xFF) : (IsDarkMode ? Color.FromArgb(0x2D, 0xD4, 0xBF) : Color.FromArgb(0x0D, 0x94, 0x88)));
 
             g.Clear(bg);
+            if (IsXmasTheme && ClientSize.Width > 180 && ClientSize.Height > 100)
+            {
+                Win11VisualStyle.DrawSnowflake(g, ClientSize.Width - 46f, 64f, 20f, Color.FromArgb(20, 0xDC, 0x26, 0x26), 1.4f);
+            }
 
             int count = (Stats != null && Stats.CpuHistory != null) ? Stats.CpuHistory.Count : 0;
             int lastCpu = count > 0 ? Stats.CpuHistory[count - 1] : 0;

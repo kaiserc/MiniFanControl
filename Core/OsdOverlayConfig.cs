@@ -195,6 +195,7 @@ namespace MiniFanControl
             overlay.MatchAppTheme = MatchTheme;
             overlay.IsRadeonTheme = (themePref == ThemePreference.Radeon);
             overlay.IsAfterburnerTheme = (themePref == ThemePreference.Afterburner);
+            overlay.IsXmasTheme = (themePref == ThemePreference.Xmas);
             overlay.ShowDriverVersion = ShowDriverVer;
             overlay.ShowClocks = ShowClocks;
             overlay.ShowGameName = ShowGameName;

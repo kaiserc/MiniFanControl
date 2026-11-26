@@ -39,10 +39,21 @@ namespace MiniFanControl
             {
                 if (SystemInformation.HighContrast) return;
                 bool isRadeon = (_themePref == ThemePreference.Radeon);
-                Color bdr = isRadeon
-                    ? Color.FromArgb(0x4C, 0x18, 0x22)
-                    : (IsAb ? Color.FromArgb(0x22, 0x35, 0x2A) : (_isDarkMode ? Color.FromArgb(0x32, 0x36, 0x4C) : Color.FromArgb(0xD5, 0xDC, 0xE6)));
+                bool isXmas = IsXmas;
+                Color bdr = isXmas
+                    ? XmasBlack
+                    : (isRadeon
+                        ? Color.FromArgb(0x4C, 0x18, 0x22)
+                        : (IsAb ? Color.FromArgb(0x22, 0x35, 0x2A) : (_isDarkMode ? Color.FromArgb(0x32, 0x36, 0x4C) : Color.FromArgb(0xD5, 0xDC, 0xE6))));
                 Win11VisualStyle.DrawRoundedCardBorder(e.Graphics, card.ClientRectangle, bdr, 8, 1f);
+                if (isXmas && card.ClientSize.Width > 120)
+                {
+                    // Crisp festive crimson top hairline accent inside white Xmas cards
+                    using (Pen festPen = new Pen(Color.FromArgb(145, XmasRed), 2f))
+                    {
+                        e.Graphics.DrawLine(festPen, 10, 1, card.ClientSize.Width - 11, 1);
+                    }
+                }
             };
             Controls.Add(card);
             _sectionCards.Add(card);
@@ -342,52 +353,74 @@ namespace MiniFanControl
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
             bool isRadeon = (_themePref == ThemePreference.Radeon);
+            bool isXmas = IsXmas;
             Color lineCol;
-            switch (chartKind)
+            if (isXmas)
             {
-                case 1:
-                    lineCol = isRadeon ? RadeonAccent : (_isDarkMode ? DarkAccent : LightAccent);
-                    break;
-                case 2:
-                    lineCol = isRadeon ? Color.FromArgb(0x38, 0xBD, 0xF8) : Color.FromArgb(0x22, 0xC5, 0x5E);
-                    break;
-                case 6:
-                    lineCol = _isDarkMode ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.FromArgb(0x08, 0x91, 0xB2);
-                    break;
-                case 3:
-                    lineCol = isRadeon ? RadeonOrange : Color.FromArgb(0xF5, 0x9E, 0x0B);
-                    break;
-                case 7:
-                    lineCol = Color.FromArgb(0x81, 0x8C, 0xF8);
-                    break;
-                case 9:
-                    lineCol = _isDarkMode ? Color.FromArgb(0xE2, 0xE8, 0xF0) : Color.FromArgb(0x47, 0x55, 0x69);
-                    break;
-                case 4:
-                    lineCol = Color.FromArgb(0xC0, 0x84, 0xFC);
-                    break;
-                case 5:
-                    lineCol = Color.FromArgb(0x2D, 0xD4, 0xBF);
-                    break;
-                default:
-                    lineCol = isRadeon ? RadeonAccent : DarkAccent;
-                    break;
+                // Strict White / Black / Red holiday harmony: alternate Festive Crimson Red & Jet Obsidian Black
+                switch (chartKind)
+                {
+                    case 1: case 3: case 4: case 6:
+                        lineCol = XmasRed;
+                        break;
+                    default:
+                        lineCol = XmasBlack;
+                        break;
+                }
+            }
+            else
+            {
+                switch (chartKind)
+                {
+                    case 1:
+                        lineCol = isRadeon ? RadeonAccent : (_isDarkMode ? DarkAccent : LightAccent);
+                        break;
+                    case 2:
+                        lineCol = isRadeon ? Color.FromArgb(0x38, 0xBD, 0xF8) : Color.FromArgb(0x22, 0xC5, 0x5E);
+                        break;
+                    case 6:
+                        lineCol = _isDarkMode ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.FromArgb(0x08, 0x91, 0xB2);
+                        break;
+                    case 3:
+                        lineCol = isRadeon ? RadeonOrange : Color.FromArgb(0xF5, 0x9E, 0x0B);
+                        break;
+                    case 7:
+                        lineCol = Color.FromArgb(0x81, 0x8C, 0xF8);
+                        break;
+                    case 9:
+                        lineCol = _isDarkMode ? Color.FromArgb(0xE2, 0xE8, 0xF0) : Color.FromArgb(0x47, 0x55, 0x69);
+                        break;
+                    case 4:
+                        lineCol = Color.FromArgb(0xC0, 0x84, 0xFC);
+                        break;
+                    case 5:
+                        lineCol = Color.FromArgb(0x2D, 0xD4, 0xBF);
+                        break;
+                    default:
+                        lineCol = isRadeon ? RadeonAccent : DarkAccent;
+                        break;
+                }
             }
 
             int cw = box.ClientSize.Width;
             int ch = box.ClientSize.Height;
-            Color dimCol = isRadeon ? RadeonTextDim : (IsAb ? AbTextDim : (_isDarkMode ? DarkTextDim : LightTextDim));
-            Color textCol = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
+            Color dimCol = isXmas ? XmasTextDim : (isRadeon ? RadeonTextDim : (IsAb ? AbTextDim : (_isDarkMode ? DarkTextDim : LightTextDim)));
+            Color textCol = isXmas ? XmasText : (isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText)));
 
             // Subtle top ambient sheen tinted with the sensor's signature color
             int sheenH = Math.Min(24, Math.Max(8, ch / 4));
             using (LinearGradientBrush sheen = new LinearGradientBrush(
                 new Rectangle(0, 0, Math.Max(1, cw), sheenH),
-                Color.FromArgb(_isDarkMode ? 26 : 15, lineCol),
+                Color.FromArgb(isXmas ? 14 : (_isDarkMode ? 26 : 15), lineCol),
                 Color.FromArgb(0, lineCol),
                 LinearGradientMode.Vertical))
             {
                 g.FillRectangle(sheen, 1, 1, Math.Max(1, cw - 2), sheenH);
+            }
+            if (isXmas && cw > 90 && ch > 50)
+            {
+                // Delicate festive snowflake watermark in top-right of Xmas white sensor tiles
+                Win11VisualStyle.DrawSnowflake(g, cw - 18f, 22f, 11f, Color.FromArgb(20, XmasRed), 1.1f);
             }
 
             // Sleek 3px left accent strip matching the metric series color
@@ -466,9 +499,11 @@ namespace MiniFanControl
             }
             else if (!SystemInformation.HighContrast)
             {
-                Color subtleBdr = isRadeon
-                    ? Color.FromArgb(0x46, 0x19, 0x22)
-                    : (IsAb ? Color.FromArgb(0x20, 0x33, 0x28) : (_isDarkMode ? Color.FromArgb(0x2C, 0x30, 0x44) : Color.FromArgb(0xD8, 0xDF, 0xE8)));
+                Color subtleBdr = isXmas
+                    ? Color.FromArgb(0x27, 0x27, 0x2A)
+                    : (isRadeon
+                        ? Color.FromArgb(0x46, 0x19, 0x22)
+                        : (IsAb ? Color.FromArgb(0x20, 0x33, 0x28) : (_isDarkMode ? Color.FromArgb(0x2C, 0x30, 0x44) : Color.FromArgb(0xD8, 0xDF, 0xE8))));
                 Win11VisualStyle.DrawRoundedCardBorder(g, new Rectangle(0, 0, cw, ch), subtleBdr, 6, 1f);
             }
         }
@@ -2009,10 +2044,11 @@ namespace MiniFanControl
         {
             if (_wideTrendBtn == null || _widePerfBtn == null) return;
             bool isRadeon = (_themePref == ThemePreference.Radeon);
-            Color surface2 = isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2));
-            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
-            Color accent = isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent));
-            Color activeFg = isRadeon ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
+            bool isXmas = IsXmas;
+            Color surface2 = isXmas ? XmasSurface2 : (isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2)));
+            Color text = isXmas ? XmasText : (isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText)));
+            Color accent = isXmas ? XmasRed : (isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent)));
+            Color activeFg = (isXmas || isRadeon) ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
 
             _wideTrendBtn.BackColor = !_wideRightShowPerf ? accent : surface2;
             _wideTrendBtn.ForeColor = !_wideRightShowPerf ? activeFg : text;

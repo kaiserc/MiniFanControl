@@ -276,7 +276,7 @@ namespace MiniFanControl
                     else if (k == "ApuMaxRpm" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) FanCurveProfile.ApuMaxRpm = Math.Max(500, Math.Min(6000, intVal));
                     else if (k == "SysMaxRpm" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal)) FanCurveProfile.SysMaxRpm = Math.Max(0, Math.Min(6000, intVal));
                     else if (k == "LastCalibratedDate") FanCurveProfile.LastCalibratedDate = v;
-                    else if (k == "Theme" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal) && intVal >= 0 && intVal <= 4)
+                    else if (k == "Theme" && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out intVal) && intVal >= 0 && intVal <= 5)
                     {
                         ThemePref = (ThemePreference)intVal;
                     }

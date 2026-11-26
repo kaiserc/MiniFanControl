@@ -36,6 +36,7 @@ namespace MiniFanControl
         public bool IsDarkMode = true;
         public bool IsRadeonTheme = false;
         public bool IsAfterburnerTheme = false;
+        public bool IsXmasTheme = false;
         public bool UseFahrenheit = false;
 
         public event EventHandler CurveModified;
@@ -300,46 +301,64 @@ namespace MiniFanControl
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
-            Color bg = IsAfterburnerTheme
-                ? Color.FromArgb(0x13, 0x15, 0x19)
-                : (IsRadeonTheme
-                    ? Color.FromArgb(0x16, 0x0A, 0x0E)
-                    : (IsDarkMode ? Color.FromArgb(0x16, 0x16, 0x22) : Color.FromArgb(0xF8, 0xFA, 0xFC)));
-            Color gridColor = IsAfterburnerTheme
-                ? Color.FromArgb(0x28, 0x30, 0x3A)
-                : (IsRadeonTheme
-                    ? Color.FromArgb(0x42, 0x1C, 0x26)
-                    : (IsDarkMode ? Color.FromArgb(0x2D, 0x2F, 0x42) : Color.FromArgb(0xE2, 0xE8, 0xF0)));
-            Color labelColor = IsAfterburnerTheme
-                ? Color.FromArgb(0x8A, 0x96, 0xA8)
-                : (IsRadeonTheme
-                    ? Color.FromArgb(0xD6, 0xA8, 0xB4)
-                    : (IsDarkMode ? Color.FromArgb(0x94, 0x99, 0xB0) : Color.FromArgb(0x47, 0x55, 0x69)));
+            Color bg = IsXmasTheme
+                ? Color.White
+                : (IsAfterburnerTheme
+                    ? Color.FromArgb(0x13, 0x15, 0x19)
+                    : (IsRadeonTheme
+                        ? Color.FromArgb(0x16, 0x0A, 0x0E)
+                        : (IsDarkMode ? Color.FromArgb(0x16, 0x16, 0x22) : Color.FromArgb(0xF8, 0xFA, 0xFC))));
+            Color gridColor = IsXmasTheme
+                ? Color.FromArgb(0xE4, 0xE4, 0xE7)
+                : (IsAfterburnerTheme
+                    ? Color.FromArgb(0x28, 0x30, 0x3A)
+                    : (IsRadeonTheme
+                        ? Color.FromArgb(0x42, 0x1C, 0x26)
+                        : (IsDarkMode ? Color.FromArgb(0x2D, 0x2F, 0x42) : Color.FromArgb(0xE2, 0xE8, 0xF0))));
+            Color labelColor = IsXmasTheme
+                ? Color.FromArgb(0x18, 0x18, 0x1B)
+                : (IsAfterburnerTheme
+                    ? Color.FromArgb(0x8A, 0x96, 0xA8)
+                    : (IsRadeonTheme
+                        ? Color.FromArgb(0xD6, 0xA8, 0xB4)
+                        : (IsDarkMode ? Color.FromArgb(0x94, 0x99, 0xB0) : Color.FromArgb(0x47, 0x55, 0x69))));
 
-            Color apuColor = IsAfterburnerTheme
-                ? Color.FromArgb(0x00, 0xE6, 0x76)
-                : (IsRadeonTheme
-                    ? Color.FromArgb(0xF4, 0x3F, 0x5E)
-                    : (IsDarkMode ? Color.FromArgb(0x89, 0xB4, 0xFA) : Color.FromArgb(0x25, 0x63, 0xEB)));
-            Color sysColor = IsAfterburnerTheme
-                ? Color.FromArgb(0x00, 0xE5, 0xFF)
-                : (IsRadeonTheme
-                    ? Color.FromArgb(0xFB, 0x92, 0x3C)
-                    : (IsDarkMode ? Color.FromArgb(0x2D, 0xD4, 0xBF) : Color.FromArgb(0x0D, 0x94, 0x88)));
+            Color apuColor = IsXmasTheme
+                ? Color.FromArgb(0xDC, 0x26, 0x26)
+                : (IsAfterburnerTheme
+                    ? Color.FromArgb(0x00, 0xE6, 0x76)
+                    : (IsRadeonTheme
+                        ? Color.FromArgb(0xF4, 0x3F, 0x5E)
+                        : (IsDarkMode ? Color.FromArgb(0x89, 0xB4, 0xFA) : Color.FromArgb(0x25, 0x63, 0xEB))));
+            Color sysColor = IsXmasTheme
+                ? Color.FromArgb(0x18, 0x18, 0x1B)
+                : (IsAfterburnerTheme
+                    ? Color.FromArgb(0x00, 0xE5, 0xFF)
+                    : (IsRadeonTheme
+                        ? Color.FromArgb(0xFB, 0x92, 0x3C)
+                        : (IsDarkMode ? Color.FromArgb(0x2D, 0xD4, 0xBF) : Color.FromArgb(0x0D, 0x94, 0x88))));
 
             Color primaryColor = EditSysFan ? sysColor : apuColor;
             Color secondaryColor = EditSysFan ? apuColor : sysColor;
 
-            Color fillTop = Color.FromArgb(IsDarkMode ? 65 : 45, primaryColor.R, primaryColor.G, primaryColor.B);
+            Color fillTop = Color.FromArgb(IsXmasTheme ? 38 : (IsDarkMode ? 65 : 45), primaryColor.R, primaryColor.G, primaryColor.B);
             Color fillBot = Color.FromArgb(5, primaryColor.R, primaryColor.G, primaryColor.B);
-            Color liveColor = IsAfterburnerTheme
-                ? Color.FromArgb(0xFF, 0x91, 0x00)
-                : (IsRadeonTheme
-                    ? Color.FromArgb(0xFA, 0xCC, 0x15)
-                    : (IsDarkMode ? Color.FromArgb(0xA6, 0xE3, 0xA1) : Color.FromArgb(0x16, 0xA3, 0x4A)));
+            Color liveColor = IsXmasTheme
+                ? Color.FromArgb(0xDC, 0x26, 0x26)
+                : (IsAfterburnerTheme
+                    ? Color.FromArgb(0xFF, 0x91, 0x00)
+                    : (IsRadeonTheme
+                        ? Color.FromArgb(0xFA, 0xCC, 0x15)
+                        : (IsDarkMode ? Color.FromArgb(0xA6, 0xE3, 0xA1) : Color.FromArgb(0x16, 0xA3, 0x4A))));
 
             g.Clear(bg);
             Rectangle plot = GetPlotRect();
+            if (IsXmasTheme && plot.Width > 120 && plot.Height > 80)
+            {
+                // Subtle decorative holiday snowflakes watermarked in the upper canvas corners
+                Win11VisualStyle.DrawSnowflake(g, plot.Right - 36f, plot.Top + 34f, 22f, Color.FromArgb(24, 0xDC, 0x26, 0x26), 1.5f);
+                Win11VisualStyle.DrawSnowflake(g, plot.Right - 76f, plot.Top + 56f, 11f, Color.FromArgb(20, 0x18, 0x18, 0x1B), 1.1f);
+            }
 
             using (Brush lblBrush = new SolidBrush(labelColor))
             using (Pen gridPen = new Pen(gridColor, 1f))

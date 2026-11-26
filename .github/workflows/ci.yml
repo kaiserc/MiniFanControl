@@ -50,13 +50,13 @@ jobs:
           dotnet bin\Release\net10.0-windows\MiniFanControl.dll test
 
   standalone-build-and-test:
-    name: Standalone .NET 4.8 CSC Build & 101 Automated Self-Tests
+    name: Standalone .NET 4.8 CSC Build & 121 Automated Self-Tests
     runs-on: windows-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Compile Standalone Binaries & Run 101 Self-Tests
+      - name: Compile Standalone Binaries & Run 121 Self-Tests
         shell: cmd
         run: |
           set CI=true

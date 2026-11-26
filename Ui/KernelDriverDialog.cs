@@ -121,12 +121,13 @@ namespace MiniFanControl
             ClientSize = new Size(640, _isStartupPrompt ? 548 : 520);
 
             bool isRadeon = (_themePref == ThemePreference.Radeon);
-            _bgColor = isRadeon ? Color.FromArgb(0x18, 0x12, 0x14) : (_darkMode ? Color.FromArgb(0x18, 0x18, 0x25) : Color.FromArgb(0xF8, 0xFA, 0xFC));
-            _cardBgColor = isRadeon ? Color.FromArgb(0x26, 0x1A, 0x1E) : (_darkMode ? Color.FromArgb(0x22, 0x22, 0x34) : Color.White);
-            _cardBorderColor = isRadeon ? Color.FromArgb(0x44, 0x26, 0x2E) : (_darkMode ? Color.FromArgb(0x35, 0x37, 0x4E) : Color.FromArgb(0xDD, 0xE2, 0xEC));
-            _textMainColor = isRadeon ? Color.FromArgb(0xF8, 0xFA, 0xFC) : (_darkMode ? Color.FromArgb(0xCD, 0xD6, 0xF4) : Color.FromArgb(0x1E, 0x29, 0x3B));
-            _textDimColor = isRadeon ? Color.FromArgb(0xB8, 0x98, 0xA0) : (_darkMode ? Color.FromArgb(0xA6, 0xAD, 0xC8) : Color.FromArgb(0x64, 0x74, 0x8B));
-            _accentColor = isRadeon ? Color.FromArgb(0xFF, 0x47, 0x57) : (_darkMode ? Color.FromArgb(0x89, 0xB4, 0xFA) : Color.FromArgb(0x1D, 0x4E, 0xD8));
+            bool isXmas = (_themePref == ThemePreference.Xmas);
+            _bgColor = isXmas ? Color.White : (isRadeon ? Color.FromArgb(0x18, 0x12, 0x14) : (_darkMode ? Color.FromArgb(0x18, 0x18, 0x25) : Color.FromArgb(0xF8, 0xFA, 0xFC)));
+            _cardBgColor = isXmas ? Color.White : (isRadeon ? Color.FromArgb(0x26, 0x1A, 0x1E) : (_darkMode ? Color.FromArgb(0x22, 0x22, 0x34) : Color.White));
+            _cardBorderColor = isXmas ? Color.FromArgb(0x18, 0x18, 0x1B) : (isRadeon ? Color.FromArgb(0x44, 0x26, 0x2E) : (_darkMode ? Color.FromArgb(0x35, 0x37, 0x4E) : Color.FromArgb(0xDD, 0xE2, 0xEC)));
+            _textMainColor = isXmas ? Color.FromArgb(0x09, 0x09, 0x0B) : (isRadeon ? Color.FromArgb(0xF8, 0xFA, 0xFC) : (_darkMode ? Color.FromArgb(0xCD, 0xD6, 0xF4) : Color.FromArgb(0x1E, 0x29, 0x3B)));
+            _textDimColor = isXmas ? Color.FromArgb(0x3F, 0x3F, 0x46) : (isRadeon ? Color.FromArgb(0xB8, 0x98, 0xA0) : (_darkMode ? Color.FromArgb(0xA6, 0xAD, 0xC8) : Color.FromArgb(0x64, 0x74, 0x8B)));
+            _accentColor = isXmas ? Color.FromArgb(0xDC, 0x26, 0x26) : (isRadeon ? Color.FromArgb(0xFF, 0x47, 0x57) : (_darkMode ? Color.FromArgb(0x89, 0xB4, 0xFA) : Color.FromArgb(0x1D, 0x4E, 0xD8)));
             _statusDotColor = Color.FromArgb(0x94, 0xA3, 0xB8);
 
             BackColor = _bgColor;

@@ -4,6 +4,31 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.3.0] - 2026-11-25
+
+### ⚙️ Low-RAM GUI Background Service Mode (Closes [#2](https://github.com/kaiserc/MiniFanControl/issues/2) — thanks `@gemignani`!)
+- **Zero-UI Windows Service Mode with ~3.5 MB Active RAM (`Core/WindowsServiceHost.cs`, `Core/HeadlessDaemon.cs`, `Hardware/HardwareBackend.cs`, `Core/AppPaths.cs`, `Core/AppSettings.cs`, `Ui/MainForm.cs`, `Ui/MainForm.MenusAndTray.cs`, `installer.iss`)**:
+  - Added 1-click **`⚙ Enable Background Service Mode (Zero-UI / Boot Autostart)...`** in `Tools & Drivers` (plus an optional `servicemode` task and clean uninstall hook in `installer.iss`) so `MiniFanControlService` starts automatically at boot *before Windows login*—ideal for headless Mini PC servers, HTPCs, local LLM hosts, and set-and-forget desktop setups.
+  - Added `HardwareBackend.LeanServiceMode` (skipping GUI-only RTSS/ETW/Radeon/SMU/SMBus polling and unnecessary GPU DLL loads when EC/SMN temps are available), eliminated the hidden `SystemEvents` thread under SCM, and added post-init/periodic `TrimProcessWorkingSet()` (also trimming GUI Working Set on `MinimizeToTray()`), dropping Task Manager active memory on live hardware to **~3.5 MB** (`0.00s` CPU).
+  - Implemented **Shared Config Sync** (`%ProgramData%\MiniFanControl\minifancontrol.cfg` for Program Files installs, local folder for portable installs, passed via quoted `--config`), **live config hot-reload** inside `HeadlessDaemon`, and **seamless GUI ↔ Service handoff** (opening the GUI pauses the service automatically so curves/Auto-Tune/calibration never contend over EC registers; closing the GUI saves settings and restarts the service with zero fan blip) (Tests #116, #119).
+
+### 🛡️ PawnIO HVCI-Native First-Run Onboarding, Bundled Signed Modules & PawnIO-First Packaging
+- **Bundled Signed PawnIO Modules, `LpcIO` BAR Discovery & Direct Device Fallback (`Hardware/PawnIoDriver.cs`, `Hardware/HardwareBackend.SuperIo.cs`, `Core/DeviceProfile.cs`, `PawnIO/modules/*.bin`)**:
+  - Bundled official EV-signed `LpcIO.bin`, `LpcACPIEC.bin`, and `AMDFamily17.bin` modules alongside a direct `\\?\GLOBALROOT\Device\PawnIO` IOCTL fallback (working even when `PawnIOLib.dll` isn't installed), Authenticode verification, and Priority-0 `AMDFamily17` SMN `Tctl/Tdie` silicon thermal reads (Tests #102, #112).
+  - Implemented `TrySelectSuperIoSlot()` and `TryFindSuperIoBars()` (`ioctl_find_bars`) inside `ProbeSuperIo()` so PawnIO's `LpcIO.bin` BAR allowlist unlocks IT8613E/IT87xx Hardware Monitor ports (`0x0A30`) with Windows 11 Memory Integrity (HVCI) enabled (Test #118).
+- **Guided Driver Setup Dialog & PawnIO-First Releases (`Ui/KernelDriverDialog.cs`, `Core/FanControllerService.cs`, `package-release.bat`, `installer.iss`)**:
+  - Added an interactive startup onboarding modal (`KernelDriverDialog`) with live HVCI/PawnIO status, 1-click download (`pawnio.eu`), and zero-restart **`↻ Re-check Driver`** activation, gated live hardware writes while no kernel driver is open (eliminating false `Escalated failsafe` banners on virgin installs), and removed legacy `inpoutx64.dll` from default release packages to avoid AV/SmartScreen false positives while keeping SHA256-pinned manual drop-in support in `NativeInpOut` (Tests #117–#118).
+
+### ❄️ White / Black / Red Xmas Edition Theme
+- **Festive Nordic Winter Theme (`Core/ThemePreference.cs`, `Ui/MainForm.Theme.cs`, `Ui/MainForm.Layout.cs`, `Ui/MainForm.CurvesAndModes.cs`, `Ui/MainForm.OsdStudio.cs`, `Ui/FanCurveCanvas.cs`, `Ui/LiveTelemetryCanvas.cs`, `Ui/LivePerformanceCanvas.cs`, `Ui/AppLogoRenderer.cs`, `Ui/Win11VisualStyle.cs`, `Telemetry/CapFrameXOverlayForm*.cs`)**:
+  - Added **`❄ Theme: Xmas`** (`ThemePreference.Xmas = 5`) featuring a crisp **Snow-White** background, **Jet Obsidian Black** typography/borders, **Festive Crimson Red** accents & Windows 11 DWM border, delicate vector crystalline snowflake watermarks, a bespoke Concept #6 **3D Snow-White & Crimson Xmas Mini-PC Logo**, matching dialog styling, and a full White/Black/Red **In-Game OSD** preset (Test #121).
+
+### 🔧 Modern Standby (S0ix) Self-Healing, Adrenalin 26.x FSR Pill, NVML, External Profiles & Hardening
+- **Modern Standby (S0ix) Super I/O Self-Healing (`Core/FanControllerService.cs`, `Hardware/HardwareBackend.SuperIo.cs`, `Hardware/HardwareBackend.cs`)**: Added wall-clock S0ix wake time-jump detection (`IsModernStandbyTimeJump`) and throttled `0xFF` Super I/O read-back self-healing so ITE IT8613E boards that reset LDN4 during Modern Standby automatically re-probe and recover without latching read-only failsafe (Test #120).
+- **Live Adrenalin 26.x `AMD FSR Upscaling` OSD Pill (`Hardware/RadeonSettingsSensor.cs`)**: Wired live `UMD\FsrOverride` (`"0"`/`"1"`) detection so the **`FSR`** badge reflects Adrenalin 26.11+ `AMD FSR Upscaling` toggles in real time.
+- **External `profiles/*.json` Registry, Auto Workload Switcher & Native NVIDIA NVML (`Core/ExternalProfileRegistry.cs`, `Core/WorkloadProfileSwitcher.cs`, `Hardware/NvmlGpuSensor.cs`)**: Added drop-in external hardware profiles (`minifan-helper.exe validate-profiles`), automatic per-game & AI/LLM/NPU profile switching with exit cooldown, and WHQL `nvml.dll` desktop GPU telemetry (Tests #113–#115).
+- **Architecture, Safety & OSD Hardening (`Tests/SelfTestSuite*.cs`, `Core/AppPaths.cs`, `Core/AutomationCoordinator.cs`, `Telemetry/CapFrameXOverlayForm.Graphs.cs`)**: Split `SelfTestSuite` into 5 modular files, enforced `/warn:4`, restored compact top-left DF Corner frame-time inset over full-width FPS chart, fixed independent APU/Sys cooldown hysteresis, zero-alloc ETW ring wrap, atomic settings writes, and expanded the suite to **121/121 passing** (Tests #102–#121).
+
 ## [1.2.2] - 2026-11-22
 
 ### ⏱️ Native Hook-Free Windows ETW Display Latency & Flip Mode Monitoring

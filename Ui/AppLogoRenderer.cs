@@ -47,6 +47,10 @@ namespace MiniFanControl
                 {
                     RenderConceptFrontBevel3D(g, size, 2);
                 }
+                else if (conceptId == 6)
+                {
+                    RenderConceptFrontBevel3D(g, size, 3);
+                }
                 else
                 {
                     RenderConceptFrontBevel3D(g, size, 0);
@@ -71,10 +75,11 @@ namespace MiniFanControl
         {
             bool isRadeon = (themeMode == 1);
             bool isAfterburner = (themeMode == 2);
+            bool isXmas = (themeMode == 3);
 
             // 1. Ambient drop shadow under the 3D Mini PC
             using (GraphicsPath shadowPath = CreateRoundedRect(size * 0.08f, size * 0.78f, size * 0.84f, size * 0.19f, size * 0.08f))
-            using (Brush shadowBrush = new SolidBrush(Color.FromArgb(115, 0, 0, 0)))
+            using (Brush shadowBrush = new SolidBrush(Color.FromArgb(isXmas ? 70 : 115, 0, 0, 0)))
             {
                 g.FillPath(shadowBrush, shadowPath);
             }
@@ -87,9 +92,9 @@ namespace MiniFanControl
             float frontWallH = size * 0.37f;
             float cornerR = size * 0.16f;
 
-            Color chassisTop = isAfterburner ? Color.FromArgb(0x1C, 0x20, 0x26) : (isRadeon ? Color.FromArgb(0x21, 0x11, 0x16) : Color.FromArgb(0x1E, 0x29, 0x3B));
-            Color chassisBot = isAfterburner ? Color.FromArgb(0x0E, 0x10, 0x13) : (isRadeon ? Color.FromArgb(0x0C, 0x06, 0x08) : Color.FromArgb(0x09, 0x0D, 0x16));
-            Color chassisRim = isAfterburner ? Color.FromArgb(0x35, 0x3E, 0x4A) : (isRadeon ? Color.FromArgb(0x42, 0x1C, 0x26) : Color.FromArgb(0x47, 0x55, 0x69));
+            Color chassisTop = isXmas ? Color.FromArgb(0xF8, 0xFA, 0xFC) : (isAfterburner ? Color.FromArgb(0x1C, 0x20, 0x26) : (isRadeon ? Color.FromArgb(0x21, 0x11, 0x16) : Color.FromArgb(0x1E, 0x29, 0x3B)));
+            Color chassisBot = isXmas ? Color.FromArgb(0xE4, 0xE4, 0xE7) : (isAfterburner ? Color.FromArgb(0x0E, 0x10, 0x13) : (isRadeon ? Color.FromArgb(0x0C, 0x06, 0x08) : Color.FromArgb(0x09, 0x0D, 0x16)));
+            Color chassisRim = isXmas ? Color.FromArgb(0x18, 0x18, 0x1B) : (isAfterburner ? Color.FromArgb(0x35, 0x3E, 0x4A) : (isRadeon ? Color.FromArgb(0x42, 0x1C, 0x26) : Color.FromArgb(0x47, 0x55, 0x69)));
 
             using (GraphicsPath lowerChassis = CreateRoundedRect(bodyX, frontWallY, bodyW, frontWallH, cornerR))
             using (LinearGradientBrush chassisGrad = new LinearGradientBrush(
@@ -108,8 +113,8 @@ namespace MiniFanControl
             // Glowing Power Button on front-left
             float pwrR = Math.Max(2f, size * 0.032f);
             float pwrX = size * 0.22f;
-            Color pwrGlowCol = isAfterburner ? Color.FromArgb(90, 0x00, 0xE5, 0xFF) : (isRadeon ? Color.FromArgb(90, 0xEF, 0x44, 0x44) : Color.FromArgb(90, 0xEF, 0x44, 0x44));
-            Color pwrCoreCol = isAfterburner ? Color.FromArgb(0x00, 0xE5, 0xFF) : (isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : Color.FromArgb(0xF9, 0x73, 0x16));
+            Color pwrGlowCol = isXmas ? Color.FromArgb(110, 0xDC, 0x26, 0x26) : (isAfterburner ? Color.FromArgb(90, 0x00, 0xE5, 0xFF) : (isRadeon ? Color.FromArgb(90, 0xEF, 0x44, 0x44) : Color.FromArgb(90, 0xEF, 0x44, 0x44)));
+            Color pwrCoreCol = isXmas ? Color.FromArgb(0xDC, 0x26, 0x26) : (isAfterburner ? Color.FromArgb(0x00, 0xE5, 0xFF) : (isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : Color.FromArgb(0xF9, 0x73, 0x16)));
             using (Brush pwrGlow = new SolidBrush(pwrGlowCol))
             using (Brush pwrCore = new SolidBrush(pwrCoreCol))
             using (Pen pwrRim = new Pen(Color.White, Math.Max(0.8f, size * 0.01f)))
@@ -181,9 +186,9 @@ namespace MiniFanControl
                     g.FillPath(wellGrad, innerWell);
                 }
 
-                // Bright 3D metallic bevel rim on top lid (Cyan in Standard, Ruby Red in Radeon, Toxic Green in Afterburner)
-                Color rimGradStart = isAfterburner ? Color.FromArgb(0x00, 0xE6, 0x76) : (isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : Color.FromArgb(0x7D, 0xD3, 0xFC));
-                Color rimGradEnd   = isAfterburner ? Color.FromArgb(0x00, 0x8C, 0x44) : (isRadeon ? Color.FromArgb(0xBE, 0x12, 0x3C) : Color.FromArgb(0x02, 0x84, 0xC7));
+                // Bright 3D metallic bevel rim on top lid (Cyan in Standard, Ruby Red in Radeon, Toxic Green in Afterburner, Crimson in Xmas)
+                Color rimGradStart = isXmas ? Color.FromArgb(0xEF, 0x44, 0x44) : (isAfterburner ? Color.FromArgb(0x00, 0xE6, 0x76) : (isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : Color.FromArgb(0x7D, 0xD3, 0xFC)));
+                Color rimGradEnd   = isXmas ? Color.FromArgb(0x99, 0x1B, 0x1B) : (isAfterburner ? Color.FromArgb(0x00, 0x8C, 0x44) : (isRadeon ? Color.FromArgb(0xBE, 0x12, 0x3C) : Color.FromArgb(0x02, 0x84, 0xC7)));
                 using (LinearGradientBrush rimGrad = new LinearGradientBrush(
                     new PointF(bodyX, lidY), new PointF(bodyX + bodyW, lidY + topLidH),
                     rimGradStart, rimGradEnd))
@@ -201,9 +206,16 @@ namespace MiniFanControl
 
             // 6. Reduced-Size 6-Blade Fan Impeller inside the Thermal Gauge
             float fanR = size * 0.165f;
-            Color bladeCol = isAfterburner ? Color.FromArgb(0xEE, 0xF2, 0xF6) : (isRadeon ? Color.FromArgb(0xFF, 0xE4, 0xE6) : Color.FromArgb(0xE2, 0xE8, 0xF0));
-            Color hubCol   = isAfterburner ? Color.FromArgb(0x00, 0xE6, 0x76) : (isRadeon ? Color.FromArgb(0xE1, 0x1D, 0x48) : Color.FromArgb(0x38, 0xBD, 0xF8));
+            Color bladeCol = isXmas ? Color.White : (isAfterburner ? Color.FromArgb(0xEE, 0xF2, 0xF6) : (isRadeon ? Color.FromArgb(0xFF, 0xE4, 0xE6) : Color.FromArgb(0xE2, 0xE8, 0xF0)));
+            Color hubCol   = isXmas ? Color.FromArgb(0xDC, 0x26, 0x26) : (isAfterburner ? Color.FromArgb(0x00, 0xE6, 0x76) : (isRadeon ? Color.FromArgb(0xE1, 0x1D, 0x48) : Color.FromArgb(0x38, 0xBD, 0xF8)));
             DrawImpeller(g, cx, cy, fanR, 6, bladeCol, hubCol, -10f);
+
+            if (isXmas && size >= 48)
+            {
+                // Subtle crystalline snowflakes framing the top deck corners in Xmas Edition
+                Win11VisualStyle.DrawSnowflake(g, size * 0.19f, size * 0.17f, size * 0.055f, Color.FromArgb(215, 255, 255, 255), Math.Max(1.0f, size * 0.011f));
+                Win11VisualStyle.DrawSnowflake(g, size * 0.81f, size * 0.17f, size * 0.055f, Color.FromArgb(220, 0xEF, 0x44, 0x44), Math.Max(1.0f, size * 0.011f));
+            }
 
             // 7. 3D AMD RYZEN Metallic Sticker Badge underneath the fan (tucked into lower top deck)
             DrawAmdStickerBadge(g, size * 0.23f, size * 0.555f, size * 0.54f, size * 0.145f, size);

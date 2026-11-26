@@ -25,7 +25,7 @@ namespace MiniFanControl
                 taskbarDark = true;
                 return;
             }
-            if (_themePref == ThemePreference.Light)
+            if (_themePref == ThemePreference.Light || _themePref == ThemePreference.Xmas)
             {
                 appDark = false;
                 taskbarDark = false;
@@ -87,6 +87,7 @@ namespace MiniFanControl
                 case ThemePreference.Radeon: return "Theme: AMD Radeon";
                 case ThemePreference.Afterburner: return "Theme: Afterburner";
                 case ThemePreference.Light: return "Theme: Light";
+                case ThemePreference.Xmas: return "❄ Theme: Xmas";
                 default: return string.Format("Theme: System ({0})", _isDarkMode ? "Dark" : "Light");
             }
         }
@@ -97,6 +98,7 @@ namespace MiniFanControl
             else if (_themePref == ThemePreference.Dark) _themePref = ThemePreference.Radeon;
             else if (_themePref == ThemePreference.Radeon) _themePref = ThemePreference.Afterburner;
             else if (_themePref == ThemePreference.Afterburner) _themePref = ThemePreference.Light;
+            else if (_themePref == ThemePreference.Light) _themePref = ThemePreference.Xmas;
             else _themePref = ThemePreference.System;
 
             SaveSettings();
@@ -141,18 +143,21 @@ namespace MiniFanControl
             }
 
             bool isRadeon = (_themePref == ThemePreference.Radeon);
-            Color bg = isRadeon ? RadeonBg : (IsAb ? AbBg : (_isDarkMode ? DarkBg : LightBg));
-            Color surface = isRadeon ? RadeonSurface : (IsAb ? AbSurface : (_isDarkMode ? DarkSurface : LightSurface));
-            Color surface2 = isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2));
-            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
-            Color textDim = isRadeon ? RadeonTextDim : (IsAb ? AbTextDim : (_isDarkMode ? DarkTextDim : LightTextDim));
-            Color accent = isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent));
+            bool isXmas = IsXmas;
+            Color bg = isXmas ? XmasBg : (isRadeon ? RadeonBg : (IsAb ? AbBg : (_isDarkMode ? DarkBg : LightBg)));
+            Color surface = isXmas ? XmasSurface : (isRadeon ? RadeonSurface : (IsAb ? AbSurface : (_isDarkMode ? DarkSurface : LightSurface)));
+            Color surface2 = isXmas ? XmasSurface2 : (isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2)));
+            Color text = isXmas ? XmasText : (isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText)));
+            Color textDim = isXmas ? XmasTextDim : (isRadeon ? RadeonTextDim : (IsAb ? AbTextDim : (_isDarkMode ? DarkTextDim : LightTextDim)));
+            Color accent = isXmas ? XmasRed : (isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent)));
 
-            Color tempBoxBg = isRadeon ? Color.FromArgb(0x0D, 0x05, 0x07) : (IsAb ? Color.FromArgb(0x0B, 0x0D, 0x10) : (_isDarkMode ? Color.Black : Color.White));
-            Color tempBoxFg = _isDarkMode ? Color.White : Color.Black;
-            Color tempBoxTitleFg = isRadeon
-                ? Color.FromArgb(0xFD, 0xA4, 0xAF)
-                : (IsAb ? AbGreen : (_isDarkMode ? Color.FromArgb(0x94, 0xA3, 0xB8) : Color.FromArgb(0x47, 0x55, 0x69)));
+            Color tempBoxBg = isXmas ? Color.White : (isRadeon ? Color.FromArgb(0x0D, 0x05, 0x07) : (IsAb ? Color.FromArgb(0x0B, 0x0D, 0x10) : (_isDarkMode ? Color.Black : Color.White)));
+            Color tempBoxFg = isXmas ? XmasText : (_isDarkMode ? Color.White : Color.Black);
+            Color tempBoxTitleFg = isXmas
+                ? XmasRed
+                : (isRadeon
+                    ? Color.FromArgb(0xFD, 0xA4, 0xAF)
+                    : (IsAb ? AbGreen : (_isDarkMode ? Color.FromArgb(0x94, 0xA3, 0xB8) : Color.FromArgb(0x47, 0x55, 0x69))));
 
             BackColor = bg;
             ForeColor = text;
@@ -161,7 +166,7 @@ namespace MiniFanControl
             {
                 _headerLogoBox.BackColor = surface;
                 Image oldImg = _headerLogoBox.Image;
-                _headerLogoBox.Image = AppLogoRenderer.RenderConcept(isRadeon ? 4 : (IsAb ? 5 : 1), 192);
+                _headerLogoBox.Image = AppLogoRenderer.RenderConcept(isXmas ? 6 : (isRadeon ? 4 : (IsAb ? 5 : 1)), 192);
                 if (oldImg != null) oldImg.Dispose();
             }
 
@@ -184,9 +189,11 @@ namespace MiniFanControl
             }
             UpdateBiosPowerModeStyles(_lastActiveBiosModeCode);
 
-            Color cardBorder = isRadeon
-                ? Color.FromArgb(0x52, 0x1A, 0x24)
-                : (IsAb ? Color.FromArgb(0x22, 0x35, 0x2A) : (_isDarkMode ? Color.FromArgb(0x36, 0x3A, 0x52) : Color.FromArgb(0xCB, 0xD5, 0xE1)));
+            Color cardBorder = isXmas
+                ? XmasBlack
+                : (isRadeon
+                    ? Color.FromArgb(0x52, 0x1A, 0x24)
+                    : (IsAb ? Color.FromArgb(0x22, 0x35, 0x2A) : (_isDarkMode ? Color.FromArgb(0x36, 0x3A, 0x52) : Color.FromArgb(0xCB, 0xD5, 0xE1))));
 
             if (_driversMenuBtn != null)
             {
@@ -196,10 +203,10 @@ namespace MiniFanControl
             if (_themeToggleBtn != null)
             {
                 _themeToggleBtn.Text = GetThemeButtonLabel();
-                Color themeBtnBg = isRadeon ? RadeonAccent : (IsAb ? AbGreen : surface2);
-                Color themeBtnFg = isRadeon ? Color.White : (IsAb ? Color.Black : text);
-                Color themeBtnBorder = isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (IsAb ? AbGreen : cardBorder);
-                Win11VisualStyle.StyleModernButton(_themeToggleBtn, themeBtnBg, themeBtnFg, themeBtnBorder, _isDarkMode || isRadeon);
+                Color themeBtnBg = isXmas ? XmasRed : (isRadeon ? RadeonAccent : (IsAb ? AbGreen : surface2));
+                Color themeBtnFg = (isXmas || isRadeon) ? Color.White : (IsAb ? Color.Black : text);
+                Color themeBtnBorder = isXmas ? XmasBlack : (isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (IsAb ? AbGreen : cardBorder));
+                Win11VisualStyle.StyleModernButton(_themeToggleBtn, themeBtnBg, themeBtnFg, themeBtnBorder, _isDarkMode || isRadeon || isXmas);
             }
 
             foreach (Label h in _sectionHeaders)
@@ -347,19 +354,19 @@ namespace MiniFanControl
             if (_curveCanvas != null)
             {
                 _curveCanvas.IsDarkMode = _isDarkMode;
-                _curveCanvas.IsRadeonTheme = isRadeon; _curveCanvas.IsAfterburnerTheme = IsAb;
+                _curveCanvas.IsRadeonTheme = isRadeon; _curveCanvas.IsAfterburnerTheme = IsAb; _curveCanvas.IsXmasTheme = isXmas;
                 _curveCanvas.Invalidate();
             }
             if (_liveCanvas != null)
             {
                 _liveCanvas.IsDarkMode = _isDarkMode;
-                _liveCanvas.IsRadeonTheme = isRadeon; _liveCanvas.IsAfterburnerTheme = IsAb;
+                _liveCanvas.IsRadeonTheme = isRadeon; _liveCanvas.IsAfterburnerTheme = IsAb; _liveCanvas.IsXmasTheme = isXmas;
                 _liveCanvas.Invalidate();
             }
             if (_perfCanvas != null)
             {
                 _perfCanvas.IsDarkMode = _isDarkMode;
-                _perfCanvas.IsRadeonTheme = isRadeon; _perfCanvas.IsAfterburnerTheme = IsAb;
+                _perfCanvas.IsRadeonTheme = isRadeon; _perfCanvas.IsAfterburnerTheme = IsAb; _perfCanvas.IsXmasTheme = isXmas;
                 _perfCanvas.Invalidate();
             }
 
@@ -415,7 +422,7 @@ namespace MiniFanControl
             }
             if (_overlayForm != null)
             {
-                _overlayForm.IsRadeonTheme = isRadeon; _overlayForm.IsAfterburnerTheme = IsAb;
+                _overlayForm.IsRadeonTheme = isRadeon; _overlayForm.IsAfterburnerTheme = IsAb; _overlayForm.IsXmasTheme = isXmas;
                 _overlayForm.Invalidate();
             }
             UpdateOsdStudioStyles();
@@ -428,11 +435,14 @@ namespace MiniFanControl
         {
             if (!IsHandleCreated || IsDisposed) return;
             bool isRadeon = (_themePref == ThemePreference.Radeon);
-            Color bg = isRadeon ? RadeonBg : (IsAb ? AbBg : (_isDarkMode ? DarkBg : LightBg));
-            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
-            Color border = isRadeon
-                ? Color.FromArgb(0x9F, 0x12, 0x39)
-                : (IsAb ? Color.FromArgb(0x16, 0x65, 0x34) : (_isDarkMode ? Color.FromArgb(0x3B, 0x42, 0x61) : Color.FromArgb(0xCB, 0xD5, 0xE1)));
+            bool isXmas = IsXmas;
+            Color bg = isXmas ? XmasBg : (isRadeon ? RadeonBg : (IsAb ? AbBg : (_isDarkMode ? DarkBg : LightBg)));
+            Color text = isXmas ? XmasText : (isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText)));
+            Color border = isXmas
+                ? XmasRed
+                : (isRadeon
+                    ? Color.FromArgb(0x9F, 0x12, 0x39)
+                    : (IsAb ? Color.FromArgb(0x16, 0x65, 0x34) : (_isDarkMode ? Color.FromArgb(0x3B, 0x42, 0x61) : Color.FromArgb(0xCB, 0xD5, 0xE1))));
             Win11VisualStyle.ApplyWindowFrame(this, _isDarkMode || isRadeon || IsAb, bg, text, border);
         }
 

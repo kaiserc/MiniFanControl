@@ -330,24 +330,27 @@ namespace MiniFanControl
             }
 
             bool isRadeon = (_themePref == ThemePreference.Radeon);
-            Color surface2 = isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2));
-            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
-            Color apuAccent = isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent));
-            Color sysAccent = isRadeon ? RadeonOrange : (IsAb ? AbCyan : (_isDarkMode ? DarkTeal : LightTeal));
-            Color liveAccent = _highlightedMetric == 2
-                ? (isRadeon ? Color.FromArgb(0x38, 0xBD, 0xF8) : Color.FromArgb(0x22, 0xC5, 0x5E))
-                : (_highlightedMetric == 6
-                    ? (_isDarkMode ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.FromArgb(0x08, 0x91, 0xB2))
-                    : (_highlightedMetric == 3
-                        ? (isRadeon ? RadeonOrange : Color.FromArgb(0xF5, 0x9E, 0x0B))
-                        : (_highlightedMetric == 7
-                            ? Color.FromArgb(0x81, 0x8C, 0xF8)
-                            : (_highlightedMetric == 4
-                                ? Color.FromArgb(0xC0, 0x84, 0xFC)
-                                : (_highlightedMetric == 5
-                                    ? Color.FromArgb(0x2D, 0xD4, 0xBF)
-                                    : apuAccent)))));
-            Color activeFg = isRadeon ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
+            bool isXmas = IsXmas;
+            Color surface2 = isXmas ? XmasSurface2 : (isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2)));
+            Color text = isXmas ? XmasText : (isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText)));
+            Color apuAccent = isXmas ? XmasRed : (isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent)));
+            Color sysAccent = isXmas ? XmasBlack : (isRadeon ? RadeonOrange : (IsAb ? AbCyan : (_isDarkMode ? DarkTeal : LightTeal)));
+            Color liveAccent = isXmas
+                ? ((_highlightedMetric == 1 || _highlightedMetric == 3 || _highlightedMetric == 4 || _highlightedMetric == 6) ? XmasRed : XmasBlack)
+                : (_highlightedMetric == 2
+                    ? (isRadeon ? Color.FromArgb(0x38, 0xBD, 0xF8) : Color.FromArgb(0x22, 0xC5, 0x5E))
+                    : (_highlightedMetric == 6
+                        ? (_isDarkMode ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.FromArgb(0x08, 0x91, 0xB2))
+                        : (_highlightedMetric == 3
+                            ? (isRadeon ? RadeonOrange : Color.FromArgb(0xF5, 0x9E, 0x0B))
+                            : (_highlightedMetric == 7
+                                ? Color.FromArgb(0x81, 0x8C, 0xF8)
+                                : (_highlightedMetric == 4
+                                    ? Color.FromArgb(0xC0, 0x84, 0xFC)
+                                    : (_highlightedMetric == 5
+                                        ? Color.FromArgb(0x2D, 0xD4, 0xBF)
+                                        : apuAccent))))));
+            Color activeFg = (isXmas || isRadeon) ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
 
             if (_showingOsdConfig)
             {
@@ -408,8 +411,8 @@ namespace MiniFanControl
 
                 if (_tabPerfGraphBtn != null)
                 {
-                    _tabPerfGraphBtn.BackColor = Color.FromArgb(0x22, 0xD3, 0xEE);
-                    _tabPerfGraphBtn.ForeColor = Color.Black;
+                    _tabPerfGraphBtn.BackColor = isXmas ? XmasRed : Color.FromArgb(0x22, 0xD3, 0xEE);
+                    _tabPerfGraphBtn.ForeColor = isXmas ? Color.White : Color.Black;
                     if (_tabPerfGraphBtn.Font != TabFontBold) _tabPerfGraphBtn.Font = TabFontBold;
                 }
             }
@@ -426,7 +429,7 @@ namespace MiniFanControl
                 if (_tabLiveGraphBtn != null)
                 {
                     _tabLiveGraphBtn.BackColor = liveAccent;
-                    _tabLiveGraphBtn.ForeColor = (_highlightedMetric == 2 || _highlightedMetric == 3 || _highlightedMetric == 6 || _highlightedMetric == 7) ? Color.Black : activeFg;
+                    _tabLiveGraphBtn.ForeColor = isXmas ? Color.White : ((_highlightedMetric == 2 || _highlightedMetric == 3 || _highlightedMetric == 6 || _highlightedMetric == 7) ? Color.Black : activeFg);
                     if (_tabLiveGraphBtn.Font != TabFontBold) _tabLiveGraphBtn.Font = TabFontBold;
                 }
 
@@ -540,26 +543,27 @@ namespace MiniFanControl
         {
             if (_calibBadgeLabel == null) return;
             bool isRadeon = (_themePref == ThemePreference.Radeon);
-            _calibBadgeLabel.BackColor = isRadeon ? RadeonBg : (IsAb ? AbBg : (_isDarkMode ? DarkBg : LightBg));
+            bool isXmas = IsXmas;
+            _calibBadgeLabel.BackColor = isXmas ? XmasBg : (isRadeon ? RadeonBg : (IsAb ? AbBg : (_isDarkMode ? DarkBg : LightBg)));
             if (IsReadOnlyMonitoringMode)
             {
                 _calibBadgeLabel.Text = "👁️ Safe Read-Only Monitoring (Fan writes disabled)";
-                _calibBadgeLabel.ForeColor = isRadeon ? RadeonTextDim : (_isDarkMode ? DarkTextDim : LightTextDim);
+                _calibBadgeLabel.ForeColor = isXmas ? XmasTextDim : (isRadeon ? RadeonTextDim : (_isDarkMode ? DarkTextDim : LightTextDim));
                 return;
             }
             bool isCalibrated, isStale;
             _calibBadgeLabel.Text = FanCurveProfile.FormatCalibrationStatusBadge(_hasDualFans, out isCalibrated, out isStale);
             if (!isCalibrated)
             {
-                _calibBadgeLabel.ForeColor = isRadeon ? RadeonTextDim : (_isDarkMode ? DarkTextDim : LightTextDim);
+                _calibBadgeLabel.ForeColor = isXmas ? XmasTextDim : (isRadeon ? RadeonTextDim : (_isDarkMode ? DarkTextDim : LightTextDim));
             }
             else if (isStale)
             {
-                _calibBadgeLabel.ForeColor = _isDarkMode ? Color.FromArgb(0xFB, 0xBF, 0x24) : Color.FromArgb(0xB4, 0x53, 0x09);
+                _calibBadgeLabel.ForeColor = isXmas ? XmasRed : (_isDarkMode ? Color.FromArgb(0xFB, 0xBF, 0x24) : Color.FromArgb(0xB4, 0x53, 0x09));
             }
             else
             {
-                _calibBadgeLabel.ForeColor = _isDarkMode ? Color.FromArgb(0x4A, 0xDE, 0x80) : Color.FromArgb(0x15, 0x80, 0x3D);
+                _calibBadgeLabel.ForeColor = isXmas ? XmasRedDeep : (_isDarkMode ? Color.FromArgb(0x4A, 0xDE, 0x80) : Color.FromArgb(0x15, 0x80, 0x3D));
             }
         }
 
@@ -568,13 +572,14 @@ namespace MiniFanControl
         {
             _lastSelectedModeCode = activeCode;
             bool isRadeon = (_themePref == ThemePreference.Radeon);
-            Color surface2 = isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2));
-            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
+            bool isXmas = IsXmas;
+            Color surface2 = isXmas ? XmasSurface2 : (isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2)));
+            Color text = isXmas ? XmasText : (isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText)));
             bool editSys = _curveCanvas != null && _curveCanvas.EditSysFan;
             Color accent = editSys
-                ? (isRadeon ? RadeonOrange : (IsAb ? AbCyan : (_isDarkMode ? DarkTeal : LightTeal)))
-                : (isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent)));
-            Color activeFg = isRadeon ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
+                ? (isXmas ? XmasBlack : (isRadeon ? RadeonOrange : (IsAb ? AbCyan : (_isDarkMode ? DarkTeal : LightTeal))))
+                : (isXmas ? XmasRed : (isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent))));
+            Color activeFg = (isXmas || isRadeon) ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
 
             FanCurveProfile tabProf = GetSelectedTabProfile();
             bool tabManual = editSys ? _sysManualOverride : _apuManualOverride;
@@ -673,10 +678,11 @@ namespace MiniFanControl
                 _lastActiveBiosModeCode = activeCode;
 
             bool isRadeon = (_themePref == ThemePreference.Radeon);
-            Color surface2 = isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2));
-            Color text = isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText));
-            Color activeBg = isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent));
-            Color activeFg = isRadeon ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
+            bool isXmas = IsXmas;
+            Color surface2 = isXmas ? XmasSurface2 : (isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2)));
+            Color text = isXmas ? XmasText : (isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText)));
+            Color activeBg = isXmas ? XmasRed : (isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent)));
+            Color activeFg = (isXmas || isRadeon) ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
 
             for (int i = 0; i < _biosModeButtons.Length; i++)
             {

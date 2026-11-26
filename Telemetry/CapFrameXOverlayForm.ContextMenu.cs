@@ -210,9 +210,10 @@ namespace MiniFanControl
 
             ToolStripMenuItem themeMenu = new ToolStripMenuItem("OSD Theme Palette");
             themeMenu.DropDownItems.Add("Match Application Theme", null, (s, e) => { MatchAppTheme = true; Invalidate(); });
-            themeMenu.DropDownItems.Add("Classic MiniFanControl Dark (Cyan/Amber)", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = false; Invalidate(); });
-            themeMenu.DropDownItems.Add("AMD Radeon Ruby Red", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = true; IsAfterburnerTheme = false; Invalidate(); });
-            themeMenu.DropDownItems.Add("MSI Afterburner Toxic Green", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = true; Invalidate(); });
+            themeMenu.DropDownItems.Add("Classic MiniFanControl Dark (Cyan/Amber)", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = false; IsXmasTheme = false; Invalidate(); });
+            themeMenu.DropDownItems.Add("AMD Radeon Ruby Red", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = true; IsAfterburnerTheme = false; IsXmasTheme = false; Invalidate(); });
+            themeMenu.DropDownItems.Add("MSI Afterburner Toxic Green", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = true; IsXmasTheme = false; Invalidate(); });
+            themeMenu.DropDownItems.Add("❄ Xmas Edition (White / Black / Red)", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = false; IsXmasTheme = true; Invalidate(); });
             menu.Items.Add(themeMenu);
 
             ToolStripMenuItem snapMenu = new ToolStripMenuItem("Snap Location");

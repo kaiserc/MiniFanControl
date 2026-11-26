@@ -23,16 +23,17 @@ namespace MiniFanControl
                 bool showSpark = (GraphMode == 1 || GraphMode == 3);
                 int rowH = _effectiveRowHeight > 0 ? _effectiveRowHeight : (int)Math.Round((showSpark ? 25 : 21) * sc);
 
-                bool radeon = (MatchAppTheme && IsRadeonTheme) || (!MatchAppTheme && IsRadeonTheme);
-                bool afterburner = (MatchAppTheme && IsAfterburnerTheme) || (!MatchAppTheme && IsAfterburnerTheme);
-                Color bg = afterburner ? OsdBgAfterburner : (radeon ? OsdBgRadeon : OsdBgDark);
-                Color border = afterburner ? OsdBorderAfterburner : (radeon ? OsdBorderRadeon : OsdBorderDark);
-                Color accentCol = afterburner ? AbGreen : (radeon ? CfxRuby : CfxAmber);
-                Color cpuCol = afterburner ? AbGreen : (radeon ? CfxRuby : CfxCyan);
-                Color gpuCol = afterburner ? AbCyan : (radeon ? CfxCyan : CfxGreen);
-                Color pwrCol = afterburner ? AbAmber : CfxYellow;
-                Color apuCol = afterburner ? AbGreen : CfxViolet;
-                Color sysCol = afterburner ? AbCyan : CfxTeal;
+                bool xmas = IsXmasTheme;
+                bool radeon = !xmas && ((MatchAppTheme && IsRadeonTheme) || (!MatchAppTheme && IsRadeonTheme));
+                bool afterburner = !xmas && ((MatchAppTheme && IsAfterburnerTheme) || (!MatchAppTheme && IsAfterburnerTheme));
+                Color bg = xmas ? OsdBgXmas : (afterburner ? OsdBgAfterburner : (radeon ? OsdBgRadeon : OsdBgDark));
+                Color border = xmas ? OsdBorderXmas : (afterburner ? OsdBorderAfterburner : (radeon ? OsdBorderRadeon : OsdBorderDark));
+                Color accentCol = xmas ? XmasRed : (afterburner ? AbGreen : (radeon ? CfxRuby : CfxAmber));
+                Color cpuCol = xmas ? XmasBlack : (afterburner ? AbGreen : (radeon ? CfxRuby : CfxCyan));
+                Color gpuCol = xmas ? XmasRedDeep : (afterburner ? AbCyan : (radeon ? CfxCyan : CfxGreen));
+                Color pwrCol = xmas ? XmasRed : (afterburner ? AbAmber : CfxYellow);
+                Color apuCol = xmas ? XmasRed : (afterburner ? AbGreen : CfxViolet);
+                Color sysCol = xmas ? XmasBlack : (afterburner ? AbCyan : CfxTeal);
 
             g.Clear(bg);
 
@@ -40,6 +41,10 @@ namespace MiniFanControl
             using (Brush accentBrush = new SolidBrush(accentCol))
             {
                 g.FillRectangle(accentBrush, 0, 0, Math.Max(3, (int)Math.Round(3 * sc)), Height);
+            }
+            if (xmas && Width > 90 && Height > 36)
+            {
+                Win11VisualStyle.DrawSnowflake(g, Width - 14f * sc, 13f * sc, 7.5f * sc, Color.FromArgb(42, XmasRed), Math.Max(1f, sc));
             }
 
             bool showCombined = ShowLiveTrend;
@@ -64,27 +69,27 @@ namespace MiniFanControl
             using (Brush bPwr    = new SolidBrush(pwrCol))
             using (Brush bApu    = new SolidBrush(apuCol))
             using (Brush bSys    = new SolidBrush(sysCol))
-            using (Brush bNvme   = new SolidBrush(CfxTeal))
-            using (Brush bRam    = new SolidBrush(Color.FromArgb(0x81, 0x8C, 0xF8)))
-            using (Brush bWhite  = new SolidBrush(CfxWhite))
-            using (Brush bPeak   = new SolidBrush(Color.FromArgb(170, 203, 213, 225)))
-            using (Pen sepPen    = new Pen(border, 1f))
+            using (Brush bNvme   = new SolidBrush(xmas ? XmasCharcoal : CfxTeal))
+            using (Brush bRam    = new SolidBrush(xmas ? XmasBlack : Color.FromArgb(0x81, 0x8C, 0xF8)))
+            using (Brush bWhite  = new SolidBrush(xmas ? XmasBlack : CfxWhite))
+            using (Brush bPeak   = new SolidBrush(xmas ? Color.FromArgb(190, 0x52, 0x52, 0x5B) : Color.FromArgb(170, 203, 213, 225)))
+            using (Pen sepPen    = new Pen(xmas ? Color.FromArgb(65, 0x18, 0x18, 0x1B) : border, 1f))
             {
                 if (!VerticalLayout)
                 {
                     bool graphsOnly = (GraphMode == 4);
-                    Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8);
-                    Color lowCol = Color.FromArgb(0xFB, 0x71, 0x85);
-                    Color loadCol = radeon ? CfxCyan : Color.FromArgb(0xC0, 0x84, 0xFC);
+                    Color fpsCol = xmas ? XmasBlack : Color.FromArgb(0x38, 0xBD, 0xF8);
+                    Color lowCol = xmas ? XmasRedDeep : Color.FromArgb(0xFB, 0x71, 0x85);
+                    Color loadCol = xmas ? XmasCharcoal : (radeon ? CfxCyan : Color.FromArgb(0xC0, 0x84, 0xFC));
 
                     if (!graphsOnly)
                     {
                     using (Brush bFps = new SolidBrush(fpsCol))
                     using (Brush bLow = new SolidBrush(lowCol))
                     using (Brush bLoad = new SolidBrush(loadCol))
-                    using (Brush bFclk = new SolidBrush(Color.FromArgb(0x10, 0xB9, 0x81)))
-                    using (Brush bVrm = new SolidBrush(Color.FromArgb(0xF5, 0x9E, 0x0B)))
-                    using (Brush bNpu = new SolidBrush(Color.FromArgb(0x38, 0xBD, 0xF8)))
+                    using (Brush bFclk = new SolidBrush(xmas ? XmasCharcoal : Color.FromArgb(0x10, 0xB9, 0x81)))
+                    using (Brush bVrm = new SolidBrush(xmas ? XmasRedDeep : Color.FromArgb(0xF5, 0x9E, 0x0B)))
+                    using (Brush bNpu = new SolidBrush(xmas ? XmasBlack : Color.FromArgb(0x38, 0xBD, 0xF8)))
                     {
                         List<HorizColumn> horizCols = BuildHorizontalColumns(
                             g, sc, showSpark,
@@ -239,11 +244,11 @@ namespace MiniFanControl
                     if (ShowRam && _status.RamTotalGb > 0)
                     {
                         string ramVal = FormatRamOverlayValue();
-                        DrawVertRow(g, row++, rowH, "RAM", ramVal, ramPeak, bLabel, bRam, bPeak, showSpark ? (Stats != null ? (Stats.RamTempHistory.Count > 0 ? Stats.RamTempHistory : Stats.RamPowerHistory) : null) : null, Color.FromArgb(0x81, 0x8C, 0xF8), sc);
+                        DrawVertRow(g, row++, rowH, "RAM", ramVal, ramPeak, bLabel, bRam, bPeak, showSpark ? (Stats != null ? (Stats.RamTempHistory.Count > 0 ? Stats.RamTempHistory : Stats.RamPowerHistory) : null) : null, xmas ? XmasBlack : Color.FromArgb(0x81, 0x8C, 0xF8), sc);
                     }
                     if (ShowFabricClock && _status.FabricClockMhz > 0)
                     {
-                        Color fclkCol = Color.FromArgb(0x10, 0xB9, 0x81);
+                        Color fclkCol = xmas ? XmasCharcoal : Color.FromArgb(0x10, 0xB9, 0x81);
                         using (Brush bFclk = new SolidBrush(fclkCol))
                         {
                             DrawVertRow(g, row++, rowH, "FCLK", FormatFclkOverlayValue(), FormatFclkOverlayPeak(), bLabel, bFclk, bPeak, showSpark ? (Stats != null ? Stats.FabricClockHistory : null) : null, fclkCol, sc);
@@ -251,13 +256,13 @@ namespace MiniFanControl
                     }
                     if (ShowNvme && _status.NvmeTemp > 0)
                     {
-                        DrawVertRow(g, row++, rowH, "NVMe", FormatNvmeOverlayValue(true), nvmePeak, bLabel, bNvme, bPeak, showSpark ? (Stats != null ? Stats.NvmeHistory : null) : null, CfxTeal, sc);
+                        DrawVertRow(g, row++, rowH, "NVMe", FormatNvmeOverlayValue(true), nvmePeak, bLabel, bNvme, bPeak, showSpark ? (Stats != null ? Stats.NvmeHistory : null) : null, xmas ? XmasCharcoal : CfxTeal, sc);
                     }
                     if (ShowPower)
                         DrawVertRow(g, row++, rowH, "Power", pwrVal, pwrPeak, bLabel, bPwr, bPeak, showSpark ? (Stats != null ? Stats.PowerHistory : null) : null, pwrCol, sc);
                     if (ShowVrmCurrent && (_status.VddTdcCurrentAmps > 0 || _status.VrmTemp > 0))
                     {
-                        Color vrmCol = Color.FromArgb(0xF5, 0x9E, 0x0B);
+                        Color vrmCol = xmas ? XmasRedDeep : Color.FromArgb(0xF5, 0x9E, 0x0B);
                         using (Brush bVrm = new SolidBrush(vrmCol))
                         {
                             DrawVertRow(g, row++, rowH, "VRM", FormatVrmOverlayValue(true), FormatVrmOverlayPeak(), bLabel, bVrm, bPeak, showSpark ? (Stats != null ? Stats.VrmHistory : null) : null, vrmCol, sc);
@@ -266,11 +271,11 @@ namespace MiniFanControl
                     if (ShowAmbient && _status.AmbientTemp > 0)
                     {
                         string ambPeak = FormatSingleTracker(Stats != null ? Stats.MinAmbientTemp : int.MaxValue, Stats != null ? Stats.MaxAmbientTemp : 0, Stats != null ? Stats.AvgAmbientTemp : 0.0, "°");
-                        DrawVertRow(g, row++, rowH, "Chassis", string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(_status.AmbientTemp, UseFahrenheit), TelemetrySessionStats.TempUnit(UseFahrenheit)), ambPeak, bLabel, bWhite, bPeak, showSpark ? (Stats != null ? Stats.AmbientHistory : null) : null, Color.FromArgb(0xE2, 0xE8, 0xF0), sc);
+                        DrawVertRow(g, row++, rowH, "Chassis", string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(_status.AmbientTemp, UseFahrenheit), TelemetrySessionStats.TempUnit(UseFahrenheit)), ambPeak, bLabel, bWhite, bPeak, showSpark ? (Stats != null ? Stats.AmbientHistory : null) : null, xmas ? Color.FromArgb(0x52, 0x52, 0x5B) : Color.FromArgb(0xE2, 0xE8, 0xF0), sc);
                     }
                     if (ShowNpu && _status.NpuActivityPct >= 0)
                     {
-                        Color npuCol = Color.FromArgb(0x38, 0xBD, 0xF8);
+                        Color npuCol = xmas ? XmasBlack : Color.FromArgb(0x38, 0xBD, 0xF8);
                         using (Brush bNpu = new SolidBrush(npuCol))
                         {
                             DrawVertRow(g, row++, rowH, "◈ NPU", FormatNpuOverlayValue(true), FormatNpuOverlayPeak(), bLabel, bNpu, bPeak, showSpark ? (Stats != null ? Stats.NpuHistory : null) : null, npuCol, sc);
@@ -299,7 +304,7 @@ namespace MiniFanControl
                             ? (ShowFpsAvg && sessionAvg > 0 ? string.Format("Avg: {0}", sessionAvg) : (ShowPeaks && Stats != null && Stats.MaxFps > 0 ? string.Format("▲{0}", Stats.MaxFps) : null))
                             : (_status.RtssRunning ? "RTSS Idle" : (ShowPeaks ? "Standby" : null));
 
-                        Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8);
+                        Color fpsCol = xmas ? XmasBlack : Color.FromArgb(0x38, 0xBD, 0xF8);
                         using (Brush bFps = new SolidBrush(fpsCol))
                         {
                             DrawVertRow(g, row++, rowH, lbl, val, peak, bLabel, bFps, bPeak, showSpark ? (Stats != null ? Stats.FpsHistory : null) : null, fpsCol, sc);
@@ -327,7 +332,7 @@ namespace MiniFanControl
                             val = "-- (Standby)";
                         }
                         string peak = null;
-                        Color lowCol = Color.FromArgb(0xFB, 0x71, 0x85);
+                        Color lowCol = xmas ? XmasRedDeep : Color.FromArgb(0xFB, 0x71, 0x85);
                         using (Brush bLow = new SolidBrush(lowCol))
                         {
                             DrawVertRow(g, row++, rowH, lbl, val, peak, bLabel, bLow, bPeak, showSpark ? (Stats != null ? Stats.P01LowHistory : null) : null, lowCol, sc);
@@ -717,10 +722,11 @@ namespace MiniFanControl
             int padH = (int)Math.Round(5 * sc);
             int textYOffset = (int)Math.Round(1 * sc);
 
-            bool radeon = MatchAppTheme && IsRadeonTheme;
-            Color pillBg = IsAfterburnerTheme ? Color.FromArgb(170, 8, 40, 26) : (radeon ? Color.FromArgb(170, 50, 15, 25) : Color.FromArgb(160, 40, 18, 22));
-            Color pillBorder = IsAfterburnerTheme ? Color.FromArgb(240, 0, 230, 118) : (radeon ? Color.FromArgb(240, 235, 45, 65) : Color.FromArgb(230, 220, 50, 60));
-            Color pillText = Color.FromArgb(255, 255, 240, 242);
+            bool xmas = IsXmasTheme;
+            bool radeon = !xmas && MatchAppTheme && IsRadeonTheme;
+            Color pillBg = xmas ? XmasRed : (IsAfterburnerTheme ? Color.FromArgb(170, 8, 40, 26) : (radeon ? Color.FromArgb(170, 50, 15, 25) : Color.FromArgb(160, 40, 18, 22)));
+            Color pillBorder = xmas ? XmasBlack : (IsAfterburnerTheme ? Color.FromArgb(240, 0, 230, 118) : (radeon ? Color.FromArgb(240, 235, 45, 65) : Color.FromArgb(230, 220, 50, 60)));
+            Color pillText = xmas ? Color.White : Color.FromArgb(255, 255, 240, 242);
 
             using (SolidBrush bgBrush = new SolidBrush(pillBg))
             using (Pen borderPen = new Pen(pillBorder, 1f))
@@ -729,8 +735,8 @@ namespace MiniFanControl
                 foreach (string tag in tags)
                 {
                     bool isRyzen = tag.StartsWith("Ryzen", StringComparison.OrdinalIgnoreCase);
-                    Color curBg = isRyzen ? Color.FromArgb(190, 60, 24, 10) : pillBg;
-                    Color curBorder = isRyzen ? Color.FromArgb(245, 238, 107, 36) : pillBorder;
+                    Color curBg = isRyzen ? (xmas ? XmasBlack : Color.FromArgb(190, 60, 24, 10)) : pillBg;
+                    Color curBorder = isRyzen ? (xmas ? XmasRed : Color.FromArgb(245, 238, 107, 36)) : pillBorder;
 
                     SizeF sz = g.MeasureString(tag, _fontTrace);
                     int pillW = (int)Math.Ceiling(sz.Width) + padH * 2;
@@ -763,10 +769,11 @@ namespace MiniFanControl
 
             g.DrawString("RADEON", _fontHdr, bLabel, cellX, 4f * sc);
 
-            bool radeon = MatchAppTheme && IsRadeonTheme;
-            Color pillBg = IsAfterburnerTheme ? Color.FromArgb(170, 8, 40, 26) : (radeon ? Color.FromArgb(170, 50, 15, 25) : Color.FromArgb(160, 40, 18, 22));
-            Color pillBorder = IsAfterburnerTheme ? Color.FromArgb(240, 0, 230, 118) : (radeon ? Color.FromArgb(240, 235, 45, 65) : Color.FromArgb(230, 220, 50, 60));
-            Color pillText = Color.FromArgb(255, 255, 240, 242);
+            bool xmas = IsXmasTheme;
+            bool radeon = !xmas && MatchAppTheme && IsRadeonTheme;
+            Color pillBg = xmas ? XmasRed : (IsAfterburnerTheme ? Color.FromArgb(170, 8, 40, 26) : (radeon ? Color.FromArgb(170, 50, 15, 25) : Color.FromArgb(160, 40, 18, 22)));
+            Color pillBorder = xmas ? XmasBlack : (IsAfterburnerTheme ? Color.FromArgb(240, 0, 230, 118) : (radeon ? Color.FromArgb(240, 235, 45, 65) : Color.FromArgb(230, 220, 50, 60)));
+            Color pillText = xmas ? Color.White : Color.FromArgb(255, 255, 240, 242);
 
             using (SolidBrush bgBrush = new SolidBrush(pillBg))
             using (Pen borderPen = new Pen(pillBorder, 1f))
@@ -776,8 +783,8 @@ namespace MiniFanControl
                 {
                     string tag = tags[i];
                     bool isRyzen = tag.StartsWith("Ryzen", StringComparison.OrdinalIgnoreCase);
-                    Color curBg = isRyzen ? Color.FromArgb(190, 60, 24, 10) : pillBg;
-                    Color curBorder = isRyzen ? Color.FromArgb(245, 238, 107, 36) : pillBorder;
+                    Color curBg = isRyzen ? (xmas ? XmasBlack : Color.FromArgb(190, 60, 24, 10)) : pillBg;
+                    Color curBorder = isRyzen ? (xmas ? XmasRed : Color.FromArgb(245, 238, 107, 36)) : pillBorder;
 
                     SizeF sz = g.MeasureString(tag, _fontTrace);
                     int pillW = (int)Math.Ceiling(sz.Width) + padH * 2;

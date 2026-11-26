@@ -26,6 +26,9 @@ namespace MiniFanControl
         public bool IsAfterburnerTheme { get; set; }
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public bool IsXmasTheme { get; set; }
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool SplitView { get; set; }
         public bool DfZoomedFrametime { get; set; }
         public bool DfCornerInset { get; set; }
@@ -292,13 +295,15 @@ namespace MiniFanControl
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
-            Color bg = IsRadeonTheme ? Color.FromArgb(0x10, 0x08, 0x0A)
+            Color bg = IsXmasTheme ? Color.White
+                : (IsRadeonTheme ? Color.FromArgb(0x10, 0x08, 0x0A)
                 : (IsAfterburnerTheme ? Color.FromArgb(0x11, 0x14, 0x18)
-                : (IsDarkMode ? Color.FromArgb(0x11, 0x11, 0x1B) : Color.FromArgb(0xF8, 0xFA, 0xFC)));
+                : (IsDarkMode ? Color.FromArgb(0x11, 0x11, 0x1B) : Color.FromArgb(0xF8, 0xFA, 0xFC))));
 
-            Color borderCol = IsRadeonTheme ? Color.FromArgb(0x60, 0xED, 0x1C, 0x24)
+            Color borderCol = IsXmasTheme ? Color.FromArgb(0x27, 0x27, 0x2A)
+                : (IsRadeonTheme ? Color.FromArgb(0x60, 0xED, 0x1C, 0x24)
                 : (IsAfterburnerTheme ? Color.FromArgb(0x60, 0x00, 0xE5, 0xFF)
-                : (IsDarkMode ? Color.FromArgb(0x31, 0x32, 0x44) : Color.FromArgb(0xCB, 0xD5, 0xE1)));
+                : (IsDarkMode ? Color.FromArgb(0x31, 0x32, 0x44) : Color.FromArgb(0xCB, 0xD5, 0xE1))));
 
             using (SolidBrush bgBr = new SolidBrush(bg))
             {
@@ -427,9 +432,10 @@ namespace MiniFanControl
                     ? "⏱ RTSS Active (Desktop / Idle)"
                     : (Status.EtwLatencyActive ? "⏱ ETW Active (Hook-Free)" : "⏱ RTSS / ETW Standby"));
 
-            Color textCol = IsRadeonTheme ? Color.FromArgb(0xFD, 0xBA, 0x74)
+            Color textCol = IsXmasTheme ? Color.FromArgb(0x09, 0x09, 0x0B)
+                : (IsRadeonTheme ? Color.FromArgb(0xFD, 0xBA, 0x74)
                 : (IsAfterburnerTheme ? Color.FromArgb(0x00, 0xE5, 0xFF)
-                : (IsDarkMode ? Color.FromArgb(0xCD, 0xD6, 0xF4) : Color.FromArgb(0x0F, 0x17, 0x2A)));
+                : (IsDarkMode ? Color.FromArgb(0xCD, 0xD6, 0xF4) : Color.FromArgb(0x0F, 0x17, 0x2A))));
 
             Color dimCol = IsDarkMode ? Color.FromArgb(0x94, 0xA3, 0xB8) : Color.FromArgb(0x64, 0x74, 0x8B);
             Color dotCol = isGameActive ? Color.FromArgb(0x22, 0xC5, 0x5E) : (Status.RtssRunning ? Color.FromArgb(0xF5, 0x9E, 0x0B) : Color.FromArgb(0x94, 0xA3, 0xB8));
