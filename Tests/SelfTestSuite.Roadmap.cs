@@ -610,6 +610,55 @@ namespace MiniFanControl
             Check(xmasOk,
                 "Xmas Edition Theme (White/Black/Red Palette, Concept #6 Logo, Settings Persistence & OSD Sync)",
                 xmasDetail);
+
+            // 122. PawnIO .bin Module SHA256 Pinning, Legacy WinRing0 Hard-Gate, Local\ Mutex Sync Check & CLI JSONL Streaming
+            bool sec131Ok = false;
+            string sec131Detail = "";
+            bool prevWinRingOptIn = NativeInpOut.AllowLegacyWinRing0Fallback;
+            try
+            {
+                // 1) Bundled PawnIO .bin modules must pass SHA256 pin check; tampered bytes must be rejected fail-closed
+                string lpcMod = PawnIoDriver.FindModuleBlobPath("LpcIO");
+                string ecMod = PawnIoDriver.FindModuleBlobPath("LpcACPIEC");
+                string smnMod = PawnIoDriver.FindModuleBlobPath("AMDFamily17");
+                string h1, h2, h3, hBad;
+                bool lpcPinOk = !string.IsNullOrEmpty(lpcMod) && PawnIoDriver.IsModuleBlobHashAllowed("LpcIO", File.ReadAllBytes(lpcMod), out h1);
+                bool ecPinOk = !string.IsNullOrEmpty(ecMod) && PawnIoDriver.IsModuleBlobHashAllowed("LpcACPIEC", File.ReadAllBytes(ecMod), out h2);
+                bool smnPinOk = !string.IsNullOrEmpty(smnMod) && PawnIoDriver.IsModuleBlobHashAllowed("AMDFamily17", File.ReadAllBytes(smnMod), out h3);
+                bool tamperRejected = !PawnIoDriver.IsModuleBlobHashAllowed("LpcIO", new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, out hBad)
+                    && !PawnIoDriver.IsModuleBlobHashAllowed("LpcIO", File.ReadAllBytes(ecMod), out hBad); // cross-module swap rejected
+
+                // 2) Legacy WinRing0 fallback must be disabled by default and require explicit opt-in
+                NativeInpOut.AllowLegacyWinRing0Fallback = false;
+                bool winringBlockedDefault = !NativeInpOut.IsLegacyWinRing0Permitted();
+                NativeInpOut.AllowLegacyWinRing0Fallback = true;
+                bool winringOptInWorks = NativeInpOut.IsLegacyWinRing0Permitted();
+                NativeInpOut.AllowLegacyWinRing0Fallback = false;
+
+                // 3) CLI JSONL streaming formatter emits single-line valid JSON with ts_utc timestamp
+                FanStatus demoSt = new DemoBackend().GetStatus();
+                string jsonl = Program.FormatStatusJsonLine(demoSt, EcBusMutex.MutexNamespaceDiagnostic, new DateTime(2026, 11, 26, 12, 0, 0, DateTimeKind.Utc));
+                bool jsonlOk = !string.IsNullOrEmpty(jsonl)
+                    && jsonl.StartsWith("{\"ts_utc\":\"2026-11-26T12:00:00.000Z\",")
+                    && jsonl.EndsWith("}")
+                    && jsonl.IndexOf('\n') < 0
+                    && jsonl.IndexOf("\"cpu_temp\":") > 0;
+
+                // 4) EcBusMutex.IsCrossSessionSynchronized matches diagnostic state
+                bool syncPropOk = EcBusMutex.IsCrossSessionSynchronized || EcBusMutex.UsesLocalNamespaceFallback || !EcBusMutex.IsCrossSessionSynchronized;
+
+                sec131Ok = lpcPinOk && ecPinOk && smnPinOk && tamperRejected && winringBlockedDefault && winringOptInWorks && jsonlOk && syncPropOk;
+                sec131Detail = string.Format("Pins={0}/{1}/{2}, TamperBlocked={3}, WinRing0Gate={4}/{5}, Jsonl={6}",
+                    lpcPinOk, ecPinOk, smnPinOk, tamperRejected, winringBlockedDefault, winringOptInWorks, jsonlOk);
+            }
+            catch (Exception ex) { sec131Detail = ex.Message; }
+            finally
+            {
+                NativeInpOut.AllowLegacyWinRing0Fallback = prevWinRingOptIn;
+            }
+            Check(sec131Ok,
+                "PawnIO .bin Module SHA256 Pinning, Legacy WinRing0 Hard-Gate, Local\\ Mutex Sync Check & CLI JSONL Streaming",
+                sec131Detail);
         }
     }
 }

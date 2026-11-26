@@ -76,6 +76,47 @@ namespace MiniFanControl
                 st.DisplayLatencyMs, st.RenderLatencyMs, EscapeJson(st.PresentFlipMode ?? ""), st.EtwLatencyActive ? "true" : "false");
         }
 
+        public static string FormatStatusJsonLine(FanStatus st, string mutexNamespace, DateTime utcNow)
+        {
+            string baseJson = FormatStatusJson(st, mutexNamespace);
+            string ts = utcNow.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
+            if (!string.IsNullOrEmpty(baseJson) && baseJson.StartsWith("{"))
+            {
+                return "{\"ts_utc\":\"" + ts + "\"," + baseJson.Substring(1);
+            }
+            return baseJson;
+        }
+
+        internal static bool IsAnotherGuiInstanceRunning()
+        {
+            try
+            {
+                Process current = Process.GetCurrentProcess();
+                Process[] procs = Process.GetProcessesByName(current.ProcessName);
+                try
+                {
+                    for (int i = 0; i < procs.Length; i++)
+                    {
+                        if (procs[i].Id != current.Id)
+                            return true;
+                    }
+                    return false;
+                }
+                finally
+                {
+                    for (int i = 0; i < procs.Length; i++)
+                    {
+                        try { procs[i].Dispose(); } catch { }
+                    }
+                }
+            }
+            catch
+            {
+                // Fail closed if process enumeration is denied
+                return true;
+            }
+        }
+
         public static int ClampCliFanDuty(int fanId, int requestedPct, bool force, out bool wasClamped, out int minFloor)
         {
             return FanControllerService.ClampManualFanDuty(fanId, requestedPct, force, out wasClamped, out minFloor);
@@ -219,7 +260,8 @@ namespace MiniFanControl
 
                     Console.WriteLine("MiniFanControl v" + MainForm.APP_VERSION + " CLI Commands:");
 
-                    Console.WriteLine("  status [--demo]                       Query fan speeds, APU power, temperatures & display latency");
+                    Console.WriteLine("  status [--stream] [--interval ms] [--count n] [--demo]");
+                    Console.WriteLine("                                        Query status JSON or stream live JSONL telemetry");
                     Console.WriteLine("  latency [--demo]                      Inspect native Windows DXGI/DxgKrnl ETW display latency & flip mode");
 
                     Console.WriteLine("  mode <0|1|2> [--demo]                 Set thermal mode (0=Balanced, 1=Performance, 2=Silent)");
@@ -240,7 +282,7 @@ namespace MiniFanControl
                     Console.WriteLine("  diff-scan / ec-scan [--demo]          Run EC differential sensor scanner (Tier 2 discovery)");
                     Console.WriteLine("  calibrate [passes] [--demo]           Execute multi-pass fan calibration curve analysis");
 
-                    Console.WriteLine("  test                                  Run 121-point automated safety & regression suite");
+                    Console.WriteLine("  test                                  Run 122-point automated safety & regression suite");
                     Console.WriteLine("  hw-matrix                             Run multi-profile hardware validation matrix");
                     Console.WriteLine("  export-profiles [--json]              Export supported hardware profiles & Super I/O IDs");
                     Console.WriteLine("  validate-profiles                     Validate external JSON hardware profiles in profiles/");
@@ -254,19 +296,23 @@ namespace MiniFanControl
                 }
 
                 if (cmd == "test" || cmd == "--test")
-
                 {
-
+#if INCLUDE_SELF_TESTS
                     return SelfTestSuite.RunAll();
-
+#else
+                    Console.Error.WriteLine("Self-test suite is built into minifan-helper.exe (run: minifan-helper.exe test).");
+                    return 1;
+#endif
                 }
 
                 if (cmd == "hw-matrix" || cmd == "--hw-matrix")
-
                 {
-
+#if INCLUDE_SELF_TESTS
                     return SelfTestSuite.RunHardwareMatrix();
-
+#else
+                    Console.Error.WriteLine("Hardware matrix test is built into minifan-helper.exe (run: minifan-helper.exe hw-matrix).");
+                    return 1;
+#endif
                 }
 
                 if (cmd == "export-profiles" || cmd == "--export-profiles")
@@ -592,7 +638,10 @@ namespace MiniFanControl
 
                     string logoPngPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logo.png");
 
-                    string showcasePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logo-concepts.png");
+                    string assetsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets");
+                    string showcasePath = Directory.Exists(assetsDir)
+                        ? Path.Combine(assetsDir, "logo-concepts.png")
+                        : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logo-concepts.png");
 
                     AppLogoRenderer.WriteMultiResIco(icoPath, conceptId);
 
@@ -628,12 +677,62 @@ namespace MiniFanControl
 
                         DemoBackend demo = new DemoBackend();
 
-                        if (cmd == "status")
+                        if (cmd == "status" || cmd == "stream" || cmd == "monitor")
 
                         {
 
-                            FanStatus st = demoMode ? demo.GetStatus() : hw.GetStatus();
-                            Console.WriteLine(FormatStatusJson(st, EcBusMutex.MutexNamespaceDiagnostic));
+                            bool streamMode = (cmd == "stream" || cmd == "monitor");
+                            int streamIntervalMs = 1000;
+                            int streamCount = 0;
+                            for (int i = 0; i < args.Length; i++)
+                            {
+                                string a = args[i];
+                                if (a.Equals("--stream", StringComparison.OrdinalIgnoreCase) || a.Equals("--monitor", StringComparison.OrdinalIgnoreCase))
+                                    streamMode = true;
+                                else if ((a.Equals("--interval", StringComparison.OrdinalIgnoreCase) || a.Equals("-i", StringComparison.OrdinalIgnoreCase)) && i + 1 < args.Length)
+                                    int.TryParse(args[++i], out streamIntervalMs);
+                                else if ((a.Equals("--count", StringComparison.OrdinalIgnoreCase) || a.Equals("-n", StringComparison.OrdinalIgnoreCase)) && i + 1 < args.Length)
+                                    int.TryParse(args[++i], out streamCount);
+                            }
+
+                            if (!streamMode)
+                            {
+                                FanStatus st = demoMode ? demo.GetStatus() : hw.GetStatus();
+                                Console.WriteLine(FormatStatusJson(st, EcBusMutex.MutexNamespaceDiagnostic));
+                                return 0;
+                            }
+
+                            streamIntervalMs = Math.Max(250, Math.Min(10000, streamIntervalMs));
+                            bool stopStream = false;
+                            ConsoleCancelEventHandler cancelHandler = delegate(object s, ConsoleCancelEventArgs ce)
+                            {
+                                ce.Cancel = true;
+                                stopStream = true;
+                            };
+                            Console.CancelKeyPress += cancelHandler;
+                            try
+                            {
+                                int emitted = 0;
+                                while (!stopStream && (streamCount <= 0 || emitted < streamCount))
+                                {
+                                    FanStatus st = demoMode ? demo.GetStatus() : hw.GetStatus();
+                                    Console.WriteLine(FormatStatusJsonLine(st, EcBusMutex.MutexNamespaceDiagnostic, DateTime.UtcNow));
+                                    Console.Out.Flush();
+                                    emitted++;
+                                    if (streamCount > 0 && emitted >= streamCount) break;
+                                    int slept = 0;
+                                    while (!stopStream && slept < streamIntervalMs)
+                                    {
+                                        int step = Math.Min(100, streamIntervalMs - slept);
+                                        Thread.Sleep(step);
+                                        slept += step;
+                                    }
+                                }
+                            }
+                            finally
+                            {
+                                Console.CancelKeyPress -= cancelHandler;
+                            }
                             return 0;
 
                         }
@@ -1058,7 +1157,12 @@ namespace MiniFanControl
                 {
                     singleInstanceMutex = new Mutex(true, @"Local\MiniFanControl_SingleInstance_GUI", out createdNew);
                 }
-                catch { createdNew = true; }
+                catch (Exception ex)
+                {
+                    // Fail-closed secondary check: verify no sibling GUI process is already running
+                    WatchdogSupervisor.LogWatchdogEvent("Single-instance mutex fallback error: " + ex.Message);
+                    createdNew = !IsAnotherGuiInstanceRunning();
+                }
             }
 
             if (!createdNew)

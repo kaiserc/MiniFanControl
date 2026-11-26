@@ -56,6 +56,11 @@ namespace MiniFanControl
 
         public static bool UsesLocalNamespaceFallback { get; private set; }
 
+        public static bool IsCrossSessionSynchronized
+        {
+            get { return _isSimulated || (_initDone && !UsesLocalNamespaceFallback && _ecMutex != null && _isaBusMutex != null); }
+        }
+
         public static string MutexNamespaceDiagnostic { get; private set; }
 
         static EcBusMutex()

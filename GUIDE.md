@@ -563,4 +563,61 @@ MiniFanControl includes a complete synthetic hardware simulation engine:
 
 ---
 
+## 11. Embedded Controller (EC) Register Map (`ITE IT5570E @ 0xFE0B0400`)
+
+| Offset | Access | Description | Values / Formula |
+|---|---|---|---|
+| `0x31` | Read | Active Performance Mode | `0` = Balanced, `1` = Performance, `2` = Silent |
+| `0x32` | Write | Set Performance Mode | `0x80` = Balanced, `0x81` = Performance, `0x82` = Silent |
+| `0x33` | R/W | **APU Fan (`Fan 1`)** Control | `0x00` = Auto, `0x80 \| pct` = Manual (`1–100%`) |
+| `0x34` | R/W | **Sys Fan (`Fan 2`, RAM/NVMe)** Control | `0x00` = Auto, `0x80 \| pct` = Manual (`1–100%`) |
+| `0x35–0x36` | Read | **APU Fan (`Fan 1`)** RPM | `(reg[0x35] << 8) \| reg[0x36]` (Max ~3150 RPM; `8000` = motor stopped/idle) |
+| `0x37–0x38` | Read | **Sys Fan (`Fan 2`)** RPM | `(reg[0x37] << 8) \| reg[0x38]` (Max ~1940 RPM; `8000` = motor stopped/idle) |
+| `0x70` | Read | CPU Temperature | °C |
+| `0x71` | Read | dGPU Temperature | `0` on APU models (Radeon iGPU temp is read via AMD `atiadlxx.dll`) |
+
+---
+
+## 12. Configuration File Schema (`minifancontrol.cfg`)
+
+MiniFanControl atomically persists user preferences, calibrated fan thresholds, and OSD Studio settings to `minifancontrol.cfg` (or `%ProgramData%\MiniFanControl\minifancontrol.cfg` when running in Background Service Mode).
+
+### General & Hardware Settings
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `HardwareProfile` | String | `auto` | Active device profile (`auto`, `gmktec-k12`, `gmktec-k8-k11`, `ryzen-hx370-ec`, `adreamer-ariesbox10`, `unknown-safe`) |
+| `HasDualFans` | Integer | `1` | `1` = Dual fans present (APU + Sys Fan), `0` = Single fan detected |
+| `RefreshIntervalMs`| Integer | `1000` | Telemetry polling rate in milliseconds (`100`–`10000`) |
+| `RestoreAutoOnExit`| Integer | `1` | `1` = Restore native BIOS EC control (`0x00`) on exit/crash, `0` = Retain last manual setting |
+| `EnableHotkeys` | Integer | `1` | `1` = Enable global hotkeys (`Ctrl+Alt+F9` overlay, `Ctrl+Alt+F10..F12` modes) |
+| `Theme` | Integer | `0` | `0` = System Auto, `1` = Dark, `2` = Light, `3` = AMD Radeon Crimson, `4` = Afterburner, `5` = Xmas Edition (White/Black/Red) |
+| `ShowCpuTray` / `ShowGpuTray` | Integer | `1` | Show live CPU / iGPU temperature badge icons in Windows system tray |
+| `AutoPauseForAntiCheat` | Integer | `0` | Opt-in EAC / BattlEye / Vanguard auto-pause & ordered BIOS-Auto handoff |
+| `AllowLegacyWinRing0` | Integer | `0` | Explicit security opt-in (`1`) to permit legacy WinRing0 fallback (blocked by default due to CVE-2020-14979) |
+
+### In-Game OSD HUD & Graphs
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `ShowOverlay` / `LockOverlay` | Integer | `0` | Toggle floating OSD HUD and `WS_EX_TRANSPARENT` click-through lock |
+| `OverlayVertical` | Integer | `1` | `1` = Vertical stack (`▮`), `0` = Horizontal bar (`▬`) |
+| `OverlayX` / `OverlayY` | Integer | `100, 100` | Screen coordinates (pixels) |
+| `OsdScaleTier` | Integer | `1` | `0` = 100% Std, `1` = 125% Lg, `2` = 150% XL, `3` = 185% 4K |
+| `OsdGraphMode` | Integer | `3` | `0` = Text Only, `1` = Sparklines, `2` = Combined, `3` = Both, `4` = Graphs Only |
+| `OsdGraphHeight` | Integer | `105` | Base graph height (`75`, `105`, `140`, `180`) |
+| `OsdOpacityPct` | Integer | `90` | Overlay background opacity (`20%`–`100%`) |
+| `OsdShowPeaks` / `OsdPeakTrackerMode` | Integer | `1` / `0` | `0` = Peaks (`▲`), `1` = Lows (`▼`), `2` = Min/Max (`▼▲`), `3` = Session Avg (`~`) |
+| `OsdShowRadeonExtTags` | Integer | `1` | Include `SAM`, `EnhSync`, and `FRTC` pills alongside `FreeSync` / `FSR` / `AFMF` / `Anti-Lag` |
+| `OsdShowFpsGraph` / `OsdDfCornerInset` | Integer | `1` / `1` | Digital Foundry FPS & corner Frame-Time jitter inset |
+| `UseFahrenheit` | Integer | `0` | `1` = Display temperatures in `°F`, `0` = `°C` |
+
+### Fan Motor Calibration & Curves
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `ApuMinSpinPct` / `SysMinSpinPct` | Integer | `24` / `22` | Calibrated minimum PWM spin-up floor % (prevents motor stall) |
+| `ApuMaxRpm` / `SysMaxRpm` | Integer | `3150` / `1940` | Calibrated max fan RPM |
+| `ApuMode` / `SysMode` | String | `Balanced` | Active curve mode (`Balanced`, `Performance`, `Silent`, `AI Workload`, or custom name) |
+| `CustomProfile` | String | `Name\|APU\|SYS` | Format: `Name\|42:0;55:30;68:50;80:75;90:100\|42:0;55:30;68:50;80:75;90:100` |
+
+---
+
 *MiniFanControl is open source and community-supported. If this tool helped tune your Mini PC, you can support development on [Ko-fi](https://ko-fi.com/kaiser76).*

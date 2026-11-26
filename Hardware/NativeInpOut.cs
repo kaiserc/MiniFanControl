@@ -165,6 +165,27 @@ namespace MiniFanControl
             "11BD2C9F9E2397C9A16E0990E4ED2CF0679498FE0FD418A3DFDAC60B5C160EE5"
         };
 
+        /// <summary>
+        /// Hard security gate for legacy WinRing0 (CVE-2020-14979). Disabled by default so WinRing0
+        /// is never loaded opportunistically even if a DLL exists in the app directory. Users who
+        /// explicitly require legacy WinRing0 on HVCI-disabled systems must opt in via
+        /// AllowLegacyWinRing0=1 in minifancontrol.cfg or MINIFAN_ALLOW_WINRING0=1.
+        /// </summary>
+        public static volatile bool AllowLegacyWinRing0Fallback = false;
+
+        public static bool IsLegacyWinRing0Permitted()
+        {
+            if (AllowLegacyWinRing0Fallback) return true;
+            try
+            {
+                string env = Environment.GetEnvironmentVariable("MINIFAN_ALLOW_WINRING0");
+                if (!string.IsNullOrEmpty(env) && (env == "1" || env.Equals("true", StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+            catch { }
+            return false;
+        }
+
         private static readonly object _driverLock = new object();
         private static readonly ReaderWriterLockSlim _ioLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         private static bool _dllSearchHardened = false;
@@ -501,12 +522,29 @@ namespace MiniFanControl
                     }
                 }
 
-                // Priority 2: Fallback to WinRing0 (WinRing0x64.dll or WinRing0.dll) in application directory ONLY (never probe System32)
+                // Priority 2: Hard-gated fallback to WinRing0 (CVE-2020-14979) in application directory ONLY (never probe System32)
                 string[] winringCandidates = new string[]
                 {
                     Path.Combine(appDir, "WinRing0x64.dll"),
                     Path.Combine(appDir, "WinRing0.dll")
                 };
+
+                if (!IsLegacyWinRing0Permitted())
+                {
+                    foreach (string candidate in winringCandidates)
+                    {
+                        if (File.Exists(candidate))
+                        {
+                            LastDriverIntegrityError = string.Format(
+                                "Blocked legacy {0} fallback (CVE-2020-14979). Install HVCI-safe PawnIO (pawnio.eu) or explicitly set AllowLegacyWinRing0=1 to override.",
+                                Path.GetFileName(candidate));
+                            WatchdogSupervisor.LogWatchdogEvent("SECURITY: " + LastDriverIntegrityError);
+                            break;
+                        }
+                    }
+                    ActiveDriver = HardwareDriverEngine.None;
+                    return false;
+                }
 
                 foreach (string candidate in winringCandidates)
                 {

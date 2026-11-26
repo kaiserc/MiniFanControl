@@ -1636,9 +1636,16 @@ namespace MiniFanControl
                 _errorBanner.Cursor = Cursors.Hand;
                 if (!_errorBanner.Visible) _errorBanner.Visible = true;
             }
-            else if (!_demoMode && NativeInpOut.IsDriverOpen() &&
+            else if (!_demoMode && NativeInpOut.IsDriverOpen() && EcBusMutex.UsesLocalNamespaceFallback &&
+                _errorBanner != null && string.IsNullOrEmpty(_uiWriteErrorBannerDetail))
+            {
+                _errorBanner.Text = "⚠ Cross-session Global\\Access_EC mutex unavailable (Local\\ fallback active) — HWiNFO64/CapFrameX bus coordination is degraded. Run as Administrator for full synchronization.";
+                _errorBanner.Cursor = Cursors.Default;
+                if (!_errorBanner.Visible) _errorBanner.Visible = true;
+            }
+            else if (!_demoMode && NativeInpOut.IsDriverOpen() && !EcBusMutex.UsesLocalNamespaceFallback &&
                 _errorBanner != null && _errorBanner.Visible &&
-                _errorBanner.Text != null && _errorBanner.Text.Contains("pawnio.eu"))
+                _errorBanner.Text != null && (_errorBanner.Text.Contains("pawnio.eu") || _errorBanner.Text.Contains("Local\\ fallback")))
             {
                 _errorBanner.Visible = false;
                 _errorBanner.Cursor = Cursors.Default;

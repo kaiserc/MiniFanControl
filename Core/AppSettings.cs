@@ -16,6 +16,7 @@ namespace MiniFanControl
         public bool UseFahrenheit = false;
         public bool ShowSetupAssistant = true;
         public bool ShowDriverInstallPrompt = true;
+        public bool AllowLegacyWinRing0 = false;
         public bool SilentSleepStandby = true;
         public bool AutoPauseForAntiCheat = false;
         public bool AutoSwitchWorkloads = false;
@@ -255,6 +256,11 @@ namespace MiniFanControl
                     else if (k == "HasDualFans") HasDualFans = ParseBool(v);
                     else if (k == "ShowSetupAssistant") ShowSetupAssistant = ParseBool(v);
                     else if (k == "ShowDriverInstallPrompt") ShowDriverInstallPrompt = ParseBool(v);
+                    else if (k == "AllowLegacyWinRing0")
+                    {
+                        AllowLegacyWinRing0 = ParseBool(v);
+                        NativeInpOut.AllowLegacyWinRing0Fallback = AllowLegacyWinRing0;
+                    }
                     else if (k == "HardwareProfile" || k == "ProfileId")
                     {
                         ProfileOverrideId = v;
@@ -354,6 +360,7 @@ namespace MiniFanControl
                 lines.Add("UseFahrenheit=" + (UseFahrenheit ? "1" : "0"));
                 lines.Add("ShowSetupAssistant=" + (ShowSetupAssistant ? "1" : "0"));
                 lines.Add("ShowDriverInstallPrompt=" + (ShowDriverInstallPrompt ? "1" : "0"));
+                if (AllowLegacyWinRing0) lines.Add("AllowLegacyWinRing0=1");
                 lines.Add("SilentSleepStandby=" + (SilentSleepStandby ? "1" : "0"));
                 lines.Add("AutoPauseForAntiCheat=" + (AutoPauseForAntiCheat ? "1" : "0"));
                 lines.Add("AutoSwitchWorkloads=" + (AutoSwitchWorkloads ? "1" : "0"));

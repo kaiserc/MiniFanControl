@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 
@@ -154,6 +155,60 @@ namespace MiniFanControl
         private static PawnIoLoadDelegate _fnLoad;
         private static PawnIoExecuteDelegate _fnExecute;
         private static PawnIoCloseDelegate _fnClose;
+
+        // Official signed PawnIO bytecode module SHA256 pins (blocks module swap attacks where
+        // an attacker substitutes an unrelated signed PawnIO module such as arbitrary MSR/PCI writers).
+        public static readonly string[] LPCIO_ALLOWED_SHA256 = new string[]
+        {
+            "B3896A1CAB0D808FCA31FE2EBCAE045D59DAC690DA87B17C858BB8DA357EB45E"
+        };
+
+        public static readonly string[] LPCACPIEC_ALLOWED_SHA256 = new string[]
+        {
+            "C38FD116E7AFF4D1FDB0A494E296BE0A6708E5A22FC72F14587442FB7F8F7906"
+        };
+
+        public static readonly string[] AMDFAMILY17_ALLOWED_SHA256 = new string[]
+        {
+            "DAE74615761B78BDF064DFB3E136252DDCC6FC727D88F14738D0E5800D427A91"
+        };
+
+        public static string ComputeBytesSha256(byte[] data)
+        {
+            if (data == null || data.Length == 0) return "";
+            using (SHA256 sha = SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(data);
+                StringBuilder sb = new StringBuilder(hash.Length * 2);
+                for (int i = 0; i < hash.Length; i++)
+                    sb.Append(hash[i].ToString("X2"));
+                return sb.ToString();
+            }
+        }
+
+        public static bool IsModuleBlobHashAllowed(string moduleKind, byte[] blob, out string actualSha256)
+        {
+            actualSha256 = ComputeBytesSha256(blob);
+            if (string.IsNullOrEmpty(moduleKind) || string.IsNullOrEmpty(actualSha256))
+                return false;
+
+            string[] allowList = null;
+            if (moduleKind.Equals("LpcIO", StringComparison.OrdinalIgnoreCase))
+                allowList = LPCIO_ALLOWED_SHA256;
+            else if (moduleKind.Equals("LpcACPIEC", StringComparison.OrdinalIgnoreCase))
+                allowList = LPCACPIEC_ALLOWED_SHA256;
+            else if (moduleKind.Equals("AMDFamily17", StringComparison.OrdinalIgnoreCase) ||
+                     moduleKind.Equals("RyzenSMU", StringComparison.OrdinalIgnoreCase))
+                allowList = AMDFAMILY17_ALLOWED_SHA256;
+
+            if (allowList == null) return false;
+            for (int i = 0; i < allowList.Length; i++)
+            {
+                if (string.Equals(actualSha256, allowList[i], StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
 
         // Injectable test hooks for verifying PawnIO module orchestration & Authenticode gating without kernel driver
         internal static Func<string, ulong[], ulong[]> SimulatedExecuteHook = null;
@@ -351,8 +406,8 @@ namespace MiniFanControl
         }
 
         /// <summary>
-        /// Locates a signed PawnIO module blob (.bin / .amx), preferring Program Files\PawnIO\modules
-        /// before falling back to bundled appdir\PawnIO\modules.
+        /// Locates a signed, SHA256-pinned PawnIO module blob (.bin / .amx), preferring a pinned match
+        /// in Program Files\PawnIO\modules or bundled appdir\PawnIO\modules.
         /// </summary>
         public static string FindModuleBlobPath(string moduleBaseName)
         {
@@ -362,24 +417,34 @@ namespace MiniFanControl
 
             string[] dirs = new string[]
             {
-                string.IsNullOrEmpty(progFiles) ? "" : Path.Combine(progFiles, "PawnIO", "modules"),
-                string.IsNullOrEmpty(progFiles) ? "" : Path.Combine(progFiles, "PawnIO"),
                 Path.Combine(baseDir, "PawnIO", "modules"),
                 Path.Combine(baseDir, "PawnIO"),
+                string.IsNullOrEmpty(progFiles) ? "" : Path.Combine(progFiles, "PawnIO", "modules"),
+                string.IsNullOrEmpty(progFiles) ? "" : Path.Combine(progFiles, "PawnIO"),
                 baseDir
             };
             string[] exts = new string[] { ".bin", ".amx" };
 
+            string firstUnpinned = null;
             for (int d = 0; d < dirs.Length; d++)
             {
                 if (string.IsNullOrEmpty(dirs[d]) || !Directory.Exists(dirs[d])) continue;
                 for (int e = 0; e < exts.Length; e++)
                 {
                     string path = Path.Combine(dirs[d], moduleBaseName + exts[e]);
-                    if (File.Exists(path)) return path;
+                    if (!File.Exists(path)) continue;
+                    try
+                    {
+                        byte[] probe = File.ReadAllBytes(path);
+                        string sha;
+                        if (IsModuleBlobHashAllowed(moduleBaseName, probe, out sha))
+                            return path;
+                        if (firstUnpinned == null) firstUnpinned = path;
+                    }
+                    catch { }
                 }
             }
-            return null;
+            return firstUnpinned;
         }
 
         /// <summary>
@@ -506,11 +571,11 @@ namespace MiniFanControl
                     LibraryPath = PAWNIO_DEVICE_PATH;
                 }
 
-                // Load signed LPC Super I/O module if present
+                // Load signed, SHA256-pinned LPC Super I/O module if present
                 string lpcBlob = FindModuleBlobPath("LpcIO");
                 if (!string.IsNullOrEmpty(lpcBlob))
                 {
-                    _hLpcModule = TryOpenAndLoadModule(lpcBlob, directMode);
+                    _hLpcModule = TryOpenAndLoadModule(lpcBlob, "LpcIO", directMode);
                     HasLpcModule = (_hLpcModule != IntPtr.Zero);
                     if (HasLpcModule)
                     {
@@ -520,19 +585,19 @@ namespace MiniFanControl
                     }
                 }
 
-                // Load signed ACPI EC module if present
+                // Load signed, SHA256-pinned ACPI EC module if present
                 string ecBlob = FindModuleBlobPath("LpcACPIEC");
                 if (!string.IsNullOrEmpty(ecBlob))
                 {
-                    _hAcpiEcModule = TryOpenAndLoadModule(ecBlob, directMode);
+                    _hAcpiEcModule = TryOpenAndLoadModule(ecBlob, "LpcACPIEC", directMode);
                     HasAcpiEcModule = (_hAcpiEcModule != IntPtr.Zero);
                 }
 
-                // Load signed AMD Zen SMN telemetry module if present (AMDFamily17.bin / RyzenSMU.bin)
+                // Load signed, SHA256-pinned AMD Zen SMN telemetry module if present (AMDFamily17.bin / RyzenSMU.bin)
                 string smnBlob = FindModuleBlobPath("AMDFamily17") ?? FindModuleBlobPath("RyzenSMU");
                 if (!string.IsNullOrEmpty(smnBlob))
                 {
-                    _hAmdSmnModule = TryOpenAndLoadModule(smnBlob, directMode);
+                    _hAmdSmnModule = TryOpenAndLoadModule(smnBlob, "AMDFamily17", directMode);
                     HasAmdSmnModule = (_hAmdSmnModule != IntPtr.Zero);
                 }
 
@@ -565,7 +630,7 @@ namespace MiniFanControl
             }
         }
 
-        private static IntPtr TryOpenAndLoadModule(string blobPath, bool directMode)
+        private static IntPtr TryOpenAndLoadModule(string blobPath, string moduleKind, bool directMode)
         {
             IntPtr h = IntPtr.Zero;
             try
@@ -573,6 +638,16 @@ namespace MiniFanControl
                 byte[] blob = File.ReadAllBytes(blobPath);
                 if (blob == null || blob.Length < 16 || blob.Length > 2 * 1024 * 1024)
                     return IntPtr.Zero;
+
+                string actualHash;
+                if (!IsModuleBlobHashAllowed(moduleKind, blob, out actualHash))
+                {
+                    LastIntegrityError = string.Format(
+                        "Blocked untrusted PawnIO module {0} ({1}): SHA256 mismatch (actual {2}).",
+                        Path.GetFileName(blobPath), moduleKind, actualHash);
+                    WatchdogSupervisor.LogWatchdogEvent("SECURITY: " + LastIntegrityError);
+                    return IntPtr.Zero;
+                }
 
                 if (directMode)
                 {
