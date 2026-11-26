@@ -31,7 +31,8 @@ if exist minifan-helper.exe (
     ren minifan-helper.exe "minifan-helper.%RANDOM%%RANDOM%.old.exe" >nul 2>&1
 )
 
-"%CSC%" /nologo /optimize+ /debug- /warn:4 /define:INCLUDE_SELF_TESTS /codepage:65001 /platform:x64 /target:exe /out:minifan-helper.exe /recurse:*.cs > "%TEMP%\csc_helper.log" 2>&1
+powershell -NoProfile -Command "Get-ChildItem -Path '%~dp0.' -Recurse -Filter '*.cs' | Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' } | ForEach-Object { '\"' + $_.FullName + '\"' } | Set-Content -Path '%TEMP%\helper_sources.rsp' -Encoding UTF8"
+"%CSC%" /nologo /optimize+ /debug- /warn:4 /define:INCLUDE_SELF_TESTS /codepage:65001 /platform:x64 /target:exe /out:minifan-helper.exe @"%TEMP%\helper_sources.rsp" > "%TEMP%\csc_helper.log" 2>&1
 set CSC_ERR=%ERRORLEVEL%
 type "%TEMP%\csc_helper.log"
 if %CSC_ERR% neq 0 (

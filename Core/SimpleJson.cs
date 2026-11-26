@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+#if NET8_0_OR_GREATER
+using System.Text.Json;
+#endif
 
 namespace MiniFanControl
 {
@@ -82,6 +85,235 @@ namespace MiniFanControl
             }
             return sb.ToString();
         }
+
+        /// <summary>
+        /// Strict flat JSON object parser with explicit error reporting.
+        /// On .NET 8/10+, uses System.Text.Json (RFC-8259 strict); on .NET 4.8, uses the hardened tokenizer.
+        /// Rejects nested objects/arrays loudly (instead of silently skipping), rejects unclosed quotes
+        /// or trailing garbage, and optionally enforces an explicit key allowlist (unknown keys rejected).
+        /// </summary>
+        public static bool ParseFlatObjectStrict(
+            string json,
+            Dictionary<string, string> target,
+            HashSet<string> allowedKeys,
+            out string error,
+            bool stringsOnly = false)
+        {
+            error = null;
+            if (target == null)
+            {
+                error = "Target dictionary is null.";
+                return false;
+            }
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                error = "JSON payload is empty.";
+                return false;
+            }
+
+#if NET8_0_OR_GREATER
+            try
+            {
+                using (JsonDocument doc = JsonDocument.Parse(json))
+                {
+                    if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                    {
+                        error = "Root JSON element must be an object.";
+                        return false;
+                    }
+                    foreach (JsonProperty prop in doc.RootElement.EnumerateObject())
+                    {
+                        string key = prop.Name;
+                        if (allowedKeys != null && !allowedKeys.Contains(key))
+                        {
+                            error = "Unknown JSON key '" + key + "'.";
+                            return false;
+                        }
+                        JsonValueKind kind = prop.Value.ValueKind;
+                        if (kind == JsonValueKind.Object || kind == JsonValueKind.Array)
+                        {
+                            error = "Unsupported nested object or array for key '" + key + "'.";
+                            return false;
+                        }
+                        if (stringsOnly && kind != JsonValueKind.String)
+                        {
+                            error = "Expected string value for key '" + key + "'.";
+                            return false;
+                        }
+                        if (kind == JsonValueKind.String)
+                            target[key] = prop.Value.GetString() ?? "";
+                        else if (kind == JsonValueKind.True)
+                            target[key] = "true";
+                        else if (kind == JsonValueKind.False)
+                            target[key] = "false";
+                        else if (kind == JsonValueKind.Number)
+                            target[key] = prop.Value.GetRawText();
+                        else if (kind == JsonValueKind.Null)
+                            target[key] = "null";
+                    }
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                error = "Malformed JSON: " + ex.Message;
+                return false;
+            }
+#else
+            int i = 0;
+            int len = json.Length;
+            SkipWhitespace(json, ref i);
+            if (i >= len || json[i] != '{')
+            {
+                error = "Root JSON element must begin with '{'.";
+                return false;
+            }
+            i++; // consume '{'
+
+            bool expectCommaOrEnd = false;
+            while (i < len)
+            {
+                SkipWhitespace(json, ref i);
+                if (i >= len)
+                {
+                    error = "Unterminated JSON object (missing '}').";
+                    return false;
+                }
+                if (json[i] == '}')
+                {
+                    i++;
+                    SkipWhitespace(json, ref i);
+                    if (i < len)
+                    {
+                        error = "Unexpected trailing characters after closing '}'.";
+                        return false;
+                    }
+                    return true;
+                }
+                if (expectCommaOrEnd)
+                {
+                    if (json[i] != ',')
+                    {
+                        error = "Expected ',' or '}' between JSON properties.";
+                        return false;
+                    }
+                    i++;
+                    SkipWhitespace(json, ref i);
+                    if (i >= len || json[i] == '}')
+                    {
+                        error = "Trailing comma in JSON object.";
+                        return false;
+                    }
+                }
+                if (json[i] != '"')
+                {
+                    error = "Expected quoted property name at offset " + i.ToString(CultureInfo.InvariantCulture) + ".";
+                    return false;
+                }
+
+                string key;
+                if (!TryReadQuotedStringStrict(json, ref i, out key))
+                {
+                    error = "Unterminated string key at offset " + i.ToString(CultureInfo.InvariantCulture) + ".";
+                    return false;
+                }
+                if (allowedKeys != null && !allowedKeys.Contains(key))
+                {
+                    error = "Unknown JSON key '" + key + "'.";
+                    return false;
+                }
+
+                SkipWhitespace(json, ref i);
+                if (i >= len || json[i] != ':')
+                {
+                    error = "Expected ':' after key '" + key + "'.";
+                    return false;
+                }
+                i++; // consume ':'
+                SkipWhitespace(json, ref i);
+                if (i >= len)
+                {
+                    error = "Missing value for key '" + key + "'.";
+                    return false;
+                }
+
+                if (json[i] == '"')
+                {
+                    string val;
+                    if (!TryReadQuotedStringStrict(json, ref i, out val))
+                    {
+                        error = "Unterminated string value for key '" + key + "'.";
+                        return false;
+                    }
+                    target[key] = val;
+                }
+                else if (json[i] == '{' || json[i] == '[')
+                {
+                    error = "Unsupported nested object or array for key '" + key + "'.";
+                    return false;
+                }
+                else
+                {
+                    if (stringsOnly)
+                    {
+                        error = "Expected string value for key '" + key + "'.";
+                        return false;
+                    }
+                    int start = i;
+                    while (i < len && json[i] != ',' && json[i] != '}' && !char.IsWhiteSpace(json[i]))
+                        i++;
+                    string literal = json.Substring(start, i - start).Trim();
+                    if (!IsValidJsonPrimitiveLiteral(literal))
+                    {
+                        error = "Invalid JSON literal '" + literal + "' for key '" + key + "'.";
+                        return false;
+                    }
+                    target[key] = literal;
+                }
+                expectCommaOrEnd = true;
+            }
+
+            error = "Unterminated JSON object.";
+            return false;
+#endif
+        }
+
+#if !NET8_0_OR_GREATER
+        private static bool TryReadQuotedStringStrict(string json, ref int pos, out string value)
+        {
+            value = "";
+            if (pos >= json.Length || json[pos] != '"') return false;
+            pos++;
+            int start = pos;
+            while (pos < json.Length)
+            {
+                char c = json[pos];
+                if (c == '\\')
+                {
+                    if (pos + 1 >= json.Length) return false;
+                    pos += 2;
+                    continue;
+                }
+                if (c == '"')
+                {
+                    string raw = json.Substring(start, pos - start);
+                    pos++;
+                    value = Unescape(raw);
+                    return true;
+                }
+                pos++;
+            }
+            return false;
+        }
+
+        private static bool IsValidJsonPrimitiveLiteral(string literal)
+        {
+            if (string.IsNullOrEmpty(literal)) return false;
+            if (literal == "true" || literal == "false" || literal == "null") return true;
+            double d;
+            return double.TryParse(literal, NumberStyles.Float, CultureInfo.InvariantCulture, out d);
+        }
+#endif
 
         /// <summary>
         /// Parses a flat JSON object (single-line or multi-line) into key -> string-representation pairs.

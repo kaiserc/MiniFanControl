@@ -468,10 +468,11 @@ namespace MiniFanControl
                 {
                     // WinRing0 does not support process linear mapping, but provides direct physical memory IOCTLs.
                     // Probe directly through the driver without creating disconnected heap buffers.
-                    byte m0 = NativeInpOut.ReadPhysicalByteSafe(baseAddr);
-                    byte m1 = NativeInpOut.ReadPhysicalByteSafe(baseAddr + 1);
-                    byte mCpu = NativeInpOut.ReadPhysicalByteSafe(baseAddr + (Profile != null ? Profile.RegCpuTemp : REG_CPU_TEMP));
-                    if (!(m0 == 0xFF && m1 == 0xFF && mCpu == 0xFF))
+                    byte m0, m1, mCpu;
+                    bool r0 = NativeInpOut.TryReadPhysicalByte(baseAddr, out m0);
+                    bool r1 = NativeInpOut.TryReadPhysicalByte(baseAddr + 1, out m1);
+                    bool rCpu = NativeInpOut.TryReadPhysicalByte(baseAddr + (Profile != null ? Profile.RegCpuTemp : REG_CPU_TEMP), out mCpu);
+                    if (r0 && r1 && rCpu && !(m0 == 0xFF && m1 == 0xFF && mCpu == 0xFF))
                     {
                         _physHandle = IntPtr.Zero;
                         _linAddr = IntPtr.Zero;
@@ -1030,10 +1031,23 @@ namespace MiniFanControl
         }
 
 
+        /// <summary>
+        /// Fail-closed check ensuring live hardware writes only run when cross-session
+        /// Global\Access_EC synchronization is active (or in unit-test simulation mode).
+        /// Prevents silent uncoordinated EC writes when Local\ mutex fallback is active.
+        /// </summary>
+        internal bool IsMutexSafeForLiveWrite()
+        {
+            if (_isSimulatedMode) return true;
+            EcBusMutex.EnsureCreated();
+            return !EcBusMutex.UsesLocalNamespaceFallback;
+        }
+
         public bool SetMode(int code)
         {
             if (code < 0 || code > 2) return false;
             if (Profile != null && Profile.IsReadOnly) return false; // Fail-closed: read-only unverified hardware protection
+            if (!IsMutexSafeForLiveWrite()) return false; // Fail-closed: refuse live EC writes on Local\ fallback
             try { EnsureOpen(); } catch { return false; }
             if (SuperIoBaseAddr != 0 || AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
             {
@@ -1058,6 +1072,7 @@ namespace MiniFanControl
             if (fanId != 1 && fanId != 2) return false;
             if (pct < 0 || pct > 100) return false;
             if (Profile != null && Profile.IsReadOnly) return false; // Fail-closed: read-only unverified hardware protection
+            if (!IsMutexSafeForLiveWrite()) return false; // Fail-closed: refuse live EC/Super I/O writes on Local\ fallback
             if (fanId == 2 && Profile != null && !Profile.HasDualFans) return true; // Single-fan device: secondary fan write is a no-op success
             try { EnsureOpen(); } catch { return false; }
             DeviceProfile p = Profile ?? DeviceProfile.KnownProfiles[0];

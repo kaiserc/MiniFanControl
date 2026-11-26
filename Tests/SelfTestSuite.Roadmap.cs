@@ -659,6 +659,79 @@ namespace MiniFanControl
             Check(sec131Ok,
                 "PawnIO .bin Module SHA256 Pinning, Legacy WinRing0 Hard-Gate, Local\\ Mutex Sync Check & CLI JSONL Streaming",
                 sec131Detail);
+
+            // 123. TryReadPhysicalByte, Strict SimpleJson/SchemaVersion, Versioned CustomProfileJson & Extracted Services
+            bool eng131Ok = false;
+            string eng131Detail = "";
+            try
+            {
+                // 1) TryReadPhysicalByte returns false + value=0 on disallowed addresses (no 0xFF sentinel conflation)
+                byte pVal = 0xAA;
+                bool physDenied = !NativeInpOut.TryReadPhysicalByte(0x00001000UL, out pVal) && (pVal == 0);
+
+                // 2) Strict SimpleJson accepts valid flat object and rejects nested objects, arrays, and unknown keys loudly
+                var allow = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "schemaVersion", "name" };
+                var parsed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                string err;
+                bool strictGood = SimpleJson.ParseFlatObjectStrict("{\"schemaVersion\":1,\"name\":\"Quiet\"}", parsed, allow, out err)
+                    && parsed["name"] == "Quiet";
+                bool rejectNested = !SimpleJson.ParseFlatObjectStrict("{\"schemaVersion\":1,\"name\":{\"nested\":true}}", new Dictionary<string, string>(), allow, out err)
+                    && !string.IsNullOrEmpty(err);
+                bool rejectUnknown = !SimpleJson.ParseFlatObjectStrict("{\"schemaVersion\":1,\"evilKey\":123}", new Dictionary<string, string>(), allow, out err)
+                    && !string.IsNullOrEmpty(err);
+
+                // 3) DeviceProfile.FromJsonStrict rejects unsupported schemaVersion > 1
+                string dpErr;
+                DeviceProfile badVer = DeviceProfile.FromJsonStrict("{\"schemaVersion\":99,\"id\":\"x\"}", out dpErr);
+                bool schemaRejected = (badVer == null && !string.IsNullOrEmpty(dpErr));
+
+                // 4) Versioned CustomProfileJson round-trip & unknown-key rejection
+                FanCurveProfile srcCp = new FanCurveProfile("NightMode", false, -1,
+                    new CurvePoint[] { new CurvePoint(40, 0), new CurvePoint(75, 80) },
+                    new CurvePoint[] { new CurvePoint(40, 22), new CurvePoint(75, 70) });
+                string cpJson = AppSettings.SerializeCustomProfileJson(srcCp);
+                FanCurveProfile rtCp;
+                string cpErr;
+                bool cpRoundTrip = AppSettings.TryParseCustomProfileJson(cpJson, out rtCp, out cpErr)
+                    && rtCp != null && rtCp.Name == "NightMode" && rtCp.ApuPoints.Length == 2;
+                FanCurveProfile badCp;
+                bool cpRejectBad = !AppSettings.TryParseCustomProfileJson("{\"schemaVersion\":2,\"name\":\"X\",\"apu\":\"40:0;70:80\"}", out badCp, out cpErr);
+
+                // 5) Extracted TrayIconRenderer & CurveProfileCatalog services
+                IntPtr hIcon;
+                bool trayOk = false;
+                using (System.Drawing.Icon ic = TrayIconRenderer.RenderHighContrastTempIcon(54, true, false, out hIcon))
+                {
+                    trayOk = (ic != null && ic.Width == 32 && hIcon != IntPtr.Zero);
+                }
+                if (hIcon != IntPtr.Zero)
+                {
+                    // Clean up raw handle via UpdateIconSlot or ignore minor test handle; better: use TrayIconRenderer.UpdateIconSlot
+                    int k = 0;
+                    TrayIconRenderer.UpdateIconSlot(null, null, 55, true, false, ref k, ref hIcon);
+                }
+                var cpList = new List<FanCurveProfile>();
+                CurveProfileCatalog.UpsertCustomProfile(cpList, srcCp);
+                CurveProfileCatalog.UpsertCustomProfile(cpList, rtCp);
+                var si = new SystemHardwareInfo();
+                si.CpuName = "AMD Ryzen AI 9 HX 370";
+                bool catalogOk = (cpList.Count == 1)
+                    && (CurveProfileCatalog.FindProfileByName("NightMode", null, cpList) != null)
+                    && (CurveProfileCatalog.ResolveRyzenTierBadge(si) == "Ryzen AI 9");
+
+                // 6) HardwareBackend.IsMutexSafeForLiveWrite succeeds in simulation mode
+                var simHw = new HardwareBackend(DeviceProfile.KnownProfiles[0]);
+                simHw.EnableSimulationMode();
+                bool simWriteGuardOk = simHw.IsMutexSafeForLiveWrite();
+
+                eng131Ok = physDenied && strictGood && rejectNested && rejectUnknown && schemaRejected && cpRoundTrip && cpRejectBad && trayOk && catalogOk && simWriteGuardOk;
+                eng131Detail = string.Format("TryPhys={0}, StrictJson={1}/{2}/{3}, Schema={4}, CpJson={5}/{6}, Tray={7}, Cat={8}, SimGuard={9}",
+                    physDenied, strictGood, rejectNested, rejectUnknown, schemaRejected, cpRoundTrip, cpRejectBad, trayOk, catalogOk, simWriteGuardOk);
+            }
+            catch (Exception ex) { eng131Detail = ex.Message; }
+            Check(eng131Ok,
+                "TryReadPhysicalByte, Strict SimpleJson/SchemaVersion, Versioned CustomProfileJson & Extracted Services",
+                eng131Detail);
         }
     }
 }

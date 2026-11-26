@@ -854,9 +854,17 @@ namespace MiniFanControl
             }
         }
 
-        public static byte ReadPhysicalByteSafe(ulong physAddr)
+        private static int _physReadErrLogged = 0;
+
+        /// <summary>
+        /// Reads a single byte from an allowlisted physical memory address.
+        /// Returns false (with value = 0) on range denial, missing driver, or driver error,
+        /// avoiding conflation with a legitimate 0xFF register value.
+        /// </summary>
+        public static bool TryReadPhysicalByte(ulong physAddr, out byte value)
         {
-            if (!IsPhysicalMemoryRangeAllowed(physAddr, 1, isWrite: false)) return 0xFF;
+            value = 0;
+            if (!IsPhysicalMemoryRangeAllowed(physAddr, 1, isWrite: false)) return false;
             if (ActiveDriver == HardwareDriverEngine.None) PreloadDriverDll();
 
             _ioLock.EnterReadLock();
@@ -868,16 +876,30 @@ namespace MiniFanControl
                     {
                         byte[] buffer = new byte[1];
                         uint ok = _winringReadMem(new UIntPtr(physAddr), buffer, 1, 1);
-                        if (ok != 0) return buffer[0];
+                        if (ok != 0)
+                        {
+                            value = buffer[0];
+                            return true;
+                        }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        if (Interlocked.Exchange(ref _physReadErrLogged, 1) == 0)
+                            WatchdogSupervisor.LogWatchdogEvent("TryReadPhysicalByte failed at 0x" + physAddr.ToString("X") + ": " + ex.Message);
+                    }
                 }
-                return 0xFF;
+                return false;
             }
             finally
             {
                 _ioLock.ExitReadLock();
             }
+        }
+
+        public static byte ReadPhysicalByteSafe(ulong physAddr)
+        {
+            byte val;
+            return TryReadPhysicalByte(physAddr, out val) ? val : (byte)0xFF;
         }
 
         public static bool WritePhysicalByteSafe(ulong physAddr, byte value)

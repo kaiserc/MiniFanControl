@@ -27,27 +27,19 @@ jobs:
       - name: Verify Version & Metadata Consistency
         shell: pwsh
         run: |
-          $ver = (Get-Content VERSION -Raw).Trim()
-          $manifest = Get-Content app.manifest -Raw
-          $iss = Get-Content installer.iss -Raw
-          $csproj = Get-Content MiniFanControl.csproj -Raw
-          $mainForm = Get-Content Ui/MainForm.cs -Raw
-          if ($manifest -notmatch "version=`"$ver\.0`"") { throw "app.manifest version mismatch (expected $ver.0)" }
-          if ($iss -notmatch "#define MyAppVersion `"$ver`"") { throw "installer.iss MyAppVersion mismatch (expected $ver)" }
-          if ($csproj -notmatch "<Version>$ver</Version>") { throw "MiniFanControl.csproj Version mismatch (expected $ver)" }
-          if ($mainForm -notmatch "APP_VERSION\s*=\s*`"$ver`"") { throw "MainForm.APP_VERSION mismatch (expected $ver)" }
-          Write-Host "[OK] Version $ver matches across VERSION, app.manifest, installer.iss, MiniFanControl.csproj, and MainForm.cs"
+          ./scripts/sync-version.ps1 -Check
 
       - name: Build net48 Target
         shell: cmd
         run: |
           dotnet build MiniFanControl.csproj -c Release -f net48
 
-      - name: Build & Test net10.0-windows Target
+      - name: Build net10.0-windows Target & Run Dedicated Test Assembly
         shell: cmd
         run: |
           dotnet build MiniFanControl.csproj -c Release -f net10.0-windows
-          dotnet bin\Release\net10.0-windows\MiniFanControl.dll test
+          dotnet build Tests\MiniFanControl.Tests.csproj -c Release -f net10.0-windows
+          Tests\bin\Release\net10.0-windows\MiniFanControl.Tests.exe
 
   standalone-build-and-test:
     name: Standalone .NET 4.8 CSC Build & Automated Self-Tests

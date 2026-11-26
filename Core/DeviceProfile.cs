@@ -300,11 +300,88 @@ namespace MiniFanControl
             return matchedFields > 0;
         }
 
+        public const int PROFILE_JSON_SCHEMA_VERSION = 1;
+
+        private static readonly HashSet<string> ProfileJsonAllowedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "schemaVersion", "id", "displayName", "chipsetNotes",
+            "ecBaseAddress", "ecSize",
+            "regModeStatus", "regModeCmd", "regFan1Ctrl", "regFan2Ctrl",
+            "regFan1Hi", "regFan1Lo", "regFan2Hi", "regFan2Lo",
+            "regCpuTemp", "regGpuTemp", "regVrmTemp", "regAmbientTemp", "regDdrTemp", "regDcVoltsAdc",
+            "hasDualFans", "isReadOnly", "isVerified",
+            "boundManufacturer", "boundProductName", "boundBaseBoard"
+        };
+
+        /// <summary>
+        /// Strict versioned JSON deserializer for custom/external hardware profiles.
+        /// Rejects malformed JSON, nested objects/arrays, unknown keys, and unsupported schema versions loudly.
+        /// </summary>
+        public static DeviceProfile FromJsonStrict(string json, out string error)
+        {
+            error = null;
+            Dictionary<string, string> fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (!SimpleJson.ParseFlatObjectStrict(json, fields, ProfileJsonAllowedKeys, out error, stringsOnly: false))
+                return null;
+            if (fields.Count == 0)
+            {
+                error = "Profile JSON object has no properties.";
+                return null;
+            }
+            string schemaVal;
+            if (fields.TryGetValue("schemaVersion", out schemaVal))
+            {
+                int schemaNum;
+                if (!int.TryParse(schemaVal, NumberStyles.Integer, CultureInfo.InvariantCulture, out schemaNum) ||
+                    schemaNum < 1 || schemaNum > PROFILE_JSON_SCHEMA_VERSION)
+                {
+                    error = "Unsupported profile schemaVersion '" + schemaVal + "' (supported: 1).";
+                    return null;
+                }
+            }
+            return BuildProfileFromFields(fields);
+        }
+
         public static DeviceProfile FromJson(string json)
         {
             if (string.IsNullOrWhiteSpace(json)) return null;
             if (json.IndexOf('{') < 0 || json.IndexOf('}') < 0) return null;
 
+            Dictionary<string, string> fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            string strictErr;
+            if (SimpleJson.ParseFlatObjectStrict(json, fields, ProfileJsonAllowedKeys, out strictErr, stringsOnly: false))
+            {
+                string schemaVal;
+                if (fields.TryGetValue("schemaVersion", out schemaVal))
+                {
+                    int schemaNum;
+                    if (!int.TryParse(schemaVal, NumberStyles.Integer, CultureInfo.InvariantCulture, out schemaNum) ||
+                        schemaNum < 1 || schemaNum > PROFILE_JSON_SCHEMA_VERSION)
+                    {
+                        WatchdogSupervisor.LogWatchdogEvent("Rejected profile JSON with unsupported schemaVersion: " + schemaVal);
+                        return null;
+                    }
+                }
+                return fields.Count > 0 ? BuildProfileFromFields(fields) : null;
+            }
+
+            // Fail-closed: reject nested objects/arrays or unknown keys loudly instead of silently skipping
+            if (!string.IsNullOrEmpty(strictErr) &&
+                (strictErr.IndexOf("nested", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 strictErr.IndexOf("Unknown JSON key", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                WatchdogSupervisor.LogWatchdogEvent("Rejected invalid profile JSON: " + strictErr);
+                return null;
+            }
+
+            fields.Clear();
+            int parsedFieldCount = SimpleJson.ParseFlatObject(json, fields, stringsOnly: false);
+            if (parsedFieldCount == 0) return null;
+            return BuildProfileFromFields(fields);
+        }
+
+        private static DeviceProfile BuildProfileFromFields(Dictionary<string, string> fields)
+        {
             DeviceProfile p = new DeviceProfile();
             p.Id = "custom-profile";
             p.DisplayName = "Custom Hardware Profile";
@@ -314,10 +391,6 @@ namespace MiniFanControl
             p.BoundManufacturer = "";
             p.BoundProductName = "";
             p.BoundBaseBoard = "";
-
-            Dictionary<string, string> fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            int parsedFieldCount = SimpleJson.ParseFlatObject(json, fields, stringsOnly: false);
-            if (parsedFieldCount == 0) return null;
 
             bool explicitReadOnlyFalse = false;
             bool explicitVerifiedTrue = false;

@@ -115,6 +115,73 @@ namespace MiniFanControl
             return pts.ToArray();
         }
 
+        public const int CUSTOM_PROFILE_SCHEMA_VERSION = 1;
+
+        private static readonly HashSet<string> CustomProfileJsonAllowedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "schemaVersion", "name", "apu", "sys"
+        };
+
+        /// <summary>
+        /// Serializes a custom fan curve profile into a strict versioned single-line JSON object.
+        /// </summary>
+        public static string SerializeCustomProfileJson(FanCurveProfile cp)
+        {
+            if (cp == null) return "";
+            return string.Format(CultureInfo.InvariantCulture,
+                "{{\"schemaVersion\":{0},\"name\":\"{1}\",\"apu\":\"{2}\",\"sys\":\"{3}\"}}",
+                CUSTOM_PROFILE_SCHEMA_VERSION,
+                SimpleJson.Escape(cp.Name ?? "Custom"),
+                SimpleJson.Escape(FormatPointList(cp.ApuPoints)),
+                SimpleJson.Escape(FormatPointList(cp.SysPoints)));
+        }
+
+        /// <summary>
+        /// Parses a strict versioned JSON custom fan curve profile (schemaVersion 1).
+        /// Rejects unknown keys, nested structures, and unsupported schema versions fail-closed.
+        /// </summary>
+        public static bool TryParseCustomProfileJson(string json, out FanCurveProfile profile, out string error)
+        {
+            profile = null;
+            error = null;
+            Dictionary<string, string> fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (!SimpleJson.ParseFlatObjectStrict(json, fields, CustomProfileJsonAllowedKeys, out error, stringsOnly: false))
+                return false;
+
+            string sv;
+            int schemaNum = 1;
+            if (!fields.TryGetValue("schemaVersion", out sv) ||
+                !int.TryParse(sv, NumberStyles.Integer, CultureInfo.InvariantCulture, out schemaNum) ||
+                schemaNum != CUSTOM_PROFILE_SCHEMA_VERSION)
+            {
+                error = "Unsupported or missing custom profile schemaVersion.";
+                return false;
+            }
+
+            string name, apuRaw, sysRaw;
+            if (!fields.TryGetValue("name", out name) || string.IsNullOrWhiteSpace(name))
+            {
+                error = "Missing custom profile name.";
+                return false;
+            }
+            if (!fields.TryGetValue("apu", out apuRaw))
+            {
+                error = "Missing custom profile APU points.";
+                return false;
+            }
+            CurvePoint[] apuPts = ParsePointList(apuRaw);
+            if (apuPts.Length < 2)
+            {
+                error = "Custom profile requires at least 2 valid APU points.";
+                return false;
+            }
+            CurvePoint[] sysPts = fields.TryGetValue("sys", out sysRaw) ? ParsePointList(sysRaw) : FanCurveProfile.ClonePoints(apuPts);
+            if (sysPts.Length < 2) sysPts = FanCurveProfile.ClonePoints(apuPts);
+
+            profile = new FanCurveProfile(name.Trim(), false, -1, apuPts, sysPts);
+            return true;
+        }
+
         public static string FormatPointList(CurvePoint[] pts)
         {
             List<string> list = new List<string>();
@@ -173,6 +240,22 @@ namespace MiniFanControl
                     string line = rawLine.Trim();
                     if (string.IsNullOrEmpty(line)) continue;
 
+                    if (line.StartsWith("CustomProfileJson=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string payload = line.Substring("CustomProfileJson=".Length).Trim();
+                        FanCurveProfile jsonProf;
+                        string jsonErr;
+                        if (TryParseCustomProfileJson(payload, out jsonProf, out jsonErr) && customProfiles != null)
+                        {
+                            CurveProfileCatalog.UpsertCustomProfile(customProfiles, jsonProf);
+                        }
+                        else if (!string.IsNullOrEmpty(jsonErr))
+                        {
+                            WatchdogSupervisor.LogWatchdogEvent("Ignored invalid CustomProfileJson entry: " + jsonErr);
+                        }
+                        continue;
+                    }
+
                     if (line.StartsWith("CustomProfile=", StringComparison.OrdinalIgnoreCase))
                     {
                         string payload = line.Substring("CustomProfile=".Length);
@@ -186,17 +269,7 @@ namespace MiniFanControl
                             {
                                 if (sysPts.Length < 2) sysPts = FanCurveProfile.ClonePoints(apuPts);
                                 FanCurveProfile loadedProf = new FanCurveProfile(name, false, -1, apuPts, sysPts);
-                                int existingIdx = -1;
-                                for (int idx = 0; idx < customProfiles.Count; idx++)
-                                {
-                                    if (customProfiles[idx] != null && customProfiles[idx].Name.Equals(name, StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        existingIdx = idx;
-                                        break;
-                                    }
-                                }
-                                if (existingIdx >= 0) customProfiles[existingIdx] = loadedProf;
-                                else customProfiles.Add(loadedProf);
+                                CurveProfileCatalog.UpsertCustomProfile(customProfiles, loadedProf);
                             }
                         }
                         continue;

@@ -344,7 +344,8 @@ namespace MiniFanControl
                 }
                 // WinRing0 per-access direct physical memory IOCTL
                 ulong baseAddr = Profile != null ? Profile.EcBaseAddress : EC_BASE;
-                return NativeInpOut.ReadPhysicalByteSafe(baseAddr + reg);
+                byte physVal;
+                return NativeInpOut.TryReadPhysicalByte(baseAddr + reg, out physVal) ? physVal : (byte)0xFF;
             }
 
             return 0xFF;
@@ -414,6 +415,7 @@ namespace MiniFanControl
         public bool WriteReg(byte reg, byte val)
         {
             if (Profile != null && Profile.IsReadOnly) return false; // Fail-closed: read-only unverified hardware protection
+            if (!IsMutexSafeForLiveWrite()) return false; // Fail-closed: refuse live EC/Super I/O writes on Local\ fallback
             EnsureOpen();
             using (var lockScope = EcBusMutex.AcquireEc(30))
             {

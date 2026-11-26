@@ -13,7 +13,19 @@ Any contribution that modifies hardware access, fan curves, or register logic mu
 1. **Fail-Closed by Default**: If hardware detection, mutex acquisition, port validation, or register read-back fails, the application must abort writes and fall back to safe read-only monitoring or BIOS Auto.
 2. **Never Blind Write**: Writes to unverified platforms, unknown motherboard DMI strings, or unwhitelisted ports are strictly rejected.
 3. **Always Synchronize**: All ACPI EC (`0x62/0x66`, `0x6C/0x6E`), Super I/O (`0x2E/0x4E`), and SMBus access must be scoped inside `EcBusMutex` (`Global\Access_EC`, `Global\Access_ISABUS.HTP.Method`, and `Global\Access_SMBUS.HTP.Method`).
-4. **Zero Unsigned Third-Party DLLs**: Keep the executable self-contained with zero third-party dependencies outside standard Windows APIs, AMD ADL (`atiadlxx.dll`), and the cross-signed `inpoutx64.dll` port driver.
+4. **Zero Unsigned Third-Party DLLs**: Keep the executable self-contained with zero third-party dependencies outside standard Windows APIs, WHQL AMD ADL (`atiadlxx.dll`) / NVIDIA NVML (`nvml.dll`), and EV-signed **PawnIO** (`PawnIOLib.dll` + SHA256-pinned bundled `.bin` modules).
+
+---
+
+## ⚠️ C# 5 Language Constraint (Important!)
+
+`build-windows.bat` compiles `MiniFanControl.exe` and `minifan-helper.exe` using Windows' inbox `.NET Framework 4.8` compiler (`C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe`) with `/warn:4`. That compiler supports **C# 5 only**.
+
+Even though `MiniFanControl.csproj` also builds on `.NET 10` (`LangVersion = latest`), **all shared `.cs` files must remain strictly C# 5 compatible** unless guarded inside `#if NET8_0_OR_GREATER`:
+
+- **Do NOT use:** string interpolation (`$"..."`), null-conditional (`?.`), null-coalescing assignment (`??=`), expression-bodied members (`=>`), `nameof(...)`, `out var`, target-typed `new()`, or switch expressions.
+- **Always use:** `string.Format(...)`, explicit null checks, classic `out` declarations, and explicit types.
+- **Verify locally:** Always run `build-windows.bat` before opening a PR!
 
 ---
 
@@ -54,30 +66,38 @@ No Visual Studio installation required! Run the included batch script:
 ```cmd
 build-windows.bat
 ```
-This invokes the native Windows C# compiler (`csc.exe`), compiles `MiniFanControl.exe` and `minifan-helper.exe`, rotates live running `.exe` instances atomically, and automatically executes the 101-point automated safety test suite.
+This invokes the native Windows C# compiler (`csc.exe` with `/optimize+ /debug- /warn:4`), compiles a lean test-free `MiniFanControl.exe` and a test-enabled `minifan-helper.exe`, rotates live running `.exe` instances atomically, and automatically executes the full automated safety test suite.
 
 ### Option B: Modern .NET SDK Multi-Target Build (.NET 4.8 & .NET 10.0-windows)
 If you have the .NET SDK installed:
 
 ```powershell
-# Build both targets
+# Build both targets (shipping binary excludes Tests/)
 dotnet build MiniFanControl.csproj -c Release
 
-# Run automated tests
-dotnet run --project MiniFanControl.csproj -c Release -- test
+# Run the dedicated test assembly
+dotnet run --project Tests\MiniFanControl.Tests.csproj -c Release -f net10.0-windows
 ```
 
 ---
 
 ## 🧪 Automated Testing Requirements
 
-Before opening a pull request, verify that all **74 automated regression and safety tests** pass cleanly:
+Before opening a pull request, verify that all **123+ automated regression and safety tests** pass cleanly:
 
 ```powershell
 .\minifan-helper.exe test
 ```
 
-If you add new hardware features or curve math, please add corresponding unit test assertions in [`Tests/SelfTestSuite.cs`](Tests/SelfTestSuite.cs).
+If you add new hardware features or curve math, please add corresponding unit test assertions in [`Tests/SelfTestSuite.Roadmap.cs`](Tests/SelfTestSuite.Roadmap.cs).
+
+### Single-Source Version Bumps
+Update only the root `VERSION` file and run the sync script before tagging:
+
+```powershell
+.\scripts\sync-version.ps1        # Sync VERSION -> app.manifest, installer.iss, csproj, MainForm.cs
+.\scripts\sync-version.ps1 -Check # Verify zero version drift
+```
 
 ### Hardware Validation Matrix Check
 Verify that all 6 existing device profiles and inverted polarity configurations remain valid:

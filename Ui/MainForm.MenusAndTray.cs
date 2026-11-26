@@ -68,13 +68,7 @@ namespace MiniFanControl
 
         private string GetRyzenTierBadge()
         {
-            if (_sysInfo == null) return null;
-            string combined = (_sysInfo.CpuName ?? "") + " " + (_sysInfo.MatchedProfile != null ? _sysInfo.MatchedProfile.DisplayName : "");
-            if (combined.IndexOf("Ryzen AI 9", StringComparison.OrdinalIgnoreCase) >= 0) return "Ryzen AI 9";
-            if (combined.IndexOf("Ryzen 9", StringComparison.OrdinalIgnoreCase) >= 0) return "Ryzen 9";
-            if (combined.IndexOf("Ryzen 7", StringComparison.OrdinalIgnoreCase) >= 0) return "Ryzen 7";
-            if (combined.IndexOf("Ryzen 5", StringComparison.OrdinalIgnoreCase) >= 0) return "Ryzen 5";
-            return null;
+            return CurveProfileCatalog.ResolveRyzenTierBadge(_sysInfo);
         }
 
 
@@ -1010,99 +1004,10 @@ namespace MiniFanControl
             _gpuTrayIcon.DoubleClick += (s, e) => RestoreFromTray();
         }
 
-        private Icon RenderHighContrastTempIcon(int temp, bool darkBackground, bool isGpu, out IntPtr rawHandle)
-        {
-            Color bg = darkBackground ? Color.Black : Color.White;
-            Color fg = darkBackground ? Color.White : Color.Black;
-            Color barColor = isGpu
-                ? (darkBackground ? Color.FromArgb(0x22, 0xC5, 0x5E) : Color.FromArgb(0x15, 0x80, 0x3D))
-                : (darkBackground ? Color.FromArgb(0x38, 0xBD, 0xF8) : Color.FromArgb(0x1D, 0x4E, 0xD8));
-
-            using (Bitmap bmp = new Bitmap(32, 32))
-            using (Graphics g = Graphics.FromImage(bmp))
-            {
-                g.Clear(bg);
-                g.SmoothingMode = SmoothingMode.HighQuality;
-                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-
-                using (Brush barBrush = new SolidBrush(barColor))
-                {
-                    g.FillRectangle(barBrush, 0, 29, 32, 3);
-                }
-
-                string label = temp > 0 ? temp.ToString() : "--";
-                float fontSize = label.Length >= 3 ? 15f : 21.5f;
-
-                using (Font font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel))
-                using (Brush textBrush = new SolidBrush(fg))
-                using (StringFormat sf = new StringFormat
-                {
-                    Alignment = StringAlignment.Center,
-                    LineAlignment = StringAlignment.Center,
-                    FormatFlags = StringFormatFlags.NoWrap
-                })
-                {
-                    g.DrawString(label, font, textBrush, new RectangleF(-1f, -1f, 34f, 30f), sf);
-                }
-
-                rawHandle = bmp.GetHicon();
-                return (Icon)Icon.FromHandle(rawHandle).Clone();
-            }
-        }
-
         private void UpdateTrayIcons(int cpuTemp, int gpuTemp)
         {
-            int cpuKey = (cpuTemp & 0xFFFF) | (_isTaskbarDark ? 0x10000 : 0);
-            if (cpuKey != _lastCpuIconKey || _cpuIconHandle == IntPtr.Zero)
-            {
-                _lastCpuIconKey = cpuKey;
-                IntPtr newCpuHandle;
-                Icon cpuIcon = RenderHighContrastTempIcon(cpuTemp, _isTaskbarDark, false, out newCpuHandle);
-                if (_cpuTrayIcon != null)
-                {
-                    Icon oldIcon = _cpuTrayIcon.Icon;
-                    _cpuTrayIcon.Icon = cpuIcon;
-                    if (oldIcon != null && oldIcon != Icon && oldIcon != SystemIcons.Application)
-                    {
-                        try { oldIcon.Dispose(); } catch { }
-                    }
-                }
-                else if (cpuIcon != null && cpuIcon != Icon && cpuIcon != SystemIcons.Application)
-                {
-                    try { cpuIcon.Dispose(); } catch { }
-                }
-                if (_cpuIconHandle != IntPtr.Zero)
-                {
-                    DestroyIcon(_cpuIconHandle);
-                }
-                _cpuIconHandle = newCpuHandle;
-            }
-
-            int gpuKey = (gpuTemp & 0xFFFF) | (_isTaskbarDark ? 0x10000 : 0);
-            if (gpuKey != _lastGpuIconKey || _gpuIconHandle == IntPtr.Zero)
-            {
-                _lastGpuIconKey = gpuKey;
-                IntPtr newGpuHandle;
-                Icon gpuIcon = RenderHighContrastTempIcon(gpuTemp, _isTaskbarDark, true, out newGpuHandle);
-                if (_gpuTrayIcon != null)
-                {
-                    Icon oldIcon = _gpuTrayIcon.Icon;
-                    _gpuTrayIcon.Icon = gpuIcon;
-                    if (oldIcon != null && oldIcon != Icon && oldIcon != SystemIcons.Application)
-                    {
-                        try { oldIcon.Dispose(); } catch { }
-                    }
-                }
-                else if (gpuIcon != null && gpuIcon != Icon && gpuIcon != SystemIcons.Application)
-                {
-                    try { gpuIcon.Dispose(); } catch { }
-                }
-                if (_gpuIconHandle != IntPtr.Zero)
-                {
-                    DestroyIcon(_gpuIconHandle);
-                }
-                _gpuIconHandle = newGpuHandle;
-            }
+            TrayIconRenderer.UpdateIconSlot(_cpuTrayIcon, Icon, cpuTemp, _isTaskbarDark, false, ref _lastCpuIconKey, ref _cpuIconHandle);
+            TrayIconRenderer.UpdateIconSlot(_gpuTrayIcon, Icon, gpuTemp, _isTaskbarDark, true, ref _lastGpuIconKey, ref _gpuIconHandle);
 
             if (_cpuTrayIcon != null && _cpuTrayIcon.Visible != _showCpuTray)
                 _cpuTrayIcon.Visible = _showCpuTray;

@@ -343,10 +343,14 @@ namespace MiniFanControl
         private static float ReadPhysFloat(ulong physAddr)
         {
             if (physAddr < NativeInpOut.MIN_SAFE_PHYSICAL_ADDR) return 0f;
-            byte b0 = NativeInpOut.ReadPhysicalByteSafe(physAddr + 0);
-            byte b1 = NativeInpOut.ReadPhysicalByteSafe(physAddr + 1);
-            byte b2 = NativeInpOut.ReadPhysicalByteSafe(physAddr + 2);
-            byte b3 = NativeInpOut.ReadPhysicalByteSafe(physAddr + 3);
+            byte b0, b1, b2, b3;
+            if (!NativeInpOut.TryReadPhysicalByte(physAddr + 0, out b0) ||
+                !NativeInpOut.TryReadPhysicalByte(physAddr + 1, out b1) ||
+                !NativeInpOut.TryReadPhysicalByte(physAddr + 2, out b2) ||
+                !NativeInpOut.TryReadPhysicalByte(physAddr + 3, out b3))
+            {
+                return 0f;
+            }
             byte[] bytes = new byte[] { b0, b1, b2, b3 };
             return BitConverter.ToSingle(bytes, 0);
         }

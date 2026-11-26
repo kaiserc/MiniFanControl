@@ -1,14 +1,17 @@
-# MiniFanControl — Automated Hardware Safety & Curve Test Suite (122/122 Passing)
+# MiniFanControl — Automated Hardware Safety & Curve Test Suite (123/123 Passing)
 
-The built-in test suite (`minifan-helper.exe test`, run automatically by `build-windows.bat` and GitHub Actions CI on both `.NET 4.8` and `.NET 10.0-windows`) rigorously validates hardware safety mechanisms, driver integrity gates, curve math, mutex synchronization, and UI/OSD contracts without touching physical EC/Super I/O registers.
+The built-in test suite (`minifan-helper.exe test`, or `Tests/MiniFanControl.Tests.csproj` on `.NET 10`) rigorously validates hardware safety mechanisms, driver integrity gates, curve math, mutex synchronization, and UI/OSD contracts without touching physical EC/Super I/O registers.
 
-> **Binary Separation:** Starting with the `v1.3.1` stabilization line, `Tests/*.cs` is compiled exclusively into `minifan-helper.exe` (via `/define:INCLUDE_SELF_TESTS`) and the SDK test target, keeping the shipping `MiniFanControl.exe` GUI binary lean and free of test harnesses.
+> **Binary Separation:** `Tests/*.cs` is excluded from the shipping `MiniFanControl.exe` GUI binary and `MiniFanControl.csproj` by default, compiled only into `minifan-helper.exe` (via `/define:INCLUDE_SELF_TESTS`) and the standalone `Tests/MiniFanControl.Tests.csproj` test assembly.
 
 ## Running the Suite
 
 ```powershell
-# Run all 122 automated self-tests
+# Run all 123 automated self-tests (standalone Windows build)
 .\minifan-helper.exe test
+
+# Or run the dedicated .NET 10 test assembly
+dotnet run --project Tests\MiniFanControl.Tests.csproj -c Release -f net10.0-windows
 
 # Run the 6-profile hardware validation matrix
 .\minifan-helper.exe hw-matrix
@@ -149,3 +152,4 @@ The built-in test suite (`minifan-helper.exe test`, run automatically by `build-
 120. **Modern Standby (S0ix) Time-Jump Wake Detection & Super I/O Reset Protection**: Verifies S0ix gap detection and `0xFF` self-healing.
 121. **Xmas Edition Theme (White/Black/Red Palette, Concept #6 Logo, Settings Persistence & OSD Sync)**: Verifies `ThemePreference.Xmas = 5` end-to-end.
 122. **PawnIO `.bin` Module SHA256 Pinning, Legacy WinRing0 Hard-Gate, `Local\` Mutex Sync Check & CLI JSONL Streaming**: Verifies bundled `.bin` SHA256 pins accept official blobs and reject tampered payloads, confirms WinRing0 is blocked by default (`AllowLegacyWinRing0Fallback = false`), checks `EcBusMutex.IsCrossSessionSynchronized`, and verifies `FormatStatusJsonLine()` valid JSONL output with UTC timestamps.
+123. **`TryReadPhysicalByte`, Strict `SimpleJson`/SchemaVersion, Versioned `CustomProfileJson` & Extracted Services**: Verifies `TryReadPhysicalByte` returns `false` with `0` on denied ranges, `SimpleJson.ParseFlatObjectStrict` rejects nested objects/arrays and unknown keys loudly, `DeviceProfile.FromJsonStrict` enforces `schemaVersion == 1`, `AppSettings` round-trips versioned `CustomProfileJson`, and `TrayIconRenderer` / `CurveProfileCatalog` work independently of `MainForm`.
