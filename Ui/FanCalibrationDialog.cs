@@ -85,9 +85,9 @@ namespace MiniFanControl
 
             _threePassRb = new RadioButton
             {
-                Text = "3-Pass Verification (Recommended — tests min spin speed 3 times)",
+                Text = "3-Pass Verification (Recommended — 3× min-spin check)",
                 Location = new Point(16, 46),
-                Size = new Size(370, 22),
+                Size = new Size(372, 22),
                 Checked = true,
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Bold)
             };
@@ -326,7 +326,7 @@ namespace MiniFanControl
 
             Result = res;
             _progressBar.Value = 100;
-            _phaseLabel.Text = string.Format("✓ Calibration Complete! Safe Min Spin: APU {0}% | Sys {1}%",
+            _phaseLabel.Text = string.Format("✓ Calibration Complete! Safe Min Spin: APU {0}% | Sys {1}",
                 res.ApuMinSpinPct, res.HasDualFans ? res.SysMinSpinPct + "%" : "1-Fan Mode");
             _logBox.AppendText("\r\n" + res.SummaryReport);
             _applyBtn.Enabled = true;

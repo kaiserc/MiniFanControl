@@ -477,9 +477,9 @@ namespace MiniFanControl
                 sb.AppendFormat("  Passes Completed      : {0} / {1}\r\n", res.PassesCompleted, numPasses);
                 if (numPasses > 1)
                 {
-                    sb.AppendFormat("  APU Bare Spin-Up/Pass : [{0}]% PWM\r\n", string.Join("%, ", Array.ConvertAll(res.PassApuMin, x => x.ToString())));
+                    sb.AppendFormat("  APU Bare Spin-Up/Pass : [{0}%] PWM\r\n", string.Join("%, ", Array.ConvertAll(res.PassApuMin, x => x.ToString())));
                     if (res.HasDualFans)
-                        sb.AppendFormat("  Sys Bare Spin-Up/Pass : [{0}]% PWM\r\n", string.Join("%, ", Array.ConvertAll(res.PassSysMin, x => x.ToString())));
+                        sb.AppendFormat("  Sys Bare Spin-Up/Pass : [{0}%] PWM\r\n", string.Join("%, ", Array.ConvertAll(res.PassSysMin, x => x.ToString())));
                 }
                 sb.AppendFormat("  Detected Fan Layout   : {0}\r\n", res.HasDualFans ? "2 Fans (APU Fan + System RAM/NVMe Fan)" : "1 Fan (APU Fan Only)");
                 if (!res.ApuSupportsZeroRpm && res.ApuBaselineRpm > 0)
