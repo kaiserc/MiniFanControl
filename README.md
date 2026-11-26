@@ -1,6 +1,6 @@
 # MiniFanControl — Native EC Fan Control & Thermal Monitor for AMD Ryzen Mini PCs
 
-![Tests](https://img.shields.io/badge/tests-101%2F101%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-121%2F121%20passing-brightgreen)
 ![Security](https://img.shields.io/badge/Security-Fail--Closed%20%7C%20Least--Privilege-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
@@ -16,9 +16,9 @@
 [![Release: v1.3.0](https://img.shields.io/badge/Release-v1.3.0-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
 [![Language: C# / .NET](https://img.shields.io/badge/Language-C%23%20%7C%20.NET%204.8%20%26%20.NET%2010-green.svg)](#-quick-start-windows)
 [![CI/CD: GitHub Actions](https://img.shields.io/badge/CI%2FCD-Passing%20(Windows%20x64)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
-[![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-capframex--hwinfo-coexistence-globalaccess_ec)
-[![Automated Tests: 101 Passed](https://img.shields.io/badge/Automated%20Tests-101%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-101101-passing)
-[![Themes: Dark / Light / Radeon](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20AMD%20Radeon-crimson.svg)](#-3-high-contrast-themes)
+[![EC Mutex: Fail-Closed & Synchronized](https://img.shields.io/badge/EC%20Mutex-Fail--Closed%20%26%20Synchronized-purple.svg)](#-multi-tool-coexistence-globalaccess_ec-mutex)
+[![Automated Tests: 121 Passed](https://img.shields.io/badge/Automated%20Tests-121%20Passed%20(100%25)-success.svg)](#-automated-hardware-safety--curve-test-suite-121121-passing)
+[![Themes: Dark / Light / Radeon / Afterburner / Xmas](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20Radeon%20%7C%20Afterburner%20%7C%20Xmas-crimson.svg)](#1-general--hardware-settings)
 [![Ko-fi: Support](https://img.shields.io/badge/Ko--fi-Support%20Project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/kaiser76)
 
 **MiniFanControl** is a lightweight, zero-dependency **Windows (C#/.NET)** Embedded Controller (EC) & Super I/O fan control, custom fan curve, and hardware telemetry monitoring utility built specifically for **AMD Ryzen Mini PCs**—supporting the **GMKtec EVO-X1 (Ryzen AI 9 HX 370)**, **ADREAMER AriesBox 10 (Ryzen 7 7840HS)**, **TOPC TS-12C**, **GMKtec NucBox K12 (Ryzen 7 H 255 / 8845HS)**, **GMKtec K8 Plus / K11**, and other Zen 4 / Zen 5 Mini PCs with **ITE IT8613E** LPC Super I/O and **ITE IT5570E** EC controllers.
@@ -86,8 +86,9 @@ MiniFanControl/
 │   ├── CapFrameXOverlayForm.Paint.cs
 │   ├── EtwLatencyMonitor.cs
 │   └── FpsMonitor.cs
-├── Tests/              # 101-point automated hardware safety & regression test suite
-│   └── SelfTestSuite.cs
+├── Tests/              # 121-point automated hardware safety & regression test suite
+│   ├── SelfTestSuite.cs
+│   └── SelfTestSuite.Roadmap.cs
 ├── Ui/                 # Double-buffered canvases, Win11 DWM chrome, accessible WinForms controls & dialogs
 │   ├── AppLogoRenderer.cs
 │   ├── DoubleBufferedPanel.cs
@@ -281,9 +282,9 @@ MiniFanControl features a **unified multi-driver abstraction** in [`Hardware/Nat
    - MiniFanControl **bundles the official signed PawnIO bytecode modules** (`PawnIO\modules\LpcIO.bin`, `LpcACPIEC.bin`, `AMDFamily17.bin`), so fresh users only need to install PawnIO from [pawnio.eu](https://pawnio.eu) (or reuse an existing PawnIO install from CapFrameX, FanControl, or HWiNFO via direct `\Device\PawnIO` IOCTL fallback).
    - Verifies `PawnIOLib.dll` Authenticode signatures via `WinVerifyTrust` under a `FileShare.Read` lock (preferring `%ProgramFiles%\PawnIO`) and enforces `NativeInpOut.IsPortWhitelisted()` fail-closed before executing any module call.
    - If neither PawnIO nor a legacy driver can open on startup (e.g. Windows 11 HVCI blocked `inpoutx64`), MiniFanControl displays a guided **Kernel Driver Setup** dialog with one-click download and live **Re-check Driver** activation (no restart required).
-2. **InpOut64 (`inpoutx64.dll` / `inpoutx64.sys`) — Priority 1 Bundled Fallback**:
+2. **InpOut64 (`inpoutx64.dll` / `inpoutx64.sys`) — Priority 1 Optional Manual Fallback**:
    - Developed by Phillip Gibbons (Highresolution Enterprises / Red Fox UK), v1.5.0.0.
-   - Bundled with MiniFanControl and prioritized directly from the application directory when PawnIO is not installed.
+   - Not shipped in official `v1.3.0+` release archives (PawnIO-first for Windows Defender / HVCI cleanliness), but supported if manually placed in the application folder when PawnIO is not installed.
    - Runtime-enforced SHA256 binary pin verified before `LoadLibraryEx` (with a `FileShare.Read` handle held across hash + load to block TOCTOU DLL swaps): `5F27ED4D5CD58A1EE23DEEB802E09E73F3A1D884CE2135F6E827F67B171269E7`.
    - Isolated port I/O and linear memory mapping.
 3. **WinRing0 1.3.1b (`WinRing0x64.dll` / `WinRing0.sys`) — Priority 2 Optional Fallback**:
@@ -329,7 +330,7 @@ We welcome community hardware profiles for new Zen 4 / Zen 5 Mini PC models! Her
 
 ## 🚀 Quick Start (Windows)
 
-1. **Prerequisite**: Ensure a supported kernel driver DLL (`inpoutx64.dll` bundled, or optional `WinRing0x64.dll`) is located in the application folder (next to `MiniFanControl.exe`).
+1. **Prerequisite (HVCI-Safe Recommended)**: Install EV-signed **[PawnIO](https://pawnio.eu)** (MiniFanControl bundles the signed `PawnIO\modules\*.bin` modules and includes a guided setup dialog on first launch). Optional legacy drop-in fallback (`inpoutx64.dll` or `WinRing0x64.dll` placed next to `MiniFanControl.exe`) is also supported with SHA256 verification when Memory Integrity is disabled.
 2. **Launch & Permissions**:
    - **Full Hardware Fan Control**: Right-click `MiniFanControl.exe` and select **Run as Administrator** (or install the Task Scheduler autostart task created by the installer) so the driver service can initialize its kernel handle.
    - **Safe Read-Only Telemetry**: When launched without elevation or when Windows Defender HVCI blocks kernel drivers, MiniFanControl starts cleanly in Safe Read-Only Telemetry Mode, reading APU power, temperatures, GPU clocks, NVMe SSD temp, and RAM load natively via AMD's official driver with full security intact.
@@ -380,13 +381,18 @@ The included command-line tool provides full scripting, automation, and diagnost
 # Run zero-UI headless background fan control daemon (24/7 servers & local LLM hosts)
 .\minifan-helper.exe daemon
 
+# Install, inspect, or remove the Low-RAM Windows Background Service (MiniFanControlService)
+.\minifan-helper.exe service-install
+.\minifan-helper.exe service-status
+.\minifan-helper.exe service-uninstall
+
 # Generate sanitized hardware profile JSON & pre-filled GitHub Issue URL
 .\minifan-helper.exe submit-report
 
 # Inspect native Windows DXGI/DxgKrnl ETW Display Latency & Flip Mode
 .\minifan-helper.exe latency
 
-# Execute the 101-point automated hardware safety & curve test suite
+# Execute the 121-point automated hardware safety & curve test suite
 .\minifan-helper.exe test
 ```
 
@@ -497,6 +503,26 @@ The built-in test suite (`minifan-helper.exe test` or automated upon running `bu
 99. **Desktop PC OSD Polish & Consistent Frametime**: Verifies discrete GPU vs `iGPU` labeling, ASCII hotspot formatting, read-only OSD row trimming, consistent frametime resolution, and 1% Low history tracking.
 100. **Native Windows ETW Display Latency Tracker & x64 Struct Alignment (`EtwLatencyMonitor`, `EtwPresentTracker`)**: Verifies Win64 ETW struct sizes (`88`/`280`/`448` bytes), DXGI/DxgKrnl MPO/FreeSync HSync scan-out latency math, post-flip pairing, Composed Blit detection, ignored-process filtering, and stale expiry.
 101. **ETW Display Latency Stats, OSD Studio Persistence, Overlay/LivePerf Render & Status JSON**: Verifies `TelemetrySessionStats` latency tracking, `OsdOverlayConfig.ShowLatency` round-trip, DF Corner / `LivePerformanceCanvas` rendering, and CLI `status` JSON latency fields.
+102. **PawnIO ProgramFiles Priority, Fail-Closed Authenticode Verification & `LpcACPIEC` Routing**: Verifies `%ProgramFiles%\PawnIO` lookup precedence, `WinVerifyTrust` signature gating under `FileShare.Read`, and ACPI EC routing through `LpcACPIEC.bin`.
+103. **HeadlessDaemon Anti-Cheat Pause & Automatic Resume While Worker Paused (Zero Deadlock)**: Verifies headless background daemon anti-cheat handoff pauses hardware access cleanly and auto-resumes without deadlocking the worker loop.
+104. **Read-Only / Non-AMD Silicon Write Gate & Temperature-Aware Super I/O Safe Fallback**: Verifies unverified or non-AMD platforms remain strictly read-only and Super I/O safe fallback scales standby fan duty safely with temperature.
+105. **Horizontal OSD Brush-Safe Render (`FCLK`/`VRM`/`NPU`) & ETW Shutdown/AutoStart Guard**: Verifies GDI brush lifecycle safety across extended horizontal OSD columns and clean ETW session teardown on shutdown/autostart.
+106. **`WatchdogSupervisor` Log Rotation Rollover Cap & Monotonic Timing**: Verifies bounded watchdog log rotation caps and monotonic heartbeat timeout evaluation unaffected by wall-clock shifts.
+107. **Driver `ReaderWriterLock` Shutdown Safety & Deferred CLI Preload Policy**: Verifies concurrent driver reads drain cleanly before shutdown and non-hardware CLI commands avoid unnecessary driver preload.
+108. **Atomic `AppSettings` Write, Profile Clone Non-Mutation & `CustomProfile` Deduplication**: Verifies atomic temp-file replacement for `minifancontrol.cfg`, defensive curve/profile cloning, and duplicate custom profile prevention.
+109. **Unverified Profile Read-Only Invariant (`IsVerified`) & `HardwareBackend.SetMode` Fail-Safe**: Verifies unverified profiles enforce `IsReadOnly = true` and `SetMode` rejects unsafe mode writes fail-closed.
+110. **Narrow `FpsMonitor` Crash Filter & Zero-Alloc `EtwPresentTracker` Ring Buffer Wrap**: Verifies RTSS exception isolation and allocation-free ring-buffer wraparound in the ETW present tracker.
+111. **Independent APU & Sys Fan Cooldown Hysteresis**: Verifies NVMe/RAM thermal spikes driving the Sys Fan are never masked by a simultaneous APU temperature dip.
+112. **PawnIO `AMDFamily17` SMN Module, Address Allowlist & Tier-0 `ReadAmdSmn` Integration**: Verifies HVCI-safe AMD SMN register reads via signed `AMDFamily17.bin` with strict address allowlisting.
+113. **External JSON Hardware Profile Registry (`profiles/*.json`), Validation & Blocklist Precedence**: Verifies external community profile loading, schema validation (`validate-profiles`), and DMI blocklist override precedence.
+114. **Automatic Per-Game / Per-Workload Profile Switcher (`ProfileSwitcher`)**: Verifies process/game matching rules, AI/NPU workload rules, exit cooldown hysteresis, and settings round-trip persistence.
+115. **Native NVIDIA NVML Desktop GPU Telemetry & Trusted System32 Path Isolation**: Verifies `NvidiaNvmlGpuSensor` telemetry parsing and strict `%SystemRoot%\System32\nvml.dll` path isolation.
+116. **Native Windows Service Host (`WindowsServiceHost`)**: Verifies quoted `ImagePath` registration and external SCM stop/power lifecycle hooks for `MiniFanControlService`.
+117. **Bundled Signed PawnIO Modules, Guided Driver Onboarding Dialog & Startup Prompt Persistence**: Verifies bundled `PawnIO\modules\*.bin` resolution, `KernelDriverDialog` onboarding workflow, and persisted prompt suppression.
+118. **PawnIO `LpcIO` Slot Selection, `ioctl_find_bars` BAR Whitelisting & No-Driver Failsafe Gating**: Verifies `ioctl_select_slot` + `ioctl_find_bars` Super I/O BAR discovery on HVCI-ON Windows 11 and clean read-only failsafe gating when no kernel driver is loaded.
+119. **Windows Service Mode (`--config` ImagePath, Shared Config Sync, `LeanServiceMode` & Live Hot-Reload)**: Verifies `%ProgramData%\MiniFanControl\minifancontrol.cfg` shared config synchronization, low-RAM lean service initialization, and live config hot-reload without restarting the service.
+120. **Modern Standby (S0ix) Time-Jump Wake Detection & Super I/O Reset Protection**: Verifies monotonic-vs-wall-clock sleep gap detection, Super I/O `0xFF` read-back self-healing, and full post-wake hardware re-initialization.
+121. **Xmas Edition Theme (White/Black/Red Palette, Concept #6 Logo, Settings Persistence & OSD Sync)**: Verifies `ThemePreference.Xmas = 5` round-trip persistence, Concept #6 Snow-White/Jet-Black/Crimson 3D logo rendering, and automatic `CapFrameXOverlayForm.IsXmasTheme` synchronization.
 
 ---
 
@@ -527,7 +553,7 @@ MiniFanControl automatically persists user preferences and calibrated fan thresh
 | `RefreshIntervalMs`| Integer | `500` | Telemetry polling rate in milliseconds (250ms = 4 Hz, 500ms = 2 Hz, 1000ms = 1 Hz) |
 | `RestoreAutoOnExit`| Integer | `1` | `1` = Restore native BIOS EC control (`0x00`) on exit/crash, `0` = Retain last manual setting |
 | `EnableHotkeys` | Integer | `1` | `1` = Enable global hotkeys (`Ctrl+Alt+F9` overlay, `Ctrl+Alt+F10..F12` modes) |
-| `Theme` | Integer | `0` | `0` = Dark Theme, `1` = Light Theme, `2` = AMD Radeon Crimson Theme |
+| `Theme` | Integer | `0` | `0` = System Auto, `1` = Dark, `2` = Light, `3` = AMD Radeon Crimson, `4` = Afterburner, `5` = Xmas Edition (White/Black/Red) |
 | `ShowCpuTray` | Integer | `0` | `1` = Show live CPU temperature badge icon in Windows system tray |
 | `ShowGpuTray` | Integer | `0` | `1` = Show live iGPU graphics temperature badge icon in Windows system tray |
 
@@ -576,7 +602,7 @@ Accessible directly inside the app via **`Tools & Drivers ▾`**:
 
 | Setup | What Works | What Won't Work |
 |-------|------------|-----------------|
-| **Full AMD Adrenalin + InpOut64 (Recommended)** | All EC fan control, SMU/SMN, ADL iGPU/power telemetry, and all OSD Radeon pills (`FreeSync`, `RIS`, `AFMF`, per-game `FSR` & `Anti-Lag`, etc.) | — |
+| **Full AMD Adrenalin + PawnIO (Recommended, HVCI-Safe)** | All EC/Super I/O fan control, SMU/SMN, ADL iGPU/power telemetry, and all OSD Radeon pills (`FreeSync`, `RIS`, `AFMF`, live Adrenalin 26.x `FSR`, `Anti-Lag`, etc.) | — |
 | **AMD Minimal / Driver-Only (`atiadlxx.dll` present, no Adrenalin UI)** | All EC fan control, SMU/SMN, ADL iGPU temp/hotspot/clock/power/NPU/FCLK telemetry, and driver `FreeSync` (VRR) | `RIS`, `AFMF`, and per-game `FSR` / `Anti-Lag` OSD pills (since `%LocalAppData%\AMD\CN\GExDb.blb` / `gmdb.blb` do not exist); `RadeonSoftwareVersion` falls back to `DriverVersion` |
 | **No AMD Display Driver (e.g. Microsoft Basic Display Adapter)** | EC fan control & CPU/NVMe/RAM telemetry (if EC kernel driver is loaded) | All ADL iGPU sensors (temp/hotspot/clock/load/power/NPU/FCLK) and **all** Radeon OSD pills & driver version readout |
 | **No EC Kernel Driver (`inpoutx64.dll` missing or blocked by HVCI)** | UI & non-EC telemetry only (or Demo Mode) | **Fan control & EC sensors** (APU/Sys RPM, fan curves, manual PWM, EC VRM/ambient); MiniFanControl displays a warning banner at the top of the window |
