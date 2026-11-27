@@ -1,3 +1,23 @@
+# Release Notes: MiniFanControl v1.3.1 (Stabilization, Security Hardening, Build Provenance Attestations & 123/123 Suite)
+
+**MiniFanControl v1.3.1** is a dedicated stabilization, security-hardening, and UX polish release built directly on `v1.3.0` — closing every remaining fail-open path, adding **GitHub Build Provenance Attestations** to release artifacts, slimming the shipping GUI binary, and expanding the automated regression suite to **123/123 passing** across both `.NET 4.8` and the new standalone `.NET 10.0-windows` test assembly.
+
+## 🛡️ Security & Supply-Chain Hardening
+- **SHA256-Pinned PawnIO `.bin` Modules**: Enforces per-module SHA256 allowlists (`LpcIO.bin`, `LpcACPIEC.bin`, `AMDFamily17.bin`) before loading bytecode into `PawnIO.sys`, blocking tampered blobs and cross-module swap attacks fail-closed (Test #122).
+- **Legacy `WinRing0` Hard-Gated Off by Default (`CVE-2020-14979`)**: Requires explicit opt-in (`AllowLegacyWinRing0=1` or `MINIFAN_ALLOW_WINRING0=1`), and removes legacy `inpoutx64.dll` from the git repository root so clones remain 100% Defender-clean.
+- **Fail-Closed `Local\` Mutex Write Barrier & `TryReadPhysicalByte`**: Blocks live EC/Super I/O writes whenever `Global\Access_EC` degrades to `Local\` (plus surfaces a UI warning banner), replaces `0xFF` sentinel physical reads with `TryReadPhysicalByte(out byte)`, and fixes the fail-open single-instance guard.
+- **Verifiable Build Provenance & Optimized Lean GUI**: Official release ZIP, Inno Setup installer, and `SHA256SUMS.txt` are now cryptographically attested via `actions/attest-build-provenance`. Standalone builds compile with `/optimize+ /debug-` and exclude `Tests/*.cs` from shipping `MiniFanControl.exe` (~145 KB smaller).
+
+## ✨ UX, CLI & Architecture Polish
+- **Live System Tray Power / BIOS Power Mode Submenu**: Right-clicking either taskbar temperature icon now lets you switch **Silent / Balanced / Performance** directly with live checkmarks synced to the header bar and Windows Power Mode.
+- **Clear Hover Tooltips & Calibration Dialog Fixes**: Added plain-English hover tooltips across **Tools & Drivers ▾** clarifying **Background Service Mode** vs. **Minimize to Tray** vs. **Exit Safety**, and fixed duplicate `%` signs & label clipping in the calibration dialog.
+- **CLI JSONL Streaming & Strict Versioned JSON**: Added `minifan-helper.exe status --stream --interval 1000` for Grafana/Telegraf/`jq` pipelines, strict `SimpleJson.ParseFlatObjectStrict` (`System.Text.Json` on `.NET 10`), schema-versioned profiles, extracted `TrayIconRenderer` / `CurveProfileCatalog`, and `Tests/MiniFanControl.Tests.csproj` (Test #123).
+
+### Hardware Regression Note
+- Live-verified on **TOPC TS-12C (Ryzen AI 9 HX 370 / ITE IT8613E @ `0x0A30` + PawnIO v2.0.0, Windows 11 HVCI ON)**: 3-pass calibration (`[18%, 18%, 18%]` APU → 20% floor / 3183 RPM; `[18%, 20%, 18%]` Sys → 22% floor / 3040 RPM), Xmas Edition UI + live OSD in *Ori and the Blind Forest*, live Adrenalin 26.11.2 `FSR` pill, Background Service Mode (~3.5 MB RAM), and live-synced tray Power Mode.
+
+---
+
 # Release Notes: MiniFanControl v1.3.0 (Low-RAM Background Service Mode, HVCI-Native PawnIO, S0ix Self-Healing, Xmas Edition Theme & 121/121 Suite)
 
 **MiniFanControl v1.3.0** is a landmark reliability, security, and polish release delivering **1-click Low-RAM Background Service Mode** (~3.5 MB active memory, closing [Issue #2](https://github.com/kaiserc/MiniFanControl/issues/2) — thank you `@gemignani`!), **out-of-the-box Windows 11 HVCI-compatible PawnIO** with bundled signed modules and guided zero-restart onboarding, **Modern Standby (S0ix) Super I/O self-healing**, live **Adrenalin 26.x `AMD FSR Upscaling`** OSD pill detection, a **White / Black / Red Xmas Edition Theme**, external `profiles/*.json`, automatic game/AI workload switching, native NVIDIA NVML desktop telemetry, and **121/121 passing automated tests**.

@@ -4,6 +4,22 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [1.3.1] - 2026-11-27
+
+### 🛡️ Stabilization, Security Hardening & Verifiable Supply Chain
+- **PawnIO `.bin` Module SHA256 Pinning & Legacy `WinRing0` Hard-Gate (`Hardware/PawnIoDriver.cs`, `Hardware/NativeInpOut.cs`, `Core/AppSettings.cs`)**:
+  - Enforced exact per-module SHA256 allowlists (`LpcIO.bin`, `LpcACPIEC.bin`, `AMDFamily17.bin`) before loading any bytecode module into `PawnIO.sys`, blocking tampered payloads and cross-module swap attacks fail-closed (Test #122).
+  - Hard-gated legacy `WinRing0` fallback (`CVE-2020-14979`) off by default (`AllowLegacyWinRing0Fallback = false`), requiring explicit opt-in via `AllowLegacyWinRing0=1` or `MINIFAN_ALLOW_WINRING0=1`, and removed tracked `inpoutx64.dll` from the repository root so `git clone` stays Defender-clean while keeping SHA256-pinned manual drop-in support.
+- **Strict Fail-Closed Bus Synchronization & Physical Read Hygiene (`Hardware/EcBusMutex.cs`, `Hardware/HardwareBackend*.cs`, `Hardware/NativeInpOut.cs`, `Hardware/AmdSmuSiliconSensor.cs`, `Program.cs`)**:
+  - Hard-blocked live EC/Super I/O writes (`SetMode`, `SetFan`, `WriteReg`) when `Global\Access_EC` degrades to `Local\` fallback and surfaced a top warning banner in `MainForm`.
+  - Replaced `0xFF` failure-sentinel reads with `NativeInpOut.TryReadPhysicalByte(ulong, out byte)` with one-shot watchdog error logging, and hardened the single-instance GUI guard against fail-open races (`IsAnotherGuiInstanceRunning()`).
+- **Verifiable Supply Chain & Optimized Lean Builds (`build-windows.bat`, `Tests/MiniFanControl.Tests.csproj`, `scripts/sync-version.ps1`, `.github/workflows/ci.yml`, `.github/dependabot.yml`)**:
+  - Added `/optimize+ /debug-` to standalone `.NET 4.8` builds, excluded `Tests\*.cs` from shipping `MiniFanControl.exe` (~145 KB smaller) and `MiniFanControl.csproj` by default, and introduced a dedicated `Tests/MiniFanControl.Tests.csproj` runner verified on `.NET 10.0-windows`.
+  - Added GitHub **Build Provenance Attestations** (`actions/attest-build-provenance@v4.2.2`), weekly grouped Dependabot PRs, CodeQL scanning (`csharp` + `actions`), and single-source version synchronization via `scripts/sync-version.ps1`.
+- **Strict Versioned JSON, Service Extraction, CLI JSONL & UX Polish (`Core/SimpleJson.cs`, `Core/DeviceProfile.cs`, `Core/AppSettings.cs`, `Ui/TrayIconRenderer.cs`, `Curves/CurveProfileCatalog.cs`, `Ui/MainForm*.cs`, `Ui/FanCalibrationDialog.cs`)**:
+  - Added `SimpleJson.ParseFlatObjectStrict` (`System.Text.Json` on `.NET 8/10+`, strict tokenizer on `.NET 4.8`), schema-versioned `DeviceProfile.FromJsonStrict` (`schemaVersion: 1`) and `CustomProfileJson`, extracted `TrayIconRenderer` and `CurveProfileCatalog` from `MainForm`, and added `minifan-helper.exe status --stream` JSONL output (Test #123).
+  - Added live-synced **Power / BIOS Power Mode** submenu with checkmarks to the system tray right-click menu, added hover tooltips across **Tools & Drivers ▾** clarifying Background Service Mode vs. Minimize to Tray vs. Exit Safety, fixed duplicate `%` signs & radio label clipping in the Fan Calibration dialog, slimmed `README.md` by 84% (`Tests/README.md` + `GUIDE.md` split + ⭐ Star History), and removed the 8.3 MB `osd-demo.mp4` blob from git.
+
 ## [1.3.0] - 2026-11-25
 
 ### ⚙️ Low-RAM GUI Background Service Mode (Closes [#2](https://github.com/kaiserc/MiniFanControl/issues/2) — thanks `@gemignani`!)

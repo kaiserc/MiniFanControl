@@ -2,7 +2,7 @@
 
 [![GitHub Stars](https://img.shields.io/github/stars/kaiserc/MiniFanControl?style=social)](https://github.com/kaiserc/MiniFanControl/stargazers)
 [![GitHub Downloads](https://img.shields.io/github/downloads/kaiserc/MiniFanControl/total?label=Downloads&color=blue)](https://github.com/kaiserc/MiniFanControl/releases)
-[![Release: v1.3.0](https://img.shields.io/badge/Release-v1.3.0-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
+[![Release: v1.3.1](https://img.shields.io/badge/Release-v1.3.1-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-Windows%20x64%20(.NET%204.8%20%26%2010)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![Tests: 123/123 Passing](https://img.shields.io/badge/tests-123%2F123%20passing-brightgreen)](Tests/README.md)
 [![Security: Fail-Closed](https://img.shields.io/badge/Security-Fail--Closed%20%7C%20PawnIO%20HVCI-purple.svg)](#-safety--security-architecture)
@@ -57,7 +57,7 @@ Desktop fan utilities typically cannot control Ryzen Mini PCs because they use l
 - **Low-RAM Windows Service & Modern Standby (S0ix) Self-Healing:** `MiniFanControlService` runs headlessly at ~3–5 MB RAM with automatic GUI ↔ Service handoff and live config hot-reload, plus S0ix time-jump detection and `0xFF` Super I/O read-back self-healing after sleep/wake.
 - **Deep Native Silicon & Storage Telemetry:** Direct AMD SMN `Tctl/Tdie` (via PawnIO `AMDFamily17.bin`), WHQL AMD ADL2 iGPU/PPT/NPU telemetry, NVIDIA NVML desktop GPU support, dual stacked DDR5 SODIMM temps (`ΔT` & `5600 MT/s`), multi-NVMe SMART temps & R/W throughput, and live Adrenalin 26.x feature pills (`FreeSync`, `FSR`, `AFMF`, `Anti-Lag`, `RSR`, `RIS`).
 - **Hook-Free In-Game OSD & Digital Foundry Graphs:** Zero-injection RTSS FPS/frametime reader + native Windows **DXGI/DxgKrnl ETW Display Latency** tracking, `Split (DF)` / `DF Zoom` / `DF Corner` stutter graphs, 4 scale tiers (`100%`–`185% 4K`), horizontal/vertical layouts, and `Ctrl+Alt+F9` hotkeys.
-- **5 High-Contrast Themes:** System Auto, Dark, Light, AMD Radeon Crimson, MSI Afterburner, and **Xmas Edition** (Snow-White / Jet-Black / Crimson with snowflake watermarks).
+- **6 Built-In Themes:** System Auto, Dark, Light, AMD Radeon Crimson, MSI Afterburner, and **Xmas Edition** (Snow-White / Jet-Black / Crimson with snowflake watermarks).
 
 <p align="center">
   <img src="assets/ingame-osd-overlay.jpg" alt="MiniFanControl In-Game Horizontal DF Corner OSD Overlay" width="85%" />
@@ -94,7 +94,7 @@ MiniFanControl is built **fail-closed** from the ground up:
 .\minifan-helper.exe service-status         # Inspect service state
 .\minifan-helper.exe daemon                 # Run foreground headless fan loop
 
-# Diagnostics, hardware reports & 122-point self-test suite
+# Diagnostics, hardware reports & 123-point self-test suite
 .\minifan-helper.exe dump --json
 .\minifan-helper.exe submit-report
 .\minifan-helper.exe latency

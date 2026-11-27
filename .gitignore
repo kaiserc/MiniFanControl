@@ -23,5 +23,10 @@ minifan-helper.exe
 *.old*.exe
 *.pdb
 
+# Optional legacy driver drop-ins (not tracked; PawnIO is Priority 0)
+inpoutx64.dll
+WinRing0x64.dll
+WinRing0.dll
+
 # Release packages
 dist/
