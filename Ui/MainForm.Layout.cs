@@ -1768,9 +1768,13 @@ namespace MiniFanControl
             {
                 _closeToTray = _trayCb.Checked;
                 SaveSettings();
+                RebuildDriversMenu();
             };
             optCard.Controls.Add(_trayCb);
-            _uiToolTip.SetToolTip(_trayCb, "When enabled, clicking 'X' minimizes MiniFanControl to the system tray so your custom fan curves keep regulating temperatures in the background.\r\nTo quit and restore BIOS Auto, right-click the tray icon and select 'Exit (Restore BIOS Auto)'.");
+            _uiToolTip.SetToolTip(_trayCb,
+                "Keeps the full GUI hidden in the system tray when clicking 'X' (keeps taskbar temps, In-Game OSD, and curves running).\r\n" +
+                "• To fully exit when enabled: right-click the tray icon → Exit.\r\n" +
+                "• Prefer lowest RAM (~3–5 MB) with the GUI fully closed? Use Tools & Drivers → Background Service Mode instead.");
 
             // Error Banner
             _errorBanner = new Label

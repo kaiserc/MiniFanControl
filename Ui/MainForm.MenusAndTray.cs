@@ -516,54 +516,120 @@ namespace MiniFanControl
             UpdateCalibrationBadge();
         }
 
+        private static ToolStripMenuItem AddToolMenuItem(ContextMenuStrip menu, string text, string tooltip, EventHandler onClick)
+        {
+            ToolStripMenuItem item = new ToolStripMenuItem(text, null, onClick);
+            if (!string.IsNullOrEmpty(tooltip))
+            {
+                item.ToolTipText = tooltip;
+                item.AutoToolTip = false;
+            }
+            menu.Items.Add(item);
+            return item;
+        }
+
         private ContextMenuStrip CreateDriversAndToolsMenu()
         {
             ContextMenuStrip menu = new ContextMenuStrip();
-            menu.Items.Add("✨ First-Time Setup Assistant & Auto-Tune Guide...", null, (s, e) => ShowSetupAssistantDialog(true));
+            menu.ShowItemToolTips = true;
+            bool svcInstalled = !_isUnitTest && WindowsServiceHost.IsServiceInstalled();
+
+            AddToolMenuItem(menu,
+                "✨ First-Time Setup Assistant & Auto-Tune Guide...",
+                "Opens the 2-step guided setup to calibrate your fan spin-up floor and generate an Auto-Tuned curve.",
+                (s, e) => ShowSetupAssistantDialog(true));
             menu.Items.Add(new ToolStripSeparator());
+
             string calMenuLabel = string.IsNullOrEmpty(FanCurveProfile.LastCalibratedDate)
                 ? "Calibrate Fans (Not Yet Calibrated — Default 30% Min)..."
                 : string.Format("Calibrate Fans (✓ Last: {0} • Min {1}%)...",
                     FanCurveProfile.LastCalibratedDate, FanCurveProfile.ApuMinSpinPct);
-            menu.Items.Add(calMenuLabel, null, (s, e) => RunGuiFanCalibration());
+            AddToolMenuItem(menu,
+                calMenuLabel,
+                "Measures each fan's real minimum spin-up PWM floor (+2% safety margin) and max RPM so curves never stall blower motors.",
+                (s, e) => RunGuiFanCalibration());
+
             string layoutLabel = _hasDualFans
                 ? "Fan Layout: 2 Fans (APU + Sys) — Click for 1-Fan Mode"
                 : "Fan Layout: 1 Fan (APU Only) — Click for 2-Fan Mode";
-            menu.Items.Add(layoutLabel, null, (s, e) => ToggleDualFanMode());
+            AddToolMenuItem(menu,
+                layoutLabel,
+                "Switch between dual-fan layout (APU cooler + RAM/NVMe Sys fan) and single-fan Mini PC layout.",
+                (s, e) => ToggleDualFanMode());
             menu.Items.Add(new ToolStripSeparator());
+
             string osdToggleLabel = _showOverlay ? "Hide In-Game OSD Overlay" : "Show In-Game OSD Overlay";
-            menu.Items.Add(osdToggleLabel, null, (s, e) =>
-            {
-                if (_showOverlayCb != null) _showOverlayCb.Checked = !_showOverlayCb.Checked;
-                else SetOverlayVisible(!_showOverlay);
-            });
+            AddToolMenuItem(menu,
+                osdToggleLabel,
+                "Show or hide the hook-free floating In-Game OSD overlay (hotkey: Ctrl+Alt+F9).",
+                (s, e) =>
+                {
+                    if (_showOverlayCb != null) _showOverlayCb.Checked = !_showOverlayCb.Checked;
+                    else SetOverlayVisible(!_showOverlay);
+                });
+
             string osdStyleLabel = _osd.VerticalLayout
                 ? "OSD Layout: Vertical Stack — Click for Horizontal Bar"
                 : "OSD Layout: Horizontal Bar — Click for Vertical Stack";
-            menu.Items.Add(osdStyleLabel, null, (s, e) => ToggleOverlayLayoutStyle());
+            AddToolMenuItem(menu,
+                osdStyleLabel,
+                "Toggle the In-Game OSD between a compact Vertical Stack and a wide top/bottom Horizontal Bar.",
+                (s, e) => ToggleOverlayLayoutStyle());
+
             string osdLockLabel = _lockOverlay
                 ? "Unlock OSD Overlay (Allow Mouse Drag)"
                 : "Lock OSD Overlay (Click-Through Mode)";
-            menu.Items.Add(osdLockLabel, null, (s, e) =>
-            {
-                if (_lockOverlayCb != null) _lockOverlayCb.Checked = !_lockOverlayCb.Checked;
-                else SetOverlayLocked(!_lockOverlay);
-            });
-            menu.Items.Add("Configure OSD Overlay Studio...", null, (s, e) => OpenOsdConfigTab());
+            AddToolMenuItem(menu,
+                osdLockLabel,
+                "When locked, mouse clicks pass straight through the OSD to your game. Unlock to reposition it by dragging.",
+                (s, e) =>
+                {
+                    if (_lockOverlayCb != null) _lockOverlayCb.Checked = !_lockOverlayCb.Checked;
+                    else SetOverlayLocked(!_lockOverlay);
+                });
+
+            AddToolMenuItem(menu,
+                "Configure OSD Overlay Studio...",
+                "Jump to the OSD Studio tab to choose visible sensors, graph modes, scale tier (100%–185%), opacity, and quick snaps.",
+                (s, e) => OpenOsdConfigTab());
             menu.Items.Add(new ToolStripSeparator());
+
             string resetPeaksLabel = _sessionStats.SampleCount > 0
                 ? string.Format("Reset Session Peaks (Max CPU {0}°C • iGPU {1}°C • NVMe {2}°C • {3}W)",
                     _sessionStats.MaxCpuTemp, _sessionStats.MaxGpuTemp, _sessionStats.MaxNvmeTemp, _sessionStats.MaxPowerWatts)
                 : "Reset Session Peak (Max °C / W) Stats";
-            menu.Items.Add(resetPeaksLabel, null, (s, e) => ResetSessionPeaks());
+            AddToolMenuItem(menu,
+                resetPeaksLabel,
+                "Clears recorded session Min / Avg / Peak temperatures, power, FPS lows, and RPM stats.",
+                (s, e) => ResetSessionPeaks());
+
             string exportCsvLabel = string.Format("📊 Export Session Telemetry to CSV ({0} samples logged)...", _sessionStats.LoggedRecordCount);
-            menu.Items.Add(exportCsvLabel, null, (s, e) => ExportSessionTelemetryToCsv());
-            menu.Items.Add("✨ Auto-Tune Optimal Fan Curve (from Telemetry & Calibration)...", null, (s, e) => RunAutoTuneCurve());
-            menu.Items.Add("📋 Copy Active Fan Curve to Clipboard (Share Curve)...", null, (s, e) => CopyCurveToClipboard());
-            menu.Items.Add("📥 Import Fan Curve from Clipboard...", null, (s, e) => ImportCurveFromClipboard());
+            AddToolMenuItem(menu,
+                exportCsvLabel,
+                "Saves all recorded live telemetry samples from this session to a CSV file for Excel or benchmark analysis.",
+                (s, e) => ExportSessionTelemetryToCsv());
+
+            AddToolMenuItem(menu,
+                "✨ Auto-Tune Optimal Fan Curve (from Telemetry & Calibration)...",
+                "Synthesizes a quiet 5-point fan curve around your calibrated spin floor and current BIOS TDP envelope.",
+                (s, e) => RunAutoTuneCurve());
+
+            AddToolMenuItem(menu,
+                "📋 Copy Active Fan Curve to Clipboard (Share Curve)...",
+                "Copies your active APU & Sys fan curve points to the clipboard so you can back them up or share them.",
+                (s, e) => CopyCurveToClipboard());
+
+            AddToolMenuItem(menu,
+                "📥 Import Fan Curve from Clipboard...",
+                "Loads a shared MiniFanControl fan curve from your clipboard.",
+                (s, e) => ImportCurveFromClipboard());
+
             string safeExitLabel = string.Format("Exit Safety: Restore BIOS Auto on Close ({0})",
                 _restoreAutoOnExit ? "✓ Enabled" : "Disabled (Keep Custom PWM)");
-            menu.Items.Add(safeExitLabel, null, (s, e) =>
+            string safeExitTip = svcInstalled
+                ? "Applies only when fully closing the app WITHOUT Background Service Mode.\r\n• Background Service Mode is currently INSTALLED, so closing the GUI hands control back to the low-RAM service instead of resetting to BIOS Auto.\r\n• If Service Mode is uninstalled: Enabled restores safe BIOS Auto on exit; Disabled leaves your last PWM active."
+                : "Controls what happens when MiniFanControl completely exits (not when minimized to tray).\r\n• Enabled (Recommended): Restores safe native BIOS Auto fan control on exit or crash.\r\n• Disabled: Leaves your last manual/curve PWM running on the controller after the app closes.";
+            AddToolMenuItem(menu, safeExitLabel, safeExitTip, (s, e) =>
             {
                 _restoreAutoOnExit = !_restoreAutoOnExit;
                 SaveSettings();
@@ -572,9 +638,11 @@ namespace MiniFanControl
                     ? "✓ Exit Safety enabled: fans restore to BIOS Auto on close"
                     : "ℹ Exit Safety disabled: custom/manual PWM persists after close";
             });
+
             string closeToTrayLabel = string.Format("Window Close: Minimize to System Tray ({0})",
                 _closeToTray ? "✓ Enabled (Keep Curves)" : "Disabled (Close Exits)");
-            menu.Items.Add(closeToTrayLabel, null, (s, e) =>
+            string closeToTrayTip = "Controls what clicking the window 'X' button does (same setting as the Options checkbox).\r\n• Enabled: Hides the full GUI into the system tray so tray temps, OSD, and curves stay live.\r\n• Disabled: Fully exits the GUI (hands off to Background Service Mode if installed, otherwise follows Exit Safety).";
+            AddToolMenuItem(menu, closeToTrayLabel, closeToTrayTip, (s, e) =>
             {
                 _closeToTray = !_closeToTray;
                 if (_trayCb != null) _trayCb.Checked = _closeToTray;
@@ -584,46 +652,61 @@ namespace MiniFanControl
                     ? "✓ Close to Tray enabled: 'X' keeps curves running in background"
                     : "ℹ Close to Tray disabled: 'X' exits app and restores BIOS Auto";
             });
+
             string silentSleepLabel = string.Format("Sleep Behavior: Silent Standby Coast-Down ({0})",
                 _silentSleepStandby ? "✓ Silent Zero-RPM (No Kickstart)" : "BIOS Auto (2-4s Kickstart)");
-            menu.Items.Add(silentSleepLabel, null, (s, e) =>
-            {
-                _silentSleepStandby = !_silentSleepStandby;
-                SaveSettings();
-                RebuildDriversMenu();
-                _statusBarLabel.Text = _silentSleepStandby
-                    ? "✓ Silent Standby active: fans gently coast to 0% with no 2-4s kickstart burst"
-                    : "ℹ BIOS Auto Standby active: motherboard firmware manages sleep with 2-4s burst";
-            });
+            AddToolMenuItem(menu,
+                silentSleepLabel,
+                "Controls fan behavior when Windows enters Sleep / Modern Standby.\r\n• Silent Zero-RPM: Gently coasts fans down without a noisy 2–4s BIOS fan burst.\r\n• BIOS Auto: Hands fans straight back to motherboard firmware during sleep.",
+                (s, e) =>
+                {
+                    _silentSleepStandby = !_silentSleepStandby;
+                    SaveSettings();
+                    RebuildDriversMenu();
+                    _statusBarLabel.Text = _silentSleepStandby
+                        ? "✓ Silent Standby active: fans gently coast to 0% with no 2-4s kickstart burst"
+                        : "ℹ BIOS Auto Standby active: motherboard firmware manages sleep with 2-4s burst";
+                });
+
             string hotkeysLabel = string.Format("Global Hotkeys Ctrl+Alt+F9..F12 ({0})",
                 _enableGlobalHotkeys ? "✓ Enabled" : "Disabled");
-            menu.Items.Add(hotkeysLabel, null, (s, e) =>
-            {
-                _enableGlobalHotkeys = !_enableGlobalHotkeys;
-                UpdateGlobalHotkeysRegistration();
-                SaveSettings();
-                RebuildDriversMenu();
-                _statusBarLabel.Text = _enableGlobalHotkeys
-                    ? "✓ Global hotkeys enabled (Ctrl+Alt+F9..F12)"
-                    : "ℹ Global hotkeys disabled";
-            });
+            AddToolMenuItem(menu,
+                hotkeysLabel,
+                "Enables system-wide shortcuts while gaming: Ctrl+Alt+F9 (OSD), F10 (Balanced), F11 (Performance), F12 (Silent / Reset Auto).",
+                (s, e) =>
+                {
+                    _enableGlobalHotkeys = !_enableGlobalHotkeys;
+                    UpdateGlobalHotkeysRegistration();
+                    SaveSettings();
+                    RebuildDriversMenu();
+                    _statusBarLabel.Text = _enableGlobalHotkeys
+                        ? "✓ Global hotkeys enabled (Ctrl+Alt+F9..F12)"
+                        : "ℹ Global hotkeys disabled";
+                });
+
             string demoLabel = string.Format("Offline Demo / Simulation Mode ({0})", _demoMode ? "✓ Active" : "Disabled");
-            menu.Items.Add(demoLabel, null, (s, e) =>
-            {
-                _demoMode = !_demoMode;
-                if (_controller != null) _controller.ClearStaleWriteErrors();
-                UpdateReadOnlyUiState();
-                SaveSettings();
-                RebuildDriversMenu();
-                _statusBarLabel.Text = _demoMode
-                    ? "ℹ Offline Demo Mode active (synthetic telemetry)"
-                    : (IsReadOnlyMonitoringMode
-                        ? "👁️ Safe Read-Only Monitoring Mode active (unverified hardware)"
-                        : "✓ Hardware Mode active (direct EC registers)");
-                RefreshStatus();
-            });
+            AddToolMenuItem(menu,
+                demoLabel,
+                "Runs synthetic sensors and simulated fans without touching real hardware — useful for testing curves, OSD, and themes safely.",
+                (s, e) =>
+                {
+                    _demoMode = !_demoMode;
+                    if (_controller != null) _controller.ClearStaleWriteErrors();
+                    UpdateReadOnlyUiState();
+                    SaveSettings();
+                    RebuildDriversMenu();
+                    _statusBarLabel.Text = _demoMode
+                        ? "ℹ Offline Demo Mode active (synthetic telemetry)"
+                        : (IsReadOnlyMonitoringMode
+                            ? "👁️ Safe Read-Only Monitoring Mode active (unverified hardware)"
+                            : "✓ Hardware Mode active (direct EC registers)");
+                    RefreshStatus();
+                });
+
             menu.Items.Add(new ToolStripSeparator());
             ToolStripMenuItem profileSubMenu = new ToolStripMenuItem("Hardware Profile && EC Target");
+            profileSubMenu.ToolTipText = "View or override the detected Mini PC hardware profile and EC/Super I/O register map (Auto-Detect is recommended).";
+            profileSubMenu.AutoToolTip = false;
             bool isAuto = string.IsNullOrEmpty(_profileOverrideId) || _profileOverrideId.Equals("auto", StringComparison.OrdinalIgnoreCase);
             string autoTitle = string.Format("Auto-Detect: {0} (Active)", _sysInfo.MatchedProfile.DisplayName);
             ToolStripMenuItem autoItem = new ToolStripMenuItem(autoTitle, null, (s, e) => SetHardwareProfile("auto"));
@@ -648,55 +731,94 @@ namespace MiniFanControl
             }
             menu.Items.Add(profileSubMenu);
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("Export Hardware && EC Probe Report (for HX 370 / New PCs)...", null, (s, e) => ExportHardwareProbeReport());
-            menu.Items.Add("🔬 EC Motherboard Telemetry && Differential Scanner (Tier 2 Discovery)...", null, (s, e) => ShowEcDifferentialScannerDialog());
-            menu.Items.Add("🚀 Submit Hardware Profile to GitHub (1-Click)...", null, (s, e) => SubmitHardwareProfileOnline());
-            menu.Items.Add("Detected Hardware && Multi-Model Info...", null, (s, e) => ShowHardwareCompatibilityDialog());
+
+            AddToolMenuItem(menu,
+                "Export Hardware && EC Probe Report (for HX 370 / New PCs)...",
+                "Saves a full 256-byte EC/Super I/O diagnostic dump (ec-probe-report.txt) for troubleshooting or verifying new Mini PCs.",
+                (s, e) => ExportHardwareProbeReport());
+
+            AddToolMenuItem(menu,
+                "🔬 EC Motherboard Telemetry && Differential Scanner (Tier 2 Discovery)...",
+                "Interactive scanner that watches EC registers change under load to discover fan/sensor offsets on new Mini PC models.",
+                (s, e) => ShowEcDifferentialScannerDialog());
+
+            AddToolMenuItem(menu,
+                "🚀 Submit Hardware Profile to GitHub (1-Click)...",
+                "Generates a PII-redacted hardware JSON report and opens a pre-filled GitHub Issue to request native support for your Mini PC.",
+                (s, e) => SubmitHardwareProfileOnline());
+
+            AddToolMenuItem(menu,
+                "Detected Hardware && Multi-Model Info...",
+                "Displays your detected motherboard DMI info, active EC/Super I/O controller, and supported Ryzen Mini PC models.",
+                (s, e) => ShowHardwareCompatibilityDialog());
+
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("GMKtec Official Drivers && Manuals (K12 / Mini PCs)...", null, (s, e) => OpenUrlSafe(URL_GMKTEC_DRIVERS));
-            menu.Items.Add("AMD Software: Adrenalin && Chipset Drivers...", null, (s, e) => OpenUrlSafe(URL_AMD_DRIVERS));
+            AddToolMenuItem(menu,
+                "GMKtec Official Drivers && Manuals (K12 / Mini PCs)...",
+                "Opens GMKtec's official driver and BIOS downloads page in your web browser.",
+                (s, e) => OpenUrlSafe(URL_GMKTEC_DRIVERS));
+
+            AddToolMenuItem(menu,
+                "AMD Software: Adrenalin && Chipset Drivers...",
+                "Opens AMD's official Adrenalin & Ryzen chipset driver downloads page in your web browser.",
+                (s, e) => OpenUrlSafe(URL_AMD_DRIVERS));
+
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("🛡️ Kernel Driver && HVCI Security Status...", null, (s, e) => ShowKernelDriverSecurityDialog());
-            bool svcInstalled = !_isUnitTest && WindowsServiceHost.IsServiceInstalled();
+            AddToolMenuItem(menu,
+                "🛡️ Kernel Driver && HVCI Security Status...",
+                "Inspect active driver (PawnIO HVCI-safe / InpOut64 / Read-Only), SHA256 pin verification, and EC mutex status.",
+                (s, e) => ShowKernelDriverSecurityDialog());
+
             string svcMenuText = svcInstalled
                 ? (_servicePausedByGui || _serviceResumeOnExit
                     ? "⚙ Background Service Mode (Active — Resumes on Close)..."
                     : "⚙ Background Service Mode (Installed)...")
                 : "⚙ Enable Background Service Mode (Zero-UI / Boot Autostart)...";
-            ToolStripMenuItem svcModeItem = new ToolStripMenuItem(svcMenuText, null, (s, e) => ToggleBackgroundServiceMode());
+            ToolStripMenuItem svcModeItem = AddToolMenuItem(menu,
+                svcMenuText,
+                "Installs/manages MiniFanControlService — a headless Windows Service (~3–5 MB RAM, 0% CPU) that runs your saved curves from Windows boot.\r\n• Unlike 'Minimize to Tray', you can completely close the GUI window to save RAM and your curves keep running.\r\n• Opening the GUI pauses the service automatically; closing the GUI hands control seamlessly back.",
+                (s, e) => ToggleBackgroundServiceMode());
             svcModeItem.Checked = svcInstalled;
-            menu.Items.Add(svcModeItem);
-            ToolStripMenuItem acPauseItem = new ToolStripMenuItem("🎮 Auto-Pause for Anti-Cheat (EAC / BattlEye)", null, (s, e) =>
-            {
-                _settings.AutoPauseForAntiCheat = !_settings.AutoPauseForAntiCheat;
-                _antiCheatMonitor.Enabled = _settings.AutoPauseForAntiCheat;
-                SaveSettings();
-                RebuildDriversMenu();
-                if (_statusBarLabel != null)
+
+            ToolStripMenuItem acPauseItem = AddToolMenuItem(menu,
+                "🎮 Auto-Pause for Anti-Cheat (EAC / BattlEye)",
+                "Automatically restores BIOS Auto (and unloads legacy non-PawnIO drivers) whenever Easy Anti-Cheat or BattlEye is running, then resumes curves on exit.",
+                (s, e) =>
                 {
-                    _statusBarLabel.Text = _settings.AutoPauseForAntiCheat
-                        ? "✓ Anti-Cheat Safe Auto-Pause enabled (restores BIOS Auto & unloads legacy driver during EAC/BattlEye)"
-                        : "✓ Anti-Cheat Safe Auto-Pause disabled";
-                }
-            });
+                    _settings.AutoPauseForAntiCheat = !_settings.AutoPauseForAntiCheat;
+                    _antiCheatMonitor.Enabled = _settings.AutoPauseForAntiCheat;
+                    SaveSettings();
+                    RebuildDriversMenu();
+                    if (_statusBarLabel != null)
+                    {
+                        _statusBarLabel.Text = _settings.AutoPauseForAntiCheat
+                            ? "✓ Anti-Cheat Safe Auto-Pause enabled (restores BIOS Auto & unloads legacy driver during EAC/BattlEye)"
+                            : "✓ Anti-Cheat Safe Auto-Pause disabled";
+                    }
+                });
             acPauseItem.Checked = _settings.AutoPauseForAntiCheat;
-            menu.Items.Add(acPauseItem);
-            ToolStripMenuItem autoWorkloadItem = new ToolStripMenuItem("🤖 Auto-Switch Profiles for Games && AI Workloads", null, (s, e) =>
-            {
-                _settings.AutoSwitchWorkloads = !_settings.AutoSwitchWorkloads;
-                _workloadSwitcher.Enabled = _settings.AutoSwitchWorkloads;
-                SaveSettings();
-                RebuildDriversMenu();
-                if (_statusBarLabel != null)
+
+            ToolStripMenuItem autoWorkloadItem = AddToolMenuItem(menu,
+                "🤖 Auto-Switch Profiles for Games && AI Workloads",
+                "Automatically switches to Performance mode when games launch and AI Workload mode during local LLM / NPU activity, then returns cleanly after cooldown.",
+                (s, e) =>
                 {
-                    _statusBarLabel.Text = _settings.AutoSwitchWorkloads
-                        ? "✓ Auto-Switch Profiles enabled (switches to Performance for games & AI Workload for LLMs/NPU)"
-                        : "✓ Auto-Switch Profiles disabled";
-                }
-            });
+                    _settings.AutoSwitchWorkloads = !_settings.AutoSwitchWorkloads;
+                    _workloadSwitcher.Enabled = _settings.AutoSwitchWorkloads;
+                    SaveSettings();
+                    RebuildDriversMenu();
+                    if (_statusBarLabel != null)
+                    {
+                        _statusBarLabel.Text = _settings.AutoSwitchWorkloads
+                            ? "✓ Auto-Switch Profiles enabled (switches to Performance for games & AI Workload for LLMs/NPU)"
+                            : "✓ Auto-Switch Profiles disabled";
+                    }
+                });
             autoWorkloadItem.Checked = _settings.AutoSwitchWorkloads;
-            menu.Items.Add(autoWorkloadItem);
+
             ToolStripMenuItem langMenu = new ToolStripMenuItem("🌐 Language / 语言 / Sprache");
+            langMenu.ToolTipText = "Choose the UI language (supports Auto, English, Chinese, German, Spanish, French, Japanese, and custom lang/*.json files).";
+            langMenu.AutoToolTip = false;
             AddLanguageMenuItem(langMenu, "Auto (System Default)", AppLanguage.Auto);
             AddLanguageMenuItem(langMenu, "English", AppLanguage.English);
             AddLanguageMenuItem(langMenu, "简体中文 (Chinese Simplified)", AppLanguage.Chinese);
@@ -706,7 +828,10 @@ namespace MiniFanControl
             AddLanguageMenuItem(langMenu, "日本語 (Japanese)", AppLanguage.Japanese);
             menu.Items.Add(langMenu);
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("About MiniFanControl v" + APP_VERSION + "...", null, (s, e) => ShowAboutDialog());
+            AddToolMenuItem(menu,
+                "About MiniFanControl v" + APP_VERSION + "...",
+                "Version info, active hardware profile, driver status, and project links.",
+                (s, e) => ShowAboutDialog());
             return menu;
         }
 
