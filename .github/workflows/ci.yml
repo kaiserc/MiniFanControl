@@ -28,6 +28,7 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/sync-version.ps1 -Check
+          ./scripts/extract-release-notes.ps1 -Check
 
       - name: Build net48 Target
         shell: cmd
@@ -90,6 +91,9 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Download Release Artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -104,6 +108,13 @@ jobs:
             dist/*-Setup-*.exe
             dist/SHA256SUMS.txt
 
+      - name: Prepare Curated Release Notes
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          ./scripts/extract-release-notes.ps1 -Tag "$env:RELEASE_TAG" -OutputPath "release-body.md"
+
       - name: Publish Official GitHub Release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
@@ -111,6 +122,7 @@ jobs:
             dist/*-Portable.zip
             dist/*-Setup-*.exe
             dist/SHA256SUMS.txt
+          body_path: release-body.md
           generate_release_notes: true
           draft: false
           prerelease: false
