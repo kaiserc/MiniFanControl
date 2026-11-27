@@ -2183,6 +2183,7 @@ namespace MiniFanControl
                 SaveSettings();
 
                 string fanLabel = editSys ? "Sys Fan" : "APU Fan";
+                RebuildTrayContextMenus();
                 StartRampIndication(fanLabel + " → " + names[code], editSys ? 2 : 1);
             }
             catch (Exception ex)

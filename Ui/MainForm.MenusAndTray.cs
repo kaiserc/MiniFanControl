@@ -627,8 +627,12 @@ namespace MiniFanControl
             string safeExitLabel = string.Format("Exit Safety: Restore BIOS Auto on Close ({0})",
                 _restoreAutoOnExit ? "✓ Enabled" : "Disabled (Keep Custom PWM)");
             string safeExitTip = svcInstalled
-                ? "Applies only when fully closing the app WITHOUT Background Service Mode.\r\n• Background Service Mode is currently INSTALLED, so closing the GUI hands control back to the low-RAM service instead of resetting to BIOS Auto.\r\n• If Service Mode is uninstalled: Enabled restores safe BIOS Auto on exit; Disabled leaves your last PWM active."
-                : "Controls what happens when MiniFanControl completely exits (not when minimized to tray).\r\n• Enabled (Recommended): Restores safe native BIOS Auto fan control on exit or crash.\r\n• Disabled: Leaves your last manual/curve PWM running on the controller after the app closes.";
+                ? "Applies when fully closing MiniFanControl WITHOUT Background Service Mode.\r\n" +
+                  "• Background Service Mode is INSTALLED, so closing the GUI hands\r\n  control back to the low-RAM service instead of resetting to BIOS Auto.\r\n" +
+                  "• If Service Mode is removed: Enabled restores safe BIOS Auto on exit."
+                : "Controls what happens when MiniFanControl completely exits (not minimized).\r\n" +
+                  "• Enabled (Recommended): Restores safe BIOS Auto fan control on exit/crash.\r\n" +
+                  "• Disabled: Leaves your last manual/curve PWM active after exit.";
             AddToolMenuItem(menu, safeExitLabel, safeExitTip, (s, e) =>
             {
                 _restoreAutoOnExit = !_restoreAutoOnExit;
@@ -776,7 +780,10 @@ namespace MiniFanControl
                 : "⚙ Enable Background Service Mode (Zero-UI / Boot Autostart)...";
             ToolStripMenuItem svcModeItem = AddToolMenuItem(menu,
                 svcMenuText,
-                "Installs/manages MiniFanControlService — a headless Windows Service (~3–5 MB RAM, 0% CPU) that runs your saved curves from Windows boot.\r\n• Unlike 'Minimize to Tray', you can completely close the GUI window to save RAM and your curves keep running.\r\n• Opening the GUI pauses the service automatically; closing the GUI hands control seamlessly back.",
+                "Runs your saved curves headlessly as a Windows Service (~3–5 MB RAM,\r\n" +
+                "0% CPU) starting at Windows boot.\r\n" +
+                "• Unlike 'Minimize to Tray', you can fully close the GUI and curves keep running.\r\n" +
+                "• Opening the GUI pauses the service; closing it hands control right back.",
                 (s, e) => ToggleBackgroundServiceMode());
             svcModeItem.Checked = svcInstalled;
 
@@ -1045,6 +1052,7 @@ namespace MiniFanControl
         private ContextMenuStrip CreateTrayContextMenu()
         {
             ContextMenuStrip menu = new ContextMenuStrip();
+            menu.ShowItemToolTips = true;
             menu.Items.Add("Show Window", null, (s, e) => RestoreFromTray());
             menu.Items.Add(
                 _showOverlay ? "Hide In-Game OSD Overlay" : "Show In-Game OSD Overlay",
@@ -1062,18 +1070,63 @@ namespace MiniFanControl
                     if (_lockOverlayCb != null) _lockOverlayCb.Checked = !_lockOverlayCb.Checked;
                     else SetOverlayLocked(!_lockOverlay);
                 });
+
+            bool readOnlyMonitor = IsReadOnlyMonitoringMode;
+            bool usesWinPower = !readOnlyMonitor && IsUsingWindowsPowerMode();
+            bool showPowerMenu = !readOnlyMonitor && (_demoMode || _hw == null || !_hw.IsSuperIoControlled || usesWinPower);
+            if (showPowerMenu)
+            {
+                menu.Items.Add(new ToolStripSeparator());
+                int activePower = (_lastActiveBiosModeCode >= 0 && _lastActiveBiosModeCode <= 2) ? _lastActiveBiosModeCode : 0;
+                string powerRootTitle = usesWinPower ? "Power Mode (Windows)" : "BIOS Power Mode (TDP)";
+                ToolStripMenuItem powerSub = new ToolStripMenuItem(powerRootTitle);
+                powerSub.ToolTipText = GetPowerBarTooltip(usesWinPower);
+                powerSub.AutoToolTip = false;
+
+                ToolStripMenuItem pSilent = new ToolStripMenuItem(
+                    usesWinPower ? "🌙 Silent (Best Power Efficiency)" : "🌙 Silent (~35W TDP)",
+                    null, (s, e) => ApplyBiosPowerMode(2));
+                pSilent.Checked = (activePower == 2);
+                powerSub.DropDownItems.Add(pSilent);
+
+                ToolStripMenuItem pBal = new ToolStripMenuItem(
+                    usesWinPower ? "⚖ Balanced" : "⚖ Balanced (~48W TDP)",
+                    null, (s, e) => ApplyBiosPowerMode(0));
+                pBal.Checked = (activePower == 0);
+                powerSub.DropDownItems.Add(pBal);
+
+                ToolStripMenuItem pPerf = new ToolStripMenuItem(
+                    usesWinPower ? "⚡ Performance (Best Performance)" : "⚡ Performance (~60W+ TDP)",
+                    null, (s, e) => ApplyBiosPowerMode(1));
+                pPerf.Checked = (activePower == 1);
+                powerSub.DropDownItems.Add(pPerf);
+
+                menu.Items.Add(powerSub);
+            }
+
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("Mode: Balanced", null, (s, e) => ApplyMode(0));
-            menu.Items.Add("Mode: Performance", null, (s, e) => ApplyMode(1));
-            menu.Items.Add("Mode: Silent", null, (s, e) => ApplyMode(2));
-            menu.Items.Add("Mode: AI Workload", null, (s, e) => ApplyMode(3));
+            string curApuMode = (_apuProfile != null) ? _apuProfile.Name : "";
+            ToolStripMenuItem mBal = new ToolStripMenuItem("Fan Curve: Balanced", null, (s, e) => ApplyMode(0));
+            mBal.Checked = curApuMode.Equals("Balanced", StringComparison.OrdinalIgnoreCase);
+            menu.Items.Add(mBal);
+            ToolStripMenuItem mPerf = new ToolStripMenuItem("Fan Curve: Performance", null, (s, e) => ApplyMode(1));
+            mPerf.Checked = curApuMode.Equals("Performance", StringComparison.OrdinalIgnoreCase);
+            menu.Items.Add(mPerf);
+            ToolStripMenuItem mSilent = new ToolStripMenuItem("Fan Curve: Silent", null, (s, e) => ApplyMode(2));
+            mSilent.Checked = curApuMode.Equals("Silent", StringComparison.OrdinalIgnoreCase);
+            menu.Items.Add(mSilent);
+            ToolStripMenuItem mAi = new ToolStripMenuItem("Fan Curve: AI Workload", null, (s, e) => ApplyMode(3));
+            mAi.Checked = curApuMode.Equals("AI Workload", StringComparison.OrdinalIgnoreCase);
+            menu.Items.Add(mAi);
             if (_customProfiles.Count > 0)
             {
                 menu.Items.Add(new ToolStripSeparator());
                 foreach (FanCurveProfile cp in _customProfiles)
                 {
                     FanCurveProfile captured = cp;
-                    menu.Items.Add("Custom: " + captured.Name, null, (s, e) => ActivateCustomProfile(captured));
+                    ToolStripMenuItem cItem = new ToolStripMenuItem("Custom: " + captured.Name, null, (s, e) => ActivateCustomProfile(captured));
+                    cItem.Checked = curApuMode.Equals(captured.Name, StringComparison.OrdinalIgnoreCase);
+                    menu.Items.Add(cItem);
                 }
             }
             menu.Items.Add(new ToolStripSeparator());

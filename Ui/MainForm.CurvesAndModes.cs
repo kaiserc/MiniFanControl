@@ -226,6 +226,7 @@ namespace MiniFanControl
             }
             PopulateCustomCombo();
             UpdateModeButtonStyles(_lastSelectedModeCode);
+            RebuildTrayContextMenus();
             SaveSettings();
             string fanLabel = editSys ? "Sys Fan" : "APU Fan";
             StartRampIndication(fanLabel + " → " + profile.Name, editSys ? 2 : 1);
@@ -291,6 +292,7 @@ namespace MiniFanControl
             }
             PopulateCustomCombo();
             UpdateModeButtonStyles(_lastSelectedModeCode);
+            RebuildTrayContextMenus();
             SaveSettings();
             RefreshStatus();
         }
@@ -723,6 +725,7 @@ namespace MiniFanControl
                 }
 
                 UpdateBiosPowerModeStyles(code);
+                RebuildTrayContextMenus();
 
                 // If Auto-Tuned is active on either fan, adapt its TDP knee automatically for the new Power Mode
                 // while leaving hand-edited custom curves and protected reference presets untouched.
