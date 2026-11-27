@@ -1049,12 +1049,30 @@ namespace MiniFanControl
             RefreshStatus();
         }
 
+        private int GetLiveActivePowerModeCode()
+        {
+            if (!IsReadOnlyMonitoringMode && IsUsingWindowsPowerMode())
+            {
+                int winCode = WindowsPowerMode.GetActiveModeCode();
+                if (winCode >= 0 && winCode <= 2)
+                {
+                    _lastActiveBiosModeCode = winCode;
+                    return winCode;
+                }
+            }
+            if (_lastActiveBiosModeCode >= 0 && _lastActiveBiosModeCode <= 2)
+                return _lastActiveBiosModeCode;
+            if (_controller != null && _controller.BiosPowerModeOverride >= 0 && _controller.BiosPowerModeOverride <= 2)
+                return _controller.BiosPowerModeOverride;
+            return 0;
+        }
+
         private ContextMenuStrip CreateTrayContextMenu()
         {
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.ShowItemToolTips = true;
             menu.Items.Add("Show Window", null, (s, e) => RestoreFromTray());
-            menu.Items.Add(
+            ToolStripMenuItem osdShowItem = new ToolStripMenuItem(
                 _showOverlay ? "Hide In-Game OSD Overlay" : "Show In-Game OSD Overlay",
                 null,
                 (s, e) =>
@@ -1062,7 +1080,8 @@ namespace MiniFanControl
                     if (_showOverlayCb != null) _showOverlayCb.Checked = !_showOverlayCb.Checked;
                     else SetOverlayVisible(!_showOverlay);
                 });
-            menu.Items.Add(
+            menu.Items.Add(osdShowItem);
+            ToolStripMenuItem osdLockItem = new ToolStripMenuItem(
                 _lockOverlay ? "Unlock OSD Overlay (Allow Drag)" : "Lock OSD Overlay (Click-Through)",
                 null,
                 (s, e) =>
@@ -1070,32 +1089,37 @@ namespace MiniFanControl
                     if (_lockOverlayCb != null) _lockOverlayCb.Checked = !_lockOverlayCb.Checked;
                     else SetOverlayLocked(!_lockOverlay);
                 });
+            menu.Items.Add(osdLockItem);
 
             bool readOnlyMonitor = IsReadOnlyMonitoringMode;
             bool usesWinPower = !readOnlyMonitor && IsUsingWindowsPowerMode();
             bool showPowerMenu = !readOnlyMonitor && (_demoMode || _hw == null || !_hw.IsSuperIoControlled || usesWinPower);
+            ToolStripMenuItem powerSub = null;
+            ToolStripMenuItem pSilent = null;
+            ToolStripMenuItem pBal = null;
+            ToolStripMenuItem pPerf = null;
             if (showPowerMenu)
             {
                 menu.Items.Add(new ToolStripSeparator());
-                int activePower = (_lastActiveBiosModeCode >= 0 && _lastActiveBiosModeCode <= 2) ? _lastActiveBiosModeCode : 0;
+                int activePower = GetLiveActivePowerModeCode();
                 string powerRootTitle = usesWinPower ? "Power Mode (Windows)" : "BIOS Power Mode (TDP)";
-                ToolStripMenuItem powerSub = new ToolStripMenuItem(powerRootTitle);
+                powerSub = new ToolStripMenuItem(powerRootTitle);
                 powerSub.ToolTipText = GetPowerBarTooltip(usesWinPower);
                 powerSub.AutoToolTip = false;
 
-                ToolStripMenuItem pSilent = new ToolStripMenuItem(
+                pSilent = new ToolStripMenuItem(
                     usesWinPower ? "🌙 Silent (Best Power Efficiency)" : "🌙 Silent (~35W TDP)",
                     null, (s, e) => ApplyBiosPowerMode(2));
                 pSilent.Checked = (activePower == 2);
                 powerSub.DropDownItems.Add(pSilent);
 
-                ToolStripMenuItem pBal = new ToolStripMenuItem(
+                pBal = new ToolStripMenuItem(
                     usesWinPower ? "⚖ Balanced" : "⚖ Balanced (~48W TDP)",
                     null, (s, e) => ApplyBiosPowerMode(0));
                 pBal.Checked = (activePower == 0);
                 powerSub.DropDownItems.Add(pBal);
 
-                ToolStripMenuItem pPerf = new ToolStripMenuItem(
+                pPerf = new ToolStripMenuItem(
                     usesWinPower ? "⚡ Performance (Best Performance)" : "⚡ Performance (~60W+ TDP)",
                     null, (s, e) => ApplyBiosPowerMode(1));
                 pPerf.Checked = (activePower == 1);
@@ -1118,6 +1142,7 @@ namespace MiniFanControl
             ToolStripMenuItem mAi = new ToolStripMenuItem("Fan Curve: AI Workload", null, (s, e) => ApplyMode(3));
             mAi.Checked = curApuMode.Equals("AI Workload", StringComparison.OrdinalIgnoreCase);
             menu.Items.Add(mAi);
+            List<KeyValuePair<ToolStripMenuItem, string>> customItems = new List<KeyValuePair<ToolStripMenuItem, string>>();
             if (_customProfiles.Count > 0)
             {
                 menu.Items.Add(new ToolStripSeparator());
@@ -1127,8 +1152,34 @@ namespace MiniFanControl
                     ToolStripMenuItem cItem = new ToolStripMenuItem("Custom: " + captured.Name, null, (s, e) => ActivateCustomProfile(captured));
                     cItem.Checked = curApuMode.Equals(captured.Name, StringComparison.OrdinalIgnoreCase);
                     menu.Items.Add(cItem);
+                    customItems.Add(new KeyValuePair<ToolStripMenuItem, string>(cItem, captured.Name));
                 }
             }
+
+            Action syncTrayChecks = () =>
+            {
+                osdShowItem.Text = _showOverlay ? "Hide In-Game OSD Overlay" : "Show In-Game OSD Overlay";
+                osdLockItem.Text = _lockOverlay ? "Unlock OSD Overlay (Allow Drag)" : "Lock OSD Overlay (Click-Through)";
+                if (pSilent != null && pBal != null && pPerf != null)
+                {
+                    int livePower = GetLiveActivePowerModeCode();
+                    pSilent.Checked = (livePower == 2);
+                    pBal.Checked = (livePower == 0);
+                    pPerf.Checked = (livePower == 1);
+                    UpdateBiosPowerModeStyles(livePower);
+                }
+                string activeCurve = (_apuProfile != null) ? _apuProfile.Name : "";
+                mBal.Checked = activeCurve.Equals("Balanced", StringComparison.OrdinalIgnoreCase);
+                mPerf.Checked = activeCurve.Equals("Performance", StringComparison.OrdinalIgnoreCase);
+                mSilent.Checked = activeCurve.Equals("Silent", StringComparison.OrdinalIgnoreCase);
+                mAi.Checked = activeCurve.Equals("AI Workload", StringComparison.OrdinalIgnoreCase);
+                for (int ci = 0; ci < customItems.Count; ci++)
+                {
+                    customItems[ci].Key.Checked = activeCurve.Equals(customItems[ci].Value, StringComparison.OrdinalIgnoreCase);
+                }
+            };
+            menu.Opening += (s, e) => syncTrayChecks();
+            if (powerSub != null) powerSub.DropDownOpening += (s, e) => syncTrayChecks();
             menu.Items.Add(new ToolStripSeparator());
             ToolStripMenuItem linksItem = new ToolStripMenuItem("Tools && Drivers");
             linksItem.DropDownItems.Add("✨ Setup Assistant & Auto-Tune Guide...", null, (s, e) => ShowSetupAssistantDialog(true));
