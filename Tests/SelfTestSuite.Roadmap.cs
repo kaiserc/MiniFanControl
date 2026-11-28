@@ -732,6 +732,114 @@ namespace MiniFanControl
             Check(eng131Ok,
                 "TryReadPhysicalByte, Strict SimpleJson/SchemaVersion, Versioned CustomProfileJson & Extracted Services",
                 eng131Detail);
+
+            // 126. Privacy-First GitHub Release Update Checker (SemVer, Nested JSON Extraction & URL Allowlist)
+            bool updOk = false;
+            string updDetail = "";
+            try
+            {
+                bool semverOrder = UpdateChecker.IsNewerVersion("1.3.1", "1.3.2")
+                    && UpdateChecker.IsNewerVersion("1.3.1", "1.10.0")
+                    && UpdateChecker.IsNewerVersion("1.3.1", "v2.0.0-rc1")
+                    && !UpdateChecker.IsNewerVersion("1.3.1", "1.3.1")
+                    && !UpdateChecker.IsNewerVersion("1.3.1", "1.2.9")
+                    && !UpdateChecker.IsNewerVersion("1.3.1", "invalid");
+
+                string sampleGhJson = "{"
+                    + "\"url\":\"https://api.github.com/repos/kaiserc/MiniFanControl/releases/1\","
+                    + "\"author\":{\"login\":\"kaiserc\",\"html_url\":\"https://github.com/kaiserc\"},"
+                    + "\"tag_name\":\"v1.4.0\","
+                    + "\"name\":\"MiniFanControl v1.4.0\","
+                    + "\"published_at\":\"2026-12-01T10:00:00Z\","
+                    + "\"html_url\":\"https://github.com/kaiserc/MiniFanControl/releases/tag/v1.4.0\","
+                    + "\"assets\":[{\"name\":\"MiniFanControl.zip\",\"tag_name\":\"v9.9.9\"}],"
+                    + "\"body\":\"Modern Win11 UI polish & OSD Studio presets.\\nSecond line.\""
+                    + "}";
+                UpdateCheckResult parsed = UpdateChecker.ParseLatestReleaseJson(sampleGhJson, "1.3.1");
+                bool parsedOk = parsed.Success && parsed.UpdateAvailable
+                    && parsed.LatestVersion == "1.4.0"
+                    && parsed.ReleaseName == "MiniFanControl v1.4.0"
+                    && parsed.ReleaseUrl == "https://github.com/kaiserc/MiniFanControl/releases/tag/v1.4.0"
+                    && parsed.ReleaseNotesExcerpt.Contains("Modern Win11 UI polish");
+
+                string spoofedJson = "{\"tag_name\":\"v1.4.0\",\"html_url\":\"https://evil.example/fake.exe\"}";
+                UpdateCheckResult spoofed = UpdateChecker.ParseLatestReleaseJson(spoofedJson, "1.3.1");
+                bool urlSanitized = spoofed.Success && spoofed.ReleaseUrl == UpdateChecker.LatestReleasePageUrl;
+
+                UpdateCheckResult upToDate = UpdateChecker.ParseLatestReleaseJson(sampleGhJson, "1.4.0");
+                bool upToDateOk = upToDate.Success && !upToDate.UpdateAvailable;
+
+                updOk = semverOrder && parsedOk && urlSanitized && upToDateOk;
+                updDetail = string.Format("SemVer={0}, Parsed={1}, UrlSafe={2}, UpToDate={3}",
+                    semverOrder, parsedOk, urlSanitized, upToDateOk);
+            }
+            catch (Exception ex) { updDetail = ex.Message; }
+            Check(updOk,
+                "Privacy-First GitHub Release Update Checker (SemVer, Nested JSON Extraction & URL Allowlist)",
+                updDetail);
+
+            // 127. Reset Auto True BIOS Restoration (Super I/O SmartGuardian Custom Curve Capture, EC Initial Mode & Hands-Off Guard)
+            bool biosRestoreOk = false;
+            string biosRestoreDetail = "";
+            try
+            {
+                // A. Super I/O board booted with BIOS SmartGuardian custom fan curve (Bit 7 = 1 on Reg 0x15..0x17)
+                HardwareBackend sioBiosHw = new HardwareBackend(DeviceProfile.FindProfile("ryzen-hx370-ec"));
+                sioBiosHw.EnableSimulationMode();
+                sioBiosHw.SuperIoBaseAddr = 0x0A30;
+                sioBiosHw.AccessMethod = HardwareBackend.EcAccessMethod.SuperIo2E;
+                sioBiosHw.WriteSuperIoHwReg(0x14, 0xC7); // Active-High
+                sioBiosHw.WriteSuperIoHwReg(0x15, 0x80); // SmartGuardian Auto Fan 1
+                sioBiosHw.WriteSuperIoHwReg(0x16, 0x81); // SmartGuardian Auto Fan 2
+                sioBiosHw.WriteSuperIoHwReg(0x17, 0x82); // SmartGuardian Auto Fan 3
+
+                FanCurveProfile[] builtIns = FanCurveProfile.CreateBuiltInProfiles();
+                using (FanControllerService svc = new FanControllerService(sioBiosHw, new DemoBackend(), builtIns, false))
+                {
+                    // Software takes over via manual write (must capture BIOS SmartGuardian snapshot first)
+                    bool tookOver = svc.ApplyManualFan(1, 60) && svc.ApplyManualFan(2, 55);
+                    bool capturedSg = sioBiosHw.HasCapturedBiosSmartGuardianCurve;
+                    bool manualBitsCleared = ((sioBiosHw.ReadSuperIoHwReg(0x16) & 0x80) == 0)
+                        && ((sioBiosHw.ReadSuperIoHwReg(0x17) & 0x80) == 0);
+
+                    // Reset Auto must restore exact BIOS SmartGuardian registers AND stay hands-off
+                    bool resetOk = svc.ApplyAutoAll() && svc.IsBiosAutoControlActive;
+                    byte r15After = sioBiosHw.ReadSuperIoHwReg(0x15);
+                    byte r16After = sioBiosHw.ReadSuperIoHwReg(0x16);
+                    byte r17After = sioBiosHw.ReadSuperIoHwReg(0x17);
+                    bool sgRestored = (r15After == 0x80) && (r16After == 0x81) && (r17After == 0x82);
+
+                    // Subsequent normal poll tick must NOT overwrite BIOS SmartGuardian with software Balanced curve
+                    bool evalNoWrite = !svc.EvaluateAndApplyFanProfiles(58);
+                    bool stillSg = (sioBiosHw.ReadSuperIoHwReg(0x16) == 0x81) && (sioBiosHw.ReadSuperIoHwReg(0x17) == 0x82);
+
+                    // Selecting a MiniFanControl profile resumes software control cleanly
+                    svc.SetProfileTarget(builtIns[0], false);
+                    bool resumedControl = !svc.IsBiosAutoControlActive;
+
+                    // B. EC board booted in Silent mode (RegModeStatus = 2) -> Reset Auto must restore Silent (0x82), not force Balanced (0x80)
+                    HardwareBackend ecBiosHw = new HardwareBackend(DeviceProfile.FindProfile("gmktec-k12"));
+                    ecBiosHw.EnableSimulationMode();
+                    ecBiosHw.AccessMethod = HardwareBackend.EcAccessMethod.PortIo62;
+                    ecBiosHw.WriteReg(ecBiosHw.Profile.RegModeStatus, 2); // BIOS was Silent
+                    ecBiosHw.SetMode(1); // MiniFanControl switches to Performance
+                    ecBiosHw.SetFan(1, 65);
+                    bool ecAutoOk = ecBiosHw.SetAuto();
+                    bool ecModeRestored = (ecBiosHw.CapturedBiosEcMode == 2)
+                        && (ecBiosHw.ReadReg(ecBiosHw.Profile.RegModeCmd) == 0x82)
+                        && (ecBiosHw.ReadReg(ecBiosHw.Profile.RegFan1Ctrl) == 0x00)
+                        && (ecBiosHw.ReadReg(ecBiosHw.Profile.RegFan2Ctrl) == 0x00);
+
+                    biosRestoreOk = tookOver && capturedSg && manualBitsCleared && resetOk && sgRestored
+                        && evalNoWrite && stillSg && resumedControl && ecAutoOk && ecModeRestored;
+                    biosRestoreDetail = string.Format("CapSG={0}, RestSG={1}({2:X2}/{3:X2}/{4:X2}), HandsOff={5}/{6}, Resume={7}, EcSilent={8}",
+                        capturedSg, sgRestored, r15After, r16After, r17After, evalNoWrite, stillSg, resumedControl, ecModeRestored);
+                }
+            }
+            catch (Exception ex) { biosRestoreDetail = ex.Message; }
+            Check(biosRestoreOk,
+                "Reset Auto True BIOS Restoration (Super I/O SmartGuardian Custom Curve, EC Initial Mode & Hands-Off Guard)",
+                biosRestoreDetail);
         }
     }
 }

@@ -102,10 +102,13 @@ namespace MiniFanControl
                    n == "spotify" ||
                    n == "chrome" ||
                    n == "msedge" ||
+                   n == "msedgewebview2" ||
                    n == "firefox" ||
                    n == "brave" ||
                    n == "opera" ||
                    n == "vivaldi" ||
+                   n == "unsloth-studio" ||
+                   n == "unsloth" ||
                    n == "epicgameslauncher" ||
                    n == "epicwebhelper" ||
                    n == "galaxyclient" ||

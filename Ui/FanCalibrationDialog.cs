@@ -26,6 +26,7 @@ namespace MiniFanControl
         private readonly DemoBackend _demo;
         private readonly bool _demoMode;
         private readonly Action<FanCalibrationProgress> _hostProgressCallback;
+        private readonly ThemePalette _palette;
 
         private RadioButton _threePassRb;
         private RadioButton _onePassRb;
@@ -46,26 +47,29 @@ namespace MiniFanControl
             HardwareBackend hw,
             DemoBackend demo,
             bool demoMode,
-            Action<FanCalibrationProgress> hostProgressCallback)
+            Action<FanCalibrationProgress> hostProgressCallback,
+            ThemePreference themePref = ThemePreference.System)
         {
             _hw = hw;
             _demo = demo;
             _demoMode = demoMode;
             _hostProgressCallback = hostProgressCallback;
+            _palette = ThemePalette.Resolve(themePref, darkMode);
 
             Text = "MiniFanControl — Real-Time Fan Calibration";
+            AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(540, 420);
-            BackColor = darkMode ? Color.FromArgb(0x18, 0x18, 0x26) : Color.FromArgb(0xF3, 0xF4, 0xF6);
-            ForeColor = darkMode ? Color.White : Color.Black;
+            ClientSize = new Size(540, 424);
+            BackColor = _palette.Bg;
+            ForeColor = _palette.Text;
             Font = new Font("Segoe UI", 9.0f, FontStyle.Regular);
 
-            Color surface = darkMode ? Color.FromArgb(0x22, 0x24, 0x36) : Color.White;
-            Color accent  = darkMode ? Color.FromArgb(0x89, 0xB4, 0xFA) : Color.FromArgb(0x1D, 0x4E, 0xD8);
-            Color dimFg   = darkMode ? Color.FromArgb(0x94, 0xA3, 0xB8) : Color.FromArgb(0x47, 0x55, 0x69);
+            Color surface = _palette.Surface;
+            Color accent  = _palette.Accent;
+            Color dimFg   = _palette.TextDim;
 
             string lastCalInfo = string.IsNullOrEmpty(FanCurveProfile.LastCalibratedDate)
                 ? "Current Status: Never calibrated (using default 30% minimum spin floor)."
@@ -89,6 +93,8 @@ namespace MiniFanControl
                 Location = new Point(16, 46),
                 Size = new Size(372, 22),
                 Checked = true,
+                ForeColor = _palette.Text,
+                BackColor = _palette.Bg,
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Bold)
             };
             Controls.Add(_threePassRb);
@@ -98,6 +104,8 @@ namespace MiniFanControl
                 Text = "1-Pass Standard",
                 Location = new Point(392, 46),
                 Size = new Size(134, 22),
+                ForeColor = _palette.Text,
+                BackColor = _palette.Bg,
                 Checked = false
             };
             Controls.Add(_onePassRb);
@@ -127,7 +135,7 @@ namespace MiniFanControl
                 Text = "Live Telemetry: APU Fan: -- RPM  |  Sys Fan: -- RPM  |  CPU: --°C  |  Power: --W",
                 Font = new Font("Consolas", 9.0f, FontStyle.Bold),
                 BackColor = surface,
-                ForeColor = darkMode ? Color.FromArgb(0x38, 0xBD, 0xF8) : Color.FromArgb(0x0F, 0x17, 0x2A),
+                ForeColor = _palette.IsDark ? _palette.SecondaryAccent : _palette.Text,
                 BorderStyle = BorderStyle.FixedSingle,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Padding = new Padding(6, 0, 0, 0),
@@ -143,8 +151,9 @@ namespace MiniFanControl
                 ScrollBars = ScrollBars.Vertical,
                 WordWrap = false,
                 Font = new Font("Consolas", 8.5f, FontStyle.Regular),
-                BackColor = darkMode ? Color.FromArgb(0x10, 0x12, 0x1C) : Color.White,
-                ForeColor = darkMode ? Color.FromArgb(0xE2, 0xE8, 0xF0) : Color.Black,
+                BackColor = _palette.TileBg,
+                ForeColor = _palette.Text,
+                BorderStyle = BorderStyle.FixedSingle,
                 Location = new Point(14, 154),
                 Size = new Size(512, 214),
                 Text = "Click 'Start Calibration' below.\r\n" +
@@ -152,34 +161,29 @@ namespace MiniFanControl
                        "• Phase 2: Full curve sweep through 12%..35% (2-3% steps) and 40%..100% (5-10% steps).\r\n" +
                        "• Pre-cools if APU is hot (>=72°C), holds each step 5.0s+, and filters tach spikes.\r\n"
             };
+            Win11VisualStyle.ApplyDarkExplorerTheme(_logBox, _palette.IsDark);
             Controls.Add(_logBox);
 
             _startBtn = new Button
             {
                 Text = "▶ Start Calibration",
-                FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 9.0f, FontStyle.Bold),
-                Location = new Point(14, 378),
-                Size = new Size(160, 30),
-                BackColor = accent,
-                ForeColor = darkMode ? Color.Black : Color.White,
+                Location = new Point(14, 380),
+                Size = new Size(164, 30),
                 Cursor = Cursors.Hand
             };
-            _startBtn.FlatAppearance.BorderSize = 0;
+            Win11VisualStyle.StylePillButton(_startBtn, _palette, true);
             _startBtn.Click += (s, e) => StartCalibrationAsync();
             Controls.Add(_startBtn);
 
             _cancelBtn = new Button
             {
                 Text = "Stop / Cancel",
-                FlatStyle = FlatStyle.Flat,
-                Location = new Point(182, 378),
-                Size = new Size(120, 30),
-                BackColor = darkMode ? Color.FromArgb(0x31, 0x32, 0x44) : Color.FromArgb(0xE5, 0xE7, 0xEB),
-                ForeColor = darkMode ? Color.White : Color.Black,
+                Location = new Point(186, 380),
+                Size = new Size(124, 30),
                 Cursor = Cursors.Hand
             };
-            _cancelBtn.FlatAppearance.BorderSize = 0;
+            Win11VisualStyle.StyleModernButton(_cancelBtn, _palette.Surface2, _palette.Text, _palette.Border, _palette.IsDark);
             _cancelBtn.Click += (s, e) =>
             {
                 if (_isRunning)
@@ -199,16 +203,13 @@ namespace MiniFanControl
             {
                 Text = "✓ Apply & Save Calibration",
                 UseMnemonic = false,
-                FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 9.0f, FontStyle.Bold),
-                Location = new Point(346, 378),
-                Size = new Size(180, 30),
-                BackColor = Color.FromArgb(0x22, 0xC5, 0x5E),
-                ForeColor = Color.Black,
+                Location = new Point(342, 380),
+                Size = new Size(184, 30),
                 Enabled = false,
                 Cursor = Cursors.Hand
             };
-            _applyBtn.FlatAppearance.BorderSize = 0;
+            Win11VisualStyle.StylePillButton(_applyBtn, _palette, true, _palette.Success, _palette.IsXmas ? Color.White : Color.Black);
             _applyBtn.Click += (s, e) =>
             {
                 DialogResult = DialogResult.OK;
@@ -217,6 +218,15 @@ namespace MiniFanControl
             Controls.Add(_applyBtn);
 
             FormClosing += OnDialogClosing;
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            if (_palette != null)
+            {
+                Win11VisualStyle.ApplyWindowFrame(this, _palette.IsDark, _palette.Bg, _palette.Text, _palette.WindowBorder);
+            }
         }
 
         private void StartCalibrationAsync()

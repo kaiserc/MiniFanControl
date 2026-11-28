@@ -23,23 +23,33 @@ namespace MiniFanControl
         public string ModeName { get; private set; }
         private TextBox _textBox;
 
+        private readonly ThemePalette _palette;
+
         public NewModeDialog(bool darkMode, string suggestedName)
+            : this(darkMode, suggestedName, darkMode ? ThemePreference.Dark : ThemePreference.Light)
         {
+        }
+
+        public NewModeDialog(bool darkMode, string suggestedName, ThemePreference themePref)
+        {
+            _palette = ThemePalette.Resolve(themePref, darkMode);
+
             Text = "Add Custom Fan Mode";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(310, 118);
-            BackColor = darkMode ? Color.FromArgb(0x1E, 0x1E, 0x2E) : Color.FromArgb(0xF3, 0xF4, 0xF6);
-            ForeColor = darkMode ? Color.White : Color.Black;
+            ClientSize = new Size(320, 122);
+            BackColor = _palette.Bg;
+            ForeColor = _palette.Text;
             Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
 
             Label lbl = new Label
             {
                 Text = "Mode Name:",
+                ForeColor = _palette.TextDim,
                 Location = new Point(14, 14),
-                Size = new Size(280, 20)
+                Size = new Size(292, 20)
             };
             Controls.Add(lbl);
 
@@ -47,9 +57,10 @@ namespace MiniFanControl
             {
                 Text = suggestedName,
                 Location = new Point(14, 38),
-                Size = new Size(282, 26),
-                BackColor = darkMode ? Color.FromArgb(0x2A, 0x2A, 0x3E) : Color.White,
-                ForeColor = darkMode ? Color.White : Color.Black
+                Size = new Size(292, 26),
+                BackColor = _palette.Surface2,
+                ForeColor = _palette.Text,
+                BorderStyle = BorderStyle.FixedSingle
             };
             Controls.Add(_textBox);
 
@@ -57,13 +68,12 @@ namespace MiniFanControl
             {
                 Text = "Create",
                 DialogResult = DialogResult.OK,
-                FlatStyle = FlatStyle.Flat,
-                Location = new Point(126, 76),
-                Size = new Size(80, 28),
-                BackColor = darkMode ? Color.FromArgb(0x89, 0xB4, 0xFA) : Color.FromArgb(0x1D, 0x4E, 0xD8),
-                ForeColor = darkMode ? Color.Black : Color.White
+                Font = new Font("Segoe UI", 9.0f, FontStyle.Bold),
+                Location = new Point(134, 78),
+                Size = new Size(82, 28),
+                Cursor = Cursors.Hand
             };
-            okBtn.FlatAppearance.BorderSize = 0;
+            Win11VisualStyle.StylePillButton(okBtn, _palette, true);
             okBtn.Click += (s, e) =>
             {
                 string val = (_textBox.Text ?? "").Trim();
@@ -86,17 +96,24 @@ namespace MiniFanControl
             {
                 Text = "Cancel",
                 DialogResult = DialogResult.Cancel,
-                FlatStyle = FlatStyle.Flat,
-                Location = new Point(216, 76),
-                Size = new Size(80, 28),
-                BackColor = darkMode ? Color.FromArgb(0x31, 0x32, 0x44) : Color.FromArgb(0xE5, 0xE7, 0xEB),
-                ForeColor = darkMode ? Color.White : Color.Black
+                Location = new Point(224, 78),
+                Size = new Size(82, 28),
+                Cursor = Cursors.Hand
             };
-            cancelBtn.FlatAppearance.BorderSize = 0;
+            Win11VisualStyle.StylePillButton(cancelBtn, _palette, false);
             Controls.Add(cancelBtn);
 
             AcceptButton = okBtn;
             CancelButton = cancelBtn;
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            if (_palette != null)
+            {
+                Win11VisualStyle.ApplyWindowFrame(this, _palette.IsDark, _palette.Bg, _palette.Text, _palette.WindowBorder);
+            }
         }
     }
 }

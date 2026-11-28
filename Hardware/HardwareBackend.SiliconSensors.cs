@@ -278,6 +278,18 @@ namespace MiniFanControl
         private static int _cachedSpd2 = 0;
         private static bool _cachedSpd1Ok = false;
         private static bool _cachedSpd2Ok = false;
+        private static int _spd1ConsecutiveMisses = 0;
+        private static int _spd2ConsecutiveMisses = 0;
+
+        private static void ResetSpdBackoffState()
+        {
+            _spd1ConsecutiveMisses = 0;
+            _spd2ConsecutiveMisses = 0;
+            _spdThrottleStick0.Interval = TimeSpan.FromMilliseconds(1500);
+            _spdThrottleStick1.Interval = TimeSpan.FromMilliseconds(1500);
+            _spdThrottleStick0.Reset();
+            _spdThrottleStick1.Reset();
+        }
 
         private static ushort GetAmdSmbusBase()
         {

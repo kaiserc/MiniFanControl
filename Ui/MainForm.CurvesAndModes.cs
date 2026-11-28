@@ -235,7 +235,7 @@ namespace MiniFanControl
         private void PromptCreateCustomMode()
         {
             string suggested = string.Format("Custom {0}", _customProfiles.Count + 1);
-            using (NewModeDialog dlg = new NewModeDialog(_isDarkMode, suggested))
+            using (NewModeDialog dlg = new NewModeDialog(_isDarkMode, suggested, _themePref))
             {
                 if (dlg.ShowDialog(this) == DialogResult.OK && !string.IsNullOrEmpty(dlg.ModeName))
                 {
@@ -276,7 +276,7 @@ namespace MiniFanControl
 
             if (_customProfiles.Count <= 1)
             {
-                MessageBox.Show(this, "At least one custom curve profile is kept.", "K12 Fan Control",
+                MessageBox.Show(this, "At least one custom curve profile is kept.", "MiniFanControl",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -331,12 +331,11 @@ namespace MiniFanControl
                 _tabPerfGraphBtn.Text = (curFps > 0) ? string.Format("● Perf: {0}", curFps) : Loc.T("Tab_LivePerf", "● Live Perf");
             }
 
-            bool isRadeon = (_themePref == ThemePreference.Radeon);
-            bool isXmas = IsXmas;
-            Color surface2 = isXmas ? XmasSurface2 : (isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2)));
-            Color text = isXmas ? XmasText : (isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText)));
-            Color apuAccent = isXmas ? XmasRed : (isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent)));
-            Color sysAccent = isXmas ? XmasBlack : (isRadeon ? RadeonOrange : (IsAb ? AbCyan : (_isDarkMode ? DarkTeal : LightTeal)));
+            ThemePalette pal = CurrentPalette;
+            bool isRadeon = pal.IsRadeon;
+            bool isXmas = pal.IsXmas;
+            Color apuAccent = pal.Accent;
+            Color sysAccent = pal.SecondaryAccent;
             Color liveAccent = isXmas
                 ? ((_highlightedMetric == 1 || _highlightedMetric == 3 || _highlightedMetric == 4 || _highlightedMetric == 6) ? XmasRed : XmasBlack)
                 : (_highlightedMetric == 2
@@ -352,143 +351,44 @@ namespace MiniFanControl
                                     : (_highlightedMetric == 5
                                         ? Color.FromArgb(0x2D, 0xD4, 0xBF)
                                         : apuAccent))))));
-            Color activeFg = (isXmas || isRadeon) ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
+            Color activeFg = pal.ActiveFg;
+            Color liveFg = isXmas ? Color.White : ((_highlightedMetric == 2 || _highlightedMetric == 3 || _highlightedMetric == 6 || _highlightedMetric == 7) ? Color.Black : activeFg);
 
-            if (_showingOsdConfig)
+            bool osdActive = _showingOsdConfig;
+            bool perfActive = !osdActive && _showingPerfGraph;
+            bool liveActive = !osdActive && !perfActive && _showingLiveTelemetry;
+            bool apuActive = !osdActive && !perfActive && !liveActive && !_curveCanvas.EditSysFan;
+            bool sysActive = !osdActive && !perfActive && !liveActive && _curveCanvas.EditSysFan;
+
+            if (_tabLiveGraphBtn != null)
             {
-                _tabApuCurveBtn.BackColor = surface2;
-                _tabApuCurveBtn.ForeColor = text;
-                if (_tabApuCurveBtn.Font != TabFontRegular) _tabApuCurveBtn.Font = TabFontRegular;
-
-                _tabSysCurveBtn.BackColor = surface2;
-                _tabSysCurveBtn.ForeColor = text;
-                if (_tabSysCurveBtn.Font != TabFontRegular) _tabSysCurveBtn.Font = TabFontRegular;
-
-                if (_tabLiveGraphBtn != null)
-                {
-                    _tabLiveGraphBtn.BackColor = surface2;
-                    _tabLiveGraphBtn.ForeColor = text;
-                    if (_tabLiveGraphBtn.Font != TabFontRegular) _tabLiveGraphBtn.Font = TabFontRegular;
-                }
-
-                if (_tabPerfGraphBtn != null)
-                {
-                    _tabPerfGraphBtn.BackColor = surface2;
-                    _tabPerfGraphBtn.ForeColor = text;
-                    if (_tabPerfGraphBtn.Font != TabFontRegular) _tabPerfGraphBtn.Font = TabFontRegular;
-                }
-
-                if (_tabOsdConfigBtn != null)
-                {
-                    _tabOsdConfigBtn.BackColor = isRadeon ? RadeonAccent : apuAccent;
-                    _tabOsdConfigBtn.ForeColor = activeFg;
-                    if (_tabOsdConfigBtn.Font != TabFontBold) _tabOsdConfigBtn.Font = TabFontBold;
-                }
-                return;
+                Win11VisualStyle.StylePillButton(_tabLiveGraphBtn, pal, liveActive, liveAccent, liveFg);
+                Font f = liveActive ? TabFontBold : TabFontRegular;
+                if (_tabLiveGraphBtn.Font != f) _tabLiveGraphBtn.Font = f;
             }
-
+            if (_tabPerfGraphBtn != null)
+            {
+                Color perfAcc = isXmas ? XmasRed : Color.FromArgb(0x22, 0xD3, 0xEE);
+                Color perfFg = isXmas ? Color.White : Color.Black;
+                Win11VisualStyle.StylePillButton(_tabPerfGraphBtn, pal, perfActive, perfAcc, perfFg);
+                Font f = perfActive ? TabFontBold : TabFontRegular;
+                if (_tabPerfGraphBtn.Font != f) _tabPerfGraphBtn.Font = f;
+            }
+            Win11VisualStyle.StylePillButton(_tabApuCurveBtn, pal, apuActive, apuAccent, activeFg);
+            {
+                Font f = apuActive ? TabFontBold : TabFontRegular;
+                if (_tabApuCurveBtn.Font != f) _tabApuCurveBtn.Font = f;
+            }
+            Win11VisualStyle.StylePillButton(_tabSysCurveBtn, pal, sysActive, sysAccent, activeFg);
+            {
+                Font f = sysActive ? TabFontBold : TabFontRegular;
+                if (_tabSysCurveBtn.Font != f) _tabSysCurveBtn.Font = f;
+            }
             if (_tabOsdConfigBtn != null)
             {
-                _tabOsdConfigBtn.BackColor = surface2;
-                _tabOsdConfigBtn.ForeColor = text;
-                if (_tabOsdConfigBtn.Font != TabFontRegular) _tabOsdConfigBtn.Font = TabFontRegular;
-            }
-
-            if (_showingPerfGraph)
-            {
-                _tabApuCurveBtn.BackColor = surface2;
-                _tabApuCurveBtn.ForeColor = text;
-                if (_tabApuCurveBtn.Font != TabFontRegular) _tabApuCurveBtn.Font = TabFontRegular;
-
-                _tabSysCurveBtn.BackColor = surface2;
-                _tabSysCurveBtn.ForeColor = text;
-                if (_tabSysCurveBtn.Font != TabFontRegular) _tabSysCurveBtn.Font = TabFontRegular;
-
-                if (_tabLiveGraphBtn != null)
-                {
-                    _tabLiveGraphBtn.BackColor = surface2;
-                    _tabLiveGraphBtn.ForeColor = text;
-                    if (_tabLiveGraphBtn.Font != TabFontRegular) _tabLiveGraphBtn.Font = TabFontRegular;
-                }
-
-                if (_tabPerfGraphBtn != null)
-                {
-                    _tabPerfGraphBtn.BackColor = isXmas ? XmasRed : Color.FromArgb(0x22, 0xD3, 0xEE);
-                    _tabPerfGraphBtn.ForeColor = isXmas ? Color.White : Color.Black;
-                    if (_tabPerfGraphBtn.Font != TabFontBold) _tabPerfGraphBtn.Font = TabFontBold;
-                }
-            }
-            else if (_showingLiveTelemetry)
-            {
-                _tabApuCurveBtn.BackColor = surface2;
-                _tabApuCurveBtn.ForeColor = text;
-                if (_tabApuCurveBtn.Font != TabFontRegular) _tabApuCurveBtn.Font = TabFontRegular;
-
-                _tabSysCurveBtn.BackColor = surface2;
-                _tabSysCurveBtn.ForeColor = text;
-                if (_tabSysCurveBtn.Font != TabFontRegular) _tabSysCurveBtn.Font = TabFontRegular;
-
-                if (_tabLiveGraphBtn != null)
-                {
-                    _tabLiveGraphBtn.BackColor = liveAccent;
-                    _tabLiveGraphBtn.ForeColor = isXmas ? Color.White : ((_highlightedMetric == 2 || _highlightedMetric == 3 || _highlightedMetric == 6 || _highlightedMetric == 7) ? Color.Black : activeFg);
-                    if (_tabLiveGraphBtn.Font != TabFontBold) _tabLiveGraphBtn.Font = TabFontBold;
-                }
-
-                if (_tabPerfGraphBtn != null)
-                {
-                    _tabPerfGraphBtn.BackColor = surface2;
-                    _tabPerfGraphBtn.ForeColor = text;
-                    if (_tabPerfGraphBtn.Font != TabFontRegular) _tabPerfGraphBtn.Font = TabFontRegular;
-                }
-            }
-            else if (!_curveCanvas.EditSysFan)
-            {
-                _tabApuCurveBtn.BackColor = apuAccent;
-                _tabApuCurveBtn.ForeColor = activeFg;
-                if (_tabApuCurveBtn.Font != TabFontBold) _tabApuCurveBtn.Font = TabFontBold;
-
-                _tabSysCurveBtn.BackColor = surface2;
-                _tabSysCurveBtn.ForeColor = text;
-                if (_tabSysCurveBtn.Font != TabFontRegular) _tabSysCurveBtn.Font = TabFontRegular;
-
-                if (_tabLiveGraphBtn != null)
-                {
-                    _tabLiveGraphBtn.BackColor = surface2;
-                    _tabLiveGraphBtn.ForeColor = text;
-                    if (_tabLiveGraphBtn.Font != TabFontRegular) _tabLiveGraphBtn.Font = TabFontRegular;
-                }
-
-                if (_tabPerfGraphBtn != null)
-                {
-                    _tabPerfGraphBtn.BackColor = surface2;
-                    _tabPerfGraphBtn.ForeColor = text;
-                    if (_tabPerfGraphBtn.Font != TabFontRegular) _tabPerfGraphBtn.Font = TabFontRegular;
-                }
-            }
-            else
-            {
-                _tabSysCurveBtn.BackColor = sysAccent;
-                _tabSysCurveBtn.ForeColor = activeFg;
-                if (_tabSysCurveBtn.Font != TabFontBold) _tabSysCurveBtn.Font = TabFontBold;
-
-                _tabApuCurveBtn.BackColor = surface2;
-                _tabApuCurveBtn.ForeColor = text;
-                if (_tabApuCurveBtn.Font != TabFontRegular) _tabApuCurveBtn.Font = TabFontRegular;
-
-                if (_tabLiveGraphBtn != null)
-                {
-                    _tabLiveGraphBtn.BackColor = surface2;
-                    _tabLiveGraphBtn.ForeColor = text;
-                    if (_tabLiveGraphBtn.Font != TabFontRegular) _tabLiveGraphBtn.Font = TabFontRegular;
-                }
-
-                if (_tabPerfGraphBtn != null)
-                {
-                    _tabPerfGraphBtn.BackColor = surface2;
-                    _tabPerfGraphBtn.ForeColor = text;
-                    if (_tabPerfGraphBtn.Font != TabFontRegular) _tabPerfGraphBtn.Font = TabFontRegular;
-                }
+                Win11VisualStyle.StylePillButton(_tabOsdConfigBtn, pal, osdActive, isRadeon ? RadeonAccent : apuAccent, activeFg);
+                Font f = osdActive ? TabFontBold : TabFontRegular;
+                if (_tabOsdConfigBtn.Font != f) _tabOsdConfigBtn.Font = f;
             }
         }
 
@@ -526,23 +426,30 @@ namespace MiniFanControl
                     : (_highlightedMetric == 9 ? "Chassis Ambient Temp"
                     : (_highlightedMetric == 4 ? "APU Fan Speed"
                     : (_highlightedMetric == 5 ? "System Fan Speed" : "CPU Temp")))))));
-                _curveHintLabel.Text = string.Format("Spotlighting {0} — click pills to switch, or click '● APU Fan' / '● Sys Fan' tabs above to view & edit fan curve", hlName);
+                _curveHintLabel.Text = string.Format("Spotlighting {0} — click pills to toggle • Shift+click to solo • Space/P = Pause • right-click for PNG export", hlName);
+                return;
+            }
+            if (_biosAutoControlActive)
+            {
+                _curveHintLabel.Text = "BIOS Auto active — motherboard BIOS is controlling fans (click any mode, custom curve, or slider to resume MiniFanControl)";
                 return;
             }
             FanCurveProfile prof = GetSelectedTabProfile();
             string whichFan = _curveCanvas.EditSysFan ? "Sys Fan" : "APU Fan";
             if (prof.IsBuiltIn)
             {
-                _curveHintLabel.Text = string.Format("{0}: '{1}' — drag points to customize, or click any metric box for Live Trend", whichFan, prof.Name);
+                _curveHintLabel.Text = string.Format("{0}: '{1}' — drag points to customize (Shift = 5°/5% snap • PgUp/PgDn + Arrows = nudge)", whichFan, prof.Name);
             }
             else
             {
-                _curveHintLabel.Text = string.Format("Editing {0} curve '{1}' — click any metric box to view Live Trend", whichFan, prof.Name);
+                _curveHintLabel.Text = string.Format("Editing {0} curve '{1}' — Shift = 5°/5% snap • Ctrl+Z = undo • PgUp/PgDn + Arrows = nudge", whichFan, prof.Name);
             }
         }
 
         private void UpdateCalibrationBadge()
         {
+            if (_fan1Slider != null) _fan1Slider.FloorThreshold = FanCurveProfile.ApuMinSpinPct;
+            if (_fan2Slider != null) _fan2Slider.FloorThreshold = FanCurveProfile.SysMinSpinPct;
             if (_calibBadgeLabel == null) return;
             bool isRadeon = (_themePref == ThemePreference.Radeon);
             bool isXmas = IsXmas;
@@ -573,48 +480,40 @@ namespace MiniFanControl
         private void UpdateModeButtonStyles(int activeCode)
         {
             _lastSelectedModeCode = activeCode;
-            bool isRadeon = (_themePref == ThemePreference.Radeon);
-            bool isXmas = IsXmas;
-            Color surface2 = isXmas ? XmasSurface2 : (isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2)));
-            Color text = isXmas ? XmasText : (isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText)));
+            ThemePalette pal = CurrentPalette;
             bool editSys = _curveCanvas != null && _curveCanvas.EditSysFan;
-            Color accent = editSys
-                ? (isXmas ? XmasBlack : (isRadeon ? RadeonOrange : (IsAb ? AbCyan : (_isDarkMode ? DarkTeal : LightTeal))))
-                : (isXmas ? XmasRed : (isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent))));
-            Color activeFg = (isXmas || isRadeon) ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
+            Color accent = editSys ? pal.SecondaryAccent : pal.Accent;
 
             FanCurveProfile tabProf = GetSelectedTabProfile();
             bool tabManual = editSys ? _sysManualOverride : _apuManualOverride;
+            bool biosAuto = _biosAutoControlActive;
 
             for (int i = 0; i < _modeButtons.Length; i++)
             {
                 if (_modeButtons[i] == null) continue;
-                bool isSelected = (!tabManual && tabProf != null && tabProf.IsBuiltIn && tabProf.BuiltInCode == i);
-                if (isSelected)
-                {
-                    _modeButtons[i].BackColor = accent;
-                    _modeButtons[i].ForeColor = activeFg;
-                    if (_modeButtons[i].Font != ModeFontBold) _modeButtons[i].Font = ModeFontBold;
-                }
-                else
-                {
-                    _modeButtons[i].BackColor = surface2;
-                    _modeButtons[i].ForeColor = text;
-                    if (_modeButtons[i].Font != ModeFontRegular) _modeButtons[i].Font = ModeFontRegular;
-                }
+                bool isSelected = (!biosAuto && !tabManual && tabProf != null && tabProf.IsBuiltIn && tabProf.BuiltInCode == i);
+                Win11VisualStyle.StylePillButton(_modeButtons[i], pal, isSelected, accent, pal.ActiveFg);
+                Font f = isSelected ? ModeFontBold : ModeFontRegular;
+                if (_modeButtons[i].Font != f) _modeButtons[i].Font = f;
             }
 
             if (_activateCustomBtn != null)
             {
-                if (!tabManual && tabProf != null && !tabProf.IsBuiltIn)
+                bool customActive = (!biosAuto && !tabManual && tabProf != null && !tabProf.IsBuiltIn);
+                Win11VisualStyle.StylePillButton(_activateCustomBtn, pal, customActive, accent, pal.ActiveFg);
+            }
+
+            if (_allAutoBtn != null)
+            {
+                string autoLbl = biosAuto ? "✓ BIOS Auto" : "Reset Auto";
+                if (_allAutoBtn.Text != autoLbl) _allAutoBtn.Text = autoLbl;
+                if (biosAuto)
                 {
-                    _activateCustomBtn.BackColor = accent;
-                    _activateCustomBtn.ForeColor = activeFg;
+                    Win11VisualStyle.StylePillButton(_allAutoBtn, pal, true, pal.Success, pal.ActiveFg);
                 }
                 else
                 {
-                    _activateCustomBtn.BackColor = surface2;
-                    _activateCustomBtn.ForeColor = text;
+                    Win11VisualStyle.StyleModernButton(_allAutoBtn, pal.Surface2, pal.Text, pal.Border, pal.IsDark);
                 }
             }
         }
@@ -679,22 +578,13 @@ namespace MiniFanControl
             if (activeCode >= 0 && activeCode <= 2)
                 _lastActiveBiosModeCode = activeCode;
 
-            bool isRadeon = (_themePref == ThemePreference.Radeon);
-            bool isXmas = IsXmas;
-            Color surface2 = isXmas ? XmasSurface2 : (isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2)));
-            Color text = isXmas ? XmasText : (isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText)));
-            Color activeBg = isXmas ? XmasRed : (isRadeon ? RadeonAccent : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent)));
-            Color activeFg = (isXmas || isRadeon) ? Color.White : (IsAb ? Color.Black : (_isDarkMode ? Color.Black : Color.White));
-
+            ThemePalette pal = CurrentPalette;
             for (int i = 0; i < _biosModeButtons.Length; i++)
             {
                 Button b = _biosModeButtons[i];
                 if (b == null) continue;
                 bool isActive = (i == _lastActiveBiosModeCode);
-                if (b.BackColor != (isActive ? activeBg : surface2))
-                    b.BackColor = isActive ? activeBg : surface2;
-                if (b.ForeColor != (isActive ? activeFg : text))
-                    b.ForeColor = isActive ? activeFg : text;
+                Win11VisualStyle.StylePillButton(b, pal, isActive);
                 Font targetFont = isActive ? BiosModeFontBold : BiosModeFontRegular;
                 if (b.Font != targetFont)
                     b.Font = targetFont;

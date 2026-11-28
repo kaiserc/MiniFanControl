@@ -37,10 +37,18 @@ namespace MiniFanControl
 
             g.Clear(bg);
 
-            // Left accent bar
+            // Left accent bar (inset cleanly inside the 1px outer frame)
             using (Brush accentBrush = new SolidBrush(accentCol))
             {
-                g.FillRectangle(accentBrush, 0, 0, Math.Max(3, (int)Math.Round(3 * sc)), Height);
+                g.FillRectangle(accentBrush, 1, 2, Math.Max(3, (int)Math.Round(3 * sc)), Math.Max(1, Height - 4));
+            }
+            if (!xmas && Width > 16 && Height > 8)
+            {
+                using (Pen topHiPen = new Pen(Color.FromArgb(24, 255, 255, 255), 1f))
+                {
+                    int barRight = 1 + Math.Max(3, (int)Math.Round(3 * sc));
+                    g.DrawLine(topHiPen, barRight, 1, Width - 2, 1);
+                }
             }
             if (xmas && Width > 90 && Height > 36)
             {
@@ -278,7 +286,7 @@ namespace MiniFanControl
                         Color npuCol = xmas ? XmasBlack : Color.FromArgb(0x38, 0xBD, 0xF8);
                         using (Brush bNpu = new SolidBrush(npuCol))
                         {
-                            DrawVertRow(g, row++, rowH, "◈ NPU", FormatNpuOverlayValue(true), FormatNpuOverlayPeak(), bLabel, bNpu, bPeak, showSpark ? (Stats != null ? Stats.NpuHistory : null) : null, npuCol, sc);
+                            DrawVertRow(g, row++, rowH, "NPU", FormatNpuOverlayValue(true), FormatNpuOverlayPeak(), bLabel, bNpu, bPeak, showSpark ? (Stats != null ? Stats.NpuHistory : null) : null, npuCol, sc);
                         }
                     }
                     if (ShowFps)
@@ -574,6 +582,20 @@ namespace MiniFanControl
         {
             float y = (27f * sc) + rowIndex * rowH;
 
+            // Ultra-subtle alternating row tint to make scanning short rows (Power, Chassis, NPU) effortless
+            if ((rowIndex & 1) == 1)
+            {
+                int stripeLeft = (int)Math.Round(6 * sc);
+                int stripeW = Math.Max(1, Width - stripeLeft - (int)Math.Round(5 * sc));
+                int stripeY = (int)Math.Round(y - 2f * sc);
+                int stripeH = Math.Max(1, rowH);
+                Color stripeCol = IsXmasTheme ? Color.FromArgb(8, 0, 0, 0) : Color.FromArgb(11, 255, 255, 255);
+                using (SolidBrush stripeBr = new SolidBrush(stripeCol))
+                {
+                    g.FillRectangle(stripeBr, stripeLeft, stripeY, stripeW, stripeH);
+                }
+            }
+
             float rightMargin = 14f * sc;
             float lblW = g.MeasureString(lbl, _fontLabel).Width;
             float minValX = (10f * sc) + lblW + (6f * sc);
@@ -718,39 +740,33 @@ namespace MiniFanControl
 
             int y = (int)Math.Round(24 * sc) + rowIdx * rowH;
             int curX = (int)Math.Round(10 * sc);
-            int pillH = (int)Math.Round(15 * sc);
-            int padH = (int)Math.Round(5 * sc);
-            int textYOffset = (int)Math.Round(1 * sc);
+            int pillH = (int)Math.Round(16 * sc);
+            int padH = (int)Math.Round(7 * sc);
 
             bool xmas = IsXmasTheme;
             bool radeon = !xmas && MatchAppTheme && IsRadeonTheme;
-            Color pillBg = xmas ? XmasRed : (IsAfterburnerTheme ? Color.FromArgb(170, 8, 40, 26) : (radeon ? Color.FromArgb(170, 50, 15, 25) : Color.FromArgb(160, 40, 18, 22)));
-            Color pillBorder = xmas ? XmasBlack : (IsAfterburnerTheme ? Color.FromArgb(240, 0, 230, 118) : (radeon ? Color.FromArgb(240, 235, 45, 65) : Color.FromArgb(230, 220, 50, 60)));
-            Color pillText = xmas ? Color.White : Color.FromArgb(255, 255, 240, 242);
+            Color pillBg = xmas ? XmasRed : (IsAfterburnerTheme ? Color.FromArgb(205, 8, 44, 28) : (radeon ? Color.FromArgb(205, 56, 16, 26) : Color.FromArgb(205, 44, 18, 24)));
+            Color pillBorder = xmas ? XmasBlack : (IsAfterburnerTheme ? Color.FromArgb(245, 0, 230, 118) : (radeon ? Color.FromArgb(245, 235, 52, 72) : Color.FromArgb(235, 224, 62, 74)));
+            Color pillText = xmas ? Color.White : Color.FromArgb(255, 255, 244, 246);
 
-            using (SolidBrush bgBrush = new SolidBrush(pillBg))
-            using (Pen borderPen = new Pen(pillBorder, 1f))
-            using (SolidBrush textBrush = new SolidBrush(pillText))
+            foreach (string tag in tags)
             {
-                foreach (string tag in tags)
+                bool isRyzen = tag.StartsWith("Ryzen", StringComparison.OrdinalIgnoreCase);
+                Color curBg = isRyzen ? (xmas ? XmasBlack : Color.FromArgb(215, 64, 24, 10)) : pillBg;
+                Color curBorder = isRyzen ? (xmas ? XmasRed : Color.FromArgb(248, 242, 118, 42)) : pillBorder;
+
+                Size sz = TextRenderer.MeasureText(g, tag, _fontTrace, new Size(200, 20), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                int pillW = sz.Width + padH * 2;
+                Rectangle pillRect = new Rectangle(curX, y + (rowH - pillH) / 2, pillW, pillH);
+
+                using (SolidBrush b = new SolidBrush(curBg))
+                using (Pen p = new Pen(curBorder, 1f))
                 {
-                    bool isRyzen = tag.StartsWith("Ryzen", StringComparison.OrdinalIgnoreCase);
-                    Color curBg = isRyzen ? (xmas ? XmasBlack : Color.FromArgb(190, 60, 24, 10)) : pillBg;
-                    Color curBorder = isRyzen ? (xmas ? XmasRed : Color.FromArgb(245, 238, 107, 36)) : pillBorder;
-
-                    SizeF sz = g.MeasureString(tag, _fontTrace);
-                    int pillW = (int)Math.Ceiling(sz.Width) + padH * 2;
-                    Rectangle pillRect = new Rectangle(curX, y + (rowH - pillH) / 2, pillW, pillH);
-
-                    using (SolidBrush b = new SolidBrush(curBg))
-                    using (Pen p = new Pen(curBorder, 1f))
-                    {
-                        DrawRoundedRectangle(g, p, b, pillRect, (int)Math.Round(3 * sc));
-                    }
-                    g.DrawString(tag, _fontTrace, textBrush, pillRect.X + padH, pillRect.Y + textYOffset);
-
-                    curX += pillW + (int)Math.Round(4 * sc);
+                    DrawRoundedRectangle(g, p, b, pillRect, (int)Math.Round(3 * sc));
                 }
+                TextRenderer.DrawText(g, tag, _fontTrace, pillRect, pillText, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+
+                curX += pillW + (int)Math.Round(5 * sc);
             }
         }
 
@@ -762,8 +778,8 @@ namespace MiniFanControl
                 g.DrawLine(sepPen, cellX - 3f * sc, 4f * sc, cellX - 3f * sc, (GraphMode == 1 || GraphMode == 3) ? (54f * sc) : (38f * sc));
             }
 
-            int padH = (int)Math.Round(3 * sc);
-            int pillH = (int)Math.Round(13 * sc);
+            int padH = (int)Math.Round(5 * sc);
+            int pillH = (int)Math.Round(14 * sc);
             float curX = cellX;
             float curY = 17f * sc;
 
@@ -771,40 +787,35 @@ namespace MiniFanControl
 
             bool xmas = IsXmasTheme;
             bool radeon = !xmas && MatchAppTheme && IsRadeonTheme;
-            Color pillBg = xmas ? XmasRed : (IsAfterburnerTheme ? Color.FromArgb(170, 8, 40, 26) : (radeon ? Color.FromArgb(170, 50, 15, 25) : Color.FromArgb(160, 40, 18, 22)));
-            Color pillBorder = xmas ? XmasBlack : (IsAfterburnerTheme ? Color.FromArgb(240, 0, 230, 118) : (radeon ? Color.FromArgb(240, 235, 45, 65) : Color.FromArgb(230, 220, 50, 60)));
-            Color pillText = xmas ? Color.White : Color.FromArgb(255, 255, 240, 242);
+            Color pillBg = xmas ? XmasRed : (IsAfterburnerTheme ? Color.FromArgb(205, 8, 44, 28) : (radeon ? Color.FromArgb(205, 56, 16, 26) : Color.FromArgb(205, 44, 18, 24)));
+            Color pillBorder = xmas ? XmasBlack : (IsAfterburnerTheme ? Color.FromArgb(245, 0, 230, 118) : (radeon ? Color.FromArgb(245, 235, 52, 72) : Color.FromArgb(235, 224, 62, 74)));
+            Color pillText = xmas ? Color.White : Color.FromArgb(255, 255, 244, 246);
 
-            using (SolidBrush bgBrush = new SolidBrush(pillBg))
-            using (Pen borderPen = new Pen(pillBorder, 1f))
-            using (SolidBrush textBrush = new SolidBrush(pillText))
+            for (int i = 0; i < tags.Count; i++)
             {
-                for (int i = 0; i < tags.Count; i++)
-                {
-                    string tag = tags[i];
-                    bool isRyzen = tag.StartsWith("Ryzen", StringComparison.OrdinalIgnoreCase);
-                    Color curBg = isRyzen ? (xmas ? XmasBlack : Color.FromArgb(190, 60, 24, 10)) : pillBg;
-                    Color curBorder = isRyzen ? (xmas ? XmasRed : Color.FromArgb(245, 238, 107, 36)) : pillBorder;
+                string tag = tags[i];
+                bool isRyzen = tag.StartsWith("Ryzen", StringComparison.OrdinalIgnoreCase);
+                Color curBg = isRyzen ? (xmas ? XmasBlack : Color.FromArgb(215, 64, 24, 10)) : pillBg;
+                Color curBorder = isRyzen ? (xmas ? XmasRed : Color.FromArgb(248, 242, 118, 42)) : pillBorder;
 
-                    SizeF sz = g.MeasureString(tag, _fontTrace);
-                    int pillW = (int)Math.Ceiling(sz.Width) + padH * 2;
-                    bool canWrap = (GraphMode == 1 || GraphMode == 3);
-                    if (curX + pillW > cellX + colW - (2f * sc) && i > 0 && canWrap)
+                Size sz = TextRenderer.MeasureText(g, tag, _fontTrace, new Size(200, 20), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                int pillW = sz.Width + padH * 2;
+                bool canWrap = (GraphMode == 1 || GraphMode == 3);
+                if (curX + pillW > cellX + colW - (2f * sc) && i > 0 && canWrap)
+                {
+                    curX = cellX;
+                    curY += pillH + (2f * sc);
+                }
+                if (curX + pillW <= cellX + colW + (4f * sc))
+                {
+                    Rectangle pillRect = new Rectangle((int)curX, (int)curY, pillW, pillH);
+                    using (SolidBrush b = new SolidBrush(curBg))
+                    using (Pen p = new Pen(curBorder, 1f))
                     {
-                        curX = cellX;
-                        curY += pillH + (2f * sc);
+                        DrawRoundedRectangle(g, p, b, pillRect, (int)Math.Round(2.5f * sc));
                     }
-                    if (curX + pillW <= cellX + colW + (4f * sc))
-                    {
-                        Rectangle pillRect = new Rectangle((int)curX, (int)curY, pillW, pillH);
-                        using (SolidBrush b = new SolidBrush(curBg))
-                        using (Pen p = new Pen(curBorder, 1f))
-                        {
-                            DrawRoundedRectangle(g, p, b, pillRect, (int)Math.Round(2 * sc));
-                        }
-                        g.DrawString(tag, _fontTrace, textBrush, pillRect.X + padH, pillRect.Y);
-                        curX += pillW + (3f * sc);
-                    }
+                    TextRenderer.DrawText(g, tag, _fontTrace, pillRect, pillText, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    curX += pillW + (3f * sc);
                 }
             }
         }

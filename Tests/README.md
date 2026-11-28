@@ -1,4 +1,4 @@
-# MiniFanControl — Automated Hardware Safety & Curve Test Suite (123/123 Passing)
+# MiniFanControl — Automated Hardware Safety & Curve Test Suite (127/127 Passing)
 
 The built-in test suite (`minifan-helper.exe test`, or `Tests/MiniFanControl.Tests.csproj` on `.NET 10`) rigorously validates hardware safety mechanisms, driver integrity gates, curve math, mutex synchronization, and UI/OSD contracts without touching physical EC/Super I/O registers.
 
@@ -7,7 +7,7 @@ The built-in test suite (`minifan-helper.exe test`, or `Tests/MiniFanControl.Tes
 ## Running the Suite
 
 ```powershell
-# Run all 123 automated self-tests (standalone Windows build)
+# Run all 127 automated self-tests (standalone Windows build)
 .\minifan-helper.exe test
 
 # Or run the dedicated .NET 10 test assembly
@@ -23,7 +23,7 @@ dotnet run --project Tests\MiniFanControl.Tests.csproj -c Release -f net10.0-win
 
 ---
 
-## Full 122-Test Catalog
+## Full 127-Test Catalog
 
 ### Core Curves, Calibration & Hardware Safety (`#1–#36`)
 1. **Motor Stall Dead-Zone Protection**: Verifies fan speeds 1%–29% are clamped to safe minimums across 0°C–105°C.
@@ -106,7 +106,7 @@ dotnet run --project Tests\MiniFanControl.Tests.csproj -c Release -f net10.0-win
 76. **Hardware Probe JSON Export & Super I/O Chip Identification**: Verifies `dump --json` and `IT5570E` / `IT8613E` / `NCT67xx` IDs.
 77. **Calibrated 14% Floor, BIOS-Mode Auto-Tune & OSD `Graphs Only` / `DF Corner` Config**: Verifies low-floor calibration and OSD config round-trips.
 
-### Security Hardening, PawnIO HVCI, ETW Latency, Service Mode & Themes (`#78–#122`)
+### Security Hardening, PawnIO HVCI, ETW Latency, Service Mode & Themes (`#78–#127`)
 78. **`NativeInpOut` SHA256 Pin Verification & Single-Choke-Point Port Whitelist**: Verifies runtime SHA256 pin enforcement and port blocking.
 79. **Custom `DeviceProfile` Fail-Closed `FromJson`, DMI Fingerprint Binding & Blocklist Precedence**: Verifies machine-bound custom JSON and blocklist priority.
 80. **CLI Fan Duty Anti-Stall Floor Clamping & `--force` Override**: Verifies CLI floor clamping and explicit `--force` override.
@@ -153,3 +153,7 @@ dotnet run --project Tests\MiniFanControl.Tests.csproj -c Release -f net10.0-win
 121. **Xmas Edition Theme (White/Black/Red Palette, Concept #6 Logo, Settings Persistence & OSD Sync)**: Verifies `ThemePreference.Xmas = 5` end-to-end.
 122. **PawnIO `.bin` Module SHA256 Pinning, Legacy WinRing0 Hard-Gate, `Local\` Mutex Sync Check & CLI JSONL Streaming**: Verifies bundled `.bin` SHA256 pins accept official blobs and reject tampered payloads, confirms WinRing0 is blocked by default (`AllowLegacyWinRing0Fallback = false`), checks `EcBusMutex.IsCrossSessionSynchronized`, and verifies `FormatStatusJsonLine()` valid JSONL output with UTC timestamps.
 123. **`TryReadPhysicalByte`, Strict `SimpleJson`/SchemaVersion, Versioned `CustomProfileJson` & Extracted Services**: Verifies `TryReadPhysicalByte` returns `false` with `0` on denied ranges, `SimpleJson.ParseFlatObjectStrict` rejects nested objects/arrays and unknown keys loudly, `DeviceProfile.FromJsonStrict` enforces `schemaVersion == 1`, `AppSettings` round-trips versioned `CustomProfileJson`, and `TrayIconRenderer` / `CurveProfileCatalog` work independently of `MainForm`.
+124. **Hidden OSD Click-Through Lock Guard & Unsloth AI Detection**: Verifies toggling click-through lock while the overlay is hidden does not resurrect a stale window, and confirms `unsloth` / local LLM workloads are detected cleanly.
+125. **ETW Kernel Event-ID Filter ABI & WebView2 / AI Host Process Filtering**: Verifies Win64 `EVENT_FILTER_DESCRIPTOR` / `ENABLE_TRACE_PARAMETERS` struct sizes and offsets, `DxgKrnl`/`DXGI` event-ID filter buffer encoding, noisy event rejection, and filtering of WebView2/AI host processes from active game detection.
+126. **Privacy-First GitHub Release Update Checker (`UpdateChecker`)**: Verifies SemVer ordering (`1.10.0 > 1.3.1`, pre-release tags), depth-aware top-level JSON extraction with nested GitHub `author`/`assets` objects, and fail-closed URL sanitization rejecting non-official download domains.
+127. **Reset Auto True BIOS Restoration (Super I/O SmartGuardian Custom Curve, EC Initial Mode & Hands-Off Guard)**: Verifies untouched IT8613E SmartGuardian BIOS fan curves (`Reg 0x15..0x17` Bit 7 = 1) and initial EC BIOS modes (`Silent`/`Perf`/`Balanced`) are snapshotted before the first fan override, restored faithfully on `ApplyAutoAll()`/`SetAuto()`, and left untouched by subsequent poll ticks until the user explicitly selects a profile or manual slider.

@@ -10,37 +10,78 @@ namespace MiniFanControl
 {
     public partial class CapFrameXOverlayForm
     {
+        private readonly List<Action> _menuSyncActions = new List<Action>();
+
+        private void SyncOverlayMenuChecks()
+        {
+            for (int i = 0; i < _menuSyncActions.Count; i++)
+            {
+                try { _menuSyncActions[i](); } catch { }
+            }
+        }
+
         private ContextMenuStrip BuildOverlayMenu()
         {
+            _menuSyncActions.Clear();
             ContextMenuStrip menu = new ContextMenuStrip();
+            menu.Opening += (s, e) =>
+            {
+                SyncOverlayMenuChecks();
+                ThemePalette pal = ThemePalette.ResolveFromFlags(!IsXmasTheme, IsRadeonTheme, IsAfterburnerTheme, IsXmasTheme);
+                Win11VisualStyle.ApplyThemeToMenu(menu, pal);
+            };
+
             menu.Items.Add("Configure OSD Overlay Studio...", null, (s, e) =>
             {
                 if (RequestOpenOsdConfig != null) RequestOpenOsdConfig(this, EventArgs.Empty);
             });
+
+            ToolStripMenuItem presetsMenu = new ToolStripMenuItem("Quick OSD Presets");
+            presetsMenu.DropDownItems.Add("Minimal FPS (Horizontal Bar, Text Only)", null, (s, e) => ApplyPresetFromMenu(0));
+            presetsMenu.DropDownItems.Add("Compact Gaming (Sparklines + DF Corner)", null, (s, e) => ApplyPresetFromMenu(1));
+            presetsMenu.DropDownItems.Add("Digital Foundry (Twin FT + FPS Graphs)", null, (s, e) => ApplyPresetFromMenu(2));
+            presetsMenu.DropDownItems.Add("Full Audit (All Sensors + Both Graphs)", null, (s, e) => ApplyPresetFromMenu(3));
+            menu.Items.Add(presetsMenu);
             menu.Items.Add(new ToolStripSeparator());
 
             ToolStripMenuItem scaleMenu = new ToolStripMenuItem("OSD Scale & Size");
-            scaleMenu.DropDownItems.Add("100% Standard", null, (s, e) => SetScaleTierFromMenu(0));
-            scaleMenu.DropDownItems.Add("125% Large", null, (s, e) => SetScaleTierFromMenu(1));
-            scaleMenu.DropDownItems.Add("150% Extra Large", null, (s, e) => SetScaleTierFromMenu(2));
-            scaleMenu.DropDownItems.Add("185% Jumbo (4K / TV)", null, (s, e) => SetScaleTierFromMenu(3));
+            AddCheckedActionItem(scaleMenu, "100% Standard", () => OsdScaleTier == 0, () => SetScaleTierFromMenu(0));
+            AddCheckedActionItem(scaleMenu, "125% Large", () => OsdScaleTier == 1, () => SetScaleTierFromMenu(1));
+            AddCheckedActionItem(scaleMenu, "150% Extra Large", () => OsdScaleTier == 2, () => SetScaleTierFromMenu(2));
+            AddCheckedActionItem(scaleMenu, "185% Jumbo (4K / TV)", () => OsdScaleTier == 3, () => SetScaleTierFromMenu(3));
+            scaleMenu.DropDownOpening += (s, e) => SyncOverlayMenuChecks();
             menu.Items.Add(scaleMenu);
 
             ToolStripMenuItem graphMenu = new ToolStripMenuItem("OSD Live Graphs");
-            graphMenu.DropDownItems.Add("Both (Mini Sparklines + Combined Graph)", null, (s, e) => SetGraphModeFromMenu(3));
-            graphMenu.DropDownItems.Add("Combined Live Graph Only", null, (s, e) => SetGraphModeFromMenu(2));
-            graphMenu.DropDownItems.Add("Mini Sparklines per Metric Only", null, (s, e) => SetGraphModeFromMenu(1));
-            graphMenu.DropDownItems.Add("Text Only (No Graphs)", null, (s, e) => SetGraphModeFromMenu(0));
-            graphMenu.DropDownItems.Add("Graphs Only (No Metric Rows)", null, (s, e) => SetGraphModeFromMenu(4));
+            AddCheckedActionItem(graphMenu, "Both (Mini Sparklines + Combined Graph)", () => GraphMode == 3, () => SetGraphModeFromMenu(3));
+            AddCheckedActionItem(graphMenu, "Combined Live Graph Only", () => GraphMode == 2, () => SetGraphModeFromMenu(2));
+            AddCheckedActionItem(graphMenu, "Mini Sparklines per Metric Only", () => GraphMode == 1, () => SetGraphModeFromMenu(1));
+            AddCheckedActionItem(graphMenu, "Text Only (No Graphs)", () => GraphMode == 0, () => SetGraphModeFromMenu(0));
+            AddCheckedActionItem(graphMenu, "Graphs Only (No Metric Rows)", () => GraphMode == 4, () => SetGraphModeFromMenu(4));
             graphMenu.DropDownItems.Add(new ToolStripSeparator());
             ToolStripMenuItem heightMenu = new ToolStripMenuItem("Graph Height");
-            heightMenu.DropDownItems.Add("75px Compact", null, (s, e) => SetGraphHeightFromMenu(75));
-            heightMenu.DropDownItems.Add("105px Medium", null, (s, e) => SetGraphHeightFromMenu(105));
-            heightMenu.DropDownItems.Add("140px Large", null, (s, e) => SetGraphHeightFromMenu(140));
-            heightMenu.DropDownItems.Add("180px Extra Large", null, (s, e) => SetGraphHeightFromMenu(180));
+            AddCheckedActionItem(heightMenu, "75px Compact", () => GraphHeight <= 85, () => SetGraphHeightFromMenu(75));
+            AddCheckedActionItem(heightMenu, "105px Medium", () => GraphHeight > 85 && GraphHeight <= 120, () => SetGraphHeightFromMenu(105));
+            AddCheckedActionItem(heightMenu, "140px Large", () => GraphHeight > 120 && GraphHeight <= 160, () => SetGraphHeightFromMenu(140));
+            AddCheckedActionItem(heightMenu, "180px Extra Large", () => GraphHeight > 160, () => SetGraphHeightFromMenu(180));
+            heightMenu.DropDownOpening += (s, e) => SyncOverlayMenuChecks();
             graphMenu.DropDownItems.Add(heightMenu);
             graphMenu.DropDownItems.Add(new ToolStripSeparator());
-            AddMetricToggleMenuItem(graphMenu, "Live Trend Graph (Multi-Sensor)", () => ShowLiveTrend, v => ShowLiveTrend = v);
+            AddMetricToggleMenuItem(graphMenu, "Live Trend Graph (Multi-Sensor)", () => ShowLiveTrend, v =>
+            {
+                ShowLiveTrend = v;
+                if (v)
+                {
+                    if (GraphMode == 0) GraphMode = 2;
+                    else if (GraphMode == 1) GraphMode = 3;
+                }
+                else
+                {
+                    if (GraphMode == 2) GraphMode = 0;
+                    else if (GraphMode == 3) GraphMode = 1;
+                    else if (GraphMode == 4 && !ShowFpsGraph) GraphMode = 0;
+                }
+            });
             ToolStripMenuItem trendSeriesMenu = new ToolStripMenuItem("Live Trend Series (Show / Hide)");
             AddMetricToggleMenuItem(trendSeriesMenu, "CPU Temp", () => TrendCpu, v => TrendCpu = v);
             AddMetricToggleMenuItem(trendSeriesMenu, "iGPU Temp", () => TrendGpu, v => TrendGpu = v);
@@ -74,13 +115,27 @@ namespace MiniFanControl
                 Invalidate();
                 if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
             });
+            trendSeriesMenu.DropDownOpening += (s, e) => SyncOverlayMenuChecks();
             graphMenu.DropDownItems.Add(trendSeriesMenu);
-            AddMetricToggleMenuItem(graphMenu, "FPS & Frametime Graph", () => ShowFpsGraph, v => ShowFpsGraph = v);
+            AddMetricToggleMenuItem(graphMenu, "FPS & Frametime Graph", () => ShowFpsGraph, v =>
+            {
+                ShowFpsGraph = v;
+                if (!v && GraphMode == 4 && !ShowLiveTrend) GraphMode = 0;
+            });
             AddMetricToggleMenuItem(graphMenu, "Plot FPS on Live Trend", () => PlotFpsOnTrend, v => PlotFpsOnTrend = v);
             AddMetricToggleMenuItem(graphMenu, "Digital Foundry (DF) Style Graphs", () => DfGraphStyle, v => DfGraphStyle = v);
-            AddMetricToggleMenuItem(graphMenu, "DF Corner Inset (Frame-Time in FPS Corner)", () => DfCornerInset, v => { DfCornerInset = v; if (v) DfGraphStyle = true; });
+            AddMetricToggleMenuItem(graphMenu, "DF Corner Inset (Frame-Time in FPS Corner)", () => DfCornerInset, v =>
+            {
+                DfCornerInset = v;
+                if (v)
+                {
+                    ShowFpsGraph = true;
+                    DfGraphStyle = true;
+                }
+            });
             AddMetricToggleMenuItem(graphMenu, "Show DF Graphs Before Live Trend", () => DfGraphFirst, v => DfGraphFirst = v);
             AddMetricToggleMenuItem(graphMenu, "Background Sparklines (Underlay)", () => SparklinesAsBackground, v => { SparklinesAsBackground = v; Invalidate(); });
+            graphMenu.DropDownOpening += (s, e) => SyncOverlayMenuChecks();
             menu.Items.Add(graphMenu);
 
             ToolStripMenuItem samplingMenu = new ToolStripMenuItem("Sampling Rate");
@@ -143,19 +198,16 @@ namespace MiniFanControl
             AddMetricToggleMenuItem(metricsMenu, "Peak / Low Trackers", () => ShowPeaks, v => ShowPeaks = v);
             ToolStripMenuItem trackerModeMenu = new ToolStripMenuItem("Tracker Mode (Peaks / Lows / Avg)");
             Action<int> setTrackerMode = m => { PeakTrackerMode = m; UpdateDimensions(); Invalidate(); if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty); };
-            ToolStripMenuItem tmPeaks = new ToolStripMenuItem("Peaks (▲)") { Checked = (PeakTrackerMode == 0) };
-            tmPeaks.Click += (s, e) => setTrackerMode(0);
-            ToolStripMenuItem tmLows = new ToolStripMenuItem("Lows (▼)") { Checked = (PeakTrackerMode == 1) };
-            tmLows.Click += (s, e) => setTrackerMode(1);
-            ToolStripMenuItem tmMinMax = new ToolStripMenuItem("Min/Max (▼▲)") { Checked = (PeakTrackerMode == 2) };
-            tmMinMax.Click += (s, e) => setTrackerMode(2);
-            ToolStripMenuItem tmAvg = new ToolStripMenuItem("Session Avg (~)") { Checked = (PeakTrackerMode == 3) };
-            tmAvg.Click += (s, e) => setTrackerMode(3);
-            trackerModeMenu.DropDownItems.AddRange(new ToolStripItem[] { tmPeaks, tmLows, tmMinMax, tmAvg });
+            AddCheckedActionItem(trackerModeMenu, "Peaks (▲)", () => PeakTrackerMode == 0, () => setTrackerMode(0));
+            AddCheckedActionItem(trackerModeMenu, "Lows (▼)", () => PeakTrackerMode == 1, () => setTrackerMode(1));
+            AddCheckedActionItem(trackerModeMenu, "Min/Max (▼▲)", () => PeakTrackerMode == 2, () => setTrackerMode(2));
+            AddCheckedActionItem(trackerModeMenu, "Session Avg (~)", () => PeakTrackerMode == 3, () => setTrackerMode(3));
+            trackerModeMenu.DropDownOpening += (s, e) => SyncOverlayMenuChecks();
             metricsMenu.DropDownItems.Add(trackerModeMenu);
             AddMetricToggleMenuItem(metricsMenu, "Radeon Driver Version", () => ShowDriverVersion, v => ShowDriverVersion = v);
             AddMetricToggleMenuItem(metricsMenu, "Radeon Features (Tags: FreeSync, Anti-Lag, AFMF, Chill, Boost, RSR, RIS)", () => ShowRadeonSettings, v => ShowRadeonSettings = v);
             AddMetricToggleMenuItem(metricsMenu, "Extended Radeon Tags (SAM, EnhSync, FRTC)", () => ShowRadeonExtendedTags, v => ShowRadeonExtendedTags = v);
+            metricsMenu.DropDownOpening += (s, e) => SyncOverlayMenuChecks();
             menu.Items.Add(metricsMenu);
 
             ToolStripMenuItem subFieldsMenu = new ToolStripMenuItem("RAM & Sensor Sub-Fields");
@@ -206,14 +258,41 @@ namespace MiniFanControl
             AddMetricToggleMenuItem(subFieldsMenu, "FPS Frametime (ms)", () => ShowFrametimeMs, v => ShowFrametimeMs = v);
             AddMetricToggleMenuItem(subFieldsMenu, "FPS Session Avg", () => ShowFpsAvg, v => ShowFpsAvg = v);
             AddMetricToggleMenuItem(subFieldsMenu, "Display Latency (ETW ms)", () => ShowLatency, v => ShowLatency = v);
+            subFieldsMenu.DropDownOpening += (s, e) => SyncOverlayMenuChecks();
             menu.Items.Add(subFieldsMenu);
 
             ToolStripMenuItem themeMenu = new ToolStripMenuItem("OSD Theme Palette");
-            themeMenu.DropDownItems.Add("Match Application Theme", null, (s, e) => { MatchAppTheme = true; Invalidate(); });
-            themeMenu.DropDownItems.Add("Classic MiniFanControl Dark (Cyan/Amber)", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = false; IsXmasTheme = false; Invalidate(); });
-            themeMenu.DropDownItems.Add("AMD Radeon Ruby Red", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = true; IsAfterburnerTheme = false; IsXmasTheme = false; Invalidate(); });
-            themeMenu.DropDownItems.Add("MSI Afterburner Toxic Green", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = true; IsXmasTheme = false; Invalidate(); });
-            themeMenu.DropDownItems.Add("❄ Xmas Edition (White / Black / Red)", null, (s, e) => { MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = false; IsXmasTheme = true; Invalidate(); });
+            AddCheckedActionItem(themeMenu, "Match Application Theme", () => MatchAppTheme, () =>
+            {
+                MatchAppTheme = true;
+                Invalidate();
+                if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
+            });
+            AddCheckedActionItem(themeMenu, "Classic MiniFanControl Dark (Cyan/Amber)", () => !MatchAppTheme && !IsRadeonTheme && !IsAfterburnerTheme && !IsXmasTheme, () =>
+            {
+                MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = false; IsXmasTheme = false;
+                Invalidate();
+                if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
+            });
+            AddCheckedActionItem(themeMenu, "AMD Radeon Ruby Red", () => !MatchAppTheme && IsRadeonTheme, () =>
+            {
+                MatchAppTheme = false; IsRadeonTheme = true; IsAfterburnerTheme = false; IsXmasTheme = false;
+                Invalidate();
+                if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
+            });
+            AddCheckedActionItem(themeMenu, "MSI Afterburner Toxic Green", () => !MatchAppTheme && IsAfterburnerTheme, () =>
+            {
+                MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = true; IsXmasTheme = false;
+                Invalidate();
+                if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
+            });
+            AddCheckedActionItem(themeMenu, "❄ Xmas Edition (White / Black / Red)", () => !MatchAppTheme && IsXmasTheme, () =>
+            {
+                MatchAppTheme = false; IsRadeonTheme = false; IsAfterburnerTheme = false; IsXmasTheme = true;
+                Invalidate();
+                if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
+            });
+            themeMenu.DropDownOpening += (s, e) => SyncOverlayMenuChecks();
             menu.Items.Add(themeMenu);
 
             ToolStripMenuItem snapMenu = new ToolStripMenuItem("Snap Location");
@@ -260,24 +339,75 @@ namespace MiniFanControl
             if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
         }
 
-        private void SetGraphModeFromMenu(int mode)
+        private void ApplyPresetFromMenu(int presetIndex)
         {
-            GraphMode = mode;
-            ShowLiveTrend = (mode == 2 || mode == 3);
+            OsdOverlayConfig tmp = new OsdOverlayConfig();
+            tmp.ReadFromOverlay(this);
+            if (presetIndex == 0) tmp.ApplyPresetMinimalFps();
+            else if (presetIndex == 1) tmp.ApplyPresetCompactGaming(HasDualFans);
+            else if (presetIndex == 2) tmp.ApplyPresetDigitalFoundry();
+            else tmp.ApplyPresetFullAudit(HasDualFans);
+
+            ThemePreference curPref = IsXmasTheme ? ThemePreference.Xmas
+                : (IsRadeonTheme ? ThemePreference.Radeon
+                : (IsAfterburnerTheme ? ThemePreference.Afterburner : ThemePreference.Dark));
+            tmp.ApplyToOverlay(this, curPref, HasDualFans, UseFahrenheit);
             UpdateDimensions();
             Invalidate();
             if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
+        }
+
+        private void SetGraphModeFromMenu(int mode)
+        {
+            GraphMode = mode;
+            if (mode == 0)
+            {
+                ShowLiveTrend = false;
+                ShowFpsGraph = false;
+            }
+            else if (mode == 1)
+            {
+                ShowLiveTrend = false;
+            }
+            else if (mode == 2 || mode == 3)
+            {
+                ShowLiveTrend = true;
+            }
+            else if (mode == 4)
+            {
+                if (!ShowFpsGraph && !ShowLiveTrend)
+                {
+                    ShowFpsGraph = true;
+                }
+            }
+            UpdateDimensions();
+            Invalidate();
+            if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);
+        }
+
+        private void AddCheckedActionItem(ToolStripMenuItem parent, string label, Func<bool> isChecked, Action onClick)
+        {
+            ToolStripMenuItem item = new ToolStripMenuItem(label);
+            item.Checked = isChecked();
+            _menuSyncActions.Add(() => item.Checked = isChecked());
+            item.Click += (s, e) =>
+            {
+                onClick();
+                SyncOverlayMenuChecks();
+            };
+            parent.DropDownItems.Add(item);
         }
 
         private void AddMetricToggleMenuItem(ToolStripMenuItem parent, string label, Func<bool> getter, Action<bool> setter)
         {
             ToolStripMenuItem item = new ToolStripMenuItem(label);
             item.Checked = getter();
+            _menuSyncActions.Add(() => item.Checked = getter());
             item.Click += (s, e) =>
             {
                 bool next = !getter();
                 setter(next);
-                item.Checked = next;
+                SyncOverlayMenuChecks();
                 UpdateDimensions();
                 Invalidate();
                 if (PositionOrLayoutChanged != null) PositionOrLayoutChanged(this, EventArgs.Empty);

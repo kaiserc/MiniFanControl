@@ -20,6 +20,7 @@ namespace MiniFanControl
 
         private readonly bool _darkMode;
         private readonly ThemePreference _themePref;
+        private readonly ThemePalette _palette;
         private readonly bool _isStartupPrompt;
         private readonly bool _autoPauseAntiCheat;
         private readonly Func<bool> _onRecheckDriver;
@@ -120,15 +121,14 @@ namespace MiniFanControl
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(640, _isStartupPrompt ? 548 : 520);
 
-            bool isRadeon = (_themePref == ThemePreference.Radeon);
-            bool isXmas = (_themePref == ThemePreference.Xmas);
-            _bgColor = isXmas ? Color.White : (isRadeon ? Color.FromArgb(0x18, 0x12, 0x14) : (_darkMode ? Color.FromArgb(0x18, 0x18, 0x25) : Color.FromArgb(0xF8, 0xFA, 0xFC)));
-            _cardBgColor = isXmas ? Color.White : (isRadeon ? Color.FromArgb(0x26, 0x1A, 0x1E) : (_darkMode ? Color.FromArgb(0x22, 0x22, 0x34) : Color.White));
-            _cardBorderColor = isXmas ? Color.FromArgb(0x18, 0x18, 0x1B) : (isRadeon ? Color.FromArgb(0x44, 0x26, 0x2E) : (_darkMode ? Color.FromArgb(0x35, 0x37, 0x4E) : Color.FromArgb(0xDD, 0xE2, 0xEC)));
-            _textMainColor = isXmas ? Color.FromArgb(0x09, 0x09, 0x0B) : (isRadeon ? Color.FromArgb(0xF8, 0xFA, 0xFC) : (_darkMode ? Color.FromArgb(0xCD, 0xD6, 0xF4) : Color.FromArgb(0x1E, 0x29, 0x3B)));
-            _textDimColor = isXmas ? Color.FromArgb(0x3F, 0x3F, 0x46) : (isRadeon ? Color.FromArgb(0xB8, 0x98, 0xA0) : (_darkMode ? Color.FromArgb(0xA6, 0xAD, 0xC8) : Color.FromArgb(0x64, 0x74, 0x8B)));
-            _accentColor = isXmas ? Color.FromArgb(0xDC, 0x26, 0x26) : (isRadeon ? Color.FromArgb(0xFF, 0x47, 0x57) : (_darkMode ? Color.FromArgb(0x89, 0xB4, 0xFA) : Color.FromArgb(0x1D, 0x4E, 0xD8)));
-            _statusDotColor = Color.FromArgb(0x94, 0xA3, 0xB8);
+            _palette = ThemePalette.Resolve(_themePref, _darkMode);
+            _bgColor = _palette.Bg;
+            _cardBgColor = _palette.Surface;
+            _cardBorderColor = _palette.Border;
+            _textMainColor = _palette.Text;
+            _textDimColor = _palette.TextDim;
+            _accentColor = _palette.Accent;
+            _statusDotColor = _palette.TextDim;
 
             BackColor = _bgColor;
             ForeColor = _textMainColor;
@@ -138,9 +138,18 @@ namespace MiniFanControl
             RefreshDriverState();
         }
 
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            if (_palette != null)
+            {
+                Win11VisualStyle.ApplyWindowFrame(this, _palette.IsDark, _palette.Bg, _palette.Text, _palette.WindowBorder);
+            }
+        }
+
         private Panel CreateCard(int x, int y, int w, int h)
         {
-            Panel p = new Panel
+            Panel p = new DoubleBufferedPanel
             {
                 Location = new Point(x, y),
                 Size = new Size(w, h),
@@ -148,9 +157,9 @@ namespace MiniFanControl
             };
             p.Paint += (s, e) =>
             {
-                using (Pen pen = new Pen(_cardBorderColor, 1f))
+                if (!SystemInformation.HighContrast)
                 {
-                    e.Graphics.DrawRectangle(pen, 0, 0, p.Width - 1, p.Height - 1);
+                    Win11VisualStyle.DrawRoundedCardBorder(e.Graphics, p.ClientRectangle, _cardBorderColor, 8, 1f);
                 }
             };
             return p;
@@ -269,13 +278,10 @@ namespace MiniFanControl
                 Text = "Download PawnIO (pawnio.eu)",
                 Location = new Point(20, btnY),
                 Size = new Size(204, 32),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = _accentColor,
-                ForeColor = (_darkMode && _themePref != ThemePreference.Radeon) ? Color.FromArgb(0x11, 0x11, 0x1B) : Color.White,
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Bold),
                 Cursor = Cursors.Hand
             };
-            _downloadBtn.FlatAppearance.BorderSize = 0;
+            Win11VisualStyle.StylePillButton(_downloadBtn, _palette, true);
             _downloadBtn.Click += (s, e) => OpenPawnIoWebsite();
             Controls.Add(_downloadBtn);
 
@@ -284,13 +290,10 @@ namespace MiniFanControl
                 Text = "↻ Re-check Driver",
                 Location = new Point(232, btnY),
                 Size = new Size(134, 32),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = _cardBgColor,
-                ForeColor = _textMainColor,
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Bold),
                 Cursor = Cursors.Hand
             };
-            _recheckBtn.FlatAppearance.BorderColor = _cardBorderColor;
+            Win11VisualStyle.StyleModernButton(_recheckBtn, _palette.Surface2, _palette.Text, _palette.Border, _palette.IsDark);
             _recheckBtn.Click += (s, e) => OnRecheckClicked();
             Controls.Add(_recheckBtn);
 
@@ -299,24 +302,21 @@ namespace MiniFanControl
                 Text = "Copy Diagnostics",
                 Location = new Point(374, btnY),
                 Size = new Size(124, 32),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = _cardBgColor,
-                ForeColor = _textMainColor,
                 Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),
                 Cursor = Cursors.Hand
             };
-            _copyBtn.FlatAppearance.BorderColor = _cardBorderColor;
+            Win11VisualStyle.StyleModernButton(_copyBtn, _palette.Surface2, _palette.Text, _palette.Border, _palette.IsDark);
             _copyBtn.Click += (s, e) =>
             {
                 try
                 {
                     Clipboard.SetText(BuildDiagnosticsReport(_autoPauseAntiCheat));
-                    _feedbackLabel.ForeColor = Color.FromArgb(0x22, 0xC5, 0x5E);
+                    _feedbackLabel.ForeColor = _palette.Success;
                     _feedbackLabel.Text = "✓ Driver diagnostics copied to clipboard.";
                 }
                 catch (Exception ex)
                 {
-                    _feedbackLabel.ForeColor = Color.FromArgb(0xEF, 0x44, 0x44);
+                    _feedbackLabel.ForeColor = _palette.Danger;
                     _feedbackLabel.Text = "Could not copy to clipboard: " + ex.Message;
                 }
             };
@@ -328,13 +328,10 @@ namespace MiniFanControl
                 DialogResult = DialogResult.OK,
                 Location = new Point(506, btnY),
                 Size = new Size(114, 32),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = _cardBgColor,
-                ForeColor = _textMainColor,
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Regular),
                 Cursor = Cursors.Hand
             };
-            _closeBtn.FlatAppearance.BorderColor = _cardBorderColor;
+            Win11VisualStyle.StyleModernButton(_closeBtn, _palette.Surface2, _palette.Text, _palette.Border, _palette.IsDark);
             Controls.Add(_closeBtn);
             AcceptButton = _closeBtn;
             CancelButton = _closeBtn;
@@ -345,12 +342,14 @@ namespace MiniFanControl
                 {
                     Text = "Don't show this driver prompt on startup again (you can always open it from Tools & Drivers)",
                     Checked = !showPromptOnStartupDefault,
+                    BackColor = _bgColor,
                     ForeColor = _textDimColor,
                     Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
                     Location = new Point(22, 508),
                     Size = new Size(596, 22),
                     AutoSize = false
                 };
+                Win11VisualStyle.EnableThemedCheckBox(_dontAskAgainCb, () => _palette);
                 Controls.Add(_dontAskAgainCb);
             }
         }

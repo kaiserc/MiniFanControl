@@ -10,6 +10,7 @@ namespace MiniFanControl
         private readonly MainForm _mainForm;
         private readonly bool _darkMode;
         private readonly ThemePreference _themePref;
+        private readonly ThemePalette _palette;
         private readonly bool _isReadOnlyMode;
 
         private Label _calibBadge;
@@ -38,14 +39,14 @@ namespace MiniFanControl
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(620, 580);
 
-            bool isRadeon = (themePref == ThemePreference.Radeon);
-            bool isXmas = (themePref == ThemePreference.Xmas);
-            Color bg = isXmas ? Color.White : (isRadeon ? Color.FromArgb(0x18, 0x12, 0x14) : (_darkMode ? Color.FromArgb(0x18, 0x18, 0x25) : Color.FromArgb(0xF8, 0xFA, 0xFC)));
-            Color cardBg = isXmas ? Color.White : (isRadeon ? Color.FromArgb(0x26, 0x1A, 0x1E) : (_darkMode ? Color.FromArgb(0x22, 0x22, 0x34) : Color.White));
-            Color cardBorder = isXmas ? Color.FromArgb(0x18, 0x18, 0x1B) : (isRadeon ? Color.FromArgb(0x44, 0x26, 0x2E) : (_darkMode ? Color.FromArgb(0x35, 0x37, 0x4E) : Color.FromArgb(0xDD, 0xE2, 0xEC)));
-            Color textMain = isXmas ? Color.FromArgb(0x09, 0x09, 0x0B) : (isRadeon ? Color.FromArgb(0xF8, 0xFA, 0xFC) : (_darkMode ? Color.FromArgb(0xCD, 0xD6, 0xF4) : Color.FromArgb(0x1E, 0x29, 0x3B)));
-            Color textDim = isXmas ? Color.FromArgb(0x3F, 0x3F, 0x46) : (isRadeon ? Color.FromArgb(0xB8, 0x98, 0xA0) : (_darkMode ? Color.FromArgb(0xA6, 0xAD, 0xC8) : Color.FromArgb(0x64, 0x74, 0x8B)));
-            Color accent = isXmas ? Color.FromArgb(0xDC, 0x26, 0x26) : (isRadeon ? Color.FromArgb(0xFF, 0x47, 0x57) : (_darkMode ? Color.FromArgb(0x89, 0xB4, 0xFA) : Color.FromArgb(0x1D, 0x4E, 0xD8)));
+            _palette = ThemePalette.Resolve(themePref, darkMode);
+            bool isRadeon = _palette.IsRadeon;
+            Color bg = _palette.Bg;
+            Color cardBg = _palette.Surface;
+            Color cardBorder = _palette.Border;
+            Color textMain = _palette.Text;
+            Color textDim = _palette.TextDim;
+            Color accent = _palette.Accent;
 
             BackColor = bg;
             ForeColor = textMain;
@@ -119,14 +120,11 @@ namespace MiniFanControl
             {
                 Text = Loc.Get("SetupAssistant.Step1Btn", "1. Run 3-Pass Calibration Wizard..."),
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Bold),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = accent,
-                ForeColor = (isRadeon || !_darkMode) ? Color.White : Color.FromArgb(0x11, 0x11, 0x1B),
                 Location = new Point(14, 92),
                 Size = new Size(260, 30),
                 Cursor = Cursors.Hand
             };
-            _calibrateBtn.FlatAppearance.BorderSize = 0;
+            Win11VisualStyle.StylePillButton(_calibrateBtn, _palette, true);
             _calibrateBtn.Enabled = !_isReadOnlyMode;
             _calibrateBtn.Click += (s, e) =>
             {
@@ -170,14 +168,11 @@ namespace MiniFanControl
             {
                 Text = Loc.Get("SetupAssistant.Step2Btn", "2. ✨ Generate Auto-Tuned Curve"),
                 Font = new Font("Segoe UI", 8.75f, FontStyle.Bold),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = isRadeon ? Color.FromArgb(0x3B, 0x22, 0x28) : (_darkMode ? Color.FromArgb(0x31, 0x32, 0x44) : Color.FromArgb(0xE2, 0xE8, 0xF0)),
-                ForeColor = accent,
                 Location = new Point(14, 94),
                 Size = new Size(260, 30),
                 Cursor = Cursors.Hand
             };
-            _autoTuneBtn.FlatAppearance.BorderSize = 0;
+            Win11VisualStyle.StyleModernButton(_autoTuneBtn, _palette.Surface2, accent, Win11VisualStyle.Blend(cardBorder, accent, 0.55f), _palette.IsDark);
             _autoTuneBtn.Enabled = !_isReadOnlyMode;
             _autoTuneBtn.Click += (s, e) =>
             {
@@ -249,24 +244,30 @@ namespace MiniFanControl
             {
                 Text = Loc.Get("SetupAssistant.DoneBtn", "Done & Start Using App"),
                 Font = new Font("Segoe UI", 9.0f, FontStyle.Bold),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = accent,
-                ForeColor = (isRadeon || !_darkMode) ? Color.White : Color.FromArgb(0x11, 0x11, 0x1B),
                 Location = new Point(406, curY + 2),
                 Size = new Size(190, 32),
                 Cursor = Cursors.Hand,
                 DialogResult = DialogResult.OK,
                 UseMnemonic = false
             };
-            closeBtn.FlatAppearance.BorderSize = 0;
+            Win11VisualStyle.StylePillButton(closeBtn, _palette, true);
             Controls.Add(closeBtn);
             AcceptButton = closeBtn;
             CancelButton = closeBtn;
         }
 
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            if (_palette != null)
+            {
+                Win11VisualStyle.ApplyWindowFrame(this, _palette.IsDark, _palette.Bg, _palette.Text, _palette.WindowBorder);
+            }
+        }
+
         private Panel CreateStepCard(int x, int y, int w, int h, Color bg, Color border)
         {
-            Panel p = new Panel
+            Panel p = new DoubleBufferedPanel
             {
                 Location = new Point(x, y),
                 Size = new Size(w, h),
@@ -274,10 +275,7 @@ namespace MiniFanControl
             };
             p.Paint += (s, e) =>
             {
-                using (Pen pen = new Pen(border, 1.0f))
-                {
-                    e.Graphics.DrawRectangle(pen, 0, 0, w - 1, h - 1);
-                }
+                Win11VisualStyle.DrawRoundedCardBorder(e.Graphics, p.ClientRectangle, border, 8, 1.0f);
             };
             return p;
         }

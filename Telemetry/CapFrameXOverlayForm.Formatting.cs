@@ -450,7 +450,7 @@ namespace MiniFanControl
             {
                 Color npuCol = Color.FromArgb(0x38, 0xBD, 0xF8);
                 list.Add(new HorizColumn {
-                    Key = "NPU", Label = "◈ NPU", Value = FormatNpuOverlayValue(false), Peak = FormatNpuOverlayPeak(),
+                    Key = "NPU", Label = "NPU", Value = FormatNpuOverlayValue(false), Peak = FormatNpuOverlayPeak(),
                     LabelBrush = bLabel, ValueBrush = bNpu, PeakBrush = bPeak,
                     SparkSamples = showSpark ? (Stats != null ? Stats.NpuHistory : null) : null,
                     SparkColor = npuCol

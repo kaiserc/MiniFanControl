@@ -159,7 +159,7 @@ The synthesis engine (`Curves/CurvePoint.cs`) evaluates live system telemetry an
 #### Step 3: Activating Curves & Real-Time Monitoring
 1. Click **Use Curve** in the curve editor to apply the newly synthesized profile to the active EC registers.
 2. Check the **Show CapFrameX OSD** option to monitor your temperatures, APU power, fan RPM, and live in-game frametimes in real time.
-3. To return full fan control back to the motherboard BIOS at any time, click **Reset Auto** in the main window or right-click the system tray icon and select **Reset All Fans to BIOS Auto**.
+3. To return full fan control back to the motherboard BIOS at any time, click **Reset Auto** in the main window (which turns into **`✓ BIOS Auto`** while active) or right-click the system tray icon and select **Reset to Auto**. MiniFanControl restores the BIOS's untouched boot fan configuration (including custom BIOS SmartGuardian curves or original EC mode) and stays hands-off until you pick a mode, curve, or manual slider again (keeping the ≥90°C emergency tripwire armed).
 
 ### Windows 11 Core Isolation & Safe Monitoring Fallback
 
@@ -295,9 +295,9 @@ Click the **`Perf`** tab to switch to the dedicated Digital Foundry twin-graph s
 - **One-Click Timeline Snapshot & Export**: Export high-resolution PNG reports or scrub back 180 seconds across the live gameplay history directly from the `Perf` tab.
 
 ### Manual Fan Override & Fan Sliders
-The **Manual Fan Control** card provides independent sliders for both fans:
-- Drag either slider to immediately override EC auto control and set a fixed manual PWM percentage (1%–100%).
-- Click the **`Auto`** button next to either fan (or the bottom **`Reset Auto`** button) to immediately restore native BIOS automatic control.
+The **Manual Fan Control** card provides independent Win11-style `ModernSlider` controls for both fans (with an amber rail segment marking your calibrated Anti-Stall Floor dead-zone):
+- Drag either slider to immediately override curve/BIOS control and set a fixed manual PWM percentage (1%–100%, clamped to the calibrated anti-stall floor).
+- Click the **`Auto`** button next to either fan to clear that fan's manual override, or click the bottom **`Reset Auto`** button to restore your motherboard BIOS's original fan curve/mode and switch MiniFanControl into hands-off **`✓ BIOS Auto`** state.
 
 ### Options Grid & System Tray Badges
 The clean 2-column options panel configures Windows integration:

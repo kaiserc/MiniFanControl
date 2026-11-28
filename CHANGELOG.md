@@ -4,6 +4,27 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## [Unreleased]
+
+### 🎨 Modern Win11 UI Polish, OSD Studio Workflow & In-Game OSD Refinements
+- **Win11 Visual Modernization (`Ui/ModernSlider.cs`, `Ui/ThemePalette.cs`, `Ui/ThemedInfoDialog.cs`, `Ui/Win11VisualStyle.cs`, `Ui/MainForm*.cs`, `Ui/FanCalibrationDialog.cs`, `Ui/KernelDriverDialog.cs`)**:
+  - Replaced legacy Win32 `TrackBar` sliders with a custom double-buffered `ModernSlider` displaying an amber Anti-Stall Floor rail zone & threshold notch with live drag value pill.
+  - Enabled native Windows dark-mode scrollbars, themed comboboxes/checkboxes, thermal hero temperature color ramps, and unified `FanCalibrationDialog`, `KernelDriverDialog`, and `ThemedInfoDialog` (replacing plain `MessageBox.Show` for About & Hardware Compatibility) onto `ThemePalette`.
+- **OSD Studio Presets, Bidirectional Menu Sync & Canvas Productivity (`Ui/MainForm.OsdStudio.cs`, `Core/OsdOverlayConfig.cs`, `Telemetry/CapFrameXOverlayForm.ContextMenu.cs`, `Ui/LiveTelemetryCanvas.cs`, `Ui/FanCurveCanvas.cs`)**:
+  - Added 4 one-click OSD presets (`Minimal FPS`, `Compact Gaming`, `Digital Foundry`, `Full Audit`) and 5 category filter pills in OSD Studio, plus full bidirectional sync with the dark-themed overlay right-click context menu (including `ShowLatency`, `MatchTheme`, and preventing empty `Graphs Only` overlays).
+  - Added `All` / `Temps` / `Cool` quick-filter pills, Shift+Click Solo mode, and a `TIMELINE PAUSED` banner in `LiveTelemetryCanvas`, plus an inline curve legend and `Ctrl+Z` undo in `FanCurveCanvas`.
+- **In-Game OSD Readability Polish (`Telemetry/CapFrameXOverlayForm.Graphs.cs`, `Telemetry/CapFrameXOverlayForm.Paint.cs`, `Telemetry/CapFrameXOverlayForm.Formatting.cs`)**:
+  - Kept the `TREND` header strictly single-line with compact colored dots and `+N` overflow indicator, dynamically clamped stacked right-edge endpoint badges cleanly inside graph bounds, deepened dark chart backing over bright game HUDs, increased DF corner frametime inset `0` tick clearance, inset the live `FPS` pill clear of right-axis ticks, aligned `NPU` flush with other labels, added subtle alternating row tinting, padded Radeon/Ryzen pills, and inset the left accent bar inside the outer frame.
+
+### 🛡️ True BIOS Restoration (`Reset Auto`), ETW/Sensor Hardening & Distribution Readiness
+- **True BIOS Fan Curve & Mode Restoration on `Reset Auto` (`Hardware/HardwareBackend.SuperIo.cs`, `Hardware/HardwareBackend.cs`, `Core/FanControllerService.cs`, `Ui/MainForm*.cs`)**:
+  - Snapshots untouched IT8613E Super I/O fan registers (`0x15..0x17`, `0x63/0x6B/0x73`) and initial EC BIOS mode (`RegModeStatus`) before MiniFanControl's first fan override; `Reset Auto` faithfully restores custom BIOS SmartGuardian fan curves or initial EC modes and enters a true hands-off **`✓ BIOS Auto`** state (without overwriting BIOS control 1 second later with software Balanced, while keeping the ≥90°C emergency tripwire armed) (Test #127).
+- **ETW Kernel Event-ID Filter, Hidden OSD Lock Guard & DDR5 SPD Backoff (`Telemetry/EtwLatencyMonitor.cs`, `Telemetry/FpsMonitor.cs`, `Hardware/HardwareBackend.SiliconSensors.cs`, `Core/WorkloadProfileSwitcher.cs`)**:
+  - Added Win64 `ENABLE_TRACE_PARAMETERS` / `EVENT_FILTER_DESCRIPTOR` kernel event-ID filtering for lower ETW overhead, filtered WebView2 & AI host processes (e.g., Unsloth Studio) from active game detection, guarded hidden OSD click-through locks against resurrecting stale windows, and added SMBus DDR5 SPD backoff on missing DIMM slots (Tests #124–#125).
+- **Privacy-First Update Checker, Public Roadmap & Winget Automation (`Core/UpdateChecker.cs`, `ROADMAP.md`, `scripts/generate-winget-manifest.ps1`, `Tests/README.md`, `README.md`)**:
+  - Added on-demand **`↻ Check for Updates (GitHub Releases)...`** in `Tools & Drivers ▾` with strict SemVer comparison, depth-aware JSON parsing, and fail-closed official repo URL sanitization (zero background phone-home) (Test #126).
+  - Added [ROADMAP.md](ROADMAP.md), automated `winget-pkgs` 1.6.0 manifest generation (`scripts/generate-winget-manifest.ps1`), `gh attestation verify` instructions in `README.md`, and expanded the verified test catalog to **127/127** tests.
+
 ## [1.3.1] - 2026-11-27
 
 ### 🛡️ Stabilization, Security Hardening & Verifiable Supply Chain
@@ -15,7 +36,7 @@ For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
   - Replaced `0xFF` failure-sentinel reads with `NativeInpOut.TryReadPhysicalByte(ulong, out byte)` with one-shot watchdog error logging, and hardened the single-instance GUI guard against fail-open races (`IsAnotherGuiInstanceRunning()`).
 - **Verifiable Supply Chain & Optimized Lean Builds (`build-windows.bat`, `Tests/MiniFanControl.Tests.csproj`, `scripts/sync-version.ps1`, `.github/workflows/ci.yml`, `.github/dependabot.yml`)**:
   - Added `/optimize+ /debug-` to standalone `.NET 4.8` builds, excluded `Tests\*.cs` from shipping `MiniFanControl.exe` (~145 KB smaller) and `MiniFanControl.csproj` by default, and introduced a dedicated `Tests/MiniFanControl.Tests.csproj` runner verified on `.NET 10.0-windows`.
-  - Added GitHub **Build Provenance Attestations** (`actions/attest-build-provenance@v4.2.2`), weekly grouped Dependabot PRs, CodeQL scanning (`csharp` + `actions`), and single-source version synchronization via `scripts/sync-version.ps1`.
+  - Added GitHub **Build Provenance Attestations** (`actions/attest-build-provenance@v4.2.2`), weekly grouped Dependabot PRs, GitHub CodeQL Default Setup scanning (`csharp` + `actions`), and single-source version synchronization via `scripts/sync-version.ps1`.
 - **Strict Versioned JSON, Service Extraction, CLI JSONL & UX Polish (`Core/SimpleJson.cs`, `Core/DeviceProfile.cs`, `Core/AppSettings.cs`, `Ui/TrayIconRenderer.cs`, `Curves/CurveProfileCatalog.cs`, `Ui/MainForm*.cs`, `Ui/FanCalibrationDialog.cs`)**:
   - Added `SimpleJson.ParseFlatObjectStrict` (`System.Text.Json` on `.NET 8/10+`, strict tokenizer on `.NET 4.8`), schema-versioned `DeviceProfile.FromJsonStrict` (`schemaVersion: 1`) and `CustomProfileJson`, extracted `TrayIconRenderer` and `CurveProfileCatalog` from `MainForm`, and added `minifan-helper.exe status --stream` JSONL output (Test #123).
   - Added live-synced **Power / BIOS Power Mode** submenu with checkmarks to the system tray right-click menu, added hover tooltips across **Tools & Drivers ▾** clarifying Background Service Mode vs. Minimize to Tray vs. Exit Safety, fixed duplicate `%` signs & radio label clipping in the Fan Calibration dialog, slimmed `README.md` by 84% (`Tests/README.md` + `GUIDE.md` split + ⭐ Star History), and removed the 8.3 MB `osd-demo.mp4` blob from git.

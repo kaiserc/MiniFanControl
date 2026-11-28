@@ -73,6 +73,7 @@ namespace MiniFanControl
                 _isTaskbarDark = newTaskbarDark;
                 _lastCpuIconKey = int.MinValue;
                 _lastGpuIconKey = int.MinValue;
+                _trayUpdateThrottle.Reset();
                 ApplyThemeToControls();
                 RefreshStatus();
             }
@@ -83,30 +84,76 @@ namespace MiniFanControl
         {
             switch (_themePref)
             {
-                case ThemePreference.Dark: return "Theme: Dark";
-                case ThemePreference.Radeon: return "Theme: AMD Radeon";
-                case ThemePreference.Afterburner: return "Theme: Afterburner";
-                case ThemePreference.Light: return "Theme: Light";
-                case ThemePreference.Xmas: return "❄ Theme: Xmas";
-                default: return string.Format("Theme: System ({0})", _isDarkMode ? "Dark" : "Light");
+                case ThemePreference.Dark: return "Theme: Dark ▾";
+                case ThemePreference.Radeon: return "Theme: AMD Radeon ▾";
+                case ThemePreference.Afterburner: return "Theme: Afterburner ▾";
+                case ThemePreference.Light: return "Theme: Light ▾";
+                case ThemePreference.Xmas: return "❄ Theme: Xmas ▾";
+                default: return string.Format("Theme: System ({0}) ▾", _isDarkMode ? "Dark" : "Light");
             }
         }
 
-        private void CycleThemePreference()
+        private void SelectThemePreference(ThemePreference pref)
         {
-            if (_themePref == ThemePreference.System) _themePref = ThemePreference.Dark;
-            else if (_themePref == ThemePreference.Dark) _themePref = ThemePreference.Radeon;
-            else if (_themePref == ThemePreference.Radeon) _themePref = ThemePreference.Afterburner;
-            else if (_themePref == ThemePreference.Afterburner) _themePref = ThemePreference.Light;
-            else if (_themePref == ThemePreference.Light) _themePref = ThemePreference.Xmas;
-            else _themePref = ThemePreference.System;
-
+            if (_themePref == pref) return;
+            _themePref = pref;
             SaveSettings();
             DetectSystemTheme(out _isDarkMode, out _isTaskbarDark);
             _lastCpuIconKey = int.MinValue;
             _lastGpuIconKey = int.MinValue;
+            _trayUpdateThrottle.Reset();
             ApplyThemeToControls();
             RefreshStatus();
+        }
+
+        private void ShowThemePickerMenu()
+        {
+            if (_themeToggleBtn == null) return;
+            if (_themeMenu != null)
+            {
+                try { _themeMenu.Dispose(); } catch { }
+                _themeMenu = null;
+            }
+
+            ContextMenuStrip menu = new ContextMenuStrip();
+            AddThemeMenuItem(menu, "System (Auto Dark/Light)", ThemePreference.System,
+                _isDarkMode ? DarkBg : LightBg, _isDarkMode ? DarkAccent : LightAccent, _isDarkMode ? Color.FromArgb(0x45, 0x47, 0x5A) : Color.FromArgb(0x94, 0xA3, 0xB8));
+            AddThemeMenuItem(menu, "Dark (Midnight Slate)", ThemePreference.Dark,
+                DarkBg, DarkAccent, Color.FromArgb(0x45, 0x47, 0x5A));
+            AddThemeMenuItem(menu, "AMD Radeon (Adrenalin Crimson)", ThemePreference.Radeon,
+                RadeonBg, RadeonAccent, Color.FromArgb(0x9F, 0x12, 0x39));
+            AddThemeMenuItem(menu, "Afterburner (Carbon Neon)", ThemePreference.Afterburner,
+                AbBg, AbGreen, Color.FromArgb(0x16, 0x65, 0x34));
+            AddThemeMenuItem(menu, "Light (Clean Daylight)", ThemePreference.Light,
+                LightBg, LightAccent, Color.FromArgb(0x94, 0xA3, 0xB8));
+            AddThemeMenuItem(menu, "❄ Xmas Edition (Snow & Crimson)", ThemePreference.Xmas,
+                XmasBg, XmasRed, XmasBlack);
+
+            Win11VisualStyle.ApplyThemeToMenu(menu, CurrentPalette);
+            _themeMenu = menu;
+            menu.Show(_themeToggleBtn, new Point(0, _themeToggleBtn.Height));
+        }
+
+        private void AddThemeMenuItem(ContextMenuStrip menu, string title, ThemePreference pref, Color fill, Color accent, Color border)
+        {
+            ToolStripMenuItem item = new ToolStripMenuItem(title);
+            item.Image = Win11VisualStyle.CreateColorSwatch(fill, accent, border);
+            item.Checked = (_themePref == pref);
+            item.Click += (s, e) => SelectThemePreference(pref);
+            menu.Items.Add(item);
+        }
+
+        private void CycleThemePreference()
+        {
+            ThemePreference next;
+            if (_themePref == ThemePreference.System) next = ThemePreference.Dark;
+            else if (_themePref == ThemePreference.Dark) next = ThemePreference.Radeon;
+            else if (_themePref == ThemePreference.Radeon) next = ThemePreference.Afterburner;
+            else if (_themePref == ThemePreference.Afterburner) next = ThemePreference.Light;
+            else if (_themePref == ThemePreference.Light) next = ThemePreference.Xmas;
+            else next = ThemePreference.System;
+
+            SelectThemePreference(next);
         }
 
         private void ApplyThemeToControls()
@@ -335,16 +382,15 @@ namespace MiniFanControl
             _pct1Label.BackColor = surface;
             _pct2Label.BackColor = surface;
 
+            ThemePalette pal = CurrentPalette;
             if (_customModeCombo != null)
             {
-                _customModeCombo.BackColor = surface2;
-                _customModeCombo.ForeColor = text;
+                Win11VisualStyle.ApplyDarkComboTheme(_customModeCombo, pal);
             }
 
             if (_samplingCombo != null)
             {
-                _samplingCombo.BackColor = surface2;
-                _samplingCombo.ForeColor = text;
+                Win11VisualStyle.ApplyDarkComboTheme(_samplingCombo, pal);
             }
             if (_samplingLabel != null)
             {
@@ -380,7 +426,14 @@ namespace MiniFanControl
             }
 
             _fan1Slider.BackColor = surface;
+            _fan1Slider.AccentOverride = pal.Accent;
+            _fan1Slider.FloorThreshold = FanCurveProfile.ApuMinSpinPct;
+            _fan1Slider.Invalidate();
             _fan2Slider.BackColor = surface;
+            _fan2Slider.AccentOverride = pal.SecondaryAccent;
+            _fan2Slider.FloorThreshold = FanCurveProfile.SysMinSpinPct;
+            _fan2Slider.Invalidate();
+            Win11VisualStyle.ApplyDarkExplorerTheme(this, pal.IsDark);
             _fan1SliderPct.BackColor = surface;
             _fan1SliderPct.ForeColor = text;
             _fan2SliderPct.BackColor = surface;
@@ -402,6 +455,7 @@ namespace MiniFanControl
                 {
                     cb.BackColor = surface;
                     cb.ForeColor = text;
+                    cb.Invalidate();
                 }
             }
 
@@ -426,6 +480,12 @@ namespace MiniFanControl
                 _overlayForm.Invalidate();
             }
             UpdateOsdStudioStyles();
+
+            if (_driversMenu != null)
+            {
+                Win11VisualStyle.ApplyThemeToMenu(_driversMenu, CurrentPalette);
+            }
+            RebuildTrayContextMenus();
 
             UpdateModeButtonStyles(_lastSelectedModeCode);
             ApplyWin11WindowFrame();

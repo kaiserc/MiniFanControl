@@ -33,6 +33,9 @@ namespace MiniFanControl
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
         private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
         private const int GWL_EXSTYLE       = -20;
         private const int WS_EX_LAYERED     = 0x00080000;
@@ -42,7 +45,6 @@ namespace MiniFanControl
         private const uint SWP_NOSIZE       = 0x0001;
         private const uint SWP_NOMOVE       = 0x0002;
         private const uint SWP_NOACTIVATE   = 0x0010;
-        private const uint SWP_SHOWWINDOW   = 0x0040;
 
         // Classic CapFrameX & Radeon OSD Palettes
         private static readonly Color OsdBgDark    = Color.FromArgb(16, 18, 28);
@@ -236,6 +238,7 @@ namespace MiniFanControl
         private int _effectiveGraphHeight = 0;
         private int _effectiveRowHeight = 0;
         private float _effectiveScale = 0f;
+        private float _lastFontsScale = 0f;
 
         private Rectangle _combRect;
         private Rectangle _fpsRect;
@@ -277,6 +280,9 @@ namespace MiniFanControl
         public void UpdateFontsForScale(float scOverride)
         {
             float sc = scOverride > 0 ? scOverride : GetScaleMultiplier();
+            if (_fontLabel != null && Math.Abs(sc - _lastFontsScale) < 0.001f)
+                return;
+            _lastFontsScale = sc;
             if (_fontLabel != null) _fontLabel.Dispose();
             if (_fontVal != null) _fontVal.Dispose();
             if (_fontPeak != null) _fontPeak.Dispose();
@@ -551,16 +557,28 @@ namespace MiniFanControl
         {
             base.OnHandleCreated(e);
             ApplyLayeredAttributes();
-            EnsureTopMost();
+            if (Visible)
+            {
+                EnsureTopMost();
+            }
+        }
+
+        internal bool IsNativeWindowVisible()
+        {
+            if (!IsHandleCreated) return false;
+            try { return IsWindowVisible(Handle); }
+            catch { return Visible; }
         }
 
         public void EnsureTopMost()
         {
-            if (IsHandleCreated)
+            if (IsHandleCreated && Visible)
             {
                 try
                 {
-                    SetWindowPos(Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                    // Re-assert topmost Z-order without SWP_SHOWWINDOW so hidden overlays can never
+                    // be forced visible on screen while MainForm._showOverlay is false.
+                    SetWindowPos(Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                 }
                 catch { }
             }
@@ -605,10 +623,16 @@ namespace MiniFanControl
                     ex = (ex | WS_EX_LAYERED) & ~WS_EX_TRANSPARENT;
                 SetWindowLong(Handle, GWL_EXSTYLE, ex);
                 ApplyLayeredAttributes();
-                EnsureTopMost();
+                if (Visible)
+                {
+                    EnsureTopMost();
+                }
             }
             Cursor = clickThrough ? Cursors.Default : Cursors.SizeAll;
-            Invalidate();
+            if (Visible)
+            {
+                Invalidate();
+            }
         }
 
 
@@ -736,7 +760,8 @@ namespace MiniFanControl
                 int w = (int)Math.Round(baseW * sc);
                 TargetWidth = Math.Max((int)Math.Round(200 * sc), w);
                 TargetHeight = Math.Max((int)Math.Round(28 * sc), totalH);
-                Size = new Size(TargetWidth, TargetHeight);
+                if (Width != TargetWidth || Height != TargetHeight)
+                    Size = new Size(TargetWidth, TargetHeight);
 
                 // 3. Ensure the vertical overlay strictly respects the taskbar (wa.Bottom) and screen edges
                 if (ClampToScreen && wa.Bottom > 0 && Location.Y + TargetHeight > wa.Bottom - 8)
@@ -800,7 +825,8 @@ namespace MiniFanControl
 
                 TargetWidth = w;
                 TargetHeight = Math.Max((int)Math.Round(28 * sc), h);
-                Size = new Size(TargetWidth, TargetHeight);
+                if (Width != TargetWidth || Height != TargetHeight)
+                    Size = new Size(TargetWidth, TargetHeight);
 
                 // Ensure the horizontal overlay bar does not spill off the right edge or bottom of the monitor
                 if (ClampToScreen && wa.Right > 0 && Location.X + TargetWidth > wa.Right - 8)

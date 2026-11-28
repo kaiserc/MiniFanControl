@@ -240,6 +240,7 @@ namespace MiniFanControl
             _isInitialized = false;
             ResetTachometerFilterState();
             ResetSuperIoChannelLatch();
+            ResetSpdBackoffState();
             SetSuperIoPolarityOverride(null);
         }
 
@@ -258,6 +259,7 @@ namespace MiniFanControl
             _isInitialized = false;
             ResetTachometerFilterState();
             ResetSuperIoChannelLatch();
+            ResetSpdBackoffState();
             SetSuperIoPolarityOverride(null);
             try
             {
@@ -831,17 +833,39 @@ namespace MiniFanControl
             ushort smbusBase = (!LeanServiceMode && allowActiveSilicon) ? GetAmdSmbusBase() : (ushort)0;
             if (smbusBase != 0)
             {
-                if (_spdThrottleStick0.TryBegin() || !_cachedSpd1Ok)
+                if (_spdThrottleStick0.TryBegin())
                 {
                     int s1;
                     _cachedSpd1Ok = ReadDdr5SpdHubTemp(smbusBase, 0x50, out s1) || ReadDdr5SpdHubTemp(smbusBase, 0x51, out s1);
-                    if (_cachedSpd1Ok) _cachedSpd1 = s1;
+                    if (_cachedSpd1Ok)
+                    {
+                        _cachedSpd1 = s1;
+                        _spd1ConsecutiveMisses = 0;
+                        _spdThrottleStick0.Interval = TimeSpan.FromMilliseconds(1500);
+                    }
+                    else
+                    {
+                        _spd1ConsecutiveMisses++;
+                        if (_spd1ConsecutiveMisses >= 3)
+                            _spdThrottleStick0.Interval = TimeSpan.FromSeconds(30);
+                    }
                 }
-                if (_spdThrottleStick1.TryBegin() || (!_cachedSpd2Ok && _cachedSpd1Ok))
+                if (_spdThrottleStick1.TryBegin())
                 {
                     int s2;
                     _cachedSpd2Ok = ReadDdr5SpdHubTemp(smbusBase, 0x52, out s2) || ReadDdr5SpdHubTemp(smbusBase, 0x53, out s2);
-                    if (_cachedSpd2Ok) _cachedSpd2 = s2;
+                    if (_cachedSpd2Ok)
+                    {
+                        _cachedSpd2 = s2;
+                        _spd2ConsecutiveMisses = 0;
+                        _spdThrottleStick1.Interval = TimeSpan.FromMilliseconds(1500);
+                    }
+                    else
+                    {
+                        _spd2ConsecutiveMisses++;
+                        if (_spd2ConsecutiveMisses >= 3)
+                            _spdThrottleStick1.Interval = TimeSpan.FromSeconds(30);
+                    }
                 }
             }
             int spd1 = _cachedSpd1;
@@ -1060,6 +1084,7 @@ namespace MiniFanControl
             using (var lockScope = EcBusMutex.AcquireEc(35))
             {
                 if (!lockScope.Acquired) return false;
+                CaptureInitialEcBiosStateIfNeeded();
                 WriteRegInternal(p.RegModeCmd, cmdByte);
                 byte readBack = ReadRegInternal(p.RegModeCmd);
                 byte statusBack = ReadRegInternal(p.RegModeStatus);
@@ -1088,6 +1113,7 @@ namespace MiniFanControl
                 // If hardware is controlled via Super I/O (e.g. IT8613 on HX 370 / TS-12C)
                 if (SuperIoBaseAddr != 0 || AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E)
                 {
+                    CaptureInitialSuperIoBiosStateIfNeeded();
                     bool sioOk = true;
                     ushort addrPort = (ushort)(SuperIoBaseAddr + 5);
                     ushort dataPort = (ushort)(SuperIoBaseAddr + 6);
@@ -1159,6 +1185,7 @@ namespace MiniFanControl
                 else
                 {
                     // EC-based fan control (MMIO 0xFE0B0400 or ACPI Port I/O 0x62/0x66)
+                    CaptureInitialEcBiosStateIfNeeded();
                     WriteRegInternal(reg, val);
                     byte readBack = ReadRegInternal(reg);
                     if (readBack != val)

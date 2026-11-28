@@ -84,6 +84,10 @@ namespace MiniFanControl
         private int _mpoFlipCount = 0;
         private int _indepFlipCount = 0;
         private int _blitCount = 0;
+        private long _lastPercentileCalcQpc = 0;
+        private int _cachedAvgFps = 0;
+        private int _cachedP1LowFps = 0;
+        private int _cachedP01LowFps = 0;
 
         private readonly Dictionary<uint, string> _pidNameCache = new Dictionary<uint, string>();
         private readonly Func<uint, string> _pidNameResolver;
@@ -141,6 +145,10 @@ namespace MiniFanControl
                 _mpoFlipCount = 0;
                 _indepFlipCount = 0;
                 _blitCount = 0;
+                _lastPercentileCalcQpc = 0;
+                _cachedAvgFps = 0;
+                _cachedP1LowFps = 0;
+                _cachedP01LowFps = 0;
             }
         }
 
@@ -384,20 +392,32 @@ namespace MiniFanControl
 
                 if (_ringCount >= 10)
                 {
-                    List<int> valid = new List<int>(_ringCount);
-                    for (int i = 0; i < _ringCount; i++)
+                    bool needRecalc = (_lastPercentileCalcQpc == 0) ||
+                        ((nowQpc - _lastPercentileCalcQpc) * 1000.0 / qpcFreq >= 250.0);
+                    if (needRecalc)
                     {
-                        int us = _frameTimeUsRing[i];
-                        if (us >= 250 && us <= 200000) valid.Add(us);
+                        int[] validBuf = new int[_ringCount];
+                        int validCount = 0;
+                        for (int i = 0; i < _ringCount; i++)
+                        {
+                            int us = _frameTimeUsRing[i];
+                            if (us >= 250 && us <= 200000) validBuf[validCount++] = us;
+                        }
+                        if (validCount >= 10)
+                        {
+                            int[] exact = (validCount == validBuf.Length) ? validBuf : new int[validCount];
+                            if (exact != validBuf) Array.Copy(validBuf, exact, validCount);
+                            int avg, p1, p01;
+                            FpsMonitor.CalculateLowsFromMicroseconds(exact, out avg, out p1, out p01);
+                            _cachedAvgFps = avg;
+                            _cachedP1LowFps = p1;
+                            _cachedP01LowFps = p01;
+                        }
+                        _lastPercentileCalcQpc = nowQpc;
                     }
-                    if (valid.Count >= 10)
-                    {
-                        int avg, p1, p01;
-                        FpsMonitor.CalculateLowsFromMicroseconds(valid.ToArray(), out avg, out p1, out p01);
-                        snap.AvgFps = avg;
-                        snap.P1LowFps = p1;
-                        snap.P01LowFps = p01;
-                    }
+                    snap.AvgFps = _cachedAvgFps;
+                    snap.P1LowFps = _cachedP1LowFps;
+                    snap.P01LowFps = _cachedP01LowFps;
                 }
             }
 
@@ -422,9 +442,131 @@ namespace MiniFanControl
         private const uint PROCESS_TRACE_MODE_EVENT_RECORD = 0x10000000;
         private const byte TRACE_LEVEL_INFORMATION = 4;
 
-        // DxgKrnl Base (0x1) | Present (0x40) keeps ETW overhead tiny (< 0.2% CPU)
+        // DxgKrnl Base (0x1) | Present (0x40) with kernel-side EVENT_FILTER_TYPE_EVENT_ID filtering
+        // so high-frequency Vulkan/DX12 compute DMA/fence/paging events are dropped in kernel space.
         private const ulong DXGKRNL_PRESENT_KEYWORDS = 0x41UL;
         private const ulong DXGI_ALL_KEYWORDS = 0xFFFFFFFFFFFFFFFFUL;
+        private const uint ENABLE_TRACE_PARAMETERS_VERSION_2 = 2;
+        private const uint EVENT_FILTER_TYPE_EVENT_ID = 0x80000200u;
+
+        internal static readonly ushort[] DxgiTrackedEventIds = new ushort[]
+        {
+            EtwPresentTracker.DXGI_PRESENT_START,
+            EtwPresentTracker.DXGI_PRESENT_STOP,
+            EtwPresentTracker.DXGI_PRESENT_MPO_START,
+            EtwPresentTracker.DXGI_PRESENT_MPO_STOP
+        };
+
+        internal static readonly ushort[] DxgKrnlTrackedEventIds = new ushort[]
+        {
+            EtwPresentTracker.DXGKRNL_VSYNC_DPC,
+            EtwPresentTracker.DXGKRNL_MMIO_FLIP,
+            EtwPresentTracker.DXGKRNL_BLIT,
+            EtwPresentTracker.DXGKRNL_FLIP,
+            EtwPresentTracker.DXGKRNL_FLIP_MPO,
+            EtwPresentTracker.DXGKRNL_MMIO_FLIP_MPO,
+            EtwPresentTracker.DXGKRNL_VSYNC_DPC_MPO,
+            EtwPresentTracker.DXGKRNL_HSYNC_DPC_MPO
+        };
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct EVENT_FILTER_DESCRIPTOR
+        {
+            public ulong Ptr;
+            public uint Size;
+            public uint Type;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct ENABLE_TRACE_PARAMETERS
+        {
+            public uint Version;
+            public uint EnableProperty;
+            public uint ControlFlags;
+            public Guid SourceId;
+            public IntPtr EnableFilterDesc;
+            public uint FilterDescCount;
+        }
+
+        internal static byte[] BuildEventIdFilterBuffer(ushort[] eventIds)
+        {
+            int count = (eventIds != null) ? eventIds.Length : 0;
+            byte[] buf = new byte[4 + (count * 2)];
+            buf[0] = 1; // FilterIn = TRUE (include only listed Event IDs)
+            buf[1] = 0; // Reserved
+            buf[2] = (byte)(count & 0xFF);
+            buf[3] = (byte)((count >> 8) & 0xFF);
+            for (int i = 0; i < count; i++)
+            {
+                buf[4 + i * 2] = (byte)(eventIds[i] & 0xFF);
+                buf[4 + i * 2 + 1] = (byte)((eventIds[i] >> 8) & 0xFF);
+            }
+            return buf;
+        }
+
+        private static uint EnableProviderWithEventIdFilter(ulong sessHandle, ref Guid providerId, ulong keywords, ushort[] eventIds)
+        {
+            byte[] filterBytes = BuildEventIdFilterBuffer(eventIds);
+            IntPtr pFilterData = IntPtr.Zero;
+            IntPtr pFilterDesc = IntPtr.Zero;
+            IntPtr pEnableParams = IntPtr.Zero;
+            try
+            {
+                pFilterData = Marshal.AllocHGlobal(filterBytes.Length);
+                Marshal.Copy(filterBytes, 0, pFilterData, filterBytes.Length);
+
+                EVENT_FILTER_DESCRIPTOR desc = new EVENT_FILTER_DESCRIPTOR
+                {
+                    Ptr = unchecked((ulong)pFilterData.ToInt64()),
+                    Size = (uint)filterBytes.Length,
+                    Type = EVENT_FILTER_TYPE_EVENT_ID
+                };
+                pFilterDesc = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(EVENT_FILTER_DESCRIPTOR)));
+                Marshal.StructureToPtr(desc, pFilterDesc, false);
+
+                ENABLE_TRACE_PARAMETERS ep = new ENABLE_TRACE_PARAMETERS
+                {
+                    Version = ENABLE_TRACE_PARAMETERS_VERSION_2,
+                    EnableProperty = 0,
+                    ControlFlags = 0,
+                    SourceId = Guid.Empty,
+                    EnableFilterDesc = pFilterDesc,
+                    FilterDescCount = 1
+                };
+                pEnableParams = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(ENABLE_TRACE_PARAMETERS)));
+                Marshal.StructureToPtr(ep, pEnableParams, false);
+
+                uint err = EnableTraceEx2(sessHandle, ref providerId, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, keywords, 0, 0, pEnableParams);
+                if (err == 0) return 0;
+            }
+            catch { }
+            finally
+            {
+                if (pEnableParams != IntPtr.Zero) Marshal.FreeHGlobal(pEnableParams);
+                if (pFilterDesc != IntPtr.Zero) Marshal.FreeHGlobal(pFilterDesc);
+                if (pFilterData != IntPtr.Zero) Marshal.FreeHGlobal(pFilterData);
+            }
+            return EnableTraceEx2(sessHandle, ref providerId, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, keywords, 0, 0, IntPtr.Zero);
+        }
+
+        internal static bool IsRelevantEventId(bool isDxgi, ushort eventId)
+        {
+            if (isDxgi)
+            {
+                return eventId == EtwPresentTracker.DXGI_PRESENT_START ||
+                       eventId == EtwPresentTracker.DXGI_PRESENT_STOP ||
+                       eventId == EtwPresentTracker.DXGI_PRESENT_MPO_START ||
+                       eventId == EtwPresentTracker.DXGI_PRESENT_MPO_STOP;
+            }
+            return eventId == EtwPresentTracker.DXGKRNL_VSYNC_DPC ||
+                   eventId == EtwPresentTracker.DXGKRNL_MMIO_FLIP ||
+                   eventId == EtwPresentTracker.DXGKRNL_BLIT ||
+                   eventId == EtwPresentTracker.DXGKRNL_FLIP ||
+                   eventId == EtwPresentTracker.DXGKRNL_FLIP_MPO ||
+                   eventId == EtwPresentTracker.DXGKRNL_MMIO_FLIP_MPO ||
+                   eventId == EtwPresentTracker.DXGKRNL_VSYNC_DPC_MPO ||
+                   eventId == EtwPresentTracker.DXGKRNL_HSYNC_DPC_MPO;
+        }
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         private delegate void EventRecordCallbackDelegate(IntPtr eventRecord);
@@ -641,8 +783,8 @@ namespace MiniFanControl
 
                     Guid gDxgi = EtwPresentTracker.ProviderDxgi;
                     Guid gDxgKrnl = EtwPresentTracker.ProviderDxgKrnl;
-                    EnableTraceEx2(sessHandle, ref gDxgi, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, DXGI_ALL_KEYWORDS, 0, 0, IntPtr.Zero);
-                    EnableTraceEx2(sessHandle, ref gDxgKrnl, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, DXGKRNL_PRESENT_KEYWORDS, 0, 0, IntPtr.Zero);
+                    EnableProviderWithEventIdFilter(sessHandle, ref gDxgi, DXGI_ALL_KEYWORDS, DxgiTrackedEventIds);
+                    EnableProviderWithEventIdFilter(sessHandle, ref gDxgKrnl, DXGKRNL_PRESENT_KEYWORDS, DxgKrnlTrackedEventIds);
 
                     _pinnedCallback = new EventRecordCallbackDelegate(OnEventRecord);
                     _loggerNamePtr = Marshal.StringToHGlobalUni(SESSION_NAME);
@@ -719,9 +861,11 @@ namespace MiniFanControl
                 bool isDxgKrnl = !isDxgi && (gLo == _dxgKrnlGuidLo && gHi == _dxgKrnlGuidHi);
                 if (!isDxgi && !isDxgKrnl) return;
 
+                ushort eventId = unchecked((ushort)Marshal.ReadInt16(pEventRecord, 40));
+                if (!IsRelevantEventId(isDxgi, eventId)) return;
+
                 uint pid = unchecked((uint)Marshal.ReadInt32(pEventRecord, 12));
                 long qpc = Marshal.ReadInt64(pEventRecord, 16);
-                ushort eventId = unchecked((ushort)Marshal.ReadInt16(pEventRecord, 40));
 
                 _tracker.ProcessEvent(
                     isDxgi ? EtwPresentTracker.ProviderDxgi : EtwPresentTracker.ProviderDxgKrnl,

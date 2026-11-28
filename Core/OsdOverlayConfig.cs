@@ -184,6 +184,126 @@ namespace MiniFanControl
             ShowGameName = false;
         }
 
+        /// <summary>
+        /// Ultra-minimal horizontal bar: FPS, 0.1% Lows, CPU &amp; iGPU temps only (Text Only).
+        /// </summary>
+        public void ApplyPresetMinimalFps()
+        {
+            DeselectAllMetrics();
+            VerticalLayout = false;
+            ScaleTier = 0;
+            GraphMode = 0;
+            GraphHeight = 75;
+            ShowLiveTrend = false;
+            ShowFpsGraph = false;
+            ShowCpu = true;
+            ShowCpuLoad = false;
+            ShowGpu = true;
+            ShowGpuLoad = false;
+            ShowGpuHotspot = false;
+            ShowClocks = false;
+            ShowFps = true;
+            ShowFrametimeMs = true;
+            ShowLows = true;
+            ShowFpsAvg = false;
+            ShowLatency = false;
+            ShowGameName = true;
+            ShowDriverVer = false;
+            ShowPeaks = false;
+        }
+
+        /// <summary>
+        /// Compact vertical gaming HUD: core silicon, power, RAM, fans, FPS, and DF corner-inset graph.
+        /// </summary>
+        public void ApplyPresetCompactGaming(bool hasDualFans)
+        {
+            DeselectAllMetrics();
+            VerticalLayout = true;
+            ScaleTier = 1;
+            GraphMode = 1;
+            GraphHeight = 105;
+            SparklineBg = true;
+            ShowLiveTrend = false;
+            ShowFpsGraph = true;
+            DfGraphStyle = true;
+            DfCornerInset = true;
+            DfGraphFirst = true;
+            ShowCpu = true;
+            ShowCpuLoad = true;
+            ShowGpu = true;
+            ShowGpuLoad = true;
+            ShowGpuHotspot = false;
+            ShowPower = true;
+            ShowPowerLimit = false;
+            ShowRam = true;
+            ShowRamTemp = true;
+            ShowRamLoad = true;
+            ShowRamPower = false;
+            ShowRamDualSticks = false;
+            ShowRamSpread = false;
+            ShowRamClock = false;
+            ShowFps = true;
+            ShowFrametimeMs = true;
+            ShowLows = true;
+            ShowFpsAvg = true;
+            ShowLatency = false;
+            ShowApuFan = true;
+            ShowSysFan = hasDualFans;
+            ShowRadeon = true;
+            ShowRadeonExtTags = false;
+            ShowDriverVer = false;
+            ShowClocks = false;
+            ShowGameName = true;
+            ShowPeaks = true;
+            PeakTrackerMode = 0;
+        }
+
+        /// <summary>
+        /// Digital Foundry inspired twin Frame-Time + Frame-Rate benchmark overlay with core telemetry.
+        /// </summary>
+        public void ApplyPresetDigitalFoundry()
+        {
+            DeselectAllMetrics();
+            VerticalLayout = true;
+            ScaleTier = 1;
+            GraphMode = 2;
+            GraphHeight = 140;
+            SparklineBg = false;
+            ShowLiveTrend = false;
+            ShowFpsGraph = true;
+            DfGraphStyle = true;
+            DfCornerInset = false;
+            DfGraphFirst = true;
+            ShowCpu = true;
+            ShowCpuLoad = true;
+            ShowGpu = true;
+            ShowGpuLoad = true;
+            ShowPower = true;
+            ShowPowerLimit = true;
+            ShowFps = true;
+            ShowFrametimeMs = true;
+            ShowLows = true;
+            ShowFpsAvg = true;
+            ShowLatency = true;
+            ShowClocks = true;
+            ShowGameName = true;
+            ShowDriverVer = false;
+            ShowPeaks = true;
+            PeakTrackerMode = 0;
+        }
+
+        /// <summary>
+        /// Full hardware audit: all sensors, VRM currents, dual-stick DDR5, NVMe, fans, and both live charts.
+        /// </summary>
+        public void ApplyPresetFullAudit(bool hasDualFans)
+        {
+            ResetDefaults(hasDualFans);
+            ShowVrmCurrent = true;
+            ShowRamDualSticks = true;
+            ShowRamClock = true;
+            DfCornerInset = false;
+        }
+
         public void ApplyToOverlay(CapFrameXOverlayForm overlay, ThemePreference themePref, bool hasDualFans, bool useFahrenheit)
         {
             if (overlay == null) return;
@@ -193,9 +313,12 @@ namespace MiniFanControl
             overlay.GraphHeight = GraphHeight;
             overlay.VerticalLayout = VerticalLayout;
             overlay.MatchAppTheme = MatchTheme;
-            overlay.IsRadeonTheme = (themePref == ThemePreference.Radeon);
-            overlay.IsAfterburnerTheme = (themePref == ThemePreference.Afterburner);
-            overlay.IsXmasTheme = (themePref == ThemePreference.Xmas);
+            if (MatchTheme)
+            {
+                overlay.IsRadeonTheme = (themePref == ThemePreference.Radeon);
+                overlay.IsAfterburnerTheme = (themePref == ThemePreference.Afterburner);
+                overlay.IsXmasTheme = (themePref == ThemePreference.Xmas);
+            }
             overlay.ShowDriverVersion = ShowDriverVer;
             overlay.ShowClocks = ShowClocks;
             overlay.ShowGameName = ShowGameName;
@@ -263,6 +386,7 @@ namespace MiniFanControl
             GraphHeight = overlay.GraphHeight;
             OpacityPct = overlay.OpacityPct;
             VerticalLayout = overlay.VerticalLayout;
+            MatchTheme = overlay.MatchAppTheme;
             ShowCpu = overlay.ShowCpu;
             ShowGpu = overlay.ShowGpu;
             ShowNvme = overlay.ShowNvme;
@@ -307,6 +431,7 @@ namespace MiniFanControl
             ShowFclkSync = overlay.ShowFclkSync;
             ShowFrametimeMs = overlay.ShowFrametimeMs;
             ShowFpsAvg = overlay.ShowFpsAvg;
+            ShowLatency = overlay.ShowLatency;
             TrendCpu = overlay.TrendCpu;
             TrendGpu = overlay.TrendGpu;
             TrendRam = overlay.TrendRam;

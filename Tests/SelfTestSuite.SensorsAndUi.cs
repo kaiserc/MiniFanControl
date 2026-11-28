@@ -2325,6 +2325,40 @@ namespace MiniFanControl
                 "Live Telemetry Auto-Zoom Scaling, Right-Axis RPM Decoupling & AMD Silicon Junction Fallback Parity",
                 autoZoomDetails);
 
+            // Regression: Hidden OSD must never be resurrected via SWP_SHOWWINDOW when toggling click-through lock
+            // (which previously left a visible zombie overlay with frozen startup _status while _showOverlay == false).
+            bool hiddenOsdLockGuardOk = true;
+            string hiddenOsdLockDetails = "Hidden OSD stayed invisible across ApplyClickThrough/EnsureTopMost toggles [OK], Unsloth AI process recognized [OK]";
+            try
+            {
+                using (CapFrameXOverlayForm osdGuard = new CapFrameXOverlayForm())
+                {
+                    osdGuard.Show();
+                    osdGuard.Hide();
+                    bool hiddenAfterHide = !osdGuard.Visible && !osdGuard.IsNativeWindowVisible();
+                    osdGuard.ApplyClickThrough(true);
+                    osdGuard.ApplyClickThrough(false);
+                    osdGuard.EnsureTopMost();
+                    bool stillHiddenAfterLockToggle = !osdGuard.Visible && !osdGuard.IsNativeWindowVisible();
+                    bool unslothRecognized = WorkloadProfileSwitcher.IsKnownAiProcess("unsloth-studio.exe");
+                    if (!hiddenAfterHide || !stillHiddenAfterLockToggle || !unslothRecognized)
+                    {
+                        hiddenOsdLockGuardOk = false;
+                        hiddenOsdLockDetails = string.Format(
+                            "hiddenAfterHide={0}, stillHiddenAfterLockToggle={1}, Visible={2}, NativeVisible={3}, unslothRecognized={4}",
+                            hiddenAfterHide, stillHiddenAfterLockToggle, osdGuard.Visible, osdGuard.IsNativeWindowVisible(), unslothRecognized);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                hiddenOsdLockGuardOk = false;
+                hiddenOsdLockDetails = "Exception: " + ex.Message;
+            }
+            Check(hiddenOsdLockGuardOk,
+                "Hidden OSD Click-Through Lock Does Not Resurrect Stale Overlay Window & Unsloth AI Detection",
+                hiddenOsdLockDetails);
+
         }
     }
 }

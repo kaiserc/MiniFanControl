@@ -4,7 +4,7 @@
 [![GitHub Downloads](https://img.shields.io/github/downloads/kaiserc/MiniFanControl/total?label=Downloads&color=blue)](https://github.com/kaiserc/MiniFanControl/releases)
 [![Release: v1.3.1](https://img.shields.io/badge/Release-v1.3.1-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-Windows%20x64%20(.NET%204.8%20%26%2010)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
-[![Tests: 123/123 Passing](https://img.shields.io/badge/tests-123%2F123%20passing-brightgreen)](Tests/README.md)
+[![Tests: 127/127 Passing](https://img.shields.io/badge/tests-127%2F127%20passing-brightgreen)](Tests/README.md)
 [![Security: Fail-Closed](https://img.shields.io/badge/Security-Fail--Closed%20%7C%20PawnIO%20HVCI-purple.svg)](#-safety--security-architecture)
 [![Themes](https://img.shields.io/badge/Themes-Dark%20%7C%20Light%20%7C%20Radeon%20%7C%20Afterburner%20%7C%20Xmas-crimson.svg)](#key-features)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -73,7 +73,10 @@ MiniFanControl is built **fail-closed** from the ground up:
 - **Strict Port & Physical Memory Allowlists:** Single fail-closed choke point blocks sensitive motherboard/CPU ports (`0x70/71`, `0x92`, `0xCF9`, PIC/PIT) and restricts physical writes exclusively to verified EC MMIO registers.
 - **Out-of-Process Watchdog & ≥90°C Tripwire:** Independent `minifan-helper.exe watchdog` monitors heartbeats with monotonic `Stopwatch` timing and restores native BIOS Auto (`0x00`) with read-back verification on crash/hang. A ≥90°C emergency tripwire forces 100% cooling even if the read-only latch is active.
 - **HWiNFO64 / CapFrameX Bus Synchronization:** Coordinates via `Global\Access_EC`, `Global\Access_ISABUS.HTP.Method`, `Global\Access_PCI`, and `Global\Access_SMBUS.HTP.Method` with least-privilege `AuthenticatedUserSid` DACLs, surfacing a UI warning banner if `Global\` mutex creation degrades to `Local\`.
-- **Verifiable Supply Chain:** GitHub Actions CI builds test-free `.NET 4.8` & `.NET 10.0-windows` binaries, runs **123 automated self-tests** in a dedicated test assembly (`Tests/MiniFanControl.Tests.csproj`), publishes `SHA256SUMS.txt`, and generates GitHub **Build Provenance Attestations** (`actions/attest-build-provenance`).
+- **Verifiable Supply Chain:** GitHub Actions CI builds test-free `.NET 4.8` & `.NET 10.0-windows` binaries, runs **127 automated self-tests** in a dedicated test assembly (`Tests/MiniFanControl.Tests.csproj`), publishes `SHA256SUMS.txt`, and generates GitHub **Build Provenance Attestations** (`actions/attest-build-provenance`). Verify any downloaded artifact locally with the GitHub CLI:
+  ```powershell
+  gh attestation verify MiniFanControl-Setup-v1.3.1-x64.exe --repo kaiserc/MiniFanControl
+  ```
 
 ---
 
@@ -94,7 +97,7 @@ MiniFanControl is built **fail-closed** from the ground up:
 .\minifan-helper.exe service-status         # Inspect service state
 .\minifan-helper.exe daemon                 # Run foreground headless fan loop
 
-# Diagnostics, hardware reports & 123-point self-test suite
+# Diagnostics, hardware reports & 127-point self-test suite
 .\minifan-helper.exe dump --json
 .\minifan-helper.exe submit-report
 .\minifan-helper.exe latency
@@ -113,8 +116,9 @@ MiniFanControl is built **fail-closed** from the ground up:
 | Document | Contents |
 | :--- | :--- |
 | [**User & Hardware Tuning Guide (`GUIDE.md`)**](GUIDE.md) | Setup walkthrough, calibration, OSD Studio, EC register map (`0xFE0B0400`), `minifancontrol.cfg` schema, and FAQ |
-| [**123-Point Automated Test Suite (`Tests/README.md`)**](Tests/README.md) | Full catalog of all 123 safety, driver, mutex, calibration, OSD, and service-mode tests |
+| [**127-Point Automated Test Suite (`Tests/README.md`)**](Tests/README.md) | Full catalog of all 127 safety, driver, mutex, calibration, OSD, and service-mode tests |
 | [**Hardware Validation Matrix (`HARDWARE_VALIDATION.md`)**](HARDWARE_VALIDATION.md) | 6-profile register matrix, oscilloscope protocols, and IT8613E PWM polarity specs |
+| [**Public Roadmap (`ROADMAP.md`)**](ROADMAP.md) | Completed milestones, upcoming release priorities, and planned hardware/distribution work |
 | [**Changelog (`CHANGELOG.md`)**](CHANGELOG.md) & [**Release Notes (`RELEASE_NOTES.md`)**](RELEASE_NOTES.md) | Release history and architectural hardening log |
 | [**Contributing (`CONTRIBUTING.md`)**](CONTRIBUTING.md) | Safety principles, C# 5 build rules, and submitting new Mini PC profiles |
 | [**Visual Overview Deck (`docs/MiniFanControl-Overview.pptx`)**](docs/MiniFanControl-Overview.pptx) | 7-slide architecture and feature presentation |

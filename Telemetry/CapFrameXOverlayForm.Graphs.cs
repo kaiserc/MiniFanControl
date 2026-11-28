@@ -154,7 +154,21 @@ namespace MiniFanControl
 
             badges.Sort((a, b) => a.TargetY.CompareTo(b.TargetY));
             int bh = (int)Math.Round(10 * sc);
-            float minSpacing = bh + Math.Max(1.5f, 1.5f * sc);
+            float minGap = Math.Max(1.5f, 1.5f * sc);
+            float minSpacing = bh + minGap;
+
+            float availTop = plot.Top + 1f;
+            float availBottom = bounds.Bottom - Math.Max(3f, 3f * sc);
+            float availH = Math.Max(bh, availBottom - availTop);
+
+            if (badges.Count > 1 && badges.Count * minSpacing > availH)
+            {
+                float slotH = availH / badges.Count;
+                int minBh = Math.Max(8, (int)Math.Round(8.5f * sc));
+                bh = Math.Max(minBh, Math.Min(bh, (int)Math.Floor(slotH - 1f)));
+                minSpacing = Math.Max(bh + 0.5f, slotH);
+            }
+
             for (int i = 0; i < badges.Count; i++)
                 badges[i].DisplayY = badges[i].TargetY;
 
@@ -164,7 +178,7 @@ namespace MiniFanControl
                     badges[i].DisplayY = badges[i - 1].DisplayY + minSpacing;
             }
 
-            float maxBottom = plot.Bottom - (float)Math.Round(bh / 2f) - 1;
+            float maxBottom = availBottom - (bh / 2f);
             if (badges[badges.Count - 1].DisplayY > maxBottom)
             {
                 badges[badges.Count - 1].DisplayY = maxBottom;
@@ -175,42 +189,58 @@ namespace MiniFanControl
                 }
             }
 
-            float minTop = plot.Top + (float)Math.Round(bh / 2f) + 1;
-            for (int i = 0; i < badges.Count; i++)
+            float minTop = availTop + (bh / 2f);
+            if (badges[0].DisplayY < minTop)
             {
-                if (badges[i].DisplayY < minTop)
-                    badges[i].DisplayY = minTop;
+                badges[0].DisplayY = minTop;
+                for (int i = 1; i < badges.Count; i++)
+                {
+                    if (badges[i].DisplayY < badges[i - 1].DisplayY + minSpacing)
+                        badges[i].DisplayY = badges[i - 1].DisplayY + minSpacing;
+                }
+            }
+
+            // If still overflowing at the bottom (extremely dense stack), distribute evenly within [minTop, maxBottom]
+            if (badges.Count > 1 && badges[badges.Count - 1].DisplayY > maxBottom && maxBottom > minTop)
+            {
+                float step = (maxBottom - minTop) / (badges.Count - 1);
+                for (int i = 0; i < badges.Count; i++)
+                    badges[i].DisplayY = minTop + i * step;
             }
 
             int rightMargin = (int)Math.Round(3 * sc);
             int badgeX = plot.Right + (int)Math.Round(2 * sc);
             int maxBadgeW = Math.Max(12, bounds.Right - badgeX - rightMargin);
+            int clampMinY = (int)Math.Round(availTop);
+            int clampMaxY = Math.Max(clampMinY, (int)Math.Floor(availBottom) - bh);
 
-            using (SolidBrush bgBr = new SolidBrush(isXmas ? Color.FromArgb(245, 255, 255, 255) : Color.FromArgb(195, 15, 23, 42)))
+            using (SolidBrush bgBr = new SolidBrush(isXmas ? Color.FromArgb(245, 255, 255, 255) : Color.FromArgb(232, 10, 15, 26)))
             {
                 for (int i = 0; i < badges.Count; i++)
                 {
                     EndpointBadge b = badges[i];
                     Size sz = TextRenderer.MeasureText(g, b.Text, font, new Size(maxBadgeW, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-                    int bw = Math.Min(maxBadgeW, sz.Width + (int)Math.Round(3 * sc));
+                    int bw = Math.Min(maxBadgeW, sz.Width + (int)Math.Round(4 * sc));
                     int by = (int)Math.Round(b.DisplayY - bh / 2f);
-                    // Anchor badge comfortably inside bounds so it never clips or overflows on the right edge
+                    if (by < clampMinY) by = clampMinY;
+                    if (by > clampMaxY) by = clampMaxY;
+
+                    // Anchor badge comfortably inside bounds so it never clips or overflows on the right or bottom edge
                     int curX = Math.Min(badgeX, bounds.Right - bw - rightMargin);
                     if (curX < plot.Right + 1) curX = plot.Right + 1;
                     Rectangle badgeRect = new Rectangle(curX, by, bw, bh);
 
-                    using (Pen tickPen = new Pen(Color.FromArgb(isXmas ? 180 : 130, b.Color), 1f))
+                    using (Pen tickPen = new Pen(Color.FromArgb(isXmas ? 180 : 135, b.Color), 1f))
                     {
-                        g.DrawLine(tickPen, plot.Right, b.TargetY, curX, b.DisplayY);
+                        g.DrawLine(tickPen, plot.Right, b.TargetY, curX, by + bh / 2f);
                     }
 
-                    g.FillRectangle(bgBr, badgeRect);
-                    using (Pen borderPen = new Pen(Color.FromArgb(isXmas ? 210 : 150, b.Color), 1f))
+                    using (Pen borderPen = new Pen(Color.FromArgb(isXmas ? 210 : 165, b.Color), 1f))
                     {
                         if (b.Dashed) borderPen.DashStyle = DashStyle.Dash;
-                        g.DrawRectangle(borderPen, badgeRect);
+                        DrawRoundedRectangle(g, borderPen, bgBr, badgeRect, 2);
                     }
-                    TextRenderer.DrawText(g, b.Text, font, new Point(curX + (int)Math.Round(1.5f * sc), by + (int)Math.Round(1 * sc)), b.Color, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    TextRenderer.DrawText(g, b.Text, font, badgeRect, b.Color, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
                 }
             }
         }
@@ -251,10 +281,10 @@ namespace MiniFanControl
             Color chartBg = xmas
                 ? Color.White
                 : (afterburner
-                    ? Color.FromArgb(222, 12, 14, 18)
+                    ? Color.FromArgb(238, 10, 12, 16)
                     : ((MatchAppTheme && IsRadeonTheme)
-                        ? Color.FromArgb(215, 10, 4, 6)
-                        : Color.FromArgb(215, 10, 12, 18)));
+                        ? Color.FromArgb(236, 10, 4, 6)
+                        : Color.FromArgb(236, 9, 12, 18)));
 
             using (SolidBrush bgBr = new SolidBrush(chartBg))
             using (Pen borderPen = new Pen(gridCol, 1f))
@@ -419,39 +449,27 @@ namespace MiniFanControl
             Color fpsTrendCol = xmas ? XmasBlack : Color.FromArgb(0x38, 0xBD, 0xF8);
             Color lowTrendCol = xmas ? XmasRedDeep : Color.FromArgb(0xFB, 0x71, 0x85);
             List<KeyValuePair<string, Color>> legendItems = new List<KeyValuePair<string, Color>>();
-            if (TrendCpu) legendItems.Add(new KeyValuePair<string, Color>("● CPU", cpuCol));
-            if (TrendGpu) legendItems.Add(new KeyValuePair<string, Color>("● " + gpuLbl, gpuCol));
-            if (TrendRam && _status.RamTotalGb > 0) legendItems.Add(new KeyValuePair<string, Color>("● RAM", ramCol));
-            if (TrendNvme && _status.NvmeTemp > 0) legendItems.Add(new KeyValuePair<string, Color>("● NVMe", nvmeCol));
-            if (TrendPower) legendItems.Add(new KeyValuePair<string, Color>("● PWR", pwrCol));
-            if (TrendAmbient && _status.AmbientTemp > 0) legendItems.Add(new KeyValuePair<string, Color>("● CHAS", ambCol));
-            if (showApuTrend) legendItems.Add(new KeyValuePair<string, Color>("● APU", apuCol));
-            if (showSysTrend) legendItems.Add(new KeyValuePair<string, Color>("● SYS", sysCol));
+            if (TrendCpu) legendItems.Add(new KeyValuePair<string, Color>("CPU", cpuCol));
+            if (TrendGpu) legendItems.Add(new KeyValuePair<string, Color>(gpuLbl, gpuCol));
+            if (TrendRam && _status.RamTotalGb > 0) legendItems.Add(new KeyValuePair<string, Color>("RAM", ramCol));
+            if (TrendNvme && _status.NvmeTemp > 0) legendItems.Add(new KeyValuePair<string, Color>("NVMe", nvmeCol));
+            if (TrendPower) legendItems.Add(new KeyValuePair<string, Color>("PWR", pwrCol));
+            if (TrendAmbient && _status.AmbientTemp > 0) legendItems.Add(new KeyValuePair<string, Color>("CHAS", ambCol));
+            if (showApuTrend) legendItems.Add(new KeyValuePair<string, Color>("APU", apuCol));
+            if (showSysTrend) legendItems.Add(new KeyValuePair<string, Color>("SYS", sysCol));
 
             int hdrLeftX = rect.X + (int)Math.Round(4 * sc);
             int hdrW = TextRenderer.MeasureText(g, hdr, _fontChart, new Size(280, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
-            int simX = hdrLeftX + hdrW + (int)Math.Round(6 * sc);
-            int maxLegX = rect.Right - 4;
-            int legRows = 1;
+            int maxLegX = rect.Right - (int)Math.Round(4 * sc);
             int legGap = Math.Max(3, (int)Math.Round(4 * sc));
-            for (int li = 0; li < legendItems.Count; li++)
-            {
-                int iw = TextRenderer.MeasureText(g, legendItems[li].Key, _fontTrace, new Size(90, 14), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
-                if (simX + iw > maxLegX && simX > hdrLeftX)
-                {
-                    legRows = 2;
-                    simX = hdrLeftX + iw + legGap;
-                }
-                else
-                {
-                    simX += iw + legGap;
-                }
-            }
+            int dotSize = Math.Max(3, (int)Math.Round(3.5f * sc));
+            int dotPad = Math.Max(2, (int)Math.Round(2f * sc));
 
-            int rowH = Math.Max(11, (int)Math.Round(12f * sc));
-            int topPad = (legRows > 1) ? (int)Math.Round(27f * sc) : (int)Math.Round(15f * sc);
+            // Keep the TREND header strictly single-line so the plot keeps full vertical headroom for traces and badges
+            int topPad = (int)Math.Round(16f * sc);
+            int btmPad = Math.Max(3, (int)Math.Round(3f * sc));
             int rightPad = (int)Math.Round(38f * sc);
-            Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - 2));
+            Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - btmPad));
 
             List<EndpointBadge> badges = new List<EndpointBadge>();
 
@@ -530,22 +548,57 @@ namespace MiniFanControl
 
             DrawEndpointBadges(g, plot, rect, badges, _fontTrace, sc, xmas);
 
-            // Compact Wrapping Legend & Scale Header inside the top of the Combined OSD Graph
-            TextRenderer.DrawText(g, hdr, _fontChart, new Point(hdrLeftX, rect.Y + 1), xmas ? XmasBlack : Color.FromArgb(200, 226, 232, 240), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            // Single-Line Legend & Scale Header inside the top of the Combined OSD Graph
+            int hdrY = rect.Y + (int)Math.Round(2 * sc);
+            TextRenderer.DrawText(g, hdr, _fontChart, new Point(hdrLeftX, hdrY), xmas ? XmasBlack : Color.FromArgb(220, 226, 232, 240), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             int legX = hdrLeftX + hdrW + (int)Math.Round(6 * sc);
-            int legY = rect.Y + 1;
+            int legY = hdrY;
+            int hdrLineH = TextRenderer.MeasureText(g, "A", _fontTrace, new Size(30, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Height;
+            int dotY = legY + Math.Max(1, (hdrLineH - dotSize) / 2);
+
             for (int li = 0; li < legendItems.Count; li++)
             {
                 string ltxt = legendItems[li].Key;
                 Color lcol = legendItems[li].Value;
-                int iw = TextRenderer.MeasureText(g, ltxt, _fontTrace, new Size(90, 14), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
-                if (legX + iw > maxLegX && legX > hdrLeftX)
+                int iw = dotSize + dotPad + TextRenderer.MeasureText(g, ltxt, _fontTrace, new Size(90, 14), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+
+                int remaining = legendItems.Count - li;
+                int reserveMoreW = (remaining > 1) ? TextRenderer.MeasureText(g, "+" + remaining, _fontTrace, new Size(36, 14), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width + legGap : 0;
+
+                if (legX + iw > maxLegX - (remaining > 1 ? 0 : 0))
                 {
-                    legX = hdrLeftX;
-                    legY = rect.Y + 1 + rowH;
+                    string moreTxt = "+" + remaining;
+                    int moreW = TextRenderer.MeasureText(g, moreTxt, _fontTrace, new Size(36, 14), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+                    if (legX + moreW <= maxLegX)
+                    {
+                        TextRenderer.DrawText(g, moreTxt, _fontTrace, new Point(legX, legY), xmas ? Color.FromArgb(140, 0x18, 0x18, 0x1B) : Color.FromArgb(150, 148, 163, 184), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    }
+                    break;
                 }
-                TextRenderer.DrawText(g, ltxt, _fontTrace, new Point(legX, legY), lcol, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+
+                // If drawing this item leaves no room for a "+N" indicator for subsequent items that won't fit, check next item
+                if (remaining > 1)
+                {
+                    string nextTxt = legendItems[li + 1].Key;
+                    int nextIw = dotSize + dotPad + TextRenderer.MeasureText(g, nextTxt, _fontTrace, new Size(90, 14), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+                    if (legX + iw + legGap + nextIw > maxLegX && legX + iw + reserveMoreW > maxLegX)
+                    {
+                        string moreTxt = "+" + remaining;
+                        int moreW = TextRenderer.MeasureText(g, moreTxt, _fontTrace, new Size(36, 14), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+                        if (legX + moreW <= maxLegX)
+                        {
+                            TextRenderer.DrawText(g, moreTxt, _fontTrace, new Point(legX, legY), xmas ? Color.FromArgb(140, 0x18, 0x18, 0x1B) : Color.FromArgb(150, 148, 163, 184), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                        }
+                        break;
+                    }
+                }
+
+                using (SolidBrush dotBr = new SolidBrush(lcol))
+                {
+                    g.FillEllipse(dotBr, legX, dotY, dotSize, dotSize);
+                }
+                TextRenderer.DrawText(g, ltxt, _fontTrace, new Point(legX + dotSize + dotPad, legY), lcol, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
                 legX += iw + legGap;
             }
 
@@ -845,7 +898,7 @@ namespace MiniFanControl
 
             Color bgCol = xmas
                 ? (compactCorner ? Color.FromArgb(248, 255, 255, 255) : Color.White)
-                : (compactCorner ? Color.FromArgb(242, 10, 14, 22) : Color.FromArgb(222, 10, 14, 20));
+                : (compactCorner ? Color.FromArgb(248, 8, 12, 18) : Color.FromArgb(236, 9, 12, 18));
             Color brdCol = xmas
                 ? (compactCorner ? XmasRed : XmasBlack)
                 : (compactCorner ? Color.FromArgb(195, 0x22, 0xD3, 0xEE) : Color.FromArgb(220, 255, 255, 255));
@@ -873,7 +926,7 @@ namespace MiniFanControl
             TextRenderer.DrawText(g, ftHdr, _fontDfHdr, new Point(rect.X + (int)Math.Round(4 * sc), rect.Y + (int)Math.Round(1.5f * sc)), IsXmasTheme ? XmasRed : (compactCorner ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.White), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             int topPad = (int)Math.Round((compactCorner ? 12 : 14) * sc);
-            int btmPad = (int)Math.Round((compactCorner ? 4 : 8) * sc);
+            int btmPad = (int)Math.Round((compactCorner ? 7 : 8) * sc);
             int rightPad = (int)Math.Round((compactCorner ? 24 : 32) * sc);
             Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - btmPad));
 
@@ -946,7 +999,8 @@ namespace MiniFanControl
 
             int yMax = Math.Max(rect.Y + 2, (int)Math.Round(plot.Top - szMax.Height / 2f));
             int yMid = (int)Math.Round(plot.Top + plot.Height / 2f - szMid.Height / 2f);
-            int y0 = Math.Min(rect.Bottom - 2 - sz0.Height, (int)Math.Round(plot.Bottom - sz0.Height / 2f));
+            int y0Margin = Math.Max(3, (int)Math.Round((compactCorner ? 4 : 3) * sc));
+            int y0 = Math.Min(rect.Bottom - y0Margin - sz0.Height, (int)Math.Round(plot.Bottom - sz0.Height / 2f));
 
             Color ftAxisCol = IsXmasTheme ? XmasBlack : Color.White;
             TextRenderer.DrawText(g, lblMax, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), yMax), ftAxisCol, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
@@ -1118,7 +1172,7 @@ namespace MiniFanControl
             }
 
             bool xmas = IsXmasTheme;
-            using (SolidBrush bgBr = new SolidBrush(xmas ? Color.White : Color.FromArgb(222, 10, 14, 20)))
+            using (SolidBrush bgBr = new SolidBrush(xmas ? Color.White : Color.FromArgb(236, 9, 12, 18)))
             using (Pen borderPen = new Pen(xmas ? XmasBlack : Color.FromArgb(220, 255, 255, 255), 1.2f))
             {
                 g.FillRectangle(bgBr, rect);
@@ -1175,9 +1229,10 @@ namespace MiniFanControl
                     string lbl = levels[i].ToString();
                     Size sz = TextRenderer.MeasureText(g, lbl, _fontDfAxis, new Size(rightPad, 16), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
                     int lblY = (int)Math.Round(y - sz.Height / 2f);
+                    int lblBotMargin = Math.Max(3, (int)Math.Round(3 * sc));
                     if (lblY < rect.Y + 2) lblY = rect.Y + 2;
-                    if (lblY + sz.Height > rect.Bottom - 2) lblY = rect.Bottom - 2 - sz.Height;
-                    TextRenderer.DrawText(g, lbl, _fontDfAxis, new Point(plot.Right + (int)Math.Round(4 * sc), lblY), IsXmasTheme ? XmasBlack : Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    if (lblY + sz.Height > rect.Bottom - lblBotMargin) lblY = rect.Bottom - lblBotMargin - sz.Height;
+                    TextRenderer.DrawText(g, lbl, _fontDfAxis, new Point(plot.Right + (int)Math.Round(5 * sc), lblY), IsXmasTheme ? XmasBlack : Color.White, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
                 }
 
                 // Vertical boundary line separating the plot from the axis labels
@@ -1363,12 +1418,12 @@ namespace MiniFanControl
                     g.FillEllipse(dotBr, last.X - 2.5f * sc, last.Y - 2.5f * sc, 5f * sc, 5f * sc);
                 }
 
-                // High-visibility live endpoint badge on the FPS curve
+                // High-visibility live endpoint badge on the FPS curve (inset clear of the right-hand axis ticks)
                 string fpsBadge = string.Format("{0} FPS", curLiveFps);
                 Size bSz = TextRenderer.MeasureText(g, fpsBadge, _fontDfAxis, new Size(80, 16), TextFormatFlags.NoPadding);
-                int bw = bSz.Width + (int)Math.Round(6 * sc);
-                int bh = (int)Math.Round(12 * sc);
-                int bx = (int)Math.Round(last.X - bw - 6 * sc);
+                int bw = bSz.Width + (int)Math.Round(7 * sc);
+                int bh = (int)Math.Round(13 * sc);
+                int bx = (int)Math.Round(last.X - bw - 10 * sc);
                 if (bx < plot.Left + 2) bx = plot.Left + 2;
                 int by = (int)Math.Round(last.Y - bh / 2f);
                 if (by < plot.Top + 1) by = plot.Top + 1;
@@ -1379,15 +1434,12 @@ namespace MiniFanControl
                 {
                     g.DrawLine(tickPen, last.X, last.Y, bx + bw, by + bh / 2f);
                 }
-                using (SolidBrush bgPill = new SolidBrush(xmas ? Color.White : Color.FromArgb(225, 10, 14, 20)))
+                using (SolidBrush bgPill = new SolidBrush(xmas ? Color.White : Color.FromArgb(242, 8, 12, 18)))
+                using (Pen borderPill = new Pen(neonGreen, 1.15f))
                 {
-                    g.FillRectangle(bgPill, badgeRect);
+                    DrawRoundedRectangle(g, borderPill, bgPill, badgeRect, (int)Math.Round(2.5f * sc));
                 }
-                using (Pen borderPill = new Pen(neonGreen, 1.2f))
-                {
-                    g.DrawRectangle(borderPill, badgeRect);
-                }
-                TextRenderer.DrawText(g, fpsBadge, _fontDfAxis, new Point(bx + (int)Math.Round(3 * sc), by + (int)Math.Round(1.5f * sc)), neonGreen, TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(g, fpsBadge, _fontDfAxis, badgeRect, neonGreen, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
 
                 // Show companion Session Avg badge if separated from live badge
                 if (Stats.AvgFpsHistory != null && Stats.AvgFpsHistory.Count > 0 && sessionAvg > 0)
@@ -1398,8 +1450,8 @@ namespace MiniFanControl
                     {
                         string avgBadge = string.Format("{0} Avg", sessionAvg);
                         Size aSz = TextRenderer.MeasureText(g, avgBadge, _fontDfAxis, new Size(80, 16), TextFormatFlags.NoPadding);
-                        int abw = aSz.Width + (int)Math.Round(6 * sc);
-                        int abx = (int)Math.Round(last.X - abw - 6 * sc);
+                        int abw = aSz.Width + (int)Math.Round(7 * sc);
+                        int abx = (int)Math.Round(last.X - abw - 10 * sc);
                         if (abx < plot.Left + 2) abx = plot.Left + 2;
                         int aby = (int)Math.Round(avgY - bh / 2f);
                         if (aby < plot.Top + 1) aby = plot.Top + 1;
@@ -1407,15 +1459,12 @@ namespace MiniFanControl
                         Rectangle aRect = new Rectangle(abx, aby, abw, bh);
 
                         Color avgCol = xmas ? XmasBlack : Color.FromArgb(0x38, 0xBD, 0xF8);
-                        using (SolidBrush bgPill = new SolidBrush(xmas ? Color.White : Color.FromArgb(225, 10, 14, 20)))
-                        {
-                            g.FillRectangle(bgPill, aRect);
-                        }
+                        using (SolidBrush bgPill = new SolidBrush(xmas ? Color.White : Color.FromArgb(242, 8, 12, 18)))
                         using (Pen borderPill = new Pen(avgCol, 1f) { DashStyle = DashStyle.Dash })
                         {
-                            g.DrawRectangle(borderPill, aRect);
+                            DrawRoundedRectangle(g, borderPill, bgPill, aRect, (int)Math.Round(2.5f * sc));
                         }
-                        TextRenderer.DrawText(g, avgBadge, _fontDfAxis, new Point(abx + (int)Math.Round(3 * sc), aby + (int)Math.Round(1.5f * sc)), avgCol, TextFormatFlags.NoPadding);
+                        TextRenderer.DrawText(g, avgBadge, _fontDfAxis, aRect, avgCol, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
                     }
                 }
             }

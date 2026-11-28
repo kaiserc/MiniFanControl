@@ -40,6 +40,7 @@ namespace MiniFanControl
         private int _hoverMouseX = -1;
         private int _hoverMouseY = -1;
         private int _hoverSampleIdx = -1;
+        private int _hoverPillIdx = -1;
 
         private readonly Rectangle[] _pillRects = new Rectangle[3]; // 0: View Toggle, 1: Reset Peaks, 2: Save PNG
 
@@ -146,11 +147,12 @@ namespace MiniFanControl
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
-            if (_hoverSampleIdx != -1 || _hoverMouseX != -1)
+            if (_hoverSampleIdx != -1 || _hoverMouseX != -1 || _hoverPillIdx != -1)
             {
                 _hoverSampleIdx = -1;
                 _hoverMouseX = -1;
                 _hoverMouseY = -1;
+                _hoverPillIdx = -1;
                 Invalidate();
             }
         }
@@ -159,16 +161,17 @@ namespace MiniFanControl
         {
             base.OnMouseMove(e);
 
-            bool overPill = false;
+            int foundPill = -1;
             for (int i = 0; i < _pillRects.Length; i++)
             {
                 if (_pillRects[i].Width > 0 && _pillRects[i].Contains(e.Location))
                 {
-                    overPill = true;
+                    foundPill = i;
                     break;
                 }
             }
-            Cursor = overPill ? Cursors.Hand : Cursors.Cross;
+            _hoverPillIdx = foundPill;
+            Cursor = foundPill >= 0 ? Cursors.Hand : Cursors.Cross;
 
             _hoverMouseX = e.X;
             _hoverMouseY = e.Y;
@@ -252,6 +255,7 @@ namespace MiniFanControl
                 {
                     if (ResetPeaksRequested != null) ResetPeaksRequested(this, EventArgs.Empty);
                 });
+                Win11VisualStyle.ApplyThemeToMenu(cm, ThemePalette.ResolveFromFlags(IsDarkMode, IsRadeonTheme, IsAfterburnerTheme, IsXmasTheme));
                 cm.Closed += (s, args) => { try { cm.Dispose(); } catch { } };
                 cm.Show(this, e.Location);
                 return;
@@ -440,49 +444,104 @@ namespace MiniFanControl
             Color dimCol = IsDarkMode ? Color.FromArgb(0x94, 0xA3, 0xB8) : Color.FromArgb(0x64, 0x74, 0x8B);
             Color dotCol = isGameActive ? Color.FromArgb(0x22, 0xC5, 0x5E) : (Status.RtssRunning ? Color.FromArgb(0xF5, 0x9E, 0x0B) : Color.FromArgb(0x94, 0xA3, 0xB8));
 
-            // Status dot
+            // 1. Lay out & draw Right-aligned Action Pills FIRST so we know the exact safe boundary (rightLimit)
+            int pillY = 7;
+            int pillH = 22;
+            int rightX = Width - 8;
+
+            string pngTxt = "💾 Snapshot";
+            Size pngSz = TextRenderer.MeasureText(g, pngTxt, FontPill, new Size(120, 20), TextFormatFlags.NoPadding);
+            int pngW = pngSz.Width + 14;
+            rightX -= pngW;
+            _pillRects[2] = new Rectangle(rightX, pillY, pngW, pillH);
+            DrawActionPill(g, _pillRects[2], pngTxt, false, Color.FromArgb(0x22, 0xD3, 0xEE), _hoverPillIdx == 2);
+
+            rightX -= 6;
+            string resetTxt = "↺ Reset";
+            Size resetSz = TextRenderer.MeasureText(g, resetTxt, FontPill, new Size(120, 20), TextFormatFlags.NoPadding);
+            int resetW = resetSz.Width + 14;
+            rightX -= resetW;
+            _pillRects[1] = new Rectangle(rightX, pillY, resetW, pillH);
+            DrawActionPill(g, _pillRects[1], resetTxt, false, Color.FromArgb(0xF5, 0x9E, 0x0B), _hoverPillIdx == 1);
+
+            rightX -= 6;
+            string viewTxt = !SplitView ? "◰ Combined" : (DfCornerInset ? "◰ DF Corner" : (DfZoomedFrametime ? "🔍 DF Zoom" : "◫ Split (DF)"));
+            Size viewSz = TextRenderer.MeasureText(g, viewTxt, FontPill, new Size(150, 20), TextFormatFlags.NoPadding);
+            int viewW = viewSz.Width + 14;
+            rightX -= viewW;
+            _pillRects[0] = new Rectangle(rightX, pillY, viewW, pillH);
+            Color viewAccent = (SplitView && (DfZoomedFrametime || DfCornerInset)) ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.FromArgb(0x38, 0xBD, 0xF8);
+            DrawActionPill(g, _pillRects[0], viewTxt, true, viewAccent, _hoverPillIdx == 0);
+
+            int leftLimit = rightX - 10;
+
+            // 2. Left Status Dot + Title (clamped cleanly before leftLimit so it never overlaps pills)
             using (SolidBrush dotBr = new SolidBrush(dotCol))
             {
                 g.FillEllipse(dotBr, 10, 14, 8, 8);
             }
-            TextRenderer.DrawText(g, gameTag, FontTitle, new Point(22, 10), isGameActive ? textCol : dimCol, TextFormatFlags.NoPadding);
+            int titleAvailW = Math.Max(40, Math.Min(260, leftLimit - 24));
+            Size titleMeasured = TextRenderer.MeasureText(g, gameTag, FontTitle, new Size(titleAvailW, 20), TextFormatFlags.NoPadding);
+            int titleW = Math.Min(titleAvailW, titleMeasured.Width + 2);
+            TextRenderer.DrawText(g, gameTag, FontTitle, new Rectangle(22, 10, titleW, 18), isGameActive ? textCol : dimCol,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
 
-            int x = 22 + TextRenderer.MeasureText(g, gameTag, FontTitle, new Size(300, 20), TextFormatFlags.NoPadding).Width + 14;
+            int x = 22 + titleW + 12;
 
-            // Live FPS & Stats Badges
+            // 3. Live FPS & Stats Badges (only draw each badge if it fits cleanly before leftLimit)
             if (curFps > 0)
             {
-                Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8); // Sky Blue
+                Color fpsCol = Color.FromArgb(0x38, 0xBD, 0xF8);
                 string fpsStr = string.Format("FPS: {0}", curFps);
-                TextRenderer.DrawText(g, fpsStr, FontBadge, new Point(x, 10), fpsCol, TextFormatFlags.NoPadding);
-                x += TextRenderer.MeasureText(g, fpsStr, FontBadge, new Size(120, 20), TextFormatFlags.NoPadding).Width + 10;
+                int wFps = TextRenderer.MeasureText(g, fpsStr, FontBadge, new Size(120, 20), TextFormatFlags.NoPadding).Width;
+                if (x + wFps <= leftLimit)
+                {
+                    TextRenderer.DrawText(g, fpsStr, FontBadge, new Point(x, 10), fpsCol, TextFormatFlags.NoPadding);
+                    x += wFps + 10;
+                }
 
-                Color ftCol = Color.FromArgb(0x22, 0xD3, 0xEE); // Electric Cyan
+                Color ftCol = Color.FromArgb(0x22, 0xD3, 0xEE);
                 string ftStr = string.Format("FT: {0:0.0} ms", curFt);
-                TextRenderer.DrawText(g, ftStr, FontBadge, new Point(x, 10), ftCol, TextFormatFlags.NoPadding);
-                x += TextRenderer.MeasureText(g, ftStr, FontBadge, new Size(120, 20), TextFormatFlags.NoPadding).Width + 10;
+                int wFt = TextRenderer.MeasureText(g, ftStr, FontBadge, new Size(120, 20), TextFormatFlags.NoPadding).Width;
+                if (x + wFt <= leftLimit)
+                {
+                    TextRenderer.DrawText(g, ftStr, FontBadge, new Point(x, 10), ftCol, TextFormatFlags.NoPadding);
+                    x += wFt + 10;
+                }
 
                 if (avgFps > 0)
                 {
                     string avgStr = string.Format("Avg: {0}", avgFps);
-                    TextRenderer.DrawText(g, avgStr, FontTitle, new Point(x, 10), Color.FromArgb(0x93, 0xC5, 0xFD), TextFormatFlags.NoPadding);
-                    x += TextRenderer.MeasureText(g, avgStr, FontTitle, new Size(120, 20), TextFormatFlags.NoPadding).Width + 10;
+                    int wAvg = TextRenderer.MeasureText(g, avgStr, FontTitle, new Size(120, 20), TextFormatFlags.NoPadding).Width;
+                    if (x + wAvg <= leftLimit)
+                    {
+                        TextRenderer.DrawText(g, avgStr, FontTitle, new Point(x, 10), Color.FromArgb(0x93, 0xC5, 0xFD), TextFormatFlags.NoPadding);
+                        x += wAvg + 10;
+                    }
                 }
 
                 if (low01 > 0)
                 {
-                    Color lowCol = Color.FromArgb(0xFB, 0x71, 0x85); // Rose
+                    Color lowCol = Color.FromArgb(0xFB, 0x71, 0x85);
                     string lowStr = string.Format("0.1%: {0}", low01);
-                    TextRenderer.DrawText(g, lowStr, FontTitle, new Point(x, 10), lowCol, TextFormatFlags.NoPadding);
-                    x += TextRenderer.MeasureText(g, lowStr, FontTitle, new Size(120, 20), TextFormatFlags.NoPadding).Width + 10;
+                    int wL01 = TextRenderer.MeasureText(g, lowStr, FontTitle, new Size(120, 20), TextFormatFlags.NoPadding).Width;
+                    if (x + wL01 <= leftLimit)
+                    {
+                        TextRenderer.DrawText(g, lowStr, FontTitle, new Point(x, 10), lowCol, TextFormatFlags.NoPadding);
+                        x += wL01 + 10;
+                    }
                 }
 
                 if (low1 > 0)
                 {
-                    Color low1Col = Color.FromArgb(0xFB, 0x92, 0x3C); // Amber Orange
+                    Color low1Col = Color.FromArgb(0xFB, 0x92, 0x3C);
                     string low1Str = string.Format("1%: {0}", low1);
-                    TextRenderer.DrawText(g, low1Str, FontTitle, new Point(x, 10), low1Col, TextFormatFlags.NoPadding);
-                    x += TextRenderer.MeasureText(g, low1Str, FontTitle, new Size(120, 20), TextFormatFlags.NoPadding).Width + 10;
+                    int wL1 = TextRenderer.MeasureText(g, low1Str, FontTitle, new Size(120, 20), TextFormatFlags.NoPadding).Width;
+                    if (x + wL1 <= leftLimit)
+                    {
+                        TextRenderer.DrawText(g, low1Str, FontTitle, new Point(x, 10), low1Col, TextFormatFlags.NoPadding);
+                        x += wL1 + 10;
+                    }
                 }
 
                 if (Status.DisplayLatencyMs > 0.0)
@@ -493,63 +552,36 @@ namespace MiniFanControl
                     string latStr = string.Format("Lat: {0:0.0}ms", Status.DisplayLatencyMs);
                     if (!string.IsNullOrEmpty(Status.PresentFlipMode))
                         latStr += " (" + Status.PresentFlipMode + ")";
-                    TextRenderer.DrawText(g, latStr, FontTitle, new Point(x, 10), latCol, TextFormatFlags.NoPadding);
-                    x += TextRenderer.MeasureText(g, latStr, FontTitle, new Size(180, 20), TextFormatFlags.NoPadding).Width + 10;
+                    int wLat = TextRenderer.MeasureText(g, latStr, FontTitle, new Size(180, 20), TextFormatFlags.NoPadding).Width;
+                    if (x + wLat <= leftLimit)
+                    {
+                        TextRenderer.DrawText(g, latStr, FontTitle, new Point(x, 10), latCol, TextFormatFlags.NoPadding);
+                    }
                 }
             }
-            else
+            else if (leftLimit - x >= 60)
             {
-                TextRenderer.DrawText(g, "(Waiting for 3D Application / RTSS Frame Stream)", FontAxis, new Point(x, 12), dimCol, TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(g, "(Waiting for 3D Application / RTSS Frame Stream)", FontAxis, new Rectangle(x, 11, leftLimit - x, 16), dimCol,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
             }
-
-            // Right-aligned Action Pills
-            int pillY = 7;
-            int pillH = 22;
-            int rightX = Width - 8;
-
-            // 1. Save PNG Pill
-            string pngTxt = "💾 Snapshot";
-            Size pngSz = TextRenderer.MeasureText(g, pngTxt, FontPill, new Size(120, 20), TextFormatFlags.NoPadding);
-            int pngW = pngSz.Width + 14;
-            rightX -= pngW;
-            _pillRects[2] = new Rectangle(rightX, pillY, pngW, pillH);
-            DrawActionPill(g, _pillRects[2], pngTxt, false, Color.FromArgb(0x22, 0xD3, 0xEE));
-
-            // 2. Reset Peaks Pill
-            rightX -= 6;
-            string resetTxt = "↺ Reset";
-            Size resetSz = TextRenderer.MeasureText(g, resetTxt, FontPill, new Size(120, 20), TextFormatFlags.NoPadding);
-            int resetW = resetSz.Width + 14;
-            rightX -= resetW;
-            _pillRects[1] = new Rectangle(rightX, pillY, resetW, pillH);
-            DrawActionPill(g, _pillRects[1], resetTxt, false, Color.FromArgb(0xF5, 0x9E, 0x0B));
-
-            // 3. View Mode Toggle Pill
-            rightX -= 6;
-            string viewTxt = !SplitView ? "◰ Combined" : (DfCornerInset ? "◰ DF Corner" : (DfZoomedFrametime ? "🔍 DF Zoom" : "◫ Split (DF)"));
-            Size viewSz = TextRenderer.MeasureText(g, viewTxt, FontPill, new Size(150, 20), TextFormatFlags.NoPadding);
-            int viewW = viewSz.Width + 14;
-            rightX -= viewW;
-            _pillRects[0] = new Rectangle(rightX, pillY, viewW, pillH);
-            Color viewAccent = (SplitView && (DfZoomedFrametime || DfCornerInset)) ? Color.FromArgb(0x22, 0xD3, 0xEE) : Color.FromArgb(0x38, 0xBD, 0xF8);
-            DrawActionPill(g, _pillRects[0], viewTxt, true, viewAccent);
         }
 
-        private void DrawActionPill(Graphics g, Rectangle rect, string text, bool isHighlighted, Color accent)
+        private void DrawActionPill(Graphics g, Rectangle rect, string text, bool isHighlighted, Color accent, bool isHovered = false)
         {
             Color pillBg = isHighlighted
-                ? Color.FromArgb(40, accent.R, accent.G, accent.B)
-                : (IsDarkMode ? Color.FromArgb(0x18, 0x18, 0x25) : Color.FromArgb(0xE2, 0xE8, 0xF0));
+                ? Color.FromArgb(isHovered ? 68 : 42, accent.R, accent.G, accent.B)
+                : (isHovered
+                    ? Color.FromArgb(IsDarkMode ? 45 : 32, accent.R, accent.G, accent.B)
+                    : (IsDarkMode ? Color.FromArgb(0x18, 0x18, 0x25) : Color.FromArgb(0xE2, 0xE8, 0xF0)));
 
-            Color pillBorder = isHighlighted ? accent : (IsDarkMode ? Color.FromArgb(0x45, 0x47, 0x5A) : Color.FromArgb(0xCB, 0xD5, 0xE1));
-            Color pillText = isHighlighted ? (IsDarkMode ? Color.White : Color.Black) : (IsDarkMode ? Color.FromArgb(0xCD, 0xD6, 0xF4) : Color.FromArgb(0x33, 0x41, 0x55));
+            Color pillBorder = (isHighlighted || isHovered) ? accent : (IsDarkMode ? Color.FromArgb(0x45, 0x47, 0x5A) : Color.FromArgb(0xCB, 0xD5, 0xE1));
+            Color pillText = (isHighlighted || isHovered) ? (IsDarkMode ? Color.White : Color.Black) : (IsDarkMode ? Color.FromArgb(0xCD, 0xD6, 0xF4) : Color.FromArgb(0x33, 0x41, 0x55));
 
             using (SolidBrush bgBr = new SolidBrush(pillBg))
-            using (Pen borderPen = new Pen(pillBorder, 1f))
             {
-                g.FillRectangle(bgBr, rect);
-                g.DrawRectangle(borderPen, rect);
+                Win11VisualStyle.FillRoundedRect(g, bgBr, rect, 4);
             }
+            Win11VisualStyle.DrawRoundedCardBorder(g, rect, pillBorder, 4, (isHighlighted || isHovered) ? 1.3f : 1f);
             TextRenderer.DrawText(g, text, FontPill, rect, pillText, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
         }
 

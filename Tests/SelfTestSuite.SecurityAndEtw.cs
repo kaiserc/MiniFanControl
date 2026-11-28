@@ -2089,6 +2089,56 @@ namespace MiniFanControl
                 "Independent APU & Sys Fan Cooldown Hysteresis (NVMe Rise Not Masked by APU Dip)",
                 splitHystDetail);
 
+            // 112. ETW Kernel Event-ID Filter ABI & WebView2/AI Host Process Filtering
+            bool etwKernelFilterOk = false;
+            string etwKernelFilterDetail = "";
+            try
+            {
+                int descSize = Marshal.SizeOf(typeof(EtwLatencyMonitor.EVENT_FILTER_DESCRIPTOR));
+                int paramsSize = Marshal.SizeOf(typeof(EtwLatencyMonitor.ENABLE_TRACE_PARAMETERS));
+                int expectedParamsSize = (IntPtr.Size == 8) ? 48 : 36;
+                int filterDescOffset = Marshal.OffsetOf(typeof(EtwLatencyMonitor.ENABLE_TRACE_PARAMETERS), "EnableFilterDesc").ToInt32();
+                int expectedOffset = (IntPtr.Size == 8) ? 32 : 28;
+                bool abiOk = (descSize == 16) && (paramsSize == expectedParamsSize) && (filterDescOffset == expectedOffset);
+
+                byte[] dxgBuf = EtwLatencyMonitor.BuildEventIdFilterBuffer(EtwLatencyMonitor.DxgKrnlTrackedEventIds);
+                bool headerOk = dxgBuf != null
+                    && dxgBuf.Length == 4 + EtwLatencyMonitor.DxgKrnlTrackedEventIds.Length * 2
+                    && dxgBuf[0] == 1
+                    && dxgBuf[1] == 0
+                    && BitConverter.ToUInt16(dxgBuf, 2) == (ushort)EtwLatencyMonitor.DxgKrnlTrackedEventIds.Length
+                    && BitConverter.ToUInt16(dxgBuf, 4) == EtwPresentTracker.DXGKRNL_VSYNC_DPC;
+
+                bool idsMatch = true;
+                for (int i = 0; i < EtwLatencyMonitor.DxgiTrackedEventIds.Length; i++)
+                {
+                    if (!EtwLatencyMonitor.IsRelevantEventId(true, EtwLatencyMonitor.DxgiTrackedEventIds[i]))
+                        idsMatch = false;
+                }
+                for (int i = 0; i < EtwLatencyMonitor.DxgKrnlTrackedEventIds.Length; i++)
+                {
+                    if (!EtwLatencyMonitor.IsRelevantEventId(false, EtwLatencyMonitor.DxgKrnlTrackedEventIds[i]))
+                        idsMatch = false;
+                }
+                bool noisyEventsRejected = !EtwLatencyMonitor.IsRelevantEventId(false, 1)
+                    && !EtwLatencyMonitor.IsRelevantEventId(false, 42)
+                    && !EtwLatencyMonitor.IsRelevantEventId(false, 100)
+                    && !EtwLatencyMonitor.IsRelevantEventId(true, 1);
+
+                bool aiUiIgnored = FpsMonitor.IsIgnoredProcess("msedgewebview2.exe")
+                    && FpsMonitor.IsIgnoredProcess("unsloth-studio.exe")
+                    && FpsMonitor.IsIgnoredProcess("unsloth.exe")
+                    && !FpsMonitor.IsIgnoredProcess("Cyberpunk2077.exe");
+
+                etwKernelFilterOk = abiOk && headerOk && idsMatch && noisyEventsRejected && aiUiIgnored;
+                etwKernelFilterDetail = string.Format("Desc={0}B, Params={1}B(Off={2}), Buf={3}B, Ids={4}, NoiseRej={5}, AiIgnored={6}",
+                    descSize, paramsSize, filterDescOffset, dxgBuf != null ? dxgBuf.Length : 0, idsMatch, noisyEventsRejected, aiUiIgnored);
+            }
+            catch (Exception ex) { etwKernelFilterDetail = ex.Message; }
+            Check(etwKernelFilterOk,
+                "ETW Kernel Event-ID Filter ABI & WebView2/AI Host Process Filtering",
+                etwKernelFilterDetail);
+
         }
     }
 }

@@ -83,6 +83,8 @@ namespace MiniFanControl
             "ollama_llama_server.exe",
             "llama-server.exe",
             "lm studio.exe",
+            "unsloth-studio.exe",
+            "unsloth.exe",
             "koboldcpp.exe",
             "comfyui.exe"
         };

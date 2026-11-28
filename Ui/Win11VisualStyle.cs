@@ -24,6 +24,242 @@ namespace MiniFanControl
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+        private static extern int SetWindowTheme(IntPtr hwnd, string pszSubAppName, string pszSubIdList);
+
+        /// <summary>
+        /// Applies native Windows 10/11 dark scrollbars and explorer chrome to scrollable panels, sliders, and inputs.
+        /// Safely no-ops on unsupported OS builds or High Contrast mode.
+        /// </summary>
+        public static void ApplyDarkExplorerTheme(Control ctrl, bool isDark)
+        {
+            if (ctrl == null || ctrl.IsDisposed || SystemInformation.HighContrast) return;
+            Action apply = () =>
+            {
+                if (ctrl.IsDisposed || !ctrl.IsHandleCreated) return;
+                try
+                {
+                    SetWindowTheme(ctrl.Handle, isDark ? "DarkMode_Explorer" : "Explorer", null);
+                }
+                catch { }
+            };
+
+            if (ctrl.IsHandleCreated)
+            {
+                apply();
+            }
+            else
+            {
+                EventHandler onCreated = null;
+                onCreated = (s, e) =>
+                {
+                    ctrl.HandleCreated -= onCreated;
+                    apply();
+                };
+                ctrl.HandleCreated += onCreated;
+            }
+        }
+
+        /// <summary>
+        /// Applies native Windows 10/11 dark dropdown chrome ("DarkMode_CFD") to a WinForms ComboBox.
+        /// </summary>
+        public static void ApplyDarkComboTheme(ComboBox cb, ThemePalette palette)
+        {
+            if (cb == null || cb.IsDisposed || palette == null) return;
+            if (palette.IsHighContrast)
+            {
+                cb.BackColor = SystemColors.Window;
+                cb.ForeColor = SystemColors.WindowText;
+                return;
+            }
+
+            cb.FlatStyle = FlatStyle.Standard;
+            cb.BackColor = palette.Surface2;
+            cb.ForeColor = palette.Text;
+
+            Action applyTheme = () =>
+            {
+                if (cb.IsDisposed || !cb.IsHandleCreated) return;
+                try
+                {
+                    SetWindowTheme(cb.Handle, palette.IsDark ? "DarkMode_CFD" : "Explorer", null);
+                }
+                catch { }
+            };
+
+            if (cb.IsHandleCreated)
+            {
+                applyTheme();
+            }
+            else
+            {
+                EventHandler onCreated = null;
+                onCreated = (s, e) =>
+                {
+                    cb.HandleCreated -= onCreated;
+                    applyTheme();
+                };
+                cb.HandleCreated += onCreated;
+            }
+            cb.Invalidate();
+        }
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Control, object> _themedControlHooks =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<Control, object>();
+
+        /// <summary>
+        /// Attaches a theme-aware owner-draw renderer to a DropDownList ComboBox so dark themes never flash stark white items.
+        /// Safe to call repeatedly; hooks are attached once per ComboBox instance.
+        /// </summary>
+        public static void EnableThemedComboBox(ComboBox cb, Func<ThemePalette> paletteProvider)
+        {
+            if (cb == null || paletteProvider == null) return;
+            object existing;
+            if (_themedControlHooks.TryGetValue(cb, out existing)) return;
+            _themedControlHooks.Add(cb, new object());
+
+            cb.FlatStyle = FlatStyle.Standard;
+            cb.DrawMode = DrawMode.OwnerDrawFixed;
+            if (cb.ItemHeight < 18) cb.ItemHeight = 18;
+            cb.DrawItem += (s, e) =>
+            {
+                if (e.Index < 0 || e.Index >= cb.Items.Count) return;
+                ThemePalette pal = paletteProvider();
+                if (pal == null || pal.IsHighContrast)
+                {
+                    e.DrawBackground();
+                    string txtHc = cb.GetItemText(cb.Items[e.Index]);
+                    TextRenderer.DrawText(e.Graphics, txtHc, cb.Font, e.Bounds,
+                        (e.State & DrawItemState.Selected) != 0 ? SystemColors.HighlightText : SystemColors.WindowText,
+                        TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                    return;
+                }
+
+                bool isEditBox = (e.State & DrawItemState.ComboBoxEdit) != 0;
+                bool isSelected = !isEditBox && (e.State & DrawItemState.Selected) != 0;
+                bool isDisabled = !cb.Enabled;
+
+                Color itemBg = isEditBox
+                    ? pal.Surface2
+                    : (isSelected ? Blend(pal.Surface, pal.Accent, pal.IsDark ? 0.30f : 0.18f) : pal.Surface);
+                Color itemFg = isDisabled
+                    ? pal.TextDim
+                    : (isSelected ? (pal.IsDark ? Color.White : pal.Text) : pal.Text);
+
+                using (SolidBrush bgBr = new SolidBrush(itemBg))
+                {
+                    e.Graphics.FillRectangle(bgBr, e.Bounds);
+                }
+
+                if (isSelected)
+                {
+                    using (SolidBrush barBr = new SolidBrush(pal.Accent))
+                    {
+                        e.Graphics.FillRectangle(barBr, e.Bounds.X, e.Bounds.Y + 2, 3, Math.Max(4, e.Bounds.Height - 4));
+                    }
+                }
+
+                Rectangle textRect = new Rectangle(e.Bounds.X + (isEditBox ? 4 : 7), e.Bounds.Y, Math.Max(10, e.Bounds.Width - 10), e.Bounds.Height);
+                string txt = cb.GetItemText(cb.Items[e.Index]);
+                TextRenderer.DrawText(e.Graphics, txt, cb.Font, textRect, itemFg,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            };
+        }
+
+        private sealed class CheckBoxHoverState
+        {
+            public bool Hovered;
+        }
+
+        /// <summary>
+        /// Replaces stark white Win32 unchecked squares and unreadable etched disabled text with crisp Win11-styled checkboxes.
+        /// Preserves full native keyboard, accessibility, and High Contrast behavior.
+        /// </summary>
+        public static void EnableThemedCheckBox(CheckBox cb, Func<ThemePalette> paletteProvider)
+        {
+            if (cb == null || paletteProvider == null) return;
+            object existing;
+            if (_themedControlHooks.TryGetValue(cb, out existing)) return;
+            CheckBoxHoverState state = new CheckBoxHoverState();
+            _themedControlHooks.Add(cb, state);
+
+            cb.MouseEnter += (s, e) => { state.Hovered = true; cb.Invalidate(); };
+            cb.MouseLeave += (s, e) => { state.Hovered = false; cb.Invalidate(); };
+            cb.GotFocus += (s, e) => cb.Invalidate();
+            cb.LostFocus += (s, e) => cb.Invalidate();
+
+            cb.Paint += (s, e) =>
+            {
+                if (SystemInformation.HighContrast) return;
+                ThemePalette pal = paletteProvider();
+                if (pal == null || pal.IsHighContrast) return;
+
+                Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+                using (SolidBrush bgBr = new SolidBrush(cb.BackColor))
+                {
+                    g.FillRectangle(bgBr, cb.ClientRectangle);
+                }
+
+                const int boxSize = 14;
+                int boxX = 1;
+                int boxY = Math.Max(1, (cb.Height - boxSize) / 2);
+                Rectangle boxRect = new Rectangle(boxX, boxY, boxSize, boxSize);
+
+                bool enabled = cb.Enabled;
+                bool isChecked = cb.Checked;
+
+                if (isChecked)
+                {
+                    Color fillCol = enabled ? pal.Accent : Blend(pal.Surface2, pal.Accent, 0.40f);
+                    using (SolidBrush fillBr = new SolidBrush(fillCol))
+                    {
+                        FillRoundedRect(g, fillBr, boxRect, 3);
+                    }
+                    Color checkCol = enabled ? pal.ActiveFg : Blend(pal.TextDim, pal.Surface, 0.25f);
+                    using (Pen checkPen = new Pen(checkCol, 1.85f))
+                    {
+                        checkPen.StartCap = LineCap.Round;
+                        checkPen.EndCap = LineCap.Round;
+                        checkPen.LineJoin = LineJoin.Round;
+                        g.DrawLines(checkPen, new PointF[]
+                        {
+                            new PointF(boxX + 3.2f, boxY + 7.2f),
+                            new PointF(boxX + 5.9f, boxY + 10.0f),
+                            new PointF(boxX + 10.8f, boxY + 4.2f)
+                        });
+                    }
+                }
+                else
+                {
+                    Color wellBg = enabled
+                        ? (state.Hovered ? Blend(pal.TileBg, pal.Accent, pal.IsDark ? 0.16f : 0.10f) : pal.TileBg)
+                        : Blend(pal.Surface, pal.TileBg, 0.50f);
+                    Color bdrCol = !enabled
+                        ? Blend(pal.Border, pal.Surface, 0.40f)
+                        : (state.Hovered || cb.Focused ? pal.Accent : Blend(pal.Border, pal.TextDim, pal.IsDark ? 0.35f : 0.20f));
+                    using (SolidBrush wellBr = new SolidBrush(wellBg))
+                    {
+                        FillRoundedRect(g, wellBr, boxRect, 3);
+                    }
+                    DrawRoundedCardBorder(g, new Rectangle(boxX, boxY, boxSize + 1, boxSize + 1), bdrCol, 3, (state.Hovered || cb.Focused) ? 1.25f : 1f);
+                }
+
+                if (cb.Focused)
+                {
+                    DrawRoundedCardBorder(g, new Rectangle(0, Math.Max(0, boxY - 1), boxSize + 3, boxSize + 3),
+                        Color.FromArgb(140, pal.Accent), 4, 1f);
+                }
+
+                Color textCol = enabled ? pal.Text : Blend(pal.TextDim, pal.Surface, 0.32f);
+                Rectangle textRect = new Rectangle(boxX + boxSize + 6, 0, Math.Max(8, cb.Width - (boxX + boxSize + 7)), cb.Height);
+                TextRenderer.DrawText(g, cb.Text, cb.Font, textRect, textCol,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            };
+        }
+
         /// <summary>
         /// Converts a System.Drawing.Color to a Win32 COLORREF (0x00BBGGRR).
         /// </summary>
@@ -139,6 +375,27 @@ namespace MiniFanControl
         }
 
         /// <summary>
+        /// Fills a rounded rectangle smoothly using anti-aliased GDI+.
+        /// </summary>
+        public static void FillRoundedRect(Graphics g, Brush brush, Rectangle bounds, int radius)
+        {
+            if (g == null || brush == null || bounds.Width <= 0 || bounds.Height <= 0) return;
+            SmoothingMode prev = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            try
+            {
+                using (GraphicsPath path = CreateRoundedRectPath(bounds, radius))
+                {
+                    g.FillPath(brush, path);
+                }
+            }
+            finally
+            {
+                g.SmoothingMode = prev;
+            }
+        }
+
+        /// <summary>
         /// Applies crisp Win11-style hairline border and hover/pressed feedback to a flat WinForms button.
         /// </summary>
         public static void StyleModernButton(Button btn, Color bg, Color fg, Color border, bool isDark)
@@ -151,6 +408,162 @@ namespace MiniFanControl
             btn.FlatAppearance.BorderColor = border;
             btn.FlatAppearance.MouseOverBackColor = Blend(bg, isDark ? Color.White : Color.Black, isDark ? 0.11f : 0.06f);
             btn.FlatAppearance.MouseDownBackColor = Blend(bg, isDark ? Color.White : Color.Black, isDark ? 0.19f : 0.12f);
+        }
+
+        /// <summary>
+        /// Applies cohesive active/inactive pill/segment styling with crisp borders and hover states.
+        /// </summary>
+        public static void StylePillButton(Button btn, ThemePalette palette, bool active, Color? activeAccent = null, Color? activeFgOverride = null)
+        {
+            if (btn == null || palette == null) return;
+            if (palette.IsHighContrast)
+            {
+                btn.FlatStyle = FlatStyle.Flat;
+                btn.BackColor = active ? SystemColors.Highlight : SystemColors.Control;
+                btn.ForeColor = active ? SystemColors.HighlightText : SystemColors.ControlText;
+                btn.FlatAppearance.BorderSize = 1;
+                btn.FlatAppearance.BorderColor = SystemColors.WindowFrame;
+                return;
+            }
+
+            Color accent = activeAccent.HasValue ? activeAccent.Value : palette.Accent;
+            Color fg = active ? (activeFgOverride.HasValue ? activeFgOverride.Value : palette.ActiveFg) : palette.Text;
+            Color bg = active ? accent : palette.Surface2;
+            Color bdr = active ? Blend(accent, palette.IsDark ? Color.White : Color.Black, 0.20f) : palette.Border;
+            StyleModernButton(btn, bg, fg, bdr, palette.IsDark || active);
+        }
+
+        /// <summary>
+        /// Renders a 12x12 rounded color swatch bitmap for theme selector menus.
+        /// </summary>
+        public static Bitmap CreateColorSwatch(Color fill, Color accent, Color border)
+        {
+            Bitmap bmp = new Bitmap(14, 14);
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.Clear(Color.Transparent);
+                Rectangle outer = new Rectangle(1, 1, 11, 11);
+                using (SolidBrush br = new SolidBrush(fill))
+                {
+                    FillRoundedRect(g, br, outer, 3);
+                }
+                using (SolidBrush accBr = new SolidBrush(accent))
+                {
+                    g.FillEllipse(accBr, 4, 4, 6, 6);
+                }
+                DrawRoundedCardBorder(g, new Rectangle(1, 1, 12, 12), border, 3, 1f);
+            }
+            return bmp;
+        }
+
+        /// <summary>
+        /// Applies a matching dark/light/themed renderer to ContextMenuStrip popups (replaces stark white WinForms default).
+        /// </summary>
+        public static void ApplyThemeToMenu(ContextMenuStrip menu, ThemePalette palette)
+        {
+            if (menu == null || palette == null || palette.IsHighContrast) return;
+            menu.Renderer = new ThemedToolStripRenderer(palette);
+            menu.BackColor = palette.Surface;
+            menu.ForeColor = palette.Text;
+            ApplyMenuItemColors(menu.Items, palette);
+        }
+
+        private static void ApplyMenuItemColors(ToolStripItemCollection items, ThemePalette palette)
+        {
+            if (items == null) return;
+            for (int i = 0; i < items.Count; i++)
+            {
+                ToolStripItem item = items[i];
+                item.BackColor = palette.Surface;
+                item.ForeColor = palette.Text;
+                ToolStripMenuItem mi = item as ToolStripMenuItem;
+                if (mi != null && mi.HasDropDownItems)
+                {
+                    mi.DropDown.BackColor = palette.Surface;
+                    mi.DropDown.ForeColor = palette.Text;
+                    ApplyMenuItemColors(mi.DropDownItems, palette);
+                }
+            }
+        }
+
+        private sealed class ThemedColorTable : ProfessionalColorTable
+        {
+            private readonly ThemePalette _p;
+            private readonly Color _hover;
+
+            public ThemedColorTable(ThemePalette p)
+            {
+                _p = p;
+                _hover = Blend(p.Surface, p.Accent, p.IsDark ? 0.24f : 0.14f);
+            }
+
+            public override Color ToolStripDropDownBackground { get { return _p.Surface; } }
+            public override Color ImageMarginGradientBegin { get { return _p.Surface; } }
+            public override Color ImageMarginGradientMiddle { get { return _p.Surface; } }
+            public override Color ImageMarginGradientEnd { get { return _p.Surface; } }
+            public override Color MenuBorder { get { return _p.Border; } }
+            public override Color MenuItemBorder { get { return Blend(_p.Border, _p.Accent, 0.55f); } }
+            public override Color MenuItemSelected { get { return _hover; } }
+            public override Color MenuItemSelectedGradientBegin { get { return _hover; } }
+            public override Color MenuItemSelectedGradientEnd { get { return _hover; } }
+            public override Color MenuItemPressedGradientBegin { get { return _hover; } }
+            public override Color MenuItemPressedGradientEnd { get { return _hover; } }
+            public override Color SeparatorDark { get { return _p.Border; } }
+            public override Color SeparatorLight { get { return _p.Surface; } }
+            public override Color CheckBackground { get { return Blend(_p.Surface2, _p.Accent, 0.35f); } }
+            public override Color CheckSelectedBackground { get { return Blend(_p.Surface2, _p.Accent, 0.45f); } }
+            public override Color CheckPressedBackground { get { return Blend(_p.Surface2, _p.Accent, 0.50f); } }
+        }
+
+        private sealed class ThemedToolStripRenderer : ToolStripProfessionalRenderer
+        {
+            private readonly ThemePalette _p;
+
+            public ThemedToolStripRenderer(ThemePalette p) : base(new ThemedColorTable(p))
+            {
+                _p = p;
+                RoundedEdges = false;
+            }
+
+            protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+            {
+                e.TextColor = e.Item.Enabled ? _p.Text : _p.TextDim;
+                base.OnRenderItemText(e);
+            }
+
+            protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
+            {
+                e.ArrowColor = _p.TextDim;
+                base.OnRenderArrow(e);
+            }
+
+            protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
+            {
+                Rectangle r = new Rectangle(e.ImageRectangle.X + 2, e.ImageRectangle.Y + 2, e.ImageRectangle.Width - 4, e.ImageRectangle.Height - 4);
+                using (SolidBrush bg = new SolidBrush(Blend(_p.Surface2, _p.Accent, 0.28f)))
+                {
+                    FillRoundedRect(e.Graphics, bg, r, 3);
+                }
+                SmoothingMode prev = e.Graphics.SmoothingMode;
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                try
+                {
+                    using (Pen checkPen = new Pen(_p.Accent, 1.8f))
+                    {
+                        checkPen.StartCap = LineCap.Round;
+                        checkPen.EndCap = LineCap.Round;
+                        int cx = r.X + r.Width / 2;
+                        int cy = r.Y + r.Height / 2;
+                        e.Graphics.DrawLine(checkPen, cx - 3, cy, cx - 1, cy + 3);
+                        e.Graphics.DrawLine(checkPen, cx - 1, cy + 3, cx + 4, cy - 3);
+                    }
+                }
+                finally
+                {
+                    e.Graphics.SmoothingMode = prev;
+                }
+            }
         }
 
         /// <summary>

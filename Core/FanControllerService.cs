@@ -43,6 +43,8 @@ namespace MiniFanControl
         private int _refreshIntervalMs = 1000;
         private long _lastWorkerSampleUtcTicks = DateTime.UtcNow.Ticks;
 
+        private bool _biosAutoHandsOff = false;
+
         private Thread _hwThread;
         private volatile bool _hwThreadRunning;
         private volatile bool _hwWorkerPaused;
@@ -71,6 +73,11 @@ namespace MiniFanControl
                 try { _lastStatus = _demo.GetStatus(); }
                 catch (Exception ex) { WatchdogSupervisor.LogWatchdogEvent("Demo initial status read failed: " + ex.Message); }
             }
+        }
+
+        public bool IsBiosAutoControlActive
+        {
+            get { lock (_stateLock) return _biosAutoHandsOff; }
         }
 
         public bool DemoMode
@@ -216,6 +223,7 @@ namespace MiniFanControl
             if (profile == null) return;
             lock (_stateLock)
             {
+                _biosAutoHandsOff = false;
                 if (editSys)
                 {
                     _sysProfile = profile;
@@ -370,6 +378,7 @@ namespace MiniFanControl
             {
                 if (_readOnlyFailsafeLatched) return false;
                 demo = _demoMode;
+                if (appliedPct > 0) _biosAutoHandsOff = false;
                 if (fanId == 1)
                 {
                     prevPct = _apuManualPct;
@@ -432,12 +441,8 @@ namespace MiniFanControl
                 _lastAppliedApuPct = -1;
                 _lastAppliedSysPct = -1;
                 _lastAppliedEcMode = -1;
-                _biosPowerModeOverride = 0;
-                if (_builtInProfiles != null && _builtInProfiles.Length > 0)
-                {
-                    _apuProfile = _builtInProfiles[0];
-                    _sysProfile = _builtInProfiles[0];
-                }
+                _biosPowerModeOverride = -1;
+                _biosAutoHandsOff = true;
             }
 
             if (IsInherentlyReadOnly)
@@ -561,6 +566,7 @@ namespace MiniFanControl
             bool emergState;
             bool latched;
             bool latchedAutoRestored;
+            bool biosAutoHandsOff;
             DateTime lastLatchedRetryUtc;
             int lastApuPct;
             int lastSysPct;
@@ -583,6 +589,7 @@ namespace MiniFanControl
                 emergState = _emergencyThermalActive;
                 latched = _readOnlyFailsafeLatched;
                 latchedAutoRestored = _latchedAutoRestored;
+                biosAutoHandsOff = _biosAutoHandsOff;
                 lastLatchedRetryUtc = _lastLatchedAutoRetryUtc;
                 lastApuPct = _lastAppliedApuPct;
                 lastSysPct = _lastAppliedSysPct;
@@ -659,6 +666,14 @@ namespace MiniFanControl
                         return true;
                     }
                 }
+                return false;
+            }
+
+            if (biosAutoHandsOff)
+            {
+                // User explicitly restored BIOS Auto control — remain hands-off so we never overwrite
+                // the motherboard's own BIOS fan curve or custom SmartGuardian settings until the user
+                // chooses a curve or manual slider. (Emergency >= 90°C tripwire above still protects silicon.)
                 return false;
             }
 
@@ -976,7 +991,7 @@ namespace MiniFanControl
 
                         int apuTemp = Math.Max(st.CpuTemp, st.GpuTemp);
                         bool hwChanged = EvaluateAndApplyFanProfiles(apuTemp);
-                        if (hwChanged)
+                        if (hwChanged && (demo || _hw == null || _hw.IsSimulatedMode || pollIntervalMs > 250))
                         {
                             st = demo ? _demo.GetStatus() : _hw.GetStatus();
                             lock (_stateLock) { _lastStatus = st; }

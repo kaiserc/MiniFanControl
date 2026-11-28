@@ -50,6 +50,7 @@ namespace MiniFanControl
         public bool ShowSysRpm = true;
         public bool AutoScale = true;
         public bool UseFahrenheit = false;
+        public bool IsPaused = false;
         public bool ShowRamPower { get { return ShowRam; } set { ShowRam = value; } }
 
         public event EventHandler ResetPeaksRequested;
@@ -58,7 +59,34 @@ namespace MiniFanControl
 
         private int _hoverSampleIdx = -1;
         private int _hoverMouseX = -1;
-        private readonly Rectangle[] _pillRects = new Rectangle[12];
+        private int _hoverPillIdx = -1;
+        private readonly Rectangle[] _pillRects = new Rectangle[15]; // 0..8: metrics, 9: AutoZoom, 10: Reset, 11: Pause, 12: All, 13: Temps, 14: Cool
+        private TelemetrySessionStats _pausedSnapshot;
+
+        private static TelemetrySessionStats CaptureSnapshot(TelemetrySessionStats src)
+        {
+            if (src == null) return null;
+            TelemetrySessionStats snap = new TelemetrySessionStats();
+            if (src.CpuHistory != null) snap.CpuHistory.AddRange(src.CpuHistory);
+            if (src.GpuHistory != null) snap.GpuHistory.AddRange(src.GpuHistory);
+            if (src.RamTempHistory != null) snap.RamTempHistory.AddRange(src.RamTempHistory);
+            if (src.RamPowerHistory != null) snap.RamPowerHistory.AddRange(src.RamPowerHistory);
+            if (src.RamLoadHistory != null) snap.RamLoadHistory.AddRange(src.RamLoadHistory);
+            if (src.FabricClockHistory != null) snap.FabricClockHistory.AddRange(src.FabricClockHistory);
+            if (src.NvmeHistory != null) snap.NvmeHistory.AddRange(src.NvmeHistory);
+            if (src.PowerHistory != null) snap.PowerHistory.AddRange(src.PowerHistory);
+            if (src.AmbientHistory != null) snap.AmbientHistory.AddRange(src.AmbientHistory);
+            if (src.Fan1RpmHistory != null) snap.Fan1RpmHistory.AddRange(src.Fan1RpmHistory);
+            if (src.Fan2RpmHistory != null) snap.Fan2RpmHistory.AddRange(src.Fan2RpmHistory);
+            return snap;
+        }
+
+        private void TogglePause()
+        {
+            IsPaused = !IsPaused;
+            _pausedSnapshot = IsPaused ? CaptureSnapshot(Stats) : null;
+            Invalidate();
+        }
 
         private static readonly Font AxisFont = new Font("Segoe UI", 7.0f, FontStyle.Regular);
         private static readonly Font PillFontBold = new Font("Segoe UI", 7.25f, FontStyle.Bold);
@@ -86,7 +114,14 @@ namespace MiniFanControl
             base.OnKeyDown(e);
             if (e.KeyCode == Keys.R && ResetPeaksRequested != null)
             {
+                IsPaused = false;
+                _pausedSnapshot = null;
                 ResetPeaksRequested(this, EventArgs.Empty);
+                e.Handled = true;
+            }
+            else if (e.KeyCode == Keys.P || e.KeyCode == Keys.Space)
+            {
+                TogglePause();
                 e.Handled = true;
             }
         }
@@ -102,43 +137,45 @@ namespace MiniFanControl
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
-            if (_hoverSampleIdx != -1)
-            {
-                _hoverSampleIdx = -1;
-                _hoverMouseX = -1;
-                Invalidate();
-            }
+            bool needRepaint = (_hoverSampleIdx != -1 || _hoverPillIdx != -1);
+            _hoverSampleIdx = -1;
+            _hoverMouseX = -1;
+            _hoverPillIdx = -1;
+            if (needRepaint) Invalidate();
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-            bool overPill = false;
+            int foundPill = -1;
             for (int i = 0; i < _pillRects.Length; i++)
             {
                 if (_pillRects[i].Width > 0 && _pillRects[i].Contains(e.Location))
                 {
-                    overPill = true;
+                    foundPill = i;
                     break;
                 }
             }
-            Cursor = overPill ? Cursors.Hand : Cursors.Cross;
+            bool pillChanged = (foundPill != _hoverPillIdx);
+            _hoverPillIdx = foundPill;
+            Cursor = foundPill >= 0 ? Cursors.Hand : Cursors.Cross;
 
+            TelemetrySessionStats activeStats = (IsPaused && _pausedSnapshot != null) ? _pausedSnapshot : Stats;
             Rectangle plot = GetPlotRect();
-            int count = (Stats != null && Stats.CpuHistory != null) ? Stats.CpuHistory.Count : 0;
+            int count = (activeStats != null && activeStats.CpuHistory != null) ? activeStats.CpuHistory.Count : 0;
             if (count > 0 && plot.Contains(e.Location))
             {
                 float normX = (float)(e.X - plot.Left) / Math.Max(1, plot.Width);
                 int idx = count == 1 ? 0 : (int)Math.Round(normX * (count - 1));
                 idx = Math.Max(0, Math.Min(count - 1, idx));
-                if (idx != _hoverSampleIdx || Math.Abs(e.X - _hoverMouseX) > 1)
+                if (idx != _hoverSampleIdx || Math.Abs(e.X - _hoverMouseX) > 1 || pillChanged)
                 {
                     _hoverSampleIdx = idx;
                     _hoverMouseX = e.X;
                     Invalidate();
                 }
             }
-            else if (_hoverSampleIdx != -1)
+            else if (_hoverSampleIdx != -1 || pillChanged)
             {
                 _hoverSampleIdx = -1;
                 _hoverMouseX = -1;
@@ -202,10 +239,17 @@ namespace MiniFanControl
                     }
                 });
                 cm.Items.Add(new ToolStripSeparator());
+                cm.Items.Add(IsPaused ? "▶ Resume Live Timeline" : "⏸ Pause / Freeze Timeline", null, (s, args) =>
+                {
+                    TogglePause();
+                });
                 cm.Items.Add("Reset Session Peaks", null, (s, args) =>
                 {
+                    IsPaused = false;
+                    _pausedSnapshot = null;
                     if (ResetPeaksRequested != null) ResetPeaksRequested(this, EventArgs.Empty);
                 });
+                Win11VisualStyle.ApplyThemeToMenu(cm, ThemePalette.ResolveFromFlags(IsDarkMode, IsRadeonTheme, IsAfterburnerTheme, IsXmasTheme));
                 cm.Closed += (s, args) => { try { cm.Dispose(); } catch { } };
                 cm.Show(this, e.Location);
                 return;
@@ -213,7 +257,12 @@ namespace MiniFanControl
 
             if (e.Button != MouseButtons.Left) return;
 
-            // 1. Priority check for Action Pills (Auto-Zoom & Reset) so they are never intercepted by metric pills
+            // 1. Priority check for Action & Quick-Filter Pills (Pause, Auto-Zoom, Reset, All, Temps, Cool)
+            if (_pillRects[11].Width > 0 && _pillRects[11].Contains(e.Location))
+            {
+                TogglePause();
+                return;
+            }
             if (_pillRects[9].Width > 0 && _pillRects[9].Contains(e.Location))
             {
                 AutoScale = !AutoScale;
@@ -222,61 +271,105 @@ namespace MiniFanControl
             }
             if (_pillRects[10].Width > 0 && _pillRects[10].Contains(e.Location))
             {
+                IsPaused = false;
+                _pausedSnapshot = null;
                 if (ResetPeaksRequested != null) ResetPeaksRequested(this, EventArgs.Empty);
                 Invalidate();
                 return;
             }
+            if (_pillRects[12].Width > 0 && _pillRects[12].Contains(e.Location))
+            {
+                ShowCpu = ShowGpu = ShowRam = ShowNvme = ShowPower = ShowAmbient = ShowApuRpm = true;
+                ShowSysRpm = HasDualFans;
+                if (TrendVisibilityChanged != null) TrendVisibilityChanged(this, EventArgs.Empty);
+                Invalidate();
+                return;
+            }
+            if (_pillRects[13].Width > 0 && _pillRects[13].Contains(e.Location))
+            {
+                ShowCpu = ShowGpu = ShowRam = ShowNvme = ShowAmbient = true;
+                ShowPower = ShowApuRpm = ShowSysRpm = false;
+                if (HighlightMetric == 3 || HighlightMetric == 4 || HighlightMetric == 5)
+                {
+                    HighlightMetric = 1;
+                    if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                }
+                if (TrendVisibilityChanged != null) TrendVisibilityChanged(this, EventArgs.Empty);
+                Invalidate();
+                return;
+            }
+            if (_pillRects[14].Width > 0 && _pillRects[14].Contains(e.Location))
+            {
+                ShowCpu = ShowGpu = ShowRam = ShowNvme = ShowAmbient = false;
+                ShowPower = ShowApuRpm = true;
+                ShowSysRpm = HasDualFans;
+                if (HighlightMetric != 3 && HighlightMetric != 4 && HighlightMetric != 5)
+                {
+                    HighlightMetric = 4;
+                    if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                }
+                if (TrendVisibilityChanged != null) TrendVisibilityChanged(this, EventArgs.Empty);
+                Invalidate();
+                return;
+            }
 
-            // 2. Metric Pills (0..8) — Left-click toggles the trend ON/OFF directly (synced with Overlay Live Trend)
+            // 2. Metric Pills (0..8) — Shift+Click solos a single series; Left-click spotlights -> hides -> shows
+            bool shiftHeld = (Control.ModifierKeys & Keys.Shift) != 0;
             for (int i = 0; i < 9; i++)
             {
                 if (_pillRects[i].Width > 0 && _pillRects[i].Contains(e.Location))
                 {
-                    if (i == 0)
+                    int metricId = (i == 0) ? 1 : (i == 1 ? 2 : (i == 2 ? 7 : (i == 3 ? 8 : (i == 4 ? 6 : (i == 5 ? 3 : (i == 6 ? 9 : (i == 7 ? 4 : 5)))))));
+                    if (shiftHeld)
                     {
-                        ShowCpu = !ShowCpu;
-                        HighlightMetric = ShowCpu ? 1 : (HighlightMetric == 1 ? 0 : HighlightMetric);
+                        ShowCpu = (i == 0);
+                        ShowGpu = (i == 1);
+                        ShowRam = (i == 2);
+                        ShowFabricClock = (i == 3);
+                        ShowNvme = (i == 4);
+                        ShowPower = (i == 5);
+                        ShowAmbient = (i == 6);
+                        ShowApuRpm = (i == 7);
+                        ShowSysRpm = (i == 8 && HasDualFans);
+                        HighlightMetric = metricId;
+                        if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
+                        if (TrendVisibilityChanged != null) TrendVisibilityChanged(this, EventArgs.Empty);
+                        Invalidate();
+                        return;
                     }
-                    else if (i == 1)
+
+                    bool curVisible = (i == 0) ? ShowCpu : (i == 1 ? ShowGpu : (i == 2 ? ShowRam : (i == 3 ? ShowFabricClock : (i == 4 ? ShowNvme : (i == 5 ? ShowPower : (i == 6 ? ShowAmbient : (i == 7 ? ShowApuRpm : ShowSysRpm)))))));
+                    bool curHighlighted = (HighlightMetric == metricId);
+                    bool newVisible;
+                    int newHighlight = HighlightMetric;
+
+                    if (!curVisible)
                     {
-                        ShowGpu = !ShowGpu;
-                        HighlightMetric = ShowGpu ? 2 : (HighlightMetric == 2 ? 0 : HighlightMetric);
+                        newVisible = true;
+                        newHighlight = metricId;
                     }
-                    else if (i == 2)
+                    else if (!curHighlighted)
                     {
-                        ShowRam = !ShowRam;
-                        HighlightMetric = ShowRam ? 7 : (HighlightMetric == 7 ? 0 : HighlightMetric);
+                        newVisible = true;
+                        newHighlight = metricId;
                     }
-                    else if (i == 3)
+                    else
                     {
-                        ShowFabricClock = !ShowFabricClock;
-                        HighlightMetric = ShowFabricClock ? 8 : (HighlightMetric == 8 ? 0 : HighlightMetric);
+                        newVisible = false;
+                        newHighlight = 0;
                     }
-                    else if (i == 4)
-                    {
-                        ShowNvme = !ShowNvme;
-                        HighlightMetric = ShowNvme ? 6 : (HighlightMetric == 6 ? 0 : HighlightMetric);
-                    }
-                    else if (i == 5)
-                    {
-                        ShowPower = !ShowPower;
-                        HighlightMetric = ShowPower ? 3 : (HighlightMetric == 3 ? 0 : HighlightMetric);
-                    }
-                    else if (i == 6)
-                    {
-                        ShowAmbient = !ShowAmbient;
-                        HighlightMetric = ShowAmbient ? 9 : (HighlightMetric == 9 ? 0 : HighlightMetric);
-                    }
-                    else if (i == 7)
-                    {
-                        ShowApuRpm = !ShowApuRpm;
-                        HighlightMetric = ShowApuRpm ? 4 : (HighlightMetric == 4 ? 0 : HighlightMetric);
-                    }
-                    else if (i == 8)
-                    {
-                        ShowSysRpm = !ShowSysRpm;
-                        HighlightMetric = ShowSysRpm ? 5 : (HighlightMetric == 5 ? 0 : HighlightMetric);
-                    }
+
+                    if (i == 0) ShowCpu = newVisible;
+                    else if (i == 1) ShowGpu = newVisible;
+                    else if (i == 2) ShowRam = newVisible;
+                    else if (i == 3) ShowFabricClock = newVisible;
+                    else if (i == 4) ShowNvme = newVisible;
+                    else if (i == 5) ShowPower = newVisible;
+                    else if (i == 6) ShowAmbient = newVisible;
+                    else if (i == 7) ShowApuRpm = newVisible;
+                    else if (i == 8) ShowSysRpm = newVisible;
+
+                    HighlightMetric = newHighlight;
                     if (HighlightMetricChanged != null) HighlightMetricChanged(this, EventArgs.Empty);
                     if (TrendVisibilityChanged != null) TrendVisibilityChanged(this, EventArgs.Empty);
                     Invalidate();
@@ -425,11 +518,8 @@ namespace MiniFanControl
                         g.DrawLine(tickPen, plot.Right, b.TargetY, bx + bw, b.DisplayY);
                     }
 
-                    g.FillRectangle(bgBr, badgeRect);
-                    using (Pen bPen = new Pen(b.Highlighted ? b.Color : Color.FromArgb(150, b.Color), b.Highlighted ? 1.5f : 1f))
-                    {
-                        g.DrawRectangle(bPen, badgeRect);
-                    }
+                    Win11VisualStyle.FillRoundedRect(g, bgBr, badgeRect, 3);
+                    Win11VisualStyle.DrawRoundedCardBorder(g, badgeRect, b.Highlighted ? b.Color : Color.FromArgb(150, b.Color), 3, b.Highlighted ? 1.5f : 1f);
                     TextRenderer.DrawText(g, b.Text, AxisFont, new Point(bx + 4, by + 1), b.Color, TextFormatFlags.NoPadding);
                 }
             }
@@ -441,25 +531,25 @@ namespace MiniFanControl
             int h = 18;
             Rectangle r = new Rectangle(x, y, w, h);
             _pillRects[idx] = r;
+            bool hovered = (_hoverPillIdx == idx);
 
             Color pillBg = !active
                 ? (IsDarkMode ? Color.FromArgb(0x1E, 0x1E, 0x2A) : Color.FromArgb(0xE2, 0xE8, 0xF0))
                 : (highlighted
-                    ? Color.FromArgb(IsDarkMode ? 80 : 50, seriesColor)
-                    : Color.FromArgb(IsDarkMode ? 32 : 22, seriesColor));
+                    ? Color.FromArgb(IsDarkMode ? 88 : 56, seriesColor)
+                    : Color.FromArgb(hovered ? (IsDarkMode ? 54 : 36) : (IsDarkMode ? 32 : 22), seriesColor));
             Color borderCol = !active
-                ? (IsDarkMode ? Color.FromArgb(0x38, 0x3A, 0x4C) : Color.FromArgb(0xCB, 0xD5, 0xE1))
-                : (highlighted ? seriesColor : Color.FromArgb(140, seriesColor));
+                ? (hovered ? seriesColor : (IsDarkMode ? Color.FromArgb(0x38, 0x3A, 0x4C) : Color.FromArgb(0xCB, 0xD5, 0xE1)))
+                : ((highlighted || hovered) ? seriesColor : Color.FromArgb(140, seriesColor));
             Color textCol = !active
                 ? (IsDarkMode ? Color.FromArgb(0x6C, 0x70, 0x86) : Color.FromArgb(0x94, 0xA3, 0xB8))
                 : (IsDarkMode ? Color.White : Color.Black);
 
             using (SolidBrush bgBr = new SolidBrush(pillBg))
-            using (Pen borderPen = new Pen(borderCol, highlighted ? 1.5f : 1f))
             {
-                g.FillRectangle(bgBr, r);
-                g.DrawRectangle(borderPen, r.X, r.Y, r.Width - 1, r.Height - 1);
+                Win11VisualStyle.FillRoundedRect(g, bgBr, r, 4);
             }
+            Win11VisualStyle.DrawRoundedCardBorder(g, r, borderCol, 4, (highlighted || hovered) ? 1.4f : 1f);
             Size sz = TextRenderer.MeasureText(g, text, f, new Size(w, 20), TextFormatFlags.NoPadding);
             int tx = x + Math.Max(2, (w - sz.Width) / 2);
             TextRenderer.DrawText(g, text, f, new Point(tx, y + 2), textCol, TextFormatFlags.NoPadding);
@@ -484,25 +574,25 @@ namespace MiniFanControl
 
             Rectangle r = new Rectangle(curX, curY, w, h);
             _pillRects[idx] = r;
+            bool hovered = (_hoverPillIdx == idx);
 
             Color pillBg = !active
                 ? (IsDarkMode ? Color.FromArgb(0x1E, 0x1E, 0x2A) : Color.FromArgb(0xE2, 0xE8, 0xF0))
                 : (highlighted
-                    ? Color.FromArgb(IsDarkMode ? 80 : 50, seriesColor)
-                    : Color.FromArgb(IsDarkMode ? 32 : 22, seriesColor));
+                    ? Color.FromArgb(IsDarkMode ? 88 : 56, seriesColor)
+                    : Color.FromArgb(hovered ? (IsDarkMode ? 54 : 36) : (IsDarkMode ? 32 : 22), seriesColor));
             Color borderCol = !active
-                ? (IsDarkMode ? Color.FromArgb(0x38, 0x3A, 0x4C) : Color.FromArgb(0xCB, 0xD5, 0xE1))
-                : (highlighted ? seriesColor : Color.FromArgb(140, seriesColor));
+                ? (hovered ? seriesColor : (IsDarkMode ? Color.FromArgb(0x38, 0x3A, 0x4C) : Color.FromArgb(0xCB, 0xD5, 0xE1)))
+                : ((highlighted || hovered) ? seriesColor : Color.FromArgb(140, seriesColor));
             Color textCol = !active
                 ? (IsDarkMode ? Color.FromArgb(0x6C, 0x70, 0x86) : Color.FromArgb(0x94, 0xA3, 0xB8))
                 : (IsDarkMode ? Color.White : Color.Black);
 
             using (SolidBrush bgBr = new SolidBrush(pillBg))
-            using (Pen borderPen = new Pen(borderCol, highlighted ? 1.5f : 1f))
             {
-                g.FillRectangle(bgBr, r);
-                g.DrawRectangle(borderPen, r.X, r.Y, r.Width - 1, r.Height - 1);
+                Win11VisualStyle.FillRoundedRect(g, bgBr, r, 4);
             }
+            Win11VisualStyle.DrawRoundedCardBorder(g, r, borderCol, 4, (highlighted || hovered) ? 1.4f : 1f);
             TextRenderer.DrawText(g, text, f, new Point(curX + 6, curY + 2), textCol, TextFormatFlags.NoPadding);
             curX += w + 5;
         }
@@ -569,17 +659,18 @@ namespace MiniFanControl
                 Win11VisualStyle.DrawSnowflake(g, ClientSize.Width - 46f, 64f, 20f, Color.FromArgb(20, 0xDC, 0x26, 0x26), 1.4f);
             }
 
-            int count = (Stats != null && Stats.CpuHistory != null) ? Stats.CpuHistory.Count : 0;
-            int lastCpu = count > 0 ? Stats.CpuHistory[count - 1] : 0;
-            int lastGpu = (Stats != null && Stats.GpuHistory.Count > 0) ? Stats.GpuHistory[Stats.GpuHistory.Count - 1] : 0;
-            int lastRamTemp = (Stats != null && Stats.RamTempHistory.Count > 0) ? Stats.RamTempHistory[Stats.RamTempHistory.Count - 1] : 0;
-            int lastRamLoad = (Stats != null && Stats.RamLoadHistory.Count > 0) ? Stats.RamLoadHistory[Stats.RamLoadHistory.Count - 1] : 0;
-            int lastFclk = (Stats != null && Stats.FabricClockHistory.Count > 0) ? Stats.FabricClockHistory[Stats.FabricClockHistory.Count - 1] : 0;
-            int lastNvme = (Stats != null && Stats.NvmeHistory.Count > 0) ? Stats.NvmeHistory[Stats.NvmeHistory.Count - 1] : 0;
-            int lastPwr = (Stats != null && Stats.PowerHistory.Count > 0) ? Stats.PowerHistory[Stats.PowerHistory.Count - 1] : 0;
-            int lastAmb = (Stats != null && Stats.AmbientHistory.Count > 0 && Stats.AmbientHistory[Stats.AmbientHistory.Count - 1] > 0) ? Stats.AmbientHistory[Stats.AmbientHistory.Count - 1] : (Status.AmbientTemp > 0 ? Status.AmbientTemp : 0);
-            int lastF1  = (Stats != null && Stats.Fan1RpmHistory.Count > 0) ? Stats.Fan1RpmHistory[Stats.Fan1RpmHistory.Count - 1] : 0;
-            int lastF2  = (Stats != null && Stats.Fan2RpmHistory.Count > 0) ? Stats.Fan2RpmHistory[Stats.Fan2RpmHistory.Count - 1] : 0;
+            TelemetrySessionStats data = (IsPaused && _pausedSnapshot != null) ? _pausedSnapshot : Stats;
+            int count = (data != null && data.CpuHistory != null) ? data.CpuHistory.Count : 0;
+            int lastCpu = count > 0 ? data.CpuHistory[count - 1] : 0;
+            int lastGpu = (data != null && data.GpuHistory.Count > 0) ? data.GpuHistory[data.GpuHistory.Count - 1] : 0;
+            int lastRamTemp = (data != null && data.RamTempHistory.Count > 0) ? data.RamTempHistory[data.RamTempHistory.Count - 1] : 0;
+            int lastRamLoad = (data != null && data.RamLoadHistory.Count > 0) ? data.RamLoadHistory[data.RamLoadHistory.Count - 1] : 0;
+            int lastFclk = (data != null && data.FabricClockHistory.Count > 0) ? data.FabricClockHistory[data.FabricClockHistory.Count - 1] : 0;
+            int lastNvme = (data != null && data.NvmeHistory.Count > 0) ? data.NvmeHistory[data.NvmeHistory.Count - 1] : 0;
+            int lastPwr = (data != null && data.PowerHistory.Count > 0) ? data.PowerHistory[data.PowerHistory.Count - 1] : 0;
+            int lastAmb = (data != null && data.AmbientHistory.Count > 0 && data.AmbientHistory[data.AmbientHistory.Count - 1] > 0) ? data.AmbientHistory[data.AmbientHistory.Count - 1] : (Status.AmbientTemp > 0 ? Status.AmbientTemp : 0);
+            int lastF1  = (data != null && data.Fan1RpmHistory.Count > 0) ? data.Fan1RpmHistory[data.Fan1RpmHistory.Count - 1] : 0;
+            int lastF2  = (data != null && data.Fan2RpmHistory.Count > 0) ? data.Fan2RpmHistory[data.Fan2RpmHistory.Count - 1] : 0;
             int memClock = Status.RamSpeedMhz > 0 ? Status.RamSpeedMhz : (Status.MemClockMhz * 2);
             string tUnit = TelemetrySessionStats.TempUnit(UseFahrenheit);
             string ramTempPart = (Status.DdrStickCount == 2 && Status.DdrTemp1 > 0 && Status.DdrTemp2 > 0 && Status.DdrTemp1 != Status.DdrTemp2)
@@ -602,16 +693,32 @@ namespace MiniFanControl
 
             for (int i = 0; i < _pillRects.Length; i++) _pillRects[i] = Rectangle.Empty;
 
-            // 1. Right Action Buttons (Auto-Zoom & Reset) - always pinned to top-right corner
+            // 1. Right Action & Quick-Filter Pills (All, Temps, Cool | Pause, Auto-Zoom, Reset)
+            bool isAllPreset = ShowCpu && ShowGpu && ShowRam && ShowNvme && ShowPower && ShowApuRpm && (!HasDualFans || ShowSysRpm);
+            bool isTempsPreset = ShowCpu && ShowGpu && ShowRam && ShowNvme && !ShowPower && !ShowApuRpm && !ShowSysRpm;
+            bool isCoolPreset = !ShowCpu && !ShowGpu && !ShowRam && !ShowNvme && ShowPower && ShowApuRpm;
+
             int resetW = 44;
-            int autoZoomW = AutoScale ? 72 : 54;
+            int autoZoomW = AutoScale ? 70 : 52;
+            int pauseW = IsPaused ? 60 : 54;
+            int coolW = 38;
+            int tempsW = 48;
+            int allW = 30;
             int btnY = 5;
             int resetX = Width - resetW - 6;
-            int autoZoomX = resetX - autoZoomW - 5;
-            int actionLimit = autoZoomX - 6;
+            int autoZoomX = resetX - autoZoomW - 4;
+            int pauseX = autoZoomX - pauseW - 4;
+            int coolX = pauseX - coolW - 8;
+            int tempsX = coolX - tempsW - 4;
+            int allX = tempsX - allW - 4;
+            int actionLimit = allX - 8;
 
             DrawLegendPillAt(g, 10, resetX, btnY, resetW, "Reset", labelColor, true, false);
             DrawLegendPillAt(g, 9, autoZoomX, btnY, autoZoomW, AutoScale ? "Auto-Zoom" : "0–100", labelColor, true, AutoScale);
+            DrawLegendPillAt(g, 11, pauseX, btnY, pauseW, IsPaused ? "▶ Live" : "⏸ Pause", IsPaused ? pwrColor : labelColor, true, IsPaused);
+            DrawLegendPillAt(g, 14, coolX, btnY, coolW, "Cool", apuRpmColor, true, isCoolPreset);
+            DrawLegendPillAt(g, 13, tempsX, btnY, tempsW, "Temps", gpuColor, true, isTempsPreset);
+            DrawLegendPillAt(g, 12, allX, btnY, allW, "All", cpuColor, true, isAllPreset);
 
             // 2. Metric Pills (0..8) - flow left-to-right, wrapping cleanly to row 2 before actionLimit
             int curX = 6;
@@ -911,22 +1018,22 @@ namespace MiniFanControl
 
             if (count > 0)
             {
-                PointF[] cpuPts = ShowCpu ? BuildSeriesPoints(Stats.CpuHistory, count, plot, leftMin, leftMax) : null;
-                PointF[] gpuPts = ShowGpu ? BuildSeriesPoints(Stats.GpuHistory, count, plot, leftMin, leftMax) : null;
+                PointF[] cpuPts = ShowCpu ? BuildSeriesPoints(data.CpuHistory, count, plot, leftMin, leftMax) : null;
+                PointF[] gpuPts = ShowGpu ? BuildSeriesPoints(data.GpuHistory, count, plot, leftMin, leftMax) : null;
                 PointF[] ramPts = null;
-                if (ShowRam && Stats != null)
+                if (ShowRam && data != null)
                 {
-                    if (Stats.RamTempHistory.Count > 0 && Stats.RamTempHistory[count - 1] > 0)
-                        ramPts = BuildSeriesPoints(Stats.RamTempHistory, count, plot, leftMin, leftMax);
-                    else if (Stats.RamPowerHistory.Count > 0)
-                        ramPts = BuildSeriesPoints(Stats.RamPowerHistory, count, plot, leftMin, leftMax, 0.1f);
+                    if (data.RamTempHistory.Count > 0 && data.RamTempHistory[Math.Min(count - 1, data.RamTempHistory.Count - 1)] > 0)
+                        ramPts = BuildSeriesPoints(data.RamTempHistory, count, plot, leftMin, leftMax);
+                    else if (data.RamPowerHistory.Count > 0)
+                        ramPts = BuildSeriesPoints(data.RamPowerHistory, count, plot, leftMin, leftMax, 0.1f);
                 }
-                PointF[] fclkPts = (ShowFabricClock && Stats != null && Stats.FabricClockHistory.Count > 0) ? BuildSeriesPoints(Stats.FabricClockHistory, count, plot, fclkScaleMin, fclkScaleMax) : null;
-                PointF[] nvmePts = (ShowNvme && Stats != null && Stats.NvmeHistory.Count > 0) ? BuildSeriesPoints(Stats.NvmeHistory, count, plot, leftMin, leftMax) : null;
-                PointF[] pwrPts = ShowPower ? BuildSeriesPoints(Stats.PowerHistory, count, plot, leftMin, leftMax) : null;
-                PointF[] ambPts = (ShowAmbient && Stats != null && Stats.AmbientHistory.Count > 0) ? BuildSeriesPoints(Stats.AmbientHistory, count, plot, leftMin, leftMax) : null;
-                PointF[] f1Pts  = ShowApuRpm ? BuildSeriesPoints(Stats.Fan1RpmHistory, count, plot, rpmMin, rpmMax) : null;
-                PointF[] f2Pts  = (HasDualFans && ShowSysRpm) ? BuildSeriesPoints(Stats.Fan2RpmHistory, count, plot, rpmMin, rpmMax) : null;
+                PointF[] fclkPts = (ShowFabricClock && data != null && data.FabricClockHistory.Count > 0) ? BuildSeriesPoints(data.FabricClockHistory, count, plot, fclkScaleMin, fclkScaleMax) : null;
+                PointF[] nvmePts = (ShowNvme && data != null && data.NvmeHistory.Count > 0) ? BuildSeriesPoints(data.NvmeHistory, count, plot, leftMin, leftMax) : null;
+                PointF[] pwrPts = ShowPower ? BuildSeriesPoints(data.PowerHistory, count, plot, leftMin, leftMax) : null;
+                PointF[] ambPts = (ShowAmbient && data != null && data.AmbientHistory.Count > 0) ? BuildSeriesPoints(data.AmbientHistory, count, plot, leftMin, leftMax) : null;
+                PointF[] f1Pts  = ShowApuRpm ? BuildSeriesPoints(data.Fan1RpmHistory, count, plot, rpmMin, rpmMax) : null;
+                PointF[] f2Pts  = (HasDualFans && ShowSysRpm) ? BuildSeriesPoints(data.Fan2RpmHistory, count, plot, rpmMin, rpmMax) : null;
 
                 int hl = HighlightMetric == 0 ? 1 : HighlightMetric;
 
@@ -953,61 +1060,79 @@ namespace MiniFanControl
 
                 // Endpoint trace badges anchored to the right tip of each curve
                 List<CanvasEndpointBadge> badges = new List<CanvasEndpointBadge>();
-                if (f2Pts != null && Stats.Fan2RpmHistory.Count > 0)
+                if (f2Pts != null && data.Fan2RpmHistory.Count > 0)
                 {
-                    int v = Stats.Fan2RpmHistory[count - 1];
+                    int v = data.Fan2RpmHistory[Math.Min(count - 1, data.Fan2RpmHistory.Count - 1)];
                     if (v > 0) badges.Add(new CanvasEndpointBadge { TargetY = f2Pts[f2Pts.Length - 1].Y, Text = v + " RPM", Color = sysRpmColor, Highlighted = (hl == 5) });
                 }
-                if (f1Pts != null && Stats.Fan1RpmHistory.Count > 0)
+                if (f1Pts != null && data.Fan1RpmHistory.Count > 0)
                 {
-                    int v = Stats.Fan1RpmHistory[count - 1];
+                    int v = data.Fan1RpmHistory[Math.Min(count - 1, data.Fan1RpmHistory.Count - 1)];
                     if (v > 0) badges.Add(new CanvasEndpointBadge { TargetY = f1Pts[f1Pts.Length - 1].Y, Text = v + " RPM", Color = apuRpmColor, Highlighted = (hl == 4) });
                 }
-                if (ambPts != null && Stats.AmbientHistory.Count > 0)
+                if (ambPts != null && data.AmbientHistory.Count > 0)
                 {
-                    int v = Stats.AmbientHistory[count - 1];
+                    int v = data.AmbientHistory[Math.Min(count - 1, data.AmbientHistory.Count - 1)];
                     if (v > 0) badges.Add(new CanvasEndpointBadge { TargetY = ambPts[ambPts.Length - 1].Y, Text = TelemetrySessionStats.ToDisplayTemp(v, UseFahrenheit) + tUnit, Color = ambColor, Highlighted = (hl == 9) });
                 }
-                if (pwrPts != null && Stats.PowerHistory.Count > 0)
+                if (pwrPts != null && data.PowerHistory.Count > 0)
                 {
-                    int v = Stats.PowerHistory[count - 1];
+                    int v = data.PowerHistory[Math.Min(count - 1, data.PowerHistory.Count - 1)];
                     if (v > 0) badges.Add(new CanvasEndpointBadge { TargetY = pwrPts[pwrPts.Length - 1].Y, Text = v + "W", Color = pwrColor, Highlighted = (hl == 3) });
                 }
-                if (nvmePts != null && Stats.NvmeHistory.Count > 0)
+                if (nvmePts != null && data.NvmeHistory.Count > 0)
                 {
-                    int v = Stats.NvmeHistory[count - 1];
+                    int v = data.NvmeHistory[Math.Min(count - 1, data.NvmeHistory.Count - 1)];
                     if (v > 0) badges.Add(new CanvasEndpointBadge { TargetY = nvmePts[nvmePts.Length - 1].Y, Text = TelemetrySessionStats.ToDisplayTemp(v, UseFahrenheit) + tUnit, Color = nvmeColor, Highlighted = (hl == 6) });
                 }
-                if (fclkPts != null && Stats.FabricClockHistory.Count > 0)
+                if (fclkPts != null && data.FabricClockHistory.Count > 0)
                 {
-                    int v = Stats.FabricClockHistory[count - 1];
+                    int v = data.FabricClockHistory[Math.Min(count - 1, data.FabricClockHistory.Count - 1)];
                     if (v > 0) badges.Add(new CanvasEndpointBadge { TargetY = fclkPts[fclkPts.Length - 1].Y, Text = v + " MHz", Color = fclkColor, Highlighted = (hl == 8) });
                 }
                 if (ramPts != null)
                 {
-                    if (Stats.RamTempHistory.Count > 0 && Stats.RamTempHistory[count - 1] > 0)
+                    if (data.RamTempHistory.Count > 0 && data.RamTempHistory[Math.Min(count - 1, data.RamTempHistory.Count - 1)] > 0)
                     {
-                        int v = Stats.RamTempHistory[count - 1];
+                        int v = data.RamTempHistory[Math.Min(count - 1, data.RamTempHistory.Count - 1)];
                         badges.Add(new CanvasEndpointBadge { TargetY = ramPts[ramPts.Length - 1].Y, Text = TelemetrySessionStats.ToDisplayTemp(v, UseFahrenheit) + tUnit, Color = ramColor, Highlighted = (hl == 7) });
                     }
-                    else if (Stats.RamPowerHistory.Count > 0)
+                    else if (data.RamPowerHistory.Count > 0)
                     {
-                        int v = Stats.RamPowerHistory[count - 1];
+                        int v = data.RamPowerHistory[Math.Min(count - 1, data.RamPowerHistory.Count - 1)];
                         if (v > 0) badges.Add(new CanvasEndpointBadge { TargetY = ramPts[ramPts.Length - 1].Y, Text = string.Format("{0:0.0}W", v / 10.0), Color = ramColor, Highlighted = (hl == 7) });
                     }
                 }
-                if (gpuPts != null && Stats.GpuHistory.Count > 0 && Stats.GpuHistory[count - 1] > 0)
+                if (gpuPts != null && data.GpuHistory.Count > 0 && data.GpuHistory[Math.Min(count - 1, data.GpuHistory.Count - 1)] > 0)
                 {
-                    int v = Stats.GpuHistory[count - 1];
+                    int v = data.GpuHistory[Math.Min(count - 1, data.GpuHistory.Count - 1)];
                     badges.Add(new CanvasEndpointBadge { TargetY = gpuPts[gpuPts.Length - 1].Y, Text = TelemetrySessionStats.ToDisplayTemp(v, UseFahrenheit) + tUnit, Color = gpuColor, Highlighted = (hl == 2) });
                 }
-                if (cpuPts != null && Stats.CpuHistory.Count > 0)
+                if (cpuPts != null && data.CpuHistory.Count > 0)
                 {
-                    int v = Stats.CpuHistory[count - 1];
+                    int v = data.CpuHistory[Math.Min(count - 1, data.CpuHistory.Count - 1)];
                     badges.Add(new CanvasEndpointBadge { TargetY = cpuPts[cpuPts.Length - 1].Y, Text = TelemetrySessionStats.ToDisplayTemp(v, UseFahrenheit) + tUnit, Color = cpuColor, Highlighted = (hl == 1) });
                 }
 
                 DrawCanvasBadges(g, plot, badges, IsDarkMode);
+
+                // Subtle frozen-timeline pill indicator when Paused
+                if (IsPaused)
+                {
+                    string pauseBadge = "⏸ TIMELINE PAUSED (Space/P to resume)";
+                    Size pSz = TextRenderer.MeasureText(g, pauseBadge, HudFont, new Size(280, 18), TextFormatFlags.NoPadding);
+                    int pw = pSz.Width + 12;
+                    int ph = 18;
+                    int px = plot.Left + Math.Max(4, (plot.Width - pw) / 2);
+                    int py = plot.Top + 6;
+                    Rectangle pRect = new Rectangle(px, py, pw, ph);
+                    using (SolidBrush pBg = new SolidBrush(Color.FromArgb(225, IsDarkMode ? Color.FromArgb(0x2A, 0x1E, 0x0C) : Color.FromArgb(0xFF, 0xFB, 0xEB))))
+                    {
+                        Win11VisualStyle.FillRoundedRect(g, pBg, pRect, 4);
+                    }
+                    Win11VisualStyle.DrawRoundedCardBorder(g, pRect, pwrColor, 4, 1.2f);
+                    TextRenderer.DrawText(g, pauseBadge, HudFont, new Point(px + 6, py + 2), pwrColor, TextFormatFlags.NoPadding);
+                }
 
                 // Hover Time-Scrub Crosshair & Readout Card
                 if (_hoverSampleIdx >= 0 && _hoverSampleIdx < count)
@@ -1020,16 +1145,16 @@ namespace MiniFanControl
                     }
 
                     int secAgo = (int)Math.Round((count - 1 - _hoverSampleIdx) * 1.5);
-                    int hCpu = _hoverSampleIdx < Stats.CpuHistory.Count ? Stats.CpuHistory[_hoverSampleIdx] : 0;
-                    int hGpu = _hoverSampleIdx < Stats.GpuHistory.Count ? Stats.GpuHistory[_hoverSampleIdx] : 0;
-                    int hRamTemp = (Stats != null && _hoverSampleIdx < Stats.RamTempHistory.Count) ? Stats.RamTempHistory[_hoverSampleIdx] : 0;
-                    int hRamLoad = (Stats != null && _hoverSampleIdx < Stats.RamLoadHistory.Count) ? Stats.RamLoadHistory[_hoverSampleIdx] : 0;
-                    int hFclk = (Stats != null && _hoverSampleIdx < Stats.FabricClockHistory.Count) ? Stats.FabricClockHistory[_hoverSampleIdx] : 0;
-                    int hNvme = (Stats != null && _hoverSampleIdx < Stats.NvmeHistory.Count) ? Stats.NvmeHistory[_hoverSampleIdx] : 0;
-                    int hPwr = _hoverSampleIdx < Stats.PowerHistory.Count ? Stats.PowerHistory[_hoverSampleIdx] : 0;
-                    int hAmb = (Stats != null && _hoverSampleIdx < Stats.AmbientHistory.Count) ? Stats.AmbientHistory[_hoverSampleIdx] : 0;
-                    int hF1  = _hoverSampleIdx < Stats.Fan1RpmHistory.Count ? Stats.Fan1RpmHistory[_hoverSampleIdx] : 0;
-                    int hF2  = _hoverSampleIdx < Stats.Fan2RpmHistory.Count ? Stats.Fan2RpmHistory[_hoverSampleIdx] : 0;
+                    int hCpu = _hoverSampleIdx < data.CpuHistory.Count ? data.CpuHistory[_hoverSampleIdx] : 0;
+                    int hGpu = _hoverSampleIdx < data.GpuHistory.Count ? data.GpuHistory[_hoverSampleIdx] : 0;
+                    int hRamTemp = (data != null && _hoverSampleIdx < data.RamTempHistory.Count) ? data.RamTempHistory[_hoverSampleIdx] : 0;
+                    int hRamLoad = (data != null && _hoverSampleIdx < data.RamLoadHistory.Count) ? data.RamLoadHistory[_hoverSampleIdx] : 0;
+                    int hFclk = (data != null && _hoverSampleIdx < data.FabricClockHistory.Count) ? data.FabricClockHistory[_hoverSampleIdx] : 0;
+                    int hNvme = (data != null && _hoverSampleIdx < data.NvmeHistory.Count) ? data.NvmeHistory[_hoverSampleIdx] : 0;
+                    int hPwr = _hoverSampleIdx < data.PowerHistory.Count ? data.PowerHistory[_hoverSampleIdx] : 0;
+                    int hAmb = (data != null && _hoverSampleIdx < data.AmbientHistory.Count) ? data.AmbientHistory[_hoverSampleIdx] : 0;
+                    int hF1  = _hoverSampleIdx < data.Fan1RpmHistory.Count ? data.Fan1RpmHistory[_hoverSampleIdx] : 0;
+                    int hF2  = _hoverSampleIdx < data.Fan2RpmHistory.Count ? data.Fan2RpmHistory[_hoverSampleIdx] : 0;
 
                     string hTempPart = (Status.DdrStickCount == 2 && Status.DdrTemp1 > 0 && Status.DdrTemp2 > 0 && Status.DdrTemp1 != Status.DdrTemp2)
                         ? string.Format("{0}/{1}{2}", TelemetrySessionStats.ToDisplayTemp(Status.DdrTemp1, UseFahrenheit), TelemetrySessionStats.ToDisplayTemp(Status.DdrTemp2, UseFahrenheit), tUnit)
@@ -1046,7 +1171,7 @@ namespace MiniFanControl
                     string sysPart = (HasDualFans && hF2 > 0) ? string.Format(" • Sys {0} RPM", hF2) : "";
 
                     string hud = string.Format("{0}  |  CPU {1}{11} • iGPU {2}{11} • {3}{4} • NVMe {5}{11}{6} • Pwr {7}W{8} • APU {9} RPM{10}",
-                        secAgo == 0 ? "Now" : "-" + secAgo + "s",
+                        secAgo == 0 ? (IsPaused ? "Frozen" : "Now") : "-" + secAgo + "s",
                         TelemetrySessionStats.ToDisplayTemp(hCpu, UseFahrenheit),
                         TelemetrySessionStats.ToDisplayTemp(hGpu, UseFahrenheit),
                         hRamStr, fclkPart,
@@ -1059,14 +1184,14 @@ namespace MiniFanControl
                     int boxX = Math.Max(plot.Left + 4, Math.Min(plot.Right - boxW - 4, (int)cx - boxW / 2));
                     int boxY = plot.Top + 4;
 
-                    Color hudBg = IsDarkMode ? Color.FromArgb(225, 0x0F, 0x11, 0x1A) : Color.FromArgb(235, 255, 255, 255);
+                    Color hudBg = IsDarkMode ? Color.FromArgb(232, 0x0F, 0x11, 0x1A) : Color.FromArgb(242, 255, 255, 255);
                     Color hudFg = IsDarkMode ? Color.White : Color.Black;
+                    Rectangle hudRect = new Rectangle(boxX, boxY, boxW, boxH);
                     using (SolidBrush hBr = new SolidBrush(hudBg))
-                    using (Pen hPen = new Pen(gridColor, 1f))
                     {
-                        g.FillRectangle(hBr, boxX, boxY, boxW, boxH);
-                        g.DrawRectangle(hPen, boxX, boxY, boxW, boxH);
+                        Win11VisualStyle.FillRoundedRect(g, hBr, hudRect, 4);
                     }
+                    Win11VisualStyle.DrawRoundedCardBorder(g, hudRect, gridColor, 4, 1f);
                     TextRenderer.DrawText(g, hud, HudFont, new Point(boxX + 6, boxY + 3), hudFg, TextFormatFlags.NoPadding);
                 }
             }

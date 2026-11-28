@@ -231,7 +231,7 @@ namespace MiniFanControl
             if (_hwSubLabel != null)
             {
                 string drvInfo = NativeInpOut.ActiveDriverName;
-                _hwSubLabel.Text = string.Format("EC Map: {0} • Driver: {1} • Global\\Access_EC Mutex • 64-bit", customProf.DisplayName, drvInfo);
+                _hwSubLabel.Text = string.Format("EC: {0} • {1}", customProf.DisplayName, drvInfo);
             }
             SaveSettings();
             RebuildDriversMenu();
@@ -262,8 +262,18 @@ namespace MiniFanControl
             sb.AppendLine("  .\\minifan-helper.exe dump   (prints 256-byte EC hex map)");
             sb.AppendLine("  .\\minifan-helper.exe watch  (monitors live EC changes)");
 
-            MessageBox.Show(this, sb.ToString(), "MiniFanControl — Hardware & Multi-Model Compatibility",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            using (ThemedInfoDialog dlg = new ThemedInfoDialog(
+                "MiniFanControl — Hardware & Multi-Model Compatibility",
+                "Hardware & Multi-Model Compatibility",
+                string.Format("{0} ({1}) • Active Map: {2}", _sysInfo.ProductName, _sysInfo.CpuName, _sysInfo.MatchedProfile.DisplayName),
+                sb.ToString(),
+                _themePref,
+                _isDarkMode,
+                640,
+                470))
+            {
+                dlg.ShowDialog(this);
+            }
         }
 
         private void ShowAboutDialog()
@@ -304,8 +314,18 @@ namespace MiniFanControl
             sb.AppendLine("  • Settings File   : " + GetSettingsPath());
             sb.AppendLine("  • CLI Commands    : .\\minifan-helper.exe status | calibrate | scan | dump | test");
 
-            MessageBox.Show(this, sb.ToString(), "About MiniFanControl v" + APP_VERSION,
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            using (ThemedInfoDialog dlg = new ThemedInfoDialog(
+                "About MiniFanControl v" + APP_VERSION,
+                "MiniFanControl v" + APP_VERSION + " (64-bit Native EC Edition)",
+                "Standalone Embedded Controller Fan Curve & Thermal Utility for AMD Ryzen Mini PCs",
+                sb.ToString(),
+                _themePref,
+                _isDarkMode,
+                650,
+                500))
+            {
+                dlg.ShowDialog(this);
+            }
         }
 
         public void RunGuiFanCalibration()
@@ -352,7 +372,8 @@ namespace MiniFanControl
                             if (_overlayForm != null && _showOverlay)
                                 _overlayForm.UpdateMetrics(st, "Calib", _hasDualFans);
                         }
-                    }))
+                    },
+                    _themePref))
                 {
                     if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Result != null && !dlg.Result.WasCanceled)
                     {
@@ -469,7 +490,7 @@ namespace MiniFanControl
                 const int boxW = 257;
                 const int boxH = 108;
                 const int boxGapX = 6;
-                const int row2Y = 122;
+                const int row2Y = 119;
                 if (_hasDualFans)
                 {
                     _fan1Box.Location = new Point(12 + (boxW + boxGapX) * 2, row2Y);
@@ -836,9 +857,14 @@ namespace MiniFanControl
             menu.Items.Add(langMenu);
             menu.Items.Add(new ToolStripSeparator());
             AddToolMenuItem(menu,
+                "↻ Check for Updates (GitHub Releases)...",
+                "Manually checks GitHub Releases for a newer version of MiniFanControl (never phones home automatically).",
+                (s, e) => CheckForUpdatesAsync());
+            AddToolMenuItem(menu,
                 "About MiniFanControl v" + APP_VERSION + "...",
                 "Version info, active hardware profile, driver status, and project links.",
                 (s, e) => ShowAboutDialog());
+            Win11VisualStyle.ApplyThemeToMenu(menu, CurrentPalette);
             return menu;
         }
 
@@ -873,6 +899,112 @@ namespace MiniFanControl
             if (_autoTuneCustomBtn != null) _autoTuneCustomBtn.Text = Loc.T("Btn_AutoTune", "✨ Auto-Tune");
             if (_addCustomBtn != null) _addCustomBtn.Text = Loc.T("Btn_New", "+ New");
             UpdateCustomRowButtons();
+        }
+
+        private void CheckForUpdatesAsync()
+        {
+            if (_isUnitTest) return;
+            if (_statusBarLabel != null)
+                _statusBarLabel.Text = "Checking GitHub Releases for updates...";
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                UpdateCheckResult result = UpdateChecker.CheckLatestRelease(APP_VERSION);
+                try
+                {
+                    if (IsDisposed || !IsHandleCreated) return;
+                    BeginInvoke((Action)delegate
+                    {
+                        if (IsDisposed) return;
+                        if (!result.Success)
+                        {
+                            if (_statusBarLabel != null)
+                                _statusBarLabel.Text = "Update check unavailable (offline or GitHub API limit).";
+                            string errBody = string.Format(
+                                "Installed Version: v{0}\n" +
+                                "Status:            Unable to query GitHub Releases\n\n" +
+                                "Details:\n{1}\n\n" +
+                                "You can always check manually at:\n{2}",
+                                APP_VERSION, result.ErrorMessage, UpdateChecker.LatestReleasePageUrl);
+                            using (ThemedInfoDialog dlg = new ThemedInfoDialog(
+                                "Check for Updates",
+                                "Update Check Unavailable",
+                                "On-demand GitHub Releases check (no background telemetry)",
+                                errBody,
+                                _themePref,
+                                _isDarkMode,
+                                560,
+                                320,
+                                "Open Releases Page",
+                                delegate { OpenUrlSafe(UpdateChecker.LatestReleasePageUrl); }))
+                            {
+                                dlg.ShowDialog(this);
+                            }
+                            return;
+                        }
+
+                        if (result.UpdateAvailable)
+                        {
+                            if (_statusBarLabel != null)
+                                _statusBarLabel.Text = string.Format("✓ Update available: v{0} (installed: v{1})", result.LatestVersion, APP_VERSION);
+                            string body = string.Format(
+                                "Installed Version: v{0}\n" +
+                                "Latest Release:    v{1} ({2})\n" +
+                                "Published:         {3}\n" +
+                                "Download URL:      {4}\n\n" +
+                                "Release Highlights:\n{5}",
+                                APP_VERSION,
+                                result.LatestVersion,
+                                result.ReleaseName,
+                                string.IsNullOrEmpty(result.PublishedAt) ? "—" : result.PublishedAt,
+                                result.ReleaseUrl,
+                                string.IsNullOrEmpty(result.ReleaseNotesExcerpt) ? "(See GitHub Releases for full changelog.)" : result.ReleaseNotesExcerpt);
+                            using (ThemedInfoDialog dlg = new ThemedInfoDialog(
+                                "Update Available — MiniFanControl",
+                                "MiniFanControl v" + result.LatestVersion + " Is Available",
+                                "You are running v" + APP_VERSION + " • Signed SLSA provenance available on GitHub",
+                                body,
+                                _themePref,
+                                _isDarkMode,
+                                620,
+                                430,
+                                "Open Release Page",
+                                delegate { OpenUrlSafe(result.ReleaseUrl); }))
+                            {
+                                dlg.ShowDialog(this);
+                            }
+                        }
+                        else
+                        {
+                            if (_statusBarLabel != null)
+                                _statusBarLabel.Text = string.Format("✓ MiniFanControl v{0} is up to date", APP_VERSION);
+                            string body = string.Format(
+                                "Installed Version: v{0}\n" +
+                                "Latest Release:    v{1}\n" +
+                                "Status:            You are running the latest release!\n\n" +
+                                "Releases Page:     {2}",
+                                APP_VERSION,
+                                result.LatestVersion,
+                                result.ReleaseUrl);
+                            using (ThemedInfoDialog dlg = new ThemedInfoDialog(
+                                "Check for Updates",
+                                "You're Up to Date",
+                                "MiniFanControl v" + APP_VERSION + " matches or exceeds latest release v" + result.LatestVersion,
+                                body,
+                                _themePref,
+                                _isDarkMode,
+                                560,
+                                290,
+                                "View Releases",
+                                delegate { OpenUrlSafe(result.ReleaseUrl); }))
+                            {
+                                dlg.ShowDialog(this);
+                            }
+                        }
+                    });
+                }
+                catch { }
+            });
         }
 
         private void ShowKernelDriverSecurityDialog(bool isStartupPrompt = false)
@@ -1201,6 +1333,7 @@ namespace MiniFanControl
                 if (_gpuTrayIcon != null) _gpuTrayIcon.Visible = false;
                 Close();
             });
+            Win11VisualStyle.ApplyThemeToMenu(menu, CurrentPalette);
             return menu;
         }
 
