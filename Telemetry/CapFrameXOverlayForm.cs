@@ -187,12 +187,7 @@ namespace MiniFanControl
 
         private string FormatSampleTimeAgo(int samplesAgo)
         {
-            if (samplesAgo <= 0) return "Now";
-            double secPerSample = Math.Max(0.1, SampleIntervalMs / 1000.0);
-            double secs = samplesAgo * secPerSample;
-            if (secPerSample < 0.95)
-                return string.Format("-{0:0.0}s", secs);
-            return string.Format("-{0:0}s", secs);
+            return DfGraphMath.FormatSampleTimeAgo(samplesAgo, SampleIntervalMs);
         }
         public bool DfGraphFirst = true;
         public bool ClampToScreen = true;
@@ -335,66 +330,12 @@ namespace MiniFanControl
 
         public static int CalculateDfCeiling(int curLiveFps, IList<int> fpsHistory)
         {
-            int total = (fpsHistory != null) ? fpsHistory.Count : 0;
-            int lookback = Math.Min(total, 20);
-            int activeMaxFps = curLiveFps > 0 ? curLiveFps : 60;
-            if (lookback > 0)
-            {
-                List<int> recent = new List<int>(lookback);
-                for (int i = 0; i < lookback; i++)
-                {
-                    int f = fpsHistory[total - lookback + i];
-                    if (f > 0) recent.Add(f);
-                }
-                if (recent.Count > 0)
-                {
-                    recent.Sort();
-                    int p90Idx = Math.Min(recent.Count - 1, (int)Math.Ceiling(recent.Count * 0.90) - 1);
-                    activeMaxFps = Math.Max(recent[p90Idx], curLiveFps);
-                }
-            }
-
-            if (activeMaxFps > 235)
-                return (int)(Math.Ceiling(activeMaxFps / 60.0) * 60);
-            if (activeMaxFps > 170)
-                return 240;
-            if (activeMaxFps > 115)
-                return 180;
-            if (activeMaxFps > 75)
-                return 120;
-            if (activeMaxFps > 38)
-                return 80; // 58-62 FPS stays rock solid at 80 ceiling with 20 FPS headroom above 60 line
-            return 60;
+            return DfGraphMath.CalculateFpsCeiling(curLiveFps, fpsHistory);
         }
 
         public static int CalculateDfFrametimeCeiling(double curFtMs, IList<int> ftHistory)
         {
-            double activeMaxFt = curFtMs > 0 ? curFtMs : 16.6;
-            if (ftHistory != null && ftHistory.Count > 0)
-            {
-                int total = ftHistory.Count;
-                int lookback = Math.Min(total, 30);
-                List<double> recent = new List<double>(lookback);
-                for (int i = 0; i < lookback; i++)
-                {
-                    int raw = ftHistory[total - lookback + i];
-                    if (raw > 0) recent.Add(raw / 10.0);
-                }
-                if (recent.Count > 0)
-                {
-                    recent.Sort();
-                    int p90 = Math.Min(recent.Count - 1, (int)Math.Ceiling(recent.Count * 0.90) - 1);
-                    activeMaxFt = Math.Max(recent[p90], curFtMs);
-                }
-            }
-
-            if (activeMaxFt > 95.0)
-                return Math.Min(200, (int)(Math.Ceiling(activeMaxFt / 50.0) * 50));
-            if (activeMaxFt > 65.0)
-                return 100;
-            if (activeMaxFt > 38.0)
-                return 75;
-            return 50; // Zoomed in default for clean pacing (16.6ms / 19.3ms gameplay)
+            return DfGraphMath.CalculateFrametimeCeiling(curFtMs, ftHistory);
         }
 
         private static readonly Dictionary<string, string> KnownGameNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

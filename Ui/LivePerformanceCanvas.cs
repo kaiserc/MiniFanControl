@@ -75,12 +75,7 @@ namespace MiniFanControl
 
         private string FormatTimeAgo(int samplesAgo)
         {
-            if (samplesAgo <= 0) return "Now";
-            double secPerSample = Math.Max(0.1, SampleIntervalMs / 1000.0);
-            double secs = samplesAgo * secPerSample;
-            if (secPerSample < 0.95)
-                return string.Format("-{0:0.0}s", secs);
-            return string.Format("-{0:0}s", secs);
+            return DfGraphMath.FormatSampleTimeAgo(samplesAgo, SampleIntervalMs);
         }
 
         private void CycleViewMode()
@@ -256,7 +251,13 @@ namespace MiniFanControl
                     if (ResetPeaksRequested != null) ResetPeaksRequested(this, EventArgs.Empty);
                 });
                 Win11VisualStyle.ApplyThemeToMenu(cm, ThemePalette.ResolveFromFlags(IsDarkMode, IsRadeonTheme, IsAfterburnerTheme, IsXmasTheme));
-                cm.Closed += (s, args) => { try { cm.Dispose(); } catch { } };
+                cm.Closed += (s, args) =>
+                {
+                    if (IsHandleCreated && !IsDisposed)
+                    {
+                        try { BeginInvoke((Action)delegate { try { if (!cm.IsDisposed) cm.Dispose(); } catch { } }); } catch { }
+                    }
+                };
                 cm.Show(this, e.Location);
                 return;
             }
@@ -377,28 +378,7 @@ namespace MiniFanControl
 
         private static float SampleSmoothedFps(List<int> history, int start, int take, int i, int curFps)
         {
-            if (history == null || history.Count == 0) return 0f;
-            int idx = start + i;
-            if (idx < 0 || idx >= history.Count) return 0f;
-            if (take <= 2) return Math.Max(0, history[idx]);
-            if (i == take - 1) return (curFps > 0) ? curFps : Math.Max(0, history[idx]);
-
-            // 5-point Gaussian-weighted rolling average (0.1, 0.2, 0.4, 0.2, 0.1) to smooth RTSS 1Hz integer steps
-            // while keeping the leading edge exact to live FPS (matches Overlay DF aesthetic)
-            float[] weights = new float[] { 0.10f, 0.20f, 0.40f, 0.20f, 0.10f };
-            float sum = 0f;
-            float wSum = 0f;
-            for (int k = -2; k <= 2; k++)
-            {
-                int sIdx = idx + k;
-                if (sIdx >= start && sIdx < start + take && sIdx < history.Count)
-                {
-                    float w = weights[k + 2];
-                    sum += Math.Max(0, history[sIdx]) * w;
-                    wSum += w;
-                }
-            }
-            return wSum > 0f ? (sum / wSum) : Math.Max(0, history[idx]);
+            return DfGraphMath.SampleSmoothedFpsGaussian5Pt(history, start, take, i, curFps);
         }
 
         private int ComputeRollingAvgFps(int curFps)
@@ -616,23 +596,8 @@ namespace MiniFanControl
                 : new Rectangle(rect.X + 38, rect.Y + 20, Math.Max(20, rect.Width - 84), Math.Max(10, rect.Height - 26));
 
             // Dynamic ceiling tracking
-            int targetFtCeiling = CapFrameXOverlayForm.CalculateDfFrametimeCeiling(curFt, (Stats != null) ? Stats.FrametimeHistory : null);
-            if (targetFtCeiling > _currentFtCeiling)
-            {
-                _currentFtCeiling = targetFtCeiling;
-                _ftCeilingHoldCounter = 0;
-            }
-            else if (targetFtCeiling < _currentFtCeiling)
-            {
-                _ftCeilingHoldCounter++;
-                if (_ftCeilingHoldCounter >= 12)
-                {
-                    _currentFtCeiling = targetFtCeiling;
-                    _ftCeilingHoldCounter = 0;
-                }
-            }
-            else _ftCeilingHoldCounter = 0;
-            int ftCeiling = _currentFtCeiling;
+            int targetFtCeiling = DfGraphMath.CalculateFrametimeCeiling(curFt, (Stats != null) ? Stats.FrametimeHistory : null);
+            int ftCeiling = DfGraphMath.UpdateCeilingWithHysteresis(targetFtCeiling, ref _currentFtCeiling, ref _ftCeilingHoldCounter, 12);
 
             // Plot Grid & Reference Guides
             using (Pen gridPen = new Pen(IsDarkMode ? Color.FromArgb(30, 255, 255, 255) : Color.FromArgb(30, 0, 0, 0), 1f) { DashStyle = DashStyle.Dash })
@@ -814,36 +779,9 @@ namespace MiniFanControl
             Rectangle plot = new Rectangle(rect.X + 38, rect.Y + 20, Math.Max(20, rect.Width - 84), Math.Max(10, rect.Height - 26));
 
             // Dynamic ceiling tracking
-            int targetFpsCeiling = CapFrameXOverlayForm.CalculateDfCeiling(curFps, (Stats != null) ? Stats.FpsHistory : null);
-            if (targetFpsCeiling > _currentFpsCeiling)
-            {
-                _currentFpsCeiling = targetFpsCeiling;
-                _fpsCeilingHoldCounter = 0;
-            }
-            else if (targetFpsCeiling < _currentFpsCeiling)
-            {
-                _fpsCeilingHoldCounter++;
-                if (_fpsCeilingHoldCounter >= 12)
-                {
-                    _currentFpsCeiling = targetFpsCeiling;
-                    _fpsCeilingHoldCounter = 0;
-                }
-            }
-            else _fpsCeilingHoldCounter = 0;
-            int fpsCeiling = _currentFpsCeiling;
-
-            int[] levels;
-            if (fpsCeiling == 60) levels = new int[] { 60, 40, 20, 0 };
-            else if (fpsCeiling == 80) levels = new int[] { 80, 60, 40, 20, 0 };
-            else if (fpsCeiling == 90) levels = new int[] { 90, 60, 30, 0 };
-            else if (fpsCeiling == 120) levels = new int[] { 120, 80, 40, 0 };
-            else if (fpsCeiling == 180) levels = new int[] { 180, 120, 60, 0 };
-            else if (fpsCeiling == 240) levels = new int[] { 240, 160, 80, 0 };
-            else
-            {
-                int step = fpsCeiling / 3;
-                levels = new int[] { fpsCeiling, step * 2, step, 0 };
-            }
+            int targetFpsCeiling = DfGraphMath.CalculateFpsCeiling(curFps, (Stats != null) ? Stats.FpsHistory : null);
+            int fpsCeiling = DfGraphMath.UpdateCeilingWithHysteresis(targetFpsCeiling, ref _currentFpsCeiling, ref _fpsCeilingHoldCounter, 12);
+            int[] levels = DfGraphMath.GetFpsAxisLevels(fpsCeiling);
 
             // Plot Grid & Reference Guides
             using (Pen gridPen = new Pen(IsDarkMode ? Color.FromArgb(30, 255, 255, 255) : Color.FromArgb(30, 0, 0, 0), 1f) { DashStyle = DashStyle.Dash })

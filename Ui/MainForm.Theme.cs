@@ -172,16 +172,12 @@ namespace MiniFanControl
                     l.BackColor = SystemColors.Control;
                     l.ForeColor = SystemColors.ControlText;
                 }
-                foreach (DoubleBufferedPanel box in new[] { _cpuTempBox, _gpuTempBox, _nvmeTempBox, _pwrBox, _ramPowerBox, _ambientBox, _fan1Box, _fan2Box, _ramCard })
+                if (_telemetryTiles != null)
                 {
-                    if (box != null) box.BackColor = SystemColors.Window;
-                }
-                foreach (Label lbl in new[] { _cpuBoxTitle, _cpuTempLabel, _gpuBoxTitle, _gpuTempLabel, _nvmeBoxTitle, _nvmeTempLabel, _pwrBoxTitle, _pwrLabel, _ramBoxTitle, _ramPowerLabel, _ambientBoxTitle, _ambientLabel, _fan1BoxTitle, _fan1RpmLabel, _fan2BoxTitle, _fan2RpmLabel, _ramLabel })
-                {
-                    if (lbl != null)
+                    ThemePalette hcPal = CurrentPalette;
+                    for (int i = 0; i < _telemetryTiles.Length; i++)
                     {
-                        lbl.BackColor = SystemColors.Window;
-                        lbl.ForeColor = SystemColors.WindowText;
+                        if (_telemetryTiles[i] != null) _telemetryTiles[i].ApplyTheme(hcPal);
                     }
                 }
                 if (_curveCanvas != null) _curveCanvas.Invalidate();
@@ -192,20 +188,13 @@ namespace MiniFanControl
 
             bool isRadeon = (_themePref == ThemePreference.Radeon);
             bool isXmas = IsXmas;
+            ThemePalette pal = CurrentPalette;
             Color bg = isXmas ? XmasBg : (isRadeon ? RadeonBg : (IsAb ? AbBg : (_isDarkMode ? DarkBg : LightBg)));
             Color surface = isXmas ? XmasSurface : (isRadeon ? RadeonSurface : (IsAb ? AbSurface : (_isDarkMode ? DarkSurface : LightSurface)));
             Color surface2 = isXmas ? XmasSurface2 : (isRadeon ? RadeonSurface2 : (IsAb ? AbSurface2 : (_isDarkMode ? DarkSurface2 : LightSurface2)));
             Color text = isXmas ? XmasText : (isRadeon ? RadeonText : (IsAb ? AbText : (_isDarkMode ? DarkText : LightText)));
             Color textDim = isXmas ? XmasTextDim : (isRadeon ? RadeonTextDim : (IsAb ? AbTextDim : (_isDarkMode ? DarkTextDim : LightTextDim)));
             Color accent = isXmas ? XmasRed : (isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (IsAb ? AbGreen : (_isDarkMode ? DarkAccent : LightAccent)));
-
-            Color tempBoxBg = isXmas ? Color.White : (isRadeon ? Color.FromArgb(0x0D, 0x05, 0x07) : (IsAb ? Color.FromArgb(0x0B, 0x0D, 0x10) : (_isDarkMode ? Color.Black : Color.White)));
-            Color tempBoxFg = isXmas ? XmasText : (_isDarkMode ? Color.White : Color.Black);
-            Color tempBoxTitleFg = isXmas
-                ? XmasRed
-                : (isRadeon
-                    ? Color.FromArgb(0xFD, 0xA4, 0xAF)
-                    : (IsAb ? AbGreen : (_isDarkMode ? Color.FromArgb(0x94, 0xA3, 0xB8) : Color.FromArgb(0x47, 0x55, 0x69))));
 
             BackColor = bg;
             ForeColor = text;
@@ -283,97 +272,11 @@ namespace MiniFanControl
                 l.ForeColor = textDim;
             }
 
-            if (_cpuTempBox != null)
+            if (_telemetryTiles != null)
             {
-                _cpuTempBox.BackColor = tempBoxBg;
-                _cpuBoxTitle.BackColor = tempBoxBg;
-                _cpuBoxTitle.ForeColor = tempBoxTitleFg;
-                _cpuTempLabel.BackColor = tempBoxBg;
-                _cpuTempLabel.ForeColor = tempBoxFg;
-            }
-
-            if (_gpuTempBox != null)
-            {
-                _gpuTempBox.BackColor = tempBoxBg;
-                _gpuBoxTitle.BackColor = tempBoxBg;
-                _gpuBoxTitle.ForeColor = tempBoxTitleFg;
-                _gpuTempLabel.BackColor = tempBoxBg;
-                _gpuTempLabel.ForeColor = tempBoxFg;
-            }
-
-            if (_pwrBox != null)
-            {
-                _pwrBox.BackColor = tempBoxBg;
-                _pwrBoxTitle.BackColor = tempBoxBg;
-                _pwrBoxTitle.ForeColor = tempBoxTitleFg;
-                _pwrLabel.BackColor = tempBoxBg;
-                _pwrLabel.ForeColor = tempBoxFg;
-            }
-
-            if (_fan1Box != null)
-            {
-                _fan1Box.BackColor = tempBoxBg;
-                if (_fan1BoxTitle != null)
+                for (int i = 0; i < _telemetryTiles.Length; i++)
                 {
-                    _fan1BoxTitle.BackColor = tempBoxBg;
-                    _fan1BoxTitle.ForeColor = tempBoxTitleFg;
-                }
-                if (_fan1RpmLabel != null)
-                {
-                    _fan1RpmLabel.BackColor = tempBoxBg;
-                    _fan1RpmLabel.ForeColor = tempBoxFg;
-                }
-            }
-
-            if (_fan2Box != null)
-            {
-                _fan2Box.BackColor = tempBoxBg;
-                if (_fan2BoxTitle != null)
-                {
-                    _fan2BoxTitle.BackColor = tempBoxBg;
-                    _fan2BoxTitle.ForeColor = tempBoxTitleFg;
-                }
-                if (_fan2RpmLabel != null)
-                {
-                    _fan2RpmLabel.BackColor = tempBoxBg;
-                    _fan2RpmLabel.ForeColor = tempBoxFg;
-                }
-            }
-
-            if (_nvmeTempBox != null)
-            {
-                _nvmeTempBox.BackColor = tempBoxBg;
-                _nvmeBoxTitle.BackColor = tempBoxBg;
-                _nvmeBoxTitle.ForeColor = tempBoxTitleFg;
-                _nvmeTempLabel.BackColor = tempBoxBg;
-                _nvmeTempLabel.ForeColor = tempBoxFg;
-            }
-
-            if (_ramPowerBox != null)
-            {
-                _ramPowerBox.BackColor = tempBoxBg;
-                _ramBoxTitle.BackColor = tempBoxBg;
-                _ramBoxTitle.ForeColor = tempBoxTitleFg;
-                _ramPowerLabel.BackColor = tempBoxBg;
-                _ramPowerLabel.ForeColor = tempBoxFg;
-            }
-
-            if (_ambientBox != null)
-            {
-                _ambientBox.BackColor = tempBoxBg;
-                _ambientBoxTitle.BackColor = tempBoxBg;
-                _ambientBoxTitle.ForeColor = tempBoxTitleFg;
-                _ambientLabel.BackColor = tempBoxBg;
-                _ambientLabel.ForeColor = tempBoxFg;
-            }
-
-            if (_ramCard != null)
-            {
-                _ramCard.BackColor = tempBoxBg;
-                if (_ramLabel != null)
-                {
-                    _ramLabel.BackColor = tempBoxBg;
-                    _ramLabel.ForeColor = text;
+                    if (_telemetryTiles[i] != null) _telemetryTiles[i].ApplyTheme(pal);
                 }
             }
 
@@ -383,7 +286,6 @@ namespace MiniFanControl
             _pct1Label.BackColor = surface;
             _pct2Label.BackColor = surface;
 
-            ThemePalette pal = CurrentPalette;
             if (_customModeCombo != null)
             {
                 Win11VisualStyle.ApplyDarkComboTheme(_customModeCombo, pal);

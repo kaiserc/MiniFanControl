@@ -830,48 +830,9 @@ namespace MiniFanControl
             int ddrTemp2 = 0;
             int ddrComposite = 0;
 
-            ushort smbusBase = (!LeanServiceMode && allowActiveSilicon) ? GetAmdSmbusBase() : (ushort)0;
-            if (smbusBase != 0)
-            {
-                if (_spdThrottleStick0.TryBegin())
-                {
-                    int s1;
-                    _cachedSpd1Ok = ReadDdr5SpdHubTemp(smbusBase, 0x50, out s1) || ReadDdr5SpdHubTemp(smbusBase, 0x51, out s1);
-                    if (_cachedSpd1Ok)
-                    {
-                        _cachedSpd1 = s1;
-                        _spd1ConsecutiveMisses = 0;
-                        _spdThrottleStick0.Interval = TimeSpan.FromMilliseconds(1500);
-                    }
-                    else
-                    {
-                        _spd1ConsecutiveMisses++;
-                        if (_spd1ConsecutiveMisses >= 3)
-                            _spdThrottleStick0.Interval = TimeSpan.FromSeconds(30);
-                    }
-                }
-                if (_spdThrottleStick1.TryBegin())
-                {
-                    int s2;
-                    _cachedSpd2Ok = ReadDdr5SpdHubTemp(smbusBase, 0x52, out s2) || ReadDdr5SpdHubTemp(smbusBase, 0x53, out s2);
-                    if (_cachedSpd2Ok)
-                    {
-                        _cachedSpd2 = s2;
-                        _spd2ConsecutiveMisses = 0;
-                        _spdThrottleStick1.Interval = TimeSpan.FromMilliseconds(1500);
-                    }
-                    else
-                    {
-                        _spd2ConsecutiveMisses++;
-                        if (_spd2ConsecutiveMisses >= 3)
-                            _spdThrottleStick1.Interval = TimeSpan.FromSeconds(30);
-                    }
-                }
-            }
-            int spd1 = _cachedSpd1;
-            int spd2 = _cachedSpd2;
-            bool spd1Ok = _cachedSpd1Ok;
-            bool spd2Ok = _cachedSpd2Ok;
+            int spd1, spd2;
+            bool spd1Ok, spd2Ok;
+            Ddr5SpdSensor.SampleDualSticks(!LeanServiceMode && allowActiveSilicon, out spd1, out spd1Ok, out spd2, out spd2Ok);
 
             if (spd1Ok && spd2Ok)
             {

@@ -250,7 +250,13 @@ namespace MiniFanControl
                     if (ResetPeaksRequested != null) ResetPeaksRequested(this, EventArgs.Empty);
                 });
                 Win11VisualStyle.ApplyThemeToMenu(cm, ThemePalette.ResolveFromFlags(IsDarkMode, IsRadeonTheme, IsAfterburnerTheme, IsXmasTheme));
-                cm.Closed += (s, args) => { try { cm.Dispose(); } catch { } };
+                cm.Closed += (s, args) =>
+                {
+                    if (IsHandleCreated && !IsDisposed)
+                    {
+                        try { BeginInvoke((Action)delegate { try { if (!cm.IsDisposed) cm.Dispose(); } catch { } }); } catch { }
+                    }
+                };
                 cm.Show(this, e.Location);
                 return;
             }

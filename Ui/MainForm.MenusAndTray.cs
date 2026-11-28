@@ -21,15 +21,21 @@ namespace MiniFanControl
         {
             _sessionStats.Reset();
             _activePopupTooltipText = null;
-            _metricDetails.Clear();
-            if (_cpuBoxTitle != null) _cpuBoxTitle.Text = "CPU";
-            if (_gpuBoxTitle != null) _gpuBoxTitle.Text = "iGPU";
-            if (_nvmeBoxTitle != null) _nvmeBoxTitle.Text = "NVMe";
-            if (_pwrBoxTitle != null) _pwrBoxTitle.Text = "POWER";
-            if (_ramBoxTitle != null) _ramBoxTitle.Text = "RAM (DDR5)";
-            if (_ambientBoxTitle != null) _ambientBoxTitle.Text = "CHASSIS";
-            if (_fan1BoxTitle != null) _fan1BoxTitle.Text = "APU FAN";
-            if (_fan2BoxTitle != null) _fan2BoxTitle.Text = "SYS FAN";
+            if (_telemetryTiles != null)
+            {
+                for (int i = 0; i < _telemetryTiles.Length; i++)
+                {
+                    if (_telemetryTiles[i] != null) _telemetryTiles[i].ClearDetails();
+                }
+            }
+            if (_cpuTile != null) _cpuTile.Title = "CPU";
+            if (_gpuTile != null) _gpuTile.Title = "iGPU";
+            if (_nvmeTile != null) _nvmeTile.Title = "NVMe";
+            if (_pwrTile != null) _pwrTile.Title = "POWER";
+            if (_ramTile != null) _ramTile.Title = "RAM (DDR5)";
+            if (_ambientTile != null) _ambientTile.Title = "CHASSIS";
+            if (_fan1Tile != null) _fan1Tile.Title = "APU FAN";
+            if (_fan2Tile != null) _fan2Tile.Title = "SYS FAN";
             if (_statusBarLabel != null)
                 _statusBarLabel.Text = "✓ Reset session Min/Avg/Peak telemetry stats";
             RefreshStatus();
@@ -357,16 +363,13 @@ namespace MiniFanControl
                         FanStatus st = prog.LiveStatus;
                         if (st.CpuTemp > 0)
                         {
-                            _cpuTempLabel.Text = string.Format("{0}°C", st.CpuTemp);
-                            _gpuTempLabel.Text = st.GpuTemp > 0 ? string.Format("{0}°C", st.GpuTemp) : "N/A";
-                            if (_pwrLabel != null)
-                                _pwrLabel.Text = st.ApuPowerWatts > 0 ? string.Format("{0}W", st.ApuPowerWatts) : "--W";
-                            if (_nvmeTempLabel != null)
-                                _nvmeTempLabel.Text = st.NvmeTemp > 0 ? string.Format("{0}°C", st.NvmeTemp) : "N/A";
-                            if (_ramPowerLabel != null)
-                                _ramPowerLabel.Text = st.RamPowerWatts > 0 ? string.Format("~{0:F1}W", st.RamPowerWatts) : "--W";
-                            _fan1RpmLabel.Text = string.Format("{0} RPM ↻", st.Fan1Rpm);
-                            _fan2RpmLabel.Text = _hasDualFans ? (st.Fan2Rpm > 0 ? string.Format("{0} RPM •", st.Fan2Rpm) : "-- RPM") : "N/A (1-Fan Mode)";
+                            if (_cpuTile != null) _cpuTile.ValueText = string.Format("{0}°C", st.CpuTemp);
+                            if (_gpuTile != null) _gpuTile.ValueText = st.GpuTemp > 0 ? string.Format("{0}°C", st.GpuTemp) : "N/A";
+                            if (_pwrTile != null) _pwrTile.ValueText = st.ApuPowerWatts > 0 ? string.Format("{0}W", st.ApuPowerWatts) : "--W";
+                            if (_nvmeTile != null) _nvmeTile.ValueText = st.NvmeTemp > 0 ? string.Format("{0}°C", st.NvmeTemp) : "N/A";
+                            if (_ramTile != null) _ramTile.ValueText = st.RamPowerWatts > 0 ? string.Format("~{0:F1}W", st.RamPowerWatts) : "--W";
+                            if (_fan1Tile != null) _fan1Tile.ValueText = string.Format("{0} RPM ↻", st.Fan1Rpm);
+                            if (_fan2Tile != null) _fan2Tile.ValueText = _hasDualFans ? (st.Fan2Rpm > 0 ? string.Format("{0} RPM •", st.Fan2Rpm) : "-- RPM") : "N/A (1-Fan Mode)";
                             InvalidateAllMetricBoxes();
                             UpdateTrayIcons(st.CpuTemp, st.GpuTemp);
                             if (_overlayForm != null && _showOverlay)
@@ -485,7 +488,7 @@ namespace MiniFanControl
                 }
             }
 
-            if (_fan1Box != null && _fan2Box != null)
+            if (_fan1Tile != null && _fan2Tile != null)
             {
                 const int boxW = 257;
                 const int boxH = 108;
@@ -493,39 +496,18 @@ namespace MiniFanControl
                 const int row2Y = 119;
                 if (_hasDualFans)
                 {
-                    _fan1Box.Location = new Point(12 + (boxW + boxGapX) * 2, row2Y);
-                    _fan1Box.Size = new Size(boxW, boxH);
-                    if (_fan1BoxTitle != null) { _fan1BoxTitle.Location = new Point(7, 3); _fan1BoxTitle.Size = new Size(boxW - 14, 14); }
-                    if (_fan1RpmLabel != null)
-                    {
-                        _fan1RpmLabel.Location = new Point(7, 18);
-                        _fan1RpmLabel.Size = new Size(boxW - 14, 33);
-                        _fan1RpmLabel.Font = new Font("Segoe UI", 11.5f, FontStyle.Bold);
-                    }
-                    _fan2Box.Location = new Point(12 + (boxW + boxGapX) * 3, row2Y);
-                    _fan2Box.Size = new Size(boxW, boxH);
-                    if (_fan2BoxTitle != null) { _fan2BoxTitle.Location = new Point(7, 3); _fan2BoxTitle.Size = new Size(boxW - 14, 14); }
-                    if (_fan2RpmLabel != null)
-                    {
-                        _fan2RpmLabel.Location = new Point(7, 18);
-                        _fan2RpmLabel.Size = new Size(boxW - 14, 33);
-                        _fan2RpmLabel.Font = new Font("Segoe UI", 11.5f, FontStyle.Bold);
-                    }
-                    _fan2Box.Visible = true;
+                    _fan1Tile.Location = new Point(12 + (boxW + boxGapX) * 2, row2Y);
+                    _fan1Tile.Size = new Size(boxW, boxH);
+                    _fan2Tile.Location = new Point(12 + (boxW + boxGapX) * 3, row2Y);
+                    _fan2Tile.Size = new Size(boxW, boxH);
+                    _fan2Tile.Visible = true;
                 }
                 else
                 {
                     int spanW = boxW * 2 + boxGapX;
-                    _fan2Box.Visible = false;
-                    _fan1Box.Location = new Point(12 + (boxW + boxGapX) * 2, row2Y);
-                    _fan1Box.Size = new Size(spanW, boxH);
-                    if (_fan1BoxTitle != null) { _fan1BoxTitle.Location = new Point(7, 3); _fan1BoxTitle.Size = new Size(spanW - 14, 14); }
-                    if (_fan1RpmLabel != null)
-                    {
-                        _fan1RpmLabel.Location = new Point(7, 18);
-                        _fan1RpmLabel.Size = new Size(spanW - 14, 33);
-                        _fan1RpmLabel.Font = new Font("Segoe UI", 14.0f, FontStyle.Bold);
-                    }
+                    _fan2Tile.Visible = false;
+                    _fan1Tile.Location = new Point(12 + (boxW + boxGapX) * 2, row2Y);
+                    _fan1Tile.Size = new Size(spanW, boxH);
                 }
             }
 

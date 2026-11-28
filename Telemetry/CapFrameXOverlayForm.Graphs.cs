@@ -931,27 +931,7 @@ namespace MiniFanControl
             Rectangle plot = new Rectangle(rect.X + 2, rect.Y + topPad, Math.Max(8, rect.Width - rightPad - 4), Math.Max(6, rect.Height - topPad - btmPad));
 
             int targetFtCeiling = CalculateDfFrametimeCeiling(curFt, (Stats != null) ? Stats.FrametimeHistory : null);
-            if (targetFtCeiling > _currentFtCeiling)
-            {
-                // Immediate scale-out on stutter/spike so it is never clipped
-                _currentFtCeiling = targetFtCeiling;
-                _ftCeilingHoldCounter = 0;
-            }
-            else if (targetFtCeiling < _currentFtCeiling)
-            {
-                // Hold scaled-out view for 12 updates before zooming back in
-                _ftCeilingHoldCounter++;
-                if (_ftCeilingHoldCounter >= 12)
-                {
-                    _currentFtCeiling = targetFtCeiling;
-                    _ftCeilingHoldCounter = 0;
-                }
-            }
-            else
-            {
-                _ftCeilingHoldCounter = 0;
-            }
-            int ftCeiling = _currentFtCeiling;
+            int ftCeiling = DfGraphMath.UpdateCeilingWithHysteresis(targetFtCeiling, ref _currentFtCeiling, ref _ftCeilingHoldCounter, 12);
 
             // Vertical center dividing line inside plot
             int midX = plot.Left + plot.Width / 2;
@@ -1130,46 +1110,8 @@ namespace MiniFanControl
             int sessionAvg = ComputeDisplayAvgFps(curLiveFps);
 
             int targetFpsCeiling = CalculateDfCeiling(curLiveFps, (Stats != null) ? Stats.FpsHistory : null);
-            if (targetFpsCeiling > _currentFpsCeiling)
-            {
-                // Immediate scale-up when framerate rises so frames are never clipped
-                _currentFpsCeiling = targetFpsCeiling;
-                _fpsCeilingHoldCounter = 0;
-            }
-            else if (targetFpsCeiling < _currentFpsCeiling)
-            {
-                // Smooth down-scale hold window: wait for 12 updates (~3-5 seconds) before stepping down
-                _fpsCeilingHoldCounter++;
-                if (_fpsCeilingHoldCounter >= 12)
-                {
-                    _currentFpsCeiling = targetFpsCeiling;
-                    _fpsCeilingHoldCounter = 0;
-                }
-            }
-            else
-            {
-                _fpsCeilingHoldCounter = 0;
-            }
-            int fpsCeiling = _currentFpsCeiling;
-
-            int[] levels;
-            if (fpsCeiling == 60)
-                levels = new int[] { 60, 40, 20, 0 };
-            else if (fpsCeiling == 80)
-                levels = new int[] { 80, 60, 40, 20, 0 };
-            else if (fpsCeiling == 90)
-                levels = new int[] { 90, 60, 30, 0 };
-            else if (fpsCeiling == 120)
-                levels = new int[] { 120, 80, 40, 0 };
-            else if (fpsCeiling == 180)
-                levels = new int[] { 180, 120, 60, 0 };
-            else if (fpsCeiling == 240)
-                levels = new int[] { 240, 160, 80, 0 };
-            else
-            {
-                int step = fpsCeiling / 3;
-                levels = new int[] { fpsCeiling, step * 2, step, 0 };
-            }
+            int fpsCeiling = DfGraphMath.UpdateCeilingWithHysteresis(targetFpsCeiling, ref _currentFpsCeiling, ref _fpsCeilingHoldCounter, 12);
+            int[] levels = DfGraphMath.GetFpsAxisLevels(fpsCeiling);
 
             bool xmas = IsXmasTheme;
             using (SolidBrush bgBr = new SolidBrush(xmas ? Color.White : Color.FromArgb(236, 9, 12, 18)))
@@ -1372,31 +1314,7 @@ namespace MiniFanControl
             {
                 for (int i = 0; i < take; i++)
                 {
-                    int idx = start + i;
-                    float f;
-                    if (take <= 2)
-                    {
-                        f = (idx < Stats.FpsHistory.Count) ? Stats.FpsHistory[idx] : 0;
-                    }
-                    else if (i == 0)
-                    {
-                        float f0 = Stats.FpsHistory[idx];
-                        float f1 = (idx + 1 < Stats.FpsHistory.Count) ? Stats.FpsHistory[idx + 1] : f0;
-                        f = f0 * 0.75f + f1 * 0.25f;
-                    }
-                    else if (i == take - 1)
-                    {
-                        // Keep leading edge exact to latest live sample
-                        f = (curLiveFps > 0) ? curLiveFps : ((idx < Stats.FpsHistory.Count) ? Stats.FpsHistory[idx] : 0);
-                    }
-                    else
-                    {
-                        float fPrev = Stats.FpsHistory[idx - 1];
-                        float fCurr = Stats.FpsHistory[idx];
-                        float fNext = (idx + 1 < Stats.FpsHistory.Count) ? Stats.FpsHistory[idx + 1] : fCurr;
-                        f = fPrev * 0.2f + fCurr * 0.6f + fNext * 0.2f;
-                    }
-
+                    float f = DfGraphMath.SampleSmoothedFps3Pt(Stats.FpsHistory, start, take, i, curLiveFps);
                     float norm = Math.Max(0f, Math.Min(1f, f / fpsCeiling));
                     float x = plot.Left + (plot.Width * i) / (float)(take - 1);
                     float y = plot.Bottom - norm * plot.Height;

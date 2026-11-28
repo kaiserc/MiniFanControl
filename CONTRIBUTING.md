@@ -83,7 +83,7 @@ dotnet run --project Tests\MiniFanControl.Tests.csproj -c Release -f net10.0-win
 
 ## 🧪 Automated Testing Requirements
 
-Before opening a pull request, verify that all **127+ automated regression and safety tests** pass cleanly:
+Before opening a pull request, verify that all **128 automated regression and safety tests** pass cleanly:
 
 ```powershell
 .\minifan-helper.exe test

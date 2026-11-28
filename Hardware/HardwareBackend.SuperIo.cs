@@ -635,71 +635,30 @@ namespace MiniFanControl
         }
 
 
-        private bool _hasCapturedSioBiosState = false;
-        private byte _biosSioReg15 = 0;
-        private byte _biosSioReg16 = 0;
-        private byte _biosSioReg17 = 0;
-        private byte _biosSioReg63 = 0;
-        private byte _biosSioReg6B = 0;
-        private byte _biosSioReg73 = 0;
-        private bool _biosSioHasSmartGuardian = false;
+        private readonly BiosFanStateSnapshot _biosSnapshot = new BiosFanStateSnapshot();
 
-        private bool _hasCapturedEcBiosMode = false;
-        private int _biosEcInitialMode = -1;
+        public bool HasCapturedBiosSmartGuardianCurve { get { return _biosSnapshot.HasCapturedSuperIo && _biosSnapshot.HasSmartGuardianCurve; } }
+        public int CapturedBiosEcMode { get { return _biosSnapshot.HasCapturedEcMode ? _biosSnapshot.InitialEcMode : -1; } }
 
-        public bool HasCapturedBiosSmartGuardianCurve { get { return _hasCapturedSioBiosState && _biosSioHasSmartGuardian; } }
-        public int CapturedBiosEcMode { get { return _hasCapturedEcBiosMode ? _biosEcInitialMode : -1; } }
-
-        /// <summary>
-        /// Snapshots untouched IT8613E/IT87xx fan control registers ONCE before MiniFanControl's
-        /// first PWM override so Reset Auto / Exit can faithfully restore a user's BIOS custom
-        /// SmartGuardian fan curve (Bit 7 = 1) when present, without blindly enabling SmartGuardian
-        /// on factory boards whose BIOS booted in Extended PWM mode (0x15..0x17 == 0x00).
-        /// </summary>
         private void CaptureInitialSuperIoBiosStateIfNeeded()
         {
-            if (_hasCapturedSioBiosState || SuperIoBaseAddr == 0) return;
-
-            byte r15 = ReadSuperIoHwReg(0x15);
-            byte r16 = ReadSuperIoHwReg(0x16);
-            byte r17 = ReadSuperIoHwReg(0x17);
-            byte r63 = ReadSuperIoHwReg(0x63);
-            byte r6B = ReadSuperIoHwReg(0x6B);
-            byte r73 = ReadSuperIoHwReg(0x73);
-
-            // Reject bus-float reads (all 0xFF) so disconnected hardware never looks like SmartGuardian
-            if (r15 == 0xFF && r16 == 0xFF && r17 == 0xFF) return;
-
-            _biosSioReg15 = r15;
-            _biosSioReg16 = r16;
-            _biosSioReg17 = r17;
-            _biosSioReg63 = r63;
-            _biosSioReg6B = r6B;
-            _biosSioReg73 = r73;
-            _biosSioHasSmartGuardian =
-                (r15 != 0xFF && (r15 & 0x80) != 0) ||
-                (r16 != 0xFF && (r16 & 0x80) != 0) ||
-                (r17 != 0xFF && (r17 & 0x80) != 0);
-            _hasCapturedSioBiosState = true;
+            if (_biosSnapshot.HasCapturedSuperIo || SuperIoBaseAddr == 0) return;
+            _biosSnapshot.TryCaptureSuperIo(
+                ReadSuperIoHwReg(0x15),
+                ReadSuperIoHwReg(0x16),
+                ReadSuperIoHwReg(0x17),
+                ReadSuperIoHwReg(0x63),
+                ReadSuperIoHwReg(0x6B),
+                ReadSuperIoHwReg(0x73));
         }
 
-        /// <summary>
-        /// Snapshots the motherboard EC's initial BIOS power/fan mode (0=Balanced, 1=Perf, 2=Silent)
-        /// ONCE before MiniFanControl writes its first mode or manual fan command.
-        /// </summary>
         private void CaptureInitialEcBiosStateIfNeeded()
         {
-            if (_hasCapturedEcBiosMode) return;
+            if (_biosSnapshot.HasCapturedEcMode) return;
             if (SuperIoBaseAddr != 0 || AccessMethod == EcAccessMethod.SuperIo2E || AccessMethod == EcAccessMethod.SuperIo4E) return;
             DeviceProfile p = Profile ?? DeviceProfile.FindProfile("unknown-safe");
             if (p == null || p.IsReadOnly) return;
-
-            byte statusMode = ReadRegInternal(p.RegModeStatus);
-            if (statusMode <= 2)
-            {
-                _biosEcInitialMode = (int)statusMode;
-                _hasCapturedEcBiosMode = true;
-            }
+            _biosSnapshot.TryCaptureEcMode(ReadRegInternal(p.RegModeStatus));
         }
 
         public bool RestoreNativeEcAuto()
@@ -712,10 +671,7 @@ namespace MiniFanControl
                 return true;
             }
 
-            byte restoreModeCmd = (_hasCapturedEcBiosMode && _biosEcInitialMode >= 0 && _biosEcInitialMode <= 2)
-                ? EncodeModeCommand(_biosEcInitialMode)
-                : (byte)0x80;
-            WriteRegInternal(p.RegModeCmd, restoreModeCmd);
+            WriteRegInternal(p.RegModeCmd, _biosSnapshot.ResolveEcRestoreModeCommand());
             WriteRegInternal(p.RegFan1Ctrl, 0x00);
             WriteRegInternal(p.RegFan2Ctrl, 0x00);
 
@@ -762,11 +718,11 @@ namespace MiniFanControl
             // Otherwise (factory BIOS booted with Reg 0x15..0x17 == 0x00 Extended PWM mode, e.g. TS-12C / EVO-X1),
             // keep Bit 7 = 0 (setting Bit 7 = 1 on unconfigured thermal diodes blasts 100%) and write a safe
             // temperature-aware fallback duty into 0x63 / 0x6B / 0x73.
-            if (_hasCapturedSioBiosState && _biosSioHasSmartGuardian)
+            if (_biosSnapshot.HasCapturedSuperIo && _biosSnapshot.HasSmartGuardianCurve)
             {
-                byte r15 = (_biosSioReg15 != 0xFF) ? _biosSioReg15 : (byte)0x00;
-                byte r16 = (_biosSioReg16 != 0xFF) ? _biosSioReg16 : (byte)0x00;
-                byte r17 = (_biosSioReg17 != 0xFF) ? _biosSioReg17 : (byte)0x00;
+                byte r15 = (_biosSnapshot.SioReg15 != 0xFF) ? _biosSnapshot.SioReg15 : (byte)0x00;
+                byte r16 = (_biosSnapshot.SioReg16 != 0xFF) ? _biosSnapshot.SioReg16 : (byte)0x00;
+                byte r17 = (_biosSnapshot.SioReg17 != 0xFF) ? _biosSnapshot.SioReg17 : (byte)0x00;
                 WritePortByte(addrPort, 0x15);
                 WritePortByte(dataPort, r15);
                 WritePortByte(addrPort, 0x16);
@@ -781,17 +737,17 @@ namespace MiniFanControl
                 }
 
                 // Restore original extended duty for any channel that was not in SmartGuardian mode
-                if ((r15 & 0x80) == 0 && _biosSioReg63 != 0xFF)
+                if ((r15 & 0x80) == 0 && _biosSnapshot.SioReg63 != 0xFF)
                 {
-                    if (!WriteSuperIoHwReg(0x63, _biosSioReg63)) allOk = false;
+                    if (!WriteSuperIoHwReg(0x63, _biosSnapshot.SioReg63)) allOk = false;
                 }
-                if ((r16 & 0x80) == 0 && _biosSioReg6B != 0xFF)
+                if ((r16 & 0x80) == 0 && _biosSnapshot.SioReg6B != 0xFF)
                 {
-                    if (!WriteSuperIoHwReg(0x6B, _biosSioReg6B)) allOk = false;
+                    if (!WriteSuperIoHwReg(0x6B, _biosSnapshot.SioReg6B)) allOk = false;
                 }
-                if ((Profile == null || Profile.HasDualFans) && (r17 & 0x80) == 0 && _biosSioReg73 != 0xFF)
+                if ((Profile == null || Profile.HasDualFans) && (r17 & 0x80) == 0 && _biosSnapshot.SioReg73 != 0xFF)
                 {
-                    if (!WriteSuperIoHwReg(0x73, _biosSioReg73)) allOk = false;
+                    if (!WriteSuperIoHwReg(0x73, _biosSnapshot.SioReg73)) allOk = false;
                 }
                 return allOk;
             }

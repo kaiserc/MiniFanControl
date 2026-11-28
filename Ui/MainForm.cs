@@ -157,30 +157,7 @@ namespace MiniFanControl
         private bool IsAb { get { return _themePref == ThemePreference.Afterburner; } }
         private bool IsXmas { get { return _themePref == ThemePreference.Xmas; } }
         private ThemePalette CurrentPalette { get { return ThemePalette.Resolve(_themePref, _isDarkMode); } }
-        private int _hoveredMetricKind = 0;
         private ContextMenuStrip _themeMenu;
-        private static readonly Font MetricValMonoLarge = CreateTabularMetricFont(14.0f);
-        private static readonly Font MetricValMonoRpm   = CreateTabularMetricFont(11.25f);
-
-        private static Font CreateTabularMetricFont(float ptSize)
-        {
-            try
-            {
-                using (FontFamily probe = new FontFamily("Cascadia Mono"))
-                {
-                    if (probe != null) return new Font("Cascadia Mono", ptSize, FontStyle.Bold);
-                }
-            }
-            catch { }
-            try
-            {
-                return new Font("Consolas", ptSize, FontStyle.Bold);
-            }
-            catch
-            {
-                return new Font("Segoe UI", ptSize, FontStyle.Bold);
-            }
-        }
         private ThemePreference _themePref
         {
             get { return _settings.ThemePref; }
@@ -247,15 +224,15 @@ namespace MiniFanControl
             set { if (_controller != null) _controller.ApuProfile = value; }
         }
         internal List<FanCurveProfile> CustomProfiles { get { return _customProfiles; } }
-        internal Label TestCpuTempLabel { get { return _cpuTempLabel; } }
-        internal Panel TestCpuTempBox { get { return _cpuTempBox; } }
+        internal Label TestCpuTempLabel { get { return _cpuTile != null ? _cpuTile.ValueLabel : null; } }
+        internal Panel TestCpuTempBox { get { return _cpuTile; } }
         internal string TestResolveTooltipText(Control c) { return ResolveTooltipText(c); }
-        internal Label TestFan1RpmLabel { get { return _fan1RpmLabel; } }
-        internal Label TestOsdOpacityLabel { get { return _osdOpacityLabel; } }
-        internal Label TestOsdSnapLabel { get { return _osdSnapLabel; } }
-        internal Label TestOsdMetricsHeaderLabel { get { return _osdMetricsHeaderLabel; } }
-        internal Button TestOsdQuickPosBc { get { return _osdQuickPosBc; } }
-        internal Button TestOsdQuickPosBr { get { return _osdQuickPosBr; } }
+        internal Label TestFan1RpmLabel { get { return _fan1Tile != null ? _fan1Tile.ValueLabel : null; } }
+        internal Label TestOsdOpacityLabel { get { return _osdConfigPanel != null ? _osdConfigPanel.OpacityLabel : null; } }
+        internal Label TestOsdSnapLabel { get { return _osdConfigPanel != null ? _osdConfigPanel.SnapLabel : null; } }
+        internal Label TestOsdMetricsHeaderLabel { get { return _osdConfigPanel != null ? _osdConfigPanel.MetricsHeaderLabel : null; } }
+        internal Button TestOsdQuickPosBc { get { return _osdConfigPanel != null ? _osdConfigPanel.QuickPosBc : null; } }
+        internal Button TestOsdQuickPosBr { get { return _osdConfigPanel != null ? _osdConfigPanel.QuickPosBr : null; } }
         internal CheckBox TestAutostartCb { get { return _autostartCb; } }
         internal CheckBox TestAlwaysOnTopCb { get { return _alwaysOnTopCb; } }
         internal Button TestTabLiveGraphBtn { get { return _tabLiveGraphBtn; } }
@@ -266,7 +243,7 @@ namespace MiniFanControl
         internal Panel TestModeCardPanel { get { return _modeCardPanel; } }
         internal Panel TestWideRightPanel { get { return _wideRightPanel; } }
         internal Panel TestFanCardPanel { get { return _fanCardPanel; } }
-        internal Panel TestOsdMetricsScrollPanel { get { return _osdMetricsScrollPanel; } }
+        internal Panel TestOsdMetricsScrollPanel { get { return _osdConfigPanel != null ? _osdConfigPanel.MetricsScrollPanel : null; } }
         internal Label TestManualFanHeaderLabel { get { return _manualFanHeaderLabel; } }
         internal bool TestManualFanControlVisible { get { return _manualFanControlVisible; } }
         internal LiveTelemetryCanvas TestLiveCanvas { get { return _liveCanvas; } }
@@ -341,29 +318,15 @@ namespace MiniFanControl
         private ContextMenuStrip _driversMenu;
         private Button _themeToggleBtn;
         private Label _errorBanner;
-        private DoubleBufferedPanel _cpuTempBox;
-        private DoubleBufferedPanel _gpuTempBox;
-        private DoubleBufferedPanel _nvmeTempBox;
-        private DoubleBufferedPanel _pwrBox;
-        private DoubleBufferedPanel _ramPowerBox;
-        private DoubleBufferedPanel _ambientBox;
-        private DoubleBufferedPanel _fan1Box;
-        private DoubleBufferedPanel _fan2Box;
-        private DoubleBufferedPanel _ramCard;
-        private Label _ramLabel;
-        private sealed class MetricBoxDetail
-        {
-            public string PeakText = "";
-            public string SubText = "";
-            public Color SubColor = Color.Empty;
-            public string DetailText = "";
-            public string DetailText2 = "";
-            public Color Detail2Color = Color.Empty;
-        }
-        private readonly Dictionary<int, MetricBoxDetail> _metricDetails = new Dictionary<int, MetricBoxDetail>();
-        private static readonly Font MetricPeakFont = new Font("Segoe UI", 7.25f, FontStyle.Bold);
-        private static readonly Font MetricSubFont = new Font("Segoe UI", 7.75f, FontStyle.Bold);
-        private static readonly Font MetricDetailFont = new Font("Segoe UI", 7.5f, FontStyle.Regular);
+        private TelemetryTileControl _cpuTile;
+        private TelemetryTileControl _gpuTile;
+        private TelemetryTileControl _nvmeTile;
+        private TelemetryTileControl _pwrTile;
+        private TelemetryTileControl _ramTile;
+        private TelemetryTileControl _ambientTile;
+        private TelemetryTileControl _fan1Tile;
+        private TelemetryTileControl _fan2Tile;
+        private TelemetryTileControl[] _telemetryTiles;
         private Label _samplingLabel;
         private ComboBox _samplingCombo;
         private FanStatus _lastStatus;
@@ -381,22 +344,6 @@ namespace MiniFanControl
             get { return _settings.ProfileOverrideId; }
             set { _settings.ProfileOverrideId = value; }
         }
-        private Label _cpuBoxTitle;
-        private Label _gpuBoxTitle;
-        private Label _nvmeBoxTitle;
-        private Label _pwrBoxTitle;
-        private Label _ramBoxTitle;
-        private Label _ambientBoxTitle;
-        private Label _fan1BoxTitle;
-        private Label _fan2BoxTitle;
-        private Label _cpuTempLabel;
-        private Label _gpuTempLabel;
-        private Label _nvmeTempLabel;
-        private Label _pwrLabel;
-        private Label _ramPowerLabel;
-        private Label _ambientLabel;
-        private Label _fan1RpmLabel;
-        private Label _fan2RpmLabel;
         private Label _modeLabel;
         private Label _pct1Label;
         private Label _pct2Label;
@@ -412,9 +359,8 @@ namespace MiniFanControl
         private Button _tabLiveGraphBtn;
         private Button _tabPerfGraphBtn;
         private Button _tabOsdConfigBtn;
-        private Panel _osdConfigPanel;
+        private OsdStudioControl _osdConfigPanel;
         private bool _showingOsdConfig = false;
-        private bool _suppressOsdStudioEvents = false;
         private Label _customLabel;
         private FanCurveCanvas _curveCanvas;
         private LiveTelemetryCanvas _liveCanvas;
@@ -425,101 +371,6 @@ namespace MiniFanControl
         private Label _curveHintLabel;
         private Label _calibBadgeLabel;
 
-        // OSD Studio UI Controls
-        private Button _osdBtnScale100;
-        private Button _osdBtnScale125;
-        private Button _osdBtnScale150;
-        private Button _osdBtnScale185;
-        private Button _osdBtnBothGraphs;
-        private Button _osdBtnCombinedGraph;
-        private Button _osdBtnSparklines;
-        private Button _osdBtnTextOnly;
-        private Button _osdBtnGraphsOnly;
-        private Button _osdBtnHeightCompact;
-        private Button _osdBtnHeightMedium;
-        private Button _osdBtnHeightLarge;
-        private Button _osdBtnHeightXl;
-        private Button _osdBtnLayoutH;
-        private Button _osdBtnLayoutV;
-        private ModernSlider _osdOpacitySlider;
-        private Label _osdOpacityPctLabel;
-        private Label _osdTitleLabel;
-        private Label _osdGraphModeLabel;
-        private Label _osdGraphHeightLabel;
-        private Label _osdScaleLabel;
-        private Label _osdLayoutLabel;
-        private Label _osdOpacityLabel;
-        private Label _osdSnapLabel;
-        private Label _osdMetricsHeaderLabel;
-        private Label _osdTipLabel;
-        private CheckBox _osdMatchThemeCb;
-        private CheckBox _osdShowCpuCb;
-        private CheckBox _osdShowGpuCb;
-        private CheckBox _osdShowNvmeCb;
-        private CheckBox _osdShowPowerCb;
-        private CheckBox _osdShowRamCb;
-        private CheckBox _osdShowVrmCurrentCb;
-        private CheckBox _osdShowAmbientCb;
-        private CheckBox _osdShowFabricClockCb;
-        private CheckBox _osdShowNpuCb;
-        private CheckBox _osdShowFpsCb;
-        private CheckBox _osdShowLowsCb;
-        private CheckBox _osdShowGpuLoadCb;
-        private CheckBox _osdShowApuFanCb;
-        private CheckBox _osdShowSysFanCb;
-        private CheckBox _osdShowModeCb;
-        private CheckBox _osdShowPeaksCb;
-        private CheckBox _osdShowRadeonCb;
-        private CheckBox _osdShowDriverVerCb;
-        private CheckBox _osdShowClocksCb;
-        private CheckBox _osdShowGameNameCb;
-        private CheckBox _osdSparklineBgCb;
-        private CheckBox _osdShowLiveTrendCb;
-        private CheckBox _osdShowFpsGraphCb;
-        private CheckBox _osdPlotFpsOnTrendCb;
-        private CheckBox _osdDfGraphStyleCb;
-        private CheckBox _osdDfCornerInsetCb;
-        private CheckBox _osdDfGraphFirstCb;
-        private Label _osdSubFieldsHeaderLabel;
-        private CheckBox _osdShowRamTempCb;
-        private CheckBox _osdShowRamDualSticksCb;
-        private CheckBox _osdShowRamSpreadCb;
-        private CheckBox _osdShowRamLoadCb;
-        private CheckBox _osdShowRamPowerCb;
-        private CheckBox _osdShowRamClockCb;
-        private ComboBox _osdTrackerModeCombo;
-        private CheckBox _osdShowNvmePowerCb;
-        private CheckBox _osdShowNvmeIoCb;
-        private CheckBox _osdShowNvmeDualCb;
-        private CheckBox _osdShowCpuLoadCb;
-        private CheckBox _osdShowGpuHotspotCb;
-        private CheckBox _osdShowPowerLimitCb;
-        private CheckBox _osdShowFclkSyncCb;
-        private CheckBox _osdShowFrametimeMsCb;
-        private CheckBox _osdShowFpsAvgCb;
-        private CheckBox _osdShowLatencyCb;
-        private CheckBox _osdShowRadeonExtTagsCb;
-        private Panel _osdMetricsScrollPanel;
-        private readonly List<Label> _osdSectionHeaders = new List<Label>();
-        private Button _osdSelectAllBtn;
-        private Button _osdDeselectAllBtn;
-        private Button _osdResetDefaultsBtn;
-        private Button _osdQuickPosTl;
-        private Button _osdQuickPosTc;
-        private Button _osdQuickPosTr;
-        private Button _osdQuickPosBl;
-        private Button _osdQuickPosBc;
-        private Button _osdQuickPosBr;
-        private Button _osdToggleOverlayBtn;
-        private Button _osdToggleLockBtn;
-        private Button _osdPresetMinimalBtn;
-        private Button _osdPresetCompactBtn;
-        private Button _osdPresetDfBtn;
-        private Button _osdPresetFullBtn;
-        private Button[] _osdCatButtons;
-        private int _osdActiveCategory = 0; // 0=All, 1=CPU&Power, 2=iGPU&RAM, 3=Storage&Sys, 4=FPS&Graphs
-        private readonly System.Collections.Generic.List<System.Tuple<Control, int, int>> _osdCatControls =
-            new System.Collections.Generic.List<System.Tuple<Control, int, int>>(); // (control, categoryId, allViewY)
         private Button _optCardOsdConfigBtn;
 
         private Button _fan1AutoBtn;
@@ -1753,285 +1604,6 @@ namespace MiniFanControl
             Color manColor = isXmas ? XmasBlack : (isRadeon ? Color.FromArgb(0xFB, 0x71, 0x85) : (_isDarkMode ? DarkAccent : LightAccent));
             Color warnRose = isXmas ? XmasRedDeep : Color.FromArgb(0xFB, 0x71, 0x85);
 
-            // 1. CPU Box (Row 1, Col 0)
-            string cpuValTxt = st.CpuTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.CpuTemp, _useFahrenheit), tUnit) : "N/A";
-            if (_cpuTempLabel.Text != cpuValTxt) _cpuTempLabel.Text = cpuValTxt;
-            Color cpuHeroFg = ResolveThermalHeroColor(st.CpuTemp, 75, 88, tempFg, pal);
-            if (_cpuTempLabel.ForeColor != cpuHeroFg) _cpuTempLabel.ForeColor = cpuHeroFg;
-            if (_cpuBoxTitle != null && _cpuBoxTitle.Text != "CPU") _cpuBoxTitle.Text = "CPU";
-            string cpuPeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxCpuTemp > 0)
-                ? string.Format("▼{0}° ~{1:0}° ▲{2}°",
-                    TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinCpuTemp, _useFahrenheit),
-                    TelemetrySessionStats.ToDisplayTemp((int)Math.Round(_sessionStats.AvgCpuTemp), _useFahrenheit),
-                    TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxCpuTemp, _useFahrenheit))
-                : "";
-            string cpuSubTxt = "";
-            if (st.CpuClockMhz > 0 && st.CpuLoadPct >= 0)
-                cpuSubTxt = string.Format("{0}% • {1} MHz", st.CpuLoadPct, st.CpuClockMhz);
-            else if (st.CpuClockMhz > 0)
-                cpuSubTxt = string.Format("{0} MHz", st.CpuClockMhz);
-            else if (st.CpuLoadPct > 0)
-                cpuSubTxt = string.Format("{0}% Load", st.CpuLoadPct);
-            string cpuLoadRange = (_sessionStats.SampleCount > 0 && _sessionStats.MaxCpuLoad > 0)
-                ? string.Format("Load ▼{0}% ~{1:0}% ▲{2}%", _sessionStats.MinCpuLoad, _sessionStats.AvgCpuLoad, _sessionStats.MaxCpuLoad)
-                : string.Format("Load {0}%", st.CpuLoadPct);
-            string cpuRailPart = st.CpuPowerWatts > 0 ? string.Format(" • CPU ~{0}W", st.CpuPowerWatts) : "";
-            string cpuDetail1 = cpuLoadRange + cpuRailPart;
-            string cpuDetail2 = st.IsThermalThrottling
-                ? "⚠ THERMAL THROTTLING ACTIVE"
-                : (st.NpuActivityPct > 0 || st.NpuClockMhz > 0
-                    ? string.Format("Tctl/Tdie • NPU {0}% ({1} MHz)", st.NpuActivityPct, st.NpuClockMhz)
-                    : "Ryzen Package • Tctl/Tdie");
-            SetMetricDetail(1, cpuPeakTxt, cpuSubTxt, cpuDetail1, cpuDetail2,
-                st.IsThermalThrottling ? warnRose : Color.Empty,
-                st.IsThermalThrottling ? warnRose : Color.Empty);
-            if (_cpuTempBox != null)
-            {
-                _cpuTempBox.AccessibleName = string.Format("CPU Temperature: {0}", cpuValTxt);
-                _cpuTempBox.Invalidate();
-            }
-
-            // 2. GPU / iGPU Box (Row 1, Col 1)
-            string gpuValTxt = st.GpuTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.GpuTemp, _useFahrenheit), tUnit) : "N/A";
-            if (_gpuTempLabel.Text != gpuValTxt) _gpuTempLabel.Text = gpuValTxt;
-            Color gpuHeroFg = ResolveThermalHeroColor(st.GpuTemp, 70, 84, tempFg, pal);
-            if (_gpuTempLabel.ForeColor != gpuHeroFg) _gpuTempLabel.ForeColor = gpuHeroFg;
-            if (_gpuBoxTitle != null && _gpuBoxTitle.Text != gpuLbl) _gpuBoxTitle.Text = gpuLbl;
-            string gpuPeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxGpuTemp > 0)
-                ? string.Format("▼{0}° ~{1:0}° ▲{2}°",
-                    TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinGpuTemp, _useFahrenheit),
-                    TelemetrySessionStats.ToDisplayTemp((int)Math.Round(_sessionStats.AvgGpuTemp), _useFahrenheit),
-                    TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxGpuTemp, _useFahrenheit))
-                : "";
-            string gpuSubTxt = "";
-            if (st.GfxClockMhz > 0)
-                gpuSubTxt = string.Format("{0}% • {1} MHz", st.GfxActivityPct, st.GfxClockMhz);
-            else if (st.GfxActivityPct > 0)
-                gpuSubTxt = string.Format("{0}% Load", st.GfxActivityPct);
-            else
-                gpuSubTxt = "0% • Idle";
-            string gpuLoadRange = (_sessionStats.SampleCount > 0 && _sessionStats.MaxGpuLoad > 0)
-                ? string.Format("Load ▼{0}% ~{1:0}% ▲{2}%", _sessionStats.MinGpuLoad, _sessionStats.AvgGpuLoad, _sessionStats.MaxGpuLoad)
-                : string.Format("Load {0}%", st.GfxActivityPct);
-            string gpuExtraPart = st.GpuHotspotTemp > 0
-                ? string.Format(" • HS {0}°", TelemetrySessionStats.ToDisplayTemp(st.GpuHotspotTemp, _useFahrenheit))
-                : (st.GfxPowerWatts > 0 ? string.Format(" • GFX ~{0}W", st.GfxPowerWatts) : "");
-            string gpuDetail1 = gpuLoadRange + gpuExtraPart;
-            string gpuDrvPart = !string.IsNullOrEmpty(st.RadeonSoftwareVer) ? ("Adrenalin " + st.RadeonSoftwareVer) : (!string.IsNullOrEmpty(st.GpuName) ? st.GpuName : "Radeon 780M");
-            string gpuFeatPart = !string.IsNullOrEmpty(st.RadeonFeaturesSummary) ? (" • " + st.RadeonFeaturesSummary) : "";
-            SetMetricDetail(2, gpuPeakTxt, gpuSubTxt, gpuDetail1, gpuDrvPart + gpuFeatPart, Color.Empty);
-            if (_gpuTempBox != null)
-            {
-                _gpuTempBox.AccessibleName = string.Format("{0} Temperature: {1}", gpuLbl, gpuValTxt);
-                _gpuTempBox.Invalidate();
-            }
-
-            // 3. RAM (DDR5) Box (Row 1, Col 2) — memory + dual-stick + FCLK (where Fabric syncs with DDR5)
-            if (_ramPowerLabel != null)
-            {
-                string ramValTxt = st.DdrTemp > 0
-                    ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.DdrTemp, _useFahrenheit), tUnit)
-                    : (st.RamPowerWatts > 0 ? string.Format("~{0:F1}W", st.RamPowerWatts) : ("--" + tUnit));
-                if (_ramPowerLabel.Text != ramValTxt) _ramPowerLabel.Text = ramValTxt;
-                Color ramHeroFg = st.DdrTemp > 0 ? ResolveThermalHeroColor(st.DdrTemp, 52, 62, tempFg, pal) : tempFg;
-                if (_ramPowerLabel.ForeColor != ramHeroFg) _ramPowerLabel.ForeColor = ramHeroFg;
-                if (_ramBoxTitle != null && _ramBoxTitle.Text != "RAM (DDR5)") _ramBoxTitle.Text = "RAM (DDR5)";
-
-                string ramPeakTxt = "";
-                if (st.DdrTemp > 0 && _sessionStats.SampleCount > 0 && _sessionStats.MaxDdrTemp > 0)
-                {
-                    ramPeakTxt = string.Format("▼{0}° ~{1:0}° ▲{2}°",
-                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinDdrTemp, _useFahrenheit),
-                        TelemetrySessionStats.ToDisplayTemp((int)Math.Round(_sessionStats.AvgDdrTemp), _useFahrenheit),
-                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxDdrTemp, _useFahrenheit));
-                }
-                else if (_sessionStats.SampleCount > 0 && _sessionStats.MaxRamPowerWatts > 0)
-                {
-                    ramPeakTxt = string.Format("▼{0:F1}W ~{1:F1}W ▲{2:F1}W",
-                        _sessionStats.MinRamPowerWatts, _sessionStats.AvgRamPowerWatts, _sessionStats.MaxRamPowerWatts);
-                }
-
-                string ramSubTxt = st.RamTotalGb > 0
-                    ? string.Format("{0:F1}/{1:F1}G ({2}%)", st.RamUsedGb, st.RamTotalGb, st.RamLoadPct)
-                    : "N/A";
-                string ramStickPart = (st.DdrStickCount == 2 && st.DdrTemp1 > 0 && st.DdrTemp2 > 0)
-                    ? string.Format("Sticks {0}/{1}° Δ{2}°",
-                        TelemetrySessionStats.ToDisplayTemp(st.DdrTemp1, _useFahrenheit),
-                        TelemetrySessionStats.ToDisplayTemp(st.DdrTemp2, _useFahrenheit),
-                        TelemetrySessionStats.ToDisplayTempDelta(st.DdrTempSpread, _useFahrenheit))
-                    : (_sessionStats.SampleCount > 0 && _sessionStats.MaxRamLoad > 0
-                        ? string.Format("Load ▼{0}% ▲{1}%", _sessionStats.MinRamLoad, _sessionStats.MaxRamLoad)
-                        : "DDR5");
-                string ramPwrPart = st.RamPowerWatts > 0 ? string.Format(" • ~{0:0.0}W", st.RamPowerWatts) : "";
-                string ramLoadPkPart = (st.DdrStickCount == 2 && _sessionStats.MaxRamLoad > 0)
-                    ? string.Format(" • ▲{0}%", _sessionStats.MaxRamLoad)
-                    : "";
-                string ramDetail1 = ramStickPart + ramPwrPart + ramLoadPkPart;
-
-                int ddrSpeed = st.RamSpeedMhz;
-                string ramSpdPart = ddrSpeed > 0 ? string.Format("{0} MHz", ddrSpeed) : "DDR5";
-                string fclkPart = st.FabricClockMhz > 0
-                    ? string.Format(" • FCLK {0} MHz{1}", st.FabricClockMhz, st.IsFabricSynced ? " (1:1)" : "")
-                    : "";
-                string ramEstPart = st.IsDdrEstimated ? " [Est]" : "";
-                string ramDetail2 = ramSpdPart + fclkPart + ramEstPart;
-
-                Color ramSubCol = (st.RamLoadPct >= 90) ? warnRose : Color.Empty;
-                SetMetricDetail(7, ramPeakTxt, ramSubTxt, ramDetail1, ramDetail2, ramSubCol);
-
-                if (_ramPowerBox != null)
-                {
-                    _ramPowerBox.AccessibleName = string.Format("RAM Sensor: {0}", ramValTxt);
-                    _ramPowerBox.Invalidate();
-                }
-            }
-
-            // 4. NVMe Storage Box (Row 1, Col 3)
-            if (_nvmeTempLabel != null)
-            {
-                string nvmeValTxt = st.NvmeTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.NvmeTemp, _useFahrenheit), tUnit) : "N/A";
-                if (_nvmeTempLabel.Text != nvmeValTxt) _nvmeTempLabel.Text = nvmeValTxt;
-                Color nvmeFg = ResolveThermalHeroColor(st.NvmeTemp, 58, 70, tempFg, pal);
-                if (_nvmeTempLabel.ForeColor != nvmeFg) _nvmeTempLabel.ForeColor = nvmeFg;
-                if (_nvmeBoxTitle != null && _nvmeBoxTitle.Text != "NVMe") _nvmeBoxTitle.Text = "NVMe";
-
-                string nvmePeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxNvmeTemp > 0)
-                    ? string.Format("▼{0}° ~{1:0}° ▲{2}°",
-                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinNvmeTemp, _useFahrenheit),
-                        TelemetrySessionStats.ToDisplayTemp((int)Math.Round(_sessionStats.AvgNvmeTemp), _useFahrenheit),
-                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxNvmeTemp, _useFahrenheit))
-                    : "";
-
-                string nvmePwrTxt = st.NvmePowerWatts > 0 ? string.Format("~{0:0.0}W", st.NvmePowerWatts) : "";
-                string nvmeIoTxt = (st.NvmeReadMBs > 0.1 || st.NvmeWriteMBs > 0.1)
-                    ? string.Format("{0:0.#}R/{1:0.#}W MB/s", st.NvmeReadMBs, st.NvmeWriteMBs)
-                    : (st.NvmeTemp > 0 ? "Idle I/O" : "");
-                string nvmeSubTxt = (!string.IsNullOrEmpty(nvmePwrTxt) && !string.IsNullOrEmpty(nvmeIoTxt))
-                    ? (nvmePwrTxt + " • " + nvmeIoTxt)
-                    : (!string.IsNullOrEmpty(nvmePwrTxt) ? nvmePwrTxt : nvmeIoTxt);
-
-                string nvmeHealthPart = st.NvmeHealthPct > 0 ? string.Format("Health {0}%", st.NvmeHealthPct) : "SMART OK";
-                string nvmeQdPart = string.Format(" • QD {0}", st.NvmeQueueDepth);
-                string nvmeSsd2Part = st.Nvme2Temp > 0
-                    ? string.Format(" • SSD2 {0}{1}", TelemetrySessionStats.ToDisplayTemp(st.Nvme2Temp, _useFahrenheit), tUnit)
-                    : "";
-                string nvmeDetail1 = nvmeHealthPart + nvmeQdPart + nvmeSsd2Part;
-                string nvmeDetail2 = !string.IsNullOrEmpty(st.NvmeModel) ? st.NvmeModel : "NVMe SSD";
-                SetMetricDetail(6, nvmePeakTxt, nvmeSubTxt, nvmeDetail1, nvmeDetail2, Color.Empty);
-
-                if (_nvmeTempBox != null)
-                {
-                    _nvmeTempBox.AccessibleName = string.Format("NVMe Temperature: {0}", nvmeValTxt);
-                    _nvmeTempBox.Invalidate();
-                }
-            }
-
-            // 5. APU Power Box (Row 2, Col 0)
-            if (_pwrLabel != null)
-            {
-                string pwrValTxt = st.ApuPowerWatts > 0 ? string.Format("{0}W", st.ApuPowerWatts) : "--W";
-                if (_pwrLabel.Text != pwrValTxt) _pwrLabel.Text = pwrValTxt;
-                if (_pwrLabel.ForeColor != tempFg) _pwrLabel.ForeColor = tempFg;
-                if (_pwrBoxTitle != null && _pwrBoxTitle.Text != "POWER") _pwrBoxTitle.Text = "POWER";
-
-                string pwrPeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxPowerWatts > 0)
-                    ? string.Format("▼{0}W ~{1:0}W ▲{2}W", _sessionStats.MinPowerWatts, _sessionStats.AvgPowerWatts, _sessionStats.MaxPowerWatts)
-                    : "";
-                string pwrSubTxt = st.ApuPowerLimitWatts > 0
-                    ? string.Format("/ {0}W Limit", st.ApuPowerLimitWatts)
-                    : (st.VrmTemp > 0 ? string.Format("VRM {0}{1}", TelemetrySessionStats.ToDisplayTemp(st.VrmTemp, _useFahrenheit), tUnit) : "Package");
-
-                string pwrDetail1 = (st.CpuPowerWatts > 0 || st.GfxPowerWatts > 0 || st.SocPowerWatts > 0)
-                    ? string.Format("CPU {0}W • GFX {1}W • SoC {2}W", st.CpuPowerWatts, st.GfxPowerWatts, st.SocPowerWatts)
-                    : (st.ApuPowerWatts > 0 && st.ApuPowerLimitWatts > 0
-                        ? string.Format("{0}% of {1}W TDP Budget", Math.Min(999, (int)Math.Round(st.ApuPowerWatts * 100.0 / st.ApuPowerLimitWatts)), st.ApuPowerLimitWatts)
-                        : (st.IsApuPowerEstimated ? "Estimated TDP Envelope" : ((st.IsDiscreteGpu || IsReadOnlyMonitoringMode) ? "Package / Board Rail" : "APU Package Rail")));
-                string pwrDetail2;
-                if (st.VddTdcCurrentAmps > 0.1 || st.VddEdcCurrentAmps > 0.1)
-                {
-                    string vrmPart = st.VrmTemp > 0 ? string.Format(" • VRM {0}°", TelemetrySessionStats.ToDisplayTemp(st.VrmTemp, _useFahrenheit)) : "";
-                    pwrDetail2 = string.Format("TDC {0:0.#}A • EDC {1:0.#}A{2}", st.VddTdcCurrentAmps, st.VddEdcCurrentAmps, vrmPart);
-                }
-                else if (st.VrmTemp > 0)
-                {
-                    pwrDetail2 = string.Format("VRM {0}{1}{2}", TelemetrySessionStats.ToDisplayTemp(st.VrmTemp, _useFahrenheit), tUnit, st.IsVrmEstimated ? " [Est]" : "");
-                }
-                else if (st.DcInputVolts > 0.1)
-                {
-                    pwrDetail2 = string.Format("DC Input Rail {0:0.0}V", st.DcInputVolts);
-                }
-                else
-                {
-                    pwrDetail2 = st.PowerSource ?? "AC Power";
-                }
-                SetMetricDetail(3, pwrPeakTxt, pwrSubTxt, pwrDetail1, pwrDetail2, Color.Empty);
-
-                if (_pwrBox != null)
-                {
-                    _pwrBox.AccessibleName = string.Format("APU Power: {0}", pwrValTxt);
-                    _pwrBox.Invalidate();
-                }
-            }
-
-            // 6. Chassis / VRM / Live FPS Box (Row 2, Col 1) — clean board thermals (no FCLK here)
-            if (_ambientLabel != null)
-            {
-                string ambValTxt = st.AmbientTemp > 0 ? string.Format("{0}{1}", TelemetrySessionStats.ToDisplayTemp(st.AmbientTemp, _useFahrenheit), tUnit) : "N/A";
-                if (_ambientLabel.Text != ambValTxt) _ambientLabel.Text = ambValTxt;
-                Color ambHeroFg = ResolveThermalHeroColor(st.AmbientTemp, 45, 55, tempFg, pal);
-                if (_ambientLabel.ForeColor != ambHeroFg) _ambientLabel.ForeColor = ambHeroFg;
-                if (_ambientBoxTitle != null && _ambientBoxTitle.Text != "CHASSIS") _ambientBoxTitle.Text = "CHASSIS";
-
-                string ambPeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxAmbientTemp > 0)
-                    ? string.Format("▼{0}° ~{1:0}° ▲{2}°",
-                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinAmbientTemp, _useFahrenheit),
-                        TelemetrySessionStats.ToDisplayTemp((int)Math.Round(_sessionStats.AvgAmbientTemp), _useFahrenheit),
-                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxAmbientTemp, _useFahrenheit))
-                    : "";
-                string ambSubTxt = st.RtssFps > 0
-                    ? string.Format("{0} FPS ({1:0.0}ms)", st.RtssFps, st.RtssFrametimeMs)
-                    : (st.VrmTemp > 0
-                        ? string.Format("VRM {0}{1}", TelemetrySessionStats.ToDisplayTemp(st.VrmTemp, _useFahrenheit), tUnit)
-                        : (st.IsAmbientEstimated ? "Ambient [Est]" : "Board Ambient"));
-
-                string ambDetail1;
-                if (st.RtssFps > 0)
-                {
-                    string lowPart = st.RtssP01LowFps > 0 ? string.Format(" • 0.1% {0}", st.RtssP01LowFps) : "";
-                    ambDetail1 = string.Format("FPS ▼{0} ~{1:0} ▲{2}{3}", _sessionStats.MinFps, _sessionStats.AvgFps, _sessionStats.MaxFps, lowPart);
-                }
-                else if (st.VrmTemp > 0 && _sessionStats.MaxVrmTemp > 0)
-                {
-                    ambDetail1 = string.Format("VRM ▼{0}° ~{1:0}° ▲{2}°{3}",
-                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MinVrmTemp, _useFahrenheit),
-                        TelemetrySessionStats.ToDisplayTemp((int)Math.Round(_sessionStats.AvgVrmTemp), _useFahrenheit),
-                        TelemetrySessionStats.ToDisplayTemp(_sessionStats.MaxVrmTemp, _useFahrenheit),
-                        st.IsVrmEstimated ? " [Est]" : "");
-                }
-                else if (st.CpuTemp > 0 && st.AmbientTemp > 0)
-                {
-                    int delta = Math.Max(0, st.CpuTemp - st.AmbientTemp);
-                    ambDetail1 = string.Format("CPU Δ+{0}{1} over Ambient", TelemetrySessionStats.ToDisplayTempDelta(delta, _useFahrenheit), tUnit);
-                }
-                else
-                {
-                    ambDetail1 = st.IsAmbientEstimated ? "Modeled Chassis Ambient" : "Motherboard Thermistor";
-                }
-
-                string ambDeltaPart = (st.CpuTemp > 0 && st.AmbientTemp > 0)
-                    ? string.Format(" • CPU Δ+{0}°", TelemetrySessionStats.ToDisplayTempDelta(Math.Max(0, st.CpuTemp - st.AmbientTemp), _useFahrenheit))
-                    : "";
-                string ambDcPart = st.DcInputVolts > 0.1 ? string.Format(" • {0:0.0}V DC", st.DcInputVolts) : "";
-                string ambDetail2 = (st.IsAmbientEstimated ? "Board Ambient [Est]" : "Board Ambient") + ambDeltaPart + ambDcPart;
-                SetMetricDetail(9, ambPeakTxt, ambSubTxt, ambDetail1, ambDetail2, Color.Empty);
-
-                if (_ambientBox != null)
-                {
-                    _ambientBox.AccessibleName = string.Format("Chassis Ambient Temperature: {0}", ambValTxt);
-                    _ambientBox.Invalidate();
-                }
-            }
-
             bool readOnlyMonitor = IsReadOnlyMonitoringMode;
 
             if (readOnlyMonitor)
@@ -2113,60 +1685,7 @@ namespace MiniFanControl
                 _pct2Label.ForeColor = autoColor;
             }
 
-            // 7. APU Fan Box (Row 2, Col 2) — Low/Avg/High RPM + Tuning Profile on its own full line
-            string f1ValTxt = (readOnlyMonitor && st.Fan1Rpm == 0) ? "-- RPM" : string.Format("{0} RPM", st.Fan1Rpm);
-            if (_fan1RpmLabel.Text != f1ValTxt) _fan1RpmLabel.Text = f1ValTxt;
-            if (_fan1RpmLabel.ForeColor != tempFg) _fan1RpmLabel.ForeColor = tempFg;
-            if (_fan1Box != null)
-            {
-                if (_fan1BoxTitle != null && _fan1BoxTitle.Text != "APU FAN") _fan1BoxTitle.Text = "APU FAN";
-                string fan1PeakTxt = (_sessionStats.SampleCount > 0 && _sessionStats.MaxFan1Rpm > 0)
-                    ? string.Format("▼{0} ~{1:0} ▲{2}", _sessionStats.MinFan1Rpm, _sessionStats.AvgFan1Rpm, _sessionStats.MaxFan1Rpm)
-                    : "";
-                string fan1Detail1 = readOnlyMonitor
-                    ? "APU / CPU Cooler • Motherboard Controlled"
-                    : (_emergencyThermalActive
-                        ? "APU / CPU Cooler • Emergency Override"
-                        : (biosAutoActive
-                            ? "APU / CPU Cooler • BIOS Auto (Hands-Off)"
-                            : (_apuManualOverride
-                                ? "APU / CPU Cooler • Manual Override"
-                                : (st.Fan1Manual == 0 ? "APU / CPU Cooler • BIOS Auto" : "APU / CPU Cooler • Active Curve"))));
-                string fan1Detail2 = readOnlyMonitor ? "Safe Read-Only Mode" : apuModeName;
-                SetMetricDetail(4, fan1PeakTxt, _pct1Label.Text, fan1Detail1, fan1Detail2, _pct1Label.ForeColor, readOnlyMonitor ? dimText : tempFg);
-                _fan1Box.AccessibleName = string.Format("APU Fan Speed: {0} RPM", st.Fan1Rpm);
-                _fan1Box.Invalidate();
-            }
-
-            // 8. Sys Fan Box (Row 2, Col 3) — Low/Avg/High RPM + Tuning Profile on its own full line
-            if (_fan2RpmLabel != null)
-            {
-                string f2ValTxt = !_hasDualFans ? "N/A" : (st.Fan2Rpm > 0 ? string.Format("{0} RPM", st.Fan2Rpm) : "-- RPM");
-                if (_fan2RpmLabel.Text != f2ValTxt) _fan2RpmLabel.Text = f2ValTxt;
-                if (_fan2RpmLabel.ForeColor != tempFg) _fan2RpmLabel.ForeColor = tempFg;
-            }
-            if (_fan2Box != null)
-            {
-                if (_fan2BoxTitle != null && _fan2BoxTitle.Text != "SYS FAN") _fan2BoxTitle.Text = "SYS FAN";
-                string fan2PeakTxt = (_hasDualFans && _sessionStats.SampleCount > 0 && _sessionStats.MaxFan2Rpm > 0)
-                    ? string.Format("▼{0} ~{1:0} ▲{2}", _sessionStats.MinFan2Rpm, _sessionStats.AvgFan2Rpm, _sessionStats.MaxFan2Rpm)
-                    : "";
-                string fan2Detail1 = !_hasDualFans
-                    ? "Single-Fan Chassis"
-                    : (readOnlyMonitor
-                        ? "System Fan • Motherboard Controlled"
-                        : (_emergencyThermalActive
-                            ? "RAM / NVMe Cooler • Emergency Override"
-                            : (biosAutoActive
-                                ? "RAM / NVMe Cooler • BIOS Auto (Hands-Off)"
-                                : (_sysManualOverride
-                                    ? "RAM / NVMe Cooler • Manual Override"
-                                    : (st.Fan2Manual == 0 ? "RAM / NVMe Cooler • BIOS Auto" : "RAM / NVMe Cooler • Active Curve")))));
-                string fan2Detail2 = !_hasDualFans ? "Disabled" : (readOnlyMonitor ? "Safe Read-Only Mode" : sysModeName);
-                SetMetricDetail(5, fan2PeakTxt, _pct2Label.Text, fan2Detail1, fan2Detail2, _pct2Label.ForeColor, (!_hasDualFans || readOnlyMonitor) ? dimText : tempFg);
-                _fan2Box.AccessibleName = !_hasDualFans ? "System Fan: Disabled" : string.Format("System Fan Speed: {0} RPM", st.Fan2Rpm);
-                _fan2Box.Invalidate();
-            }
+            UpdateTelemetryTiles(st, tUnit, gpuLbl, readOnlyMonitor, biosAutoActive, apuModeName, sysModeName, pal, tempFg, dimText, warnRose);
 
             if (_emergencyThermalActive)
             {

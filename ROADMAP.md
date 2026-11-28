@@ -21,6 +21,7 @@ This roadmap tracks completed milestones, active work for the upcoming release, 
 - [x] **True BIOS Fan Curve Restoration (`Reset Auto`):** Snapshots untouched IT8613E SmartGuardian BIOS fan curves and initial EC BIOS modes before the first override, restoring them faithfully on `Reset Auto` and entering a true hands-off **`✓ BIOS Auto`** state (with ≥90°C emergency tripwire still armed).
 - [x] **Privacy-First Update Checker:** On-demand **`↻ Check for Updates...`** in `Tools & Drivers ▾` querying GitHub Releases with strict SemVer parsing and official repository URL sanitization (zero background phone-home).
 - [x] **Winget Packaging Automation:** Repeatable `scripts/generate-winget-manifest.ps1` generator for `kaiserc.MiniFanControl`.
+- [x] **Modular Architecture Cleanup:** Extracted `CliCommandRunner`, `OsdStudioControl`, `TelemetryTileControl`, `Ddr5SpdSensor`, `BiosFanStateSnapshot`, and shared `DfGraphMath` from the core UI/CLI/hardware partials while preserving strict C# 5 `.NET 4.8` + `.NET 10.0-windows` parity.
 - [x] **128 Automated Self-Tests:** Expanded catalog including hidden-OSD lock guard, ETW kernel event-ID filter ABI, update checker verification, true BIOS `Reset Auto` restoration, and deferred `ContextMenuStrip` disposal safety.
 
 ---
