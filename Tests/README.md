@@ -1,4 +1,4 @@
-# MiniFanControl — Automated Hardware Safety & Curve Test Suite (127/127 Passing)
+# MiniFanControl — Automated Hardware Safety & Curve Test Suite (128/128 Passing)
 
 The built-in test suite (`minifan-helper.exe test`, or `Tests/MiniFanControl.Tests.csproj` on `.NET 10`) rigorously validates hardware safety mechanisms, driver integrity gates, curve math, mutex synchronization, and UI/OSD contracts without touching physical EC/Super I/O registers.
 
@@ -7,7 +7,7 @@ The built-in test suite (`minifan-helper.exe test`, or `Tests/MiniFanControl.Tes
 ## Running the Suite
 
 ```powershell
-# Run all 127 automated self-tests (standalone Windows build)
+# Run all 128 automated self-tests (standalone Windows build)
 .\minifan-helper.exe test
 
 # Or run the dedicated .NET 10 test assembly
@@ -23,7 +23,7 @@ dotnet run --project Tests\MiniFanControl.Tests.csproj -c Release -f net10.0-win
 
 ---
 
-## Full 127-Test Catalog
+## Full 128-Test Catalog
 
 ### Core Curves, Calibration & Hardware Safety (`#1–#36`)
 1. **Motor Stall Dead-Zone Protection**: Verifies fan speeds 1%–29% are clamped to safe minimums across 0°C–105°C.
@@ -106,7 +106,7 @@ dotnet run --project Tests\MiniFanControl.Tests.csproj -c Release -f net10.0-win
 76. **Hardware Probe JSON Export & Super I/O Chip Identification**: Verifies `dump --json` and `IT5570E` / `IT8613E` / `NCT67xx` IDs.
 77. **Calibrated 14% Floor, BIOS-Mode Auto-Tune & OSD `Graphs Only` / `DF Corner` Config**: Verifies low-floor calibration and OSD config round-trips.
 
-### Security Hardening, PawnIO HVCI, ETW Latency, Service Mode & Themes (`#78–#127`)
+### Security Hardening, PawnIO HVCI, ETW Latency, Service Mode & Themes (`#78–#128`)
 78. **`NativeInpOut` SHA256 Pin Verification & Single-Choke-Point Port Whitelist**: Verifies runtime SHA256 pin enforcement and port blocking.
 79. **Custom `DeviceProfile` Fail-Closed `FromJson`, DMI Fingerprint Binding & Blocklist Precedence**: Verifies machine-bound custom JSON and blocklist priority.
 80. **CLI Fan Duty Anti-Stall Floor Clamping & `--force` Override**: Verifies CLI floor clamping and explicit `--force` override.
@@ -157,3 +157,4 @@ dotnet run --project Tests\MiniFanControl.Tests.csproj -c Release -f net10.0-win
 125. **ETW Kernel Event-ID Filter ABI & WebView2 / AI Host Process Filtering**: Verifies Win64 `EVENT_FILTER_DESCRIPTOR` / `ENABLE_TRACE_PARAMETERS` struct sizes and offsets, `DxgKrnl`/`DXGI` event-ID filter buffer encoding, noisy event rejection, and filtering of WebView2/AI host processes from active game detection.
 126. **Privacy-First GitHub Release Update Checker (`UpdateChecker`)**: Verifies SemVer ordering (`1.10.0 > 1.3.1`, pre-release tags), depth-aware top-level JSON extraction with nested GitHub `author`/`assets` objects, and fail-closed URL sanitization rejecting non-official download domains.
 127. **Reset Auto True BIOS Restoration (Super I/O SmartGuardian Custom Curve, EC Initial Mode & Hands-Off Guard)**: Verifies untouched IT8613E SmartGuardian BIOS fan curves (`Reg 0x15..0x17` Bit 7 = 1) and initial EC BIOS modes (`Silent`/`Perf`/`Balanced`) are snapshotted before the first fan override, restored faithfully on `ApplyAutoAll()`/`SetAuto()`, and left untouched by subsequent poll ticks until the user explicitly selects a profile or manual slider.
+128. **ContextMenuStrip Deferred Disposal Safety (`SafeDisposeContextMenuDeferred`)**: Verifies rebuilding active `Tools & Drivers`, Theme picker, or system-tray `ContextMenuStrip` popups closes the old menu synchronously while its handle is live (popping WinForms' `ModalMenuFilter` stack) and defers `Dispose()` via `BeginInvoke`, preventing `ObjectDisposedException` crashes on subsequent mouse clicks.

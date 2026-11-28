@@ -803,6 +803,8 @@ namespace MiniFanControl
             _driversMenuBtn.FlatAppearance.BorderSize = 0;
             _driversMenuBtn.Click += (s, e) =>
             {
+                if (_driversMenu == null || _driversMenu.IsDisposed)
+                    _driversMenu = CreateDriversAndToolsMenu();
                 _driversMenu.Show(_driversMenuBtn, new Point(0, _driversMenuBtn.Height));
             };
             Controls.Add(_driversMenuBtn);

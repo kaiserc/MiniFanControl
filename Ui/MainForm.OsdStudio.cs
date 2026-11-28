@@ -408,14 +408,54 @@ namespace MiniFanControl
             RebuildDriversMenu();
         }
 
+        internal void SafeDisposeContextMenuDeferred(ContextMenuStrip oldMenu)
+        {
+            if (oldMenu == null || oldMenu.IsDisposed) return;
+
+            // Close first while the handle is still alive so WinForms' ToolStripManager.ModalMenuFilter
+            // cleanly pops this dropdown (and any open submenus) off its active modal stack.
+            try
+            {
+                if (oldMenu.Visible)
+                    oldMenu.Close(ToolStripDropDownCloseReason.CloseCalled);
+            }
+            catch { }
+
+            // Defer Dispose() past the current WM_LBUTTONUP / PreFilterMessage / Item.Click dispatch so
+            // ModalMenuFilter can never touch a disposed ToolStripDropDown handle (ObjectDisposedException).
+            if (IsHandleCreated && !IsDisposed)
+            {
+                try
+                {
+                    BeginInvoke((Action)delegate
+                    {
+                        try
+                        {
+                            if (!oldMenu.IsDisposed)
+                            {
+                                if (oldMenu.Visible) oldMenu.Close(ToolStripDropDownCloseReason.CloseCalled);
+                                oldMenu.Dispose();
+                            }
+                        }
+                        catch { }
+                    });
+                    return;
+                }
+                catch { }
+            }
+
+            try
+            {
+                if (!oldMenu.IsDisposed) oldMenu.Dispose();
+            }
+            catch { }
+        }
+
         private void RebuildDriversMenu()
         {
             ContextMenuStrip oldMenu = _driversMenu;
             _driversMenu = CreateDriversAndToolsMenu();
-            if (oldMenu != null)
-            {
-                try { oldMenu.Dispose(); } catch { }
-            }
+            SafeDisposeContextMenuDeferred(oldMenu);
         }
 
         private void ToggleOverlayLayoutStyle()

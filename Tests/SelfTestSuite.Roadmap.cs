@@ -840,6 +840,36 @@ namespace MiniFanControl
             Check(biosRestoreOk,
                 "Reset Auto True BIOS Restoration (Super I/O SmartGuardian Custom Curve, EC Initial Mode & Hands-Off Guard)",
                 biosRestoreDetail);
+
+            // 128. ContextMenuStrip Deferred Disposal Safety (Prevents ModalMenuFilter ObjectDisposedException Crash)
+            bool menuDisposeOk = false;
+            string menuDisposeDetail = "";
+            try
+            {
+                using (MainForm mf = new MainForm(true, true))
+                {
+                    IntPtr h = mf.Handle; // ensure window handle exists for BeginInvoke
+                    System.Windows.Forms.ContextMenuStrip cm = new System.Windows.Forms.ContextMenuStrip();
+                    cm.Items.Add("Item A");
+                    cm.Show(new System.Drawing.Point(-4000, -4000));
+                    bool wasVisible = cm.Visible;
+
+                    mf.SafeDisposeContextMenuDeferred(cm);
+                    bool closedImmediately = !cm.Visible;
+                    bool deferredNotDisposedYet = !cm.IsDisposed;
+
+                    System.Windows.Forms.Application.DoEvents();
+                    bool disposedAfterPump = cm.IsDisposed;
+
+                    menuDisposeOk = (h != IntPtr.Zero) && wasVisible && closedImmediately && deferredNotDisposedYet && disposedAfterPump;
+                    menuDisposeDetail = string.Format("WasVis={0}, ClosedSync={1}, Deferred={2}, DisposedAfterPump={3}",
+                        wasVisible, closedImmediately, deferredNotDisposedYet, disposedAfterPump);
+                }
+            }
+            catch (Exception ex) { menuDisposeDetail = ex.Message; }
+            Check(menuDisposeOk,
+                "ContextMenuStrip Deferred Disposal Safety (Prevents ModalMenuFilter ObjectDisposedException Crash)",
+                menuDisposeDetail);
         }
     }
 }

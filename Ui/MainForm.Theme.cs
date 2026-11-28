@@ -111,8 +111,9 @@ namespace MiniFanControl
             if (_themeToggleBtn == null) return;
             if (_themeMenu != null)
             {
-                try { _themeMenu.Dispose(); } catch { }
+                ContextMenuStrip prevThemeMenu = _themeMenu;
                 _themeMenu = null;
+                SafeDisposeContextMenuDeferred(prevThemeMenu);
             }
 
             ContextMenuStrip menu = new ContextMenuStrip();
@@ -481,7 +482,7 @@ namespace MiniFanControl
             }
             UpdateOsdStudioStyles();
 
-            if (_driversMenu != null)
+            if (_driversMenu != null && !_driversMenu.IsDisposed)
             {
                 Win11VisualStyle.ApplyThemeToMenu(_driversMenu, CurrentPalette);
             }

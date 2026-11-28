@@ -2565,8 +2565,23 @@ namespace MiniFanControl
             }
             if (_driversMenu != null)
             {
-                try { _driversMenu.Dispose(); } catch { }
+                try
+                {
+                    if (!_driversMenu.IsDisposed && _driversMenu.Visible) _driversMenu.Close();
+                    _driversMenu.Dispose();
+                }
+                catch { }
                 _driversMenu = null;
+            }
+            if (_themeMenu != null)
+            {
+                try
+                {
+                    if (!_themeMenu.IsDisposed && _themeMenu.Visible) _themeMenu.Close();
+                    _themeMenu.Dispose();
+                }
+                catch { }
+                _themeMenu = null;
             }
             if (_uiToolTip != null)
             {

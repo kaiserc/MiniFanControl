@@ -1339,8 +1339,18 @@ namespace MiniFanControl
 
         private void RebuildTrayContextMenus()
         {
-            if (_cpuTrayIcon != null) _cpuTrayIcon.ContextMenuStrip = CreateTrayContextMenu();
-            if (_gpuTrayIcon != null) _gpuTrayIcon.ContextMenuStrip = CreateTrayContextMenu();
+            if (_cpuTrayIcon != null)
+            {
+                ContextMenuStrip oldCpu = _cpuTrayIcon.ContextMenuStrip;
+                _cpuTrayIcon.ContextMenuStrip = CreateTrayContextMenu();
+                SafeDisposeContextMenuDeferred(oldCpu);
+            }
+            if (_gpuTrayIcon != null)
+            {
+                ContextMenuStrip oldGpu = _gpuTrayIcon.ContextMenuStrip;
+                _gpuTrayIcon.ContextMenuStrip = CreateTrayContextMenu();
+                SafeDisposeContextMenuDeferred(oldGpu);
+            }
         }
 
         private void InitTrayIcons()

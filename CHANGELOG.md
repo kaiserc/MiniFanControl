@@ -23,7 +23,7 @@ For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
   - Added Win64 `ENABLE_TRACE_PARAMETERS` / `EVENT_FILTER_DESCRIPTOR` kernel event-ID filtering for lower ETW overhead, filtered WebView2 & AI host processes (e.g., Unsloth Studio) from active game detection, guarded hidden OSD click-through locks against resurrecting stale windows, and added SMBus DDR5 SPD backoff on missing DIMM slots (Tests #124–#125).
 - **Privacy-First Update Checker, Public Roadmap & Winget Automation (`Core/UpdateChecker.cs`, `ROADMAP.md`, `scripts/generate-winget-manifest.ps1`, `Tests/README.md`, `README.md`)**:
   - Added on-demand **`↻ Check for Updates (GitHub Releases)...`** in `Tools & Drivers ▾` with strict SemVer comparison, depth-aware JSON parsing, and fail-closed official repo URL sanitization (zero background phone-home) (Test #126).
-  - Added [ROADMAP.md](ROADMAP.md), automated `winget-pkgs` 1.6.0 manifest generation (`scripts/generate-winget-manifest.ps1`), `gh attestation verify` instructions in `README.md`, and expanded the verified test catalog to **127/127** tests.
+  - Added [ROADMAP.md](ROADMAP.md), automated `winget-pkgs` 1.6.0 manifest generation (`scripts/generate-winget-manifest.ps1`), `gh attestation verify` instructions in `README.md`, deferred `ContextMenuStrip` disposal fixing a WinForms `ModalMenuFilter` `ObjectDisposedException` crash when toggling menu items, and expanded the verified test catalog to **128/128** tests (Test #128).
 
 ## [1.3.1] - 2026-11-27
 
