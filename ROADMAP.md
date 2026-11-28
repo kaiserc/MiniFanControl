@@ -4,25 +4,12 @@ This roadmap tracks completed milestones, active work for the upcoming release, 
 
 ---
 
-## Shipped Foundations (`v1.0.0` → `v1.3.1`)
+## Shipped Foundations (`v1.0.0` → `v1.4.0`)
 
-- **Core Fan Control & Safety:** Dual independent APU + Sys fan curves, 3-pass stall-floor calibration with ≥88°C abort, 4°C asymmetric cooldown hysteresis, ≥90°C emergency tripwire, out-of-process watchdog supervisor, and `Global\Access_EC` bus locking.
-- **HVCI-First Security & Verifiable Releases:** EV-signed PawnIO Priority-0 backend (`LpcIO.bin`, `LpcACPIEC.bin`, `AMDFamily17.bin`) with per-module SHA256 pinning, hard-gated legacy `WinRing0` (`CVE-2020-14979`), SLSA Build Provenance Attestations, and `.NET 4.8` + `.NET 10.0-windows` CI builds.
-- **Deep Telemetry & Hook-Free OSD:** Direct AMD SMN `Tctl/Tdie`, WHQL ADL2 iGPU/PPT/NPU, NVIDIA NVML desktop GPU, dual DDR5 SODIMM temps, multi-NVMe SMART + I/O, native Windows DXGI/DxgKrnl ETW Display Latency, Digital Foundry stutter graphs, and 6 themes (including Xmas Edition).
-- **Zero-UI Background Service & S0ix Recovery:** ~3.5 MB RAM `MiniFanControlService` with GUI ↔ Service handoff, shared `%ProgramData%` config hot-reload, Modern Standby (S0ix) wake self-healing, external `profiles/*.json` registry, and `minifan-helper.exe status --stream` JSONL output.
-
----
-
-## In Progress — Next Release (`v1.4.0`)
-
-- [x] **Modernized Win11 Visual Polish:** Custom `ModernSlider` with visible Anti-Stall Floor dead-zone rail, dark-mode native scrollbars/checkboxes/comboboxes, unified `ThemePalette` dialogs (`FanCalibrationDialog`, `KernelDriverDialog`, `ThemedInfoDialog`), and thermal hero temperature ramps.
-- [x] **OSD Studio Workflow & Bidirectional Sync:** 4 one-click OSD presets (`Minimal FPS`, `Compact Gaming`, `Digital Foundry`, `Full Audit`), 5 category filter pills, live-synced OSD right-click menu, and Live Trend `All`/`Temps`/`Cool` + Shift-click Solo filtering + Fan Curve `Ctrl+Z` undo.
-- [x] **In-Game OSD Readability Polish:** Single-line `TREND` header with clamped 8-badge right-edge stack, stronger dark graph backing over bright game HUDs, cleaner DF corner inset `0` tick clearance, flush `NPU` alignment, alternating row striping, and padded Radeon/Ryzen pills.
-- [x] **True BIOS Fan Curve Restoration (`Reset Auto`):** Snapshots untouched IT8613E SmartGuardian BIOS fan curves and initial EC BIOS modes before the first override, restoring them faithfully on `Reset Auto` and entering a true hands-off **`✓ BIOS Auto`** state (with ≥90°C emergency tripwire still armed).
-- [x] **Privacy-First Update Checker:** On-demand **`↻ Check for Updates...`** in `Tools & Drivers ▾` querying GitHub Releases with strict SemVer parsing and official repository URL sanitization (zero background phone-home).
-- [x] **Winget Packaging Automation:** Repeatable `scripts/generate-winget-manifest.ps1` generator for `kaiserc.MiniFanControl`.
-- [x] **Modular Architecture Cleanup:** Extracted `CliCommandRunner`, `OsdStudioControl`, `TelemetryTileControl`, `Ddr5SpdSensor`, `BiosFanStateSnapshot`, and shared `DfGraphMath` from the core UI/CLI/hardware partials while preserving strict C# 5 `.NET 4.8` + `.NET 10.0-windows` parity.
-- [x] **128 Automated Self-Tests:** Expanded catalog including hidden-OSD lock guard, ETW kernel event-ID filter ABI, update checker verification, true BIOS `Reset Auto` restoration, and deferred `ContextMenuStrip` disposal safety.
+- **Core Fan Control, True BIOS Restoration & Safety:** Dual independent APU + Sys fan curves, 3-pass stall-floor calibration with ≥88°C abort, 4°C asymmetric cooldown hysteresis, ≥90°C emergency tripwire, out-of-process watchdog supervisor, `Global\Access_EC` bus locking, and faithful **True BIOS `Reset Auto`** restoration (snapshotting untouched IT8613E SmartGuardian curves & EC initial modes before the first override).
+- **HVCI-First Security & Verifiable Releases:** EV-signed PawnIO Priority-0 backend (`LpcIO.bin`, `LpcACPIEC.bin`, `AMDFamily17.bin`) with per-module SHA256 pinning, hard-gated legacy `WinRing0` (`CVE-2020-14979`), SLSA Build Provenance Attestations, on-demand privacy-first `UpdateChecker`, `winget` manifest automation, and `.NET 4.8` + `.NET 10.0-windows` CI builds with **128/128 automated self-tests**.
+- **Modern Win11 UI, Deep Telemetry & Hook-Free OSD:** Custom `ModernSlider` with anti-stall floor zone, unified `ThemePalette` dialogs, 4 OSD Studio presets & bidirectional context-menu sync, direct AMD SMN `Tctl/Tdie`, WHQL ADL2 iGPU/PPT/NPU, NVIDIA NVML desktop GPU, dual DDR5 SODIMM temps, multi-NVMe SMART + I/O, kernel-filtered Windows DXGI/DxgKrnl ETW Display Latency, Digital Foundry stutter graphs, and 6 themes (including Xmas Edition).
+- **Zero-UI Background Service, S0ix Recovery & Modular Architecture:** ~3.5 MB RAM `MiniFanControlService` with GUI ↔ Service handoff, shared `%ProgramData%` config hot-reload, Modern Standby (S0ix) wake self-healing, external `profiles/*.json` registry, `minifan-helper.exe status --stream` JSONL output, and cleanly extracted `CliCommandRunner`, `OsdStudioControl`, `TelemetryTileControl`, `Ddr5SpdSensor`, `BiosFanStateSnapshot`, and `DfGraphMath` modules.
 
 ---
 

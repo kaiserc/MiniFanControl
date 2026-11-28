@@ -2,7 +2,7 @@
 
 [![GitHub Stars](https://img.shields.io/github/stars/kaiserc/MiniFanControl?style=social)](https://github.com/kaiserc/MiniFanControl/stargazers)
 [![GitHub Downloads](https://img.shields.io/github/downloads/kaiserc/MiniFanControl/total?label=Downloads&color=blue)](https://github.com/kaiserc/MiniFanControl/releases)
-[![Release: v1.3.1](https://img.shields.io/badge/Release-v1.3.1-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
+[![Release: v1.4.0](https://img.shields.io/badge/Release-v1.4.0-blue.svg)](https://github.com/kaiserc/MiniFanControl/releases)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-Windows%20x64%20(.NET%204.8%20%26%2010)-brightgreen.svg)](https://github.com/kaiserc/MiniFanControl/actions)
 [![Tests: 128/128 Passing](https://img.shields.io/badge/tests-128%2F128%20passing-brightgreen)](Tests/README.md)
 [![Security: Fail-Closed](https://img.shields.io/badge/Security-Fail--Closed%20%7C%20PawnIO%20HVCI-purple.svg)](#-safety--security-architecture)
@@ -75,7 +75,7 @@ MiniFanControl is built **fail-closed** from the ground up:
 - **HWiNFO64 / CapFrameX Bus Synchronization:** Coordinates via `Global\Access_EC`, `Global\Access_ISABUS.HTP.Method`, `Global\Access_PCI`, and `Global\Access_SMBUS.HTP.Method` with least-privilege `AuthenticatedUserSid` DACLs, surfacing a UI warning banner if `Global\` mutex creation degrades to `Local\`.
 - **Verifiable Supply Chain:** GitHub Actions CI builds test-free `.NET 4.8` & `.NET 10.0-windows` binaries, runs **128 automated self-tests** in a dedicated test assembly (`Tests/MiniFanControl.Tests.csproj`), publishes `SHA256SUMS.txt`, and generates GitHub **Build Provenance Attestations** (`actions/attest-build-provenance`). Verify any downloaded artifact locally with the GitHub CLI:
   ```powershell
-  gh attestation verify MiniFanControl-Setup-v1.3.1-x64.exe --repo kaiserc/MiniFanControl
+  gh attestation verify MiniFanControl-Setup-v1.4.0.exe --repo kaiserc/MiniFanControl
   ```
 
 ---

@@ -1,3 +1,23 @@
+# Release Notes: MiniFanControl v1.4.0 (Win11 UI Modernization, True BIOS `Reset Auto`, OSD Studio Sync, Modular Architecture & 128/128 Suite)
+
+**MiniFanControl v1.4.0** delivers a major Windows 11 UI & OSD Studio overhaul, faithful **True BIOS Fan Curve Restoration** on `Reset Auto`, an opt-in **Privacy-First GitHub Update Checker**, a cleaner **6-module architecture**, a critical WinForms menu crash fix, and an expanded **128/128 automated safety & regression test suite**.
+
+## 🎨 Modern Win11 UI, OSD Studio Workflow & In-Game OSD Polish
+- **Custom `ModernSlider` & Unified `ThemePalette` Dialogs**: Replaced legacy Win32 trackbars with a double-buffered `ModernSlider` featuring an amber **Anti-Stall Floor** rail zone & threshold notch with live drag value pill, native dark-mode scrollbars/checkboxes/comboboxes, thermal hero temperature color ramps, and unified theming across `FanCalibrationDialog`, `KernelDriverDialog`, and `ThemedInfoDialog`.
+- **OSD Studio Presets & Bidirectional Menu Sync**: Added 4 one-click OSD presets (`Minimal FPS`, `Compact Gaming`, `Digital Foundry`, `Full Audit`), 5 category filter pills, live bidirectional sync with the dark-themed overlay context menu, `All` / `Temps` / `Cool` + Shift+Click Solo filters and `TIMELINE PAUSED` banner in `LiveTelemetryCanvas`, plus `Ctrl+Z` undo and inline legend in `FanCurveCanvas`.
+- **In-Game OSD Readability Refinements**: Single-line `TREND` header with compact color dots and clamped right-edge endpoint badges, stronger dark chart backing over bright HUDs, cleaner DF corner frametime `0` tick clearance, inset live `FPS` pill, flush `NPU` alignment, subtle alternating row striping, and padded Radeon/Ryzen pills.
+
+## 🛡️ True BIOS Restoration (`Reset Auto`), Stability & Sensor Hardening
+- **True BIOS Fan Curve & Mode Restoration (`BiosFanStateSnapshot`)**: Snapshots untouched IT8613E Super I/O SmartGuardian registers (`0x15..0x17`, `0x63/0x6B/0x73`) and initial EC BIOS mode (`RegModeStatus`) before MiniFanControl's first fan override. Clicking **`Reset Auto`** faithfully restores your motherboard's native/custom BIOS fan curve and enters a true hands-off **`✓ BIOS Auto`** state (without overwriting BIOS control 1 second later, while keeping the ≥90°C emergency tripwire armed) (Test #127).
+- **WinForms Menu Crash Fix (`SafeDisposeContextMenuDeferred`)**: Fixed an `ObjectDisposedException` crash in WinForms' `ModalMenuFilter` when toggling menu items that rebuild `Tools & Drivers`, Theme picker, tray, or canvas context menus by closing the old menu while alive and deferring `Dispose()` via `BeginInvoke` (Test #128).
+- **ETW Kernel Event-ID Filtering & Sensor Hardening**: Added Win64 `ENABLE_TRACE_PARAMETERS` / `EVENT_FILTER_DESCRIPTOR` kernel event-ID filtering for lower ETW overhead, filtered WebView2 & AI host processes (e.g. Unsloth Studio) from active game detection, guarded hidden OSD click-through locks against resurrecting stale windows, and added SMBus DDR5 SPD 30 s backoff on missing DIMM slots (Tests #124–#125).
+
+## 🚀 Distribution Readiness & Modular Architecture
+- **Privacy-First Update Checker & Winget Automation**: Added on-demand **`↻ Check for Updates (GitHub Releases)...`** in `Tools & Drivers ▾` with strict SemVer parsing and fail-closed official URL sanitization (zero background telemetry) (Test #126), plus [ROADMAP.md](ROADMAP.md) and `scripts/generate-winget-manifest.ps1`.
+- **6-Module Architecture Cleanup**: Extracted `Core/CliCommandRunner.cs`, `Ui/OsdStudioControl.cs`, `Ui/TelemetryTileControl.cs`, `Hardware/Ddr5SpdSensor.cs`, `Hardware/BiosFanStateSnapshot.cs`, and shared `Telemetry/DfGraphMath.cs` (~3,550 net lines trimmed across original partials, ~155 fewer fields on `MainForm`, and fixed a per-toggle GDI `Font` leak) while preserving strict C# 5 `.NET 4.8` + `.NET 10.0-windows` parity and **128/128 passing tests**.
+
+---
+
 # Release Notes: MiniFanControl v1.3.1 (Stabilization, Security Hardening, Build Provenance Attestations & 123/123 Suite)
 
 **MiniFanControl v1.3.1** is a dedicated stabilization, security-hardening, and UX polish release built directly on `v1.3.0` — closing every remaining fail-open path, adding **GitHub Build Provenance Attestations** to release artifacts, slimming the shipping GUI binary, and expanding the automated regression suite to **123/123 passing** across both `.NET 4.8` and the new standalone `.NET 10.0-windows` test assembly.

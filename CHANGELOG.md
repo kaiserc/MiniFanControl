@@ -4,7 +4,7 @@ All notable changes to **MiniFanControl** are documented in this file.
 The project adheres to [Semantic Versioning](https://semver.org/).
 For in-depth architectural deep dives, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
-## [Unreleased]
+## [1.4.0] - 2026-11-28
 
 ### 🎨 Modern Win11 UI Polish, OSD Studio Workflow & In-Game OSD Refinements
 - **Win11 Visual Modernization (`Ui/ModernSlider.cs`, `Ui/ThemePalette.cs`, `Ui/ThemedInfoDialog.cs`, `Ui/Win11VisualStyle.cs`, `Ui/MainForm*.cs`, `Ui/FanCalibrationDialog.cs`, `Ui/KernelDriverDialog.cs`)**:
